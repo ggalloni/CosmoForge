@@ -1,0 +1,17 @@
+[project]
+name = "meta"
+version = "0.1.0"
+description = "CosmoForge meta-package to install all packages"
+readme = "README.md"
+authors = [
+    { name = "Giacomo Galloni", email = "giacomo.galloni@unife.it" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "cosmocore",
+    "quelo",
+]
+
+[tool.uv.sources]
+quelo = { workspace = true }
+cosmocore = { workspace = true }

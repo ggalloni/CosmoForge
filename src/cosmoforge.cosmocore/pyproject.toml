@@ -1,0 +1,53 @@
+[project]
+name = "cosmocore"
+version = "0.1.0"
+description = "CosmoCore: common algebra for harmonic-pixel handling."
+readme = "README.md"
+authors = [
+    { name = "Giacomo Galloni", email = "giacomo.galloni@unife.it" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "healpy>=1.18.1",
+    "mpi4py>=4.1.0",
+    "numba>=0.61.2",
+    "numpy>=2.2.6",
+    "scipy>=1.16.1",
+]
+
+[dependency-groups]
+dev = [
+    "matplotlib>=3.10.5",
+    "pre-commit>=4.3.0",
+    "pytest>=8.4.1",
+    "pytest-cov>=6.2.1",
+    "ruff>=0.12.9",
+]
+
+[build-system]
+requires = ["setuptools>=64", "setuptools_scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = [
+    "cosmocore",
+]
+
+[tool.ruff.lint]
+select = ["E713", "E703", "E714", "E741", "E10", "E11", "E20", "E22", "E23", "E25", "E262", "E27", "E301", "E302", "E304", "E9", "F405", "F406", "F5", "F6", "F7", "F8", "E501", "W191", "F401", "W1", "W292", "W293", "W3"]
+extend-select = ["I"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"*/__init__.py" = ["F401"]
+"docs/*" = ["F401"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.ruff]
+exclude = ["build", ".eggs"]
+line-length = 90
