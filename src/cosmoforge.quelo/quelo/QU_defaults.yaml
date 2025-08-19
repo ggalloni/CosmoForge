@@ -1,0 +1,32 @@
+nside: 8
+spins: [2]
+labels: ["E", "B"]
+
+do_cross: false
+
+maskfile: 'src/cosmoforge.quelo/inputs/QU_mask.fits'
+output_geometry_file: 'outputs/QU_geometry.dat'
+ordering: 2
+
+inputclfile: 'src/cosmoforge.quelo/inputs/QU_dls.txt'
+covmatfile1: 'src/cosmoforge.quelo/inputs/QU_NCVM1.bin'
+covmatfile2: 'src/cosmoforge.quelo/inputs/QU_NCVM2.bin'
+
+lmax: 32
+
+load_inverted: false
+calibration: 1.0
+
+smoothing_type: 3
+fwhmarcmin: [440.0]
+apply_pixwin: false
+beam_file: 'src/cosmoforge.quelo/inputs/beam_440TP_pixwin16.fits'
+
+outnoisecovmat1: 'src/cosmoforge.quelo/outputs/reduced_QU_NCVM1.bin'
+outnoisecovmat2: 'src/cosmoforge.quelo/outputs/reduced_QU_NCVM2.bin'
+
+feedback: 5
+outinvcovmatfile1: 'src/cosmoforge.quelo/outputs/QU_invCOV1.bin'
+outinvcovmatfile2: 'src/cosmoforge.quelo/outputs/QU_invCOV2.bin'
+
+outfilefisher: 'src/cosmoforge.quelo/outputs/QU_fisher.dat'
