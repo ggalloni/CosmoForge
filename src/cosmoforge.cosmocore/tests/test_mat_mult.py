@@ -21,7 +21,6 @@ def matrix_mult(A, B):
 
 
 def test_mat_multiplication(configure_plt):
-
     configure_plt()
 
     # --- Setup ---

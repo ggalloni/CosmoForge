@@ -394,6 +394,7 @@ def do_derivative_step(
             for b in fields.logical_fields[idx_j].maps_label
         ]
         mode = np.where(np.array(combined_labels) == label)[0][0]
+
     row_offset = sum(2 * n if s == 2 else n for n, s in zip(npixs[:idx_i], spins[:idx_i]))
     col_offset = sum(2 * n if s == 2 else n for n, s in zip(npixs[:idx_j], spins[:idx_j]))
     nrow = 2 * npix_i if spin_i == 2 else npix_i
@@ -406,6 +407,7 @@ def do_derivative_step(
 
     block = S[col_offset : col_offset + ncol, row_offset : row_offset + nrow]
     legendre = np.empty(current_ell)
+
     if spin_i == 0 and spin_j == 0:
         derivative_step_00(
             block,

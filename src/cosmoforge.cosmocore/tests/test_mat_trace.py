@@ -18,7 +18,6 @@ def matrix_trace(A, B):
 
 
 def test_mat_trace(configure_plt):
-
     configure_plt()
 
     # ---- Setup ----
