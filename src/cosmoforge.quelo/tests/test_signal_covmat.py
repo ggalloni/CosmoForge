@@ -1,16 +1,23 @@
 import healpy as hp
 import numpy as np
+from cosmocore import (
+    InputParams,
+    LogicalField,
+    LogicalFieldCollection,
+    compute_beam,
+    compute_pointings,
+    compute_signal_matrix,
+    read_covmat,
+    read_mask,
+    readcl,
+)
 from matplotlib import pyplot as plt
-
-from quelo.fields import LogicalField, LogicalFieldCollection
-from quelo.harmonic import compute_beam
-from quelo.in_out import read_covmat, read_mask, readcl
-from quelo.pixel import compute_pointings, compute_signal_matrix
-from quelo.settings import InputParams
 
 
 def get_signal_covmat(fields):
-    Par = InputParams.read_parameter_file(f"quelo/dofisher/{fields}_defaults.yaml")
+    Par = InputParams.read_parameter_file(
+        f"src/cosmoforge.quelo/quelo/{fields}_defaults.yaml"
+    )
 
     npix = hp.nside2npix(Par.nside)
     mask = np.empty((Par.nfields, npix), dtype=np.float64)
@@ -112,10 +119,10 @@ def get_signal_covmat(fields):
 
 
 def test_signal_covmat_TQU(show_fig=False):
-    Par = InputParams.read_parameter_file("quelo/dofisher/TQU_defaults.yaml")
+    Par = InputParams.read_parameter_file("src/cosmoforge.quelo/quelo/TQU_defaults.yaml")
     npix = hp.nside2npix(Par.nside)
 
-    file = "inputs/TQU_ref_signal.bin"
+    file = "src/cosmoforge.quelo/tests/data/TQU_ref_signal.bin"
     ref = np.fromfile(file, dtype=np.float64).reshape((npix * 3, npix * 3))
 
     ref = np.asfortranarray(ref, dtype=np.float64)
@@ -198,10 +205,10 @@ def test_signal_covmat_TQU(show_fig=False):
 
 
 def test_signal_covmat_TEB(show_fig=False):
-    Par = InputParams.read_parameter_file("quelo/dofisher/TEB_defaults.yaml")
+    Par = InputParams.read_parameter_file("src/cosmoforge.quelo/quelo/TEB_defaults.yaml")
     npix = hp.nside2npix(Par.nside)
 
-    file = "inputs/TEB_ref_signal.bin"
+    file = "src/cosmoforge.quelo/tests/data/TEB_ref_signal.bin"
     ref = np.fromfile(file, dtype=np.float64).reshape((npix * 3, npix * 3))
 
     ref = np.asfortranarray(ref, dtype=np.float64)
