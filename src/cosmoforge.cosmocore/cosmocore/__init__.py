@@ -29,11 +29,36 @@ from .in_out import (
     write_covmat_reduced,
     write_out_matrix,
 )
+from .pixel import (
+    compute_00_contribution,
+    compute_02_contribution,
+    compute_22_contribution,
+    compute_pointings,
+    compute_signal_matrix,
+    count_nonzero_mask,
+    derivative_step_00,
+    derivative_step_02,
+    derivative_step_22,
+    do_derivative_step,
+    pixel_active,
+)
 from .settings import InputParams
 
 __all__ = [
     # settings
     "InputParams",
+    # pixel
+    "compute_00_contribution",
+    "compute_02_contribution",
+    "compute_22_contribution",
+    "compute_pointings",
+    "compute_signal_matrix",
+    "count_nonzero_mask",
+    "derivative_step_00",
+    "derivative_step_02",
+    "derivative_step_22",
+    "do_derivative_step",
+    "pixel_active",
     # in_out
     "output_geometry",
     "read_covmat",
