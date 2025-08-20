@@ -179,7 +179,10 @@ def test_signal_covmat_TQU(show_fig=False):
         plt.show()
 
     np.testing.assert_almost_equal(
-        diff, 0.0, decimal=7, err_msg="Signal covariance matrix does not match reference."
+        diff,
+        0.0,
+        decimal=7,
+        err_msg="TQU Signal covariance matrix does not match reference.",
     )
 
 
@@ -265,7 +268,10 @@ def test_signal_covmat_TEB(show_fig=False):
         plt.show()
 
     np.testing.assert_almost_equal(
-        diff, 0.0, decimal=7, err_msg="Signal covariance matrix does not match reference."
+        diff,
+        0.0,
+        decimal=7,
+        err_msg="TEB Signal covariance matrix does not match reference.",
     )
 
 
