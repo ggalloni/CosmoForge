@@ -209,7 +209,7 @@ class BeamManager:
             # fwhmarcmin in arcminutes → fwhm_rad
             beam = np.array(
                 hp.gauss_beam(np.deg2rad(fwhmarcmin / 60.0), lmax=lmax + 1, pol=True)[
-                    2 : lmax + 1
+                    2 : lmax + 1, :-1
                 ],
                 dtype=np.float64,
             ).T

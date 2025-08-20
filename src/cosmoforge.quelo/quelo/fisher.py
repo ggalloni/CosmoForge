@@ -279,15 +279,16 @@ class Fisher(Core):
             self.fisher = redfisher
             self.log("-" * 80, level=1)
             self.log("Fisher matrix computation completed", level=1)
+            self.log(f"Fisher matrix shape: {self.fisher.shape}", level=4)
 
             if start_time is not None:
                 elapsed = time.time() - start_time
                 self.log(f"Total computation time: {elapsed:.2f} seconds", level=3)
 
             # Write Fisher matrix to file
-            write_out_matrix(self.params.outfilefisher, self.fisher)
-            self.log(f"Fisher matrix written to {self.params.outfilefisher}", level=4)
-            self.log(f"Fisher matrix shape: {self.fisher.shape}", level=4)
+            if hasattr(self.params, "outfilefisher"):
+                write_out_matrix(self.params.outfilefisher, self.fisher)
+                self.log(f"Fisher matrix written to {self.params.outfilefisher}", level=4)
 
         self.comm.Barrier()
 
@@ -356,7 +357,7 @@ class Fisher(Core):
 
         # Finalize MPI
         self.comm.Barrier()
-        MPI.Finalize()
+        # MPI.Finalize()
 
     def get_fisher_matrix(self) -> np.ndarray | None:
         """
