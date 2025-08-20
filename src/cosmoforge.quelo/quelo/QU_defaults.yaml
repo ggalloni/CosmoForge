@@ -5,7 +5,7 @@ labels: ["E", "B"]
 do_cross: false
 
 maskfile: 'src/cosmoforge.quelo/inputs/QU_mask.fits'
-output_geometry_file: 'outputs/QU_geometry.dat'
+output_geometry_file: 'src/cosmoforge.quelo/outputs/QU_geometry.dat'
 ordering: 2
 
 inputclfile: 'src/cosmoforge.quelo/inputs/QU_dls.txt'

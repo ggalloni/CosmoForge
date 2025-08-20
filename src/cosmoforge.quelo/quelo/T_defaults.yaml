@@ -5,7 +5,7 @@ labels: ["T"]
 do_cross: false
 
 maskfile: 'src/cosmoforge.quelo/inputs/T_mask.fits'
-output_geometry_file: 'outputs/T_geometry.dat'
+output_geometry_file: 'src/cosmoforge.quelo/outputs/T_geometry.dat'
 ordering: 2
 
 inputclfile: 'src/cosmoforge.quelo/inputs/T_dls.txt'
