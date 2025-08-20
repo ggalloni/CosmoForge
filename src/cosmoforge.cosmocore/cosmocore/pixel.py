@@ -8,7 +8,7 @@ from .basics import (
     legendre_02_inplace,
     legendre_22_inplace,
 )
-from .fields import LogicalFieldCollection
+from .fields import FieldCollection
 
 
 @njit(cache=True)
@@ -150,14 +150,14 @@ def compute_02_contribution(cl12, cl13, S_slice, vec0, vec2, legendre):
 def compute_signal_matrix(
     S,
     lmax,
-    fields: LogicalFieldCollection,
+    fields: FieldCollection,
 ):
     spins = fields.spin
-    npixs = fields.N_active
+    npixs = fields.n_active
 
     row_offset = 0
     for i, (npix_i, spin_i) in enumerate(zip(npixs, spins)):
-        lf_i = fields.logical_fields[i]
+        lf_i = fields.fields[i]
         nrow = 2 * npix_i if spin_i == 2 else npix_i
         col_offset = 0
         for j, (npix_j, spin_j) in enumerate(zip(npixs, spins)):
@@ -165,11 +165,11 @@ def compute_signal_matrix(
             if j < i:
                 col_offset += ncol
                 continue
-            lf_j = fields.logical_fields[j]
+            lf_j = fields.fields[j]
             legendre = np.empty(lmax, dtype=np.float64)
             if spin_i == 0 and spin_j == 0:
                 remove_dipole = (
-                    True if lf_i.maps_label + lf_j.maps_label == ["T", "T"] else False
+                    True if lf_i.maps_label + lf_j.maps_label == "TT" else False
                 )
                 if i == j:
                     compute_00_contribution(
@@ -354,24 +354,24 @@ def do_derivative_step(
     npixs,
     spins,
     current_ell,
-    fields: LogicalFieldCollection,
+    fields: FieldCollection,
 ):
     spins = fields.spin
-    npixs = fields.N_active
+    npixs = fields.n_active
     label = fields.spectra_labels[spectrum]
 
-    for idx, field in enumerate(fields.logical_fields):
+    for idx, field in enumerate(fields.fields):
         if label[0] in field.maps_label:
             idx_i = idx
             spin_i = field.spin
-            npix_i = field.N_active[0]
+            npix_i = field.n_active[0]
             point_vectors_i = field.point_vectors
             break
-    for idx, field in enumerate(fields.logical_fields):
+    for idx, field in enumerate(fields.fields):
         if label[1] in field.maps_label:
             idx_j = idx
             spin_j = field.spin
-            npix_j = field.N_active[0]
+            npix_j = field.n_active[0]
             point_vectors_j = field.point_vectors
             break
 
@@ -382,16 +382,14 @@ def do_derivative_step(
             mode = 1
     elif spin_i == 2 and spin_j == 2:
         if label[0] == label[1]:
-            mode = np.where(
-                np.array(fields.logical_fields[idx_j].maps_label) == label[0]
-            )[0][0]
+            mode = np.where(np.array(fields.fields[idx_j].maps_label) == label[0])[0][0]
         else:
             mode = 2
     elif (spin_i, spin_j) in [(0, 2), (2, 0)]:
         combined_labels = [
             a + b
-            for a in fields.logical_fields[idx_i].maps_label
-            for b in fields.logical_fields[idx_j].maps_label
+            for a in fields.fields[idx_i].maps_label
+            for b in fields.fields[idx_j].maps_label
         ]
         mode = np.where(np.array(combined_labels) == label)[0][0]
 

@@ -14,12 +14,18 @@ from .basics import (
     matrix_mult,
     matrix_trace,
 )
+from .core import Core
 from .fields import (
-    LogicalField,
-    LogicalFieldCollection,
+    BaseField,
+    FieldCollection,
+    FieldConfig,
+    PolarizationField,
+    ScalarField,
+    create_field,
 )
 from .harmonic import (
-    compute_beam,
+    BeamManager,
+    SpectraManager,
 )
 from .in_out import (
     output_geometry,
@@ -68,9 +74,19 @@ __all__ = [
     "write_out_matrix",
     # harmonic
     "compute_beam",
+    # core
+    "Core",
     # fields
-    "LogicalField",
-    "LogicalFieldCollection",
+    "BaseField",
+    "BeamManager",
+    "Field",
+    "FieldCollection",
+    "FieldConfig",
+    "FieldCollection",
+    "PolarizationField",
+    "ScalarField",
+    "SpectraManager",
+    "create_field",
     # basics
     "cross_index",
     "idx2spec",
