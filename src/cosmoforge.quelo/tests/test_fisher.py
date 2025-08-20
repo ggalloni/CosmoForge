@@ -7,7 +7,7 @@ from quelo.fisher import Fisher
 
 def get_fisher_matrix(fields: str = "TEB", local_path: str = None) -> np.ndarray:
     # Create Fisher instance with parameter file
-    fisher_analyzer = Fisher(local_path + f"/tests/data/{fields}_defaults.yaml")
+    fisher_analyzer = Fisher(local_path + f"/tests/data/nside4/{fields}_nside4.yaml")
 
     # Run the complete analysis pipeline
     fisher_analyzer.run()
@@ -23,7 +23,7 @@ def test_fisher_computation(fields, local_path):
     fisher_matrix = get_fisher_matrix(fields, local_path=local_path)
     assert fisher_matrix is not None, "Fisher matrix should not be None"
 
-    file = local_path + f"/tests/data/{fields}_ref_fisher_nside4.dat"
+    file = local_path + f"/tests/data/nside4/{fields}_ref_fisher_nside4.dat"
     fisher_ref = np.loadtxt(file, dtype=np.float64)
 
     assert fisher_matrix.shape == fisher_ref.shape, (

@@ -1,3 +1,5 @@
+import os
+
 import healpy as hp
 import numpy as np
 from cosmocore import (
@@ -12,9 +14,9 @@ from cosmocore import (
 from matplotlib import pyplot as plt
 
 
-def get_signal_covmat(fields):
+def get_signal_covmat(fields, local_path):
     Par = InputParams.read_parameter_file(
-        f"src/cosmoforge.quelo/quelo/{fields}_defaults.yaml"
+        local_path + f"/tests/data/nside8/{fields}_nside8.yaml"
     )
 
     npix = hp.nside2npix(Par.nside)
@@ -97,16 +99,18 @@ def get_signal_covmat(fields):
     return Sig
 
 
-def test_signal_covmat_TQU(show_fig=False):
-    Par = InputParams.read_parameter_file("src/cosmoforge.quelo/quelo/TQU_defaults.yaml")
+def test_signal_covmat_TQU(local_path, show_fig=False):
+    Par = InputParams.read_parameter_file(
+        local_path + "/tests/data/nside8/TQU_nside8.yaml"
+    )
     npix = hp.nside2npix(Par.nside)
 
-    file = "src/cosmoforge.quelo/tests/data/TQU_ref_signal.bin"
+    file = local_path + "/tests/data/nside8/TQU_ref_signal.bin"
     ref = np.fromfile(file, dtype=np.float64).reshape((npix * 3, npix * 3))
 
     ref = np.asfortranarray(ref, dtype=np.float64)
 
-    Sig = get_signal_covmat("TQU")
+    Sig = get_signal_covmat("TQU", local_path=local_path)
 
     diff = np.abs(Sig - ref)
 
@@ -186,16 +190,18 @@ def test_signal_covmat_TQU(show_fig=False):
     )
 
 
-def test_signal_covmat_TEB(show_fig=False):
-    Par = InputParams.read_parameter_file("src/cosmoforge.quelo/quelo/TEB_defaults.yaml")
+def test_signal_covmat_TEB(local_path, show_fig=False):
+    Par = InputParams.read_parameter_file(
+        local_path + "/tests/data/nside8/TEB_nside8.yaml"
+    )
     npix = hp.nside2npix(Par.nside)
 
-    file = "src/cosmoforge.quelo/tests/data/TEB_ref_signal.bin"
+    file = local_path + "/tests/data/nside8/TEB_ref_signal.bin"
     ref = np.fromfile(file, dtype=np.float64).reshape((npix * 3, npix * 3))
 
     ref = np.asfortranarray(ref, dtype=np.float64)
 
-    Sig = get_signal_covmat("TEB")
+    Sig = get_signal_covmat("TEB", local_path=local_path)
 
     diff = np.abs(Sig - ref)
 
@@ -276,6 +282,11 @@ def test_signal_covmat_TEB(show_fig=False):
 
 
 if __name__ == "__main__":
-    test_signal_covmat_TQU(show_fig=True)
-    test_signal_covmat_TEB(show_fig=True)
+    path = os.path.abspath(__file__.split("/tests/test_signal_covmat.py")[0])
+
+    print(f"Running tests in directory: {path}")
+
+    test_signal_covmat_TQU(path, show_fig=True)
+    test_signal_covmat_TEB(path, show_fig=True)
+
     print("All tests passed successfully.")
