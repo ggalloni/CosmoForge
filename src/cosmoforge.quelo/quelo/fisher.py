@@ -9,6 +9,8 @@ import time
 
 import numpy as np
 from cosmocore import (
+    Core,
+    InputParams,
     compute_signal_matrix,
     do_derivative_step,
     matrix_inverse_symm,
@@ -17,7 +19,6 @@ from cosmocore import (
     write_covmat_reduced,
     write_out_matrix,
 )
-from cosmocore.core import Core
 from mpi4py import MPI
 
 
@@ -48,15 +49,6 @@ class Fisher(Core):
         self.comm = MPI.COMM_WORLD
         self.rank = self.comm.Get_rank()
         self.size = self.comm.Get_size()
-
-        # Fisher-specific attributes
-        self.fisher = None
-        self.derSil = None
-        self.derSjl = None
-        self.n_ell = None
-        self.nell = None
-
-        # No need to call read_params again since Core.__init__ already does it
 
     def setup_signal_matrix(self) -> np.ndarray:
         """
@@ -337,7 +329,9 @@ class Fisher(Core):
         self.comm.Barrier()
 
         # Broadcast shared variables to all processes
-        self.params = self.comm.bcast(self.params if self.rank == 0 else None, root=0)
+        self.params: InputParams = self.comm.bcast(
+            self.params if self.rank == 0 else None, root=0
+        )
         self.collection = self.comm.bcast(
             self.collection if self.rank == 0 else None, root=0
         )

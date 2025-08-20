@@ -226,7 +226,7 @@ class Core(ABC):
         Abstract method for performing the main computation.
         Must be implemented by subclasses.
         """
-        pass
+        raise NotImplementedError("Subclasses must implement 'compute' method")
 
     @abstractmethod
     def run(self):
@@ -234,4 +234,4 @@ class Core(ABC):
         Abstract method for running the full analysis pipeline.
         Must be implemented by subclasses.
         """
-        pass
+        raise NotImplementedError("Subclasses must implement 'run' method")
