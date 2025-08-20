@@ -1,15 +1,13 @@
 import healpy as hp
 import numpy as np
 from cosmocore import (
+    FieldCollection,
     InputParams,
-    LogicalField,
-    LogicalFieldCollection,
-    compute_beam,
     compute_pointings,
     compute_signal_matrix,
+    create_field,
     read_covmat,
     read_mask,
-    readcl,
 )
 from matplotlib import pyplot as plt
 
@@ -23,30 +21,33 @@ def get_signal_covmat(fields):
     mask = np.empty((Par.nfields, npix), dtype=np.float64)
     mask = read_mask(Par.maskfile, mask)
 
-    logical_fields: list[LogicalField] = []
+    # Create fields using the new design
+    fields = []
     counter = 0
     for spin in Par.spins:
         if spin == 0:
-            label = Par.labels[counter]
+            labels = Par.labels[counter]
             counter += 1
         else:
-            label = [Par.labels[counter], Par.labels[counter + 1]]
+            labels = [Par.labels[counter], Par.labels[counter + 1]]
             counter += 2
-        logical_fields.append(
-            LogicalField(
-                spin=spin,
-                nside=Par.nside,
-                lmax=Par.lmax,
-                mask=mask[:, counter - 1],
-                maps_label=label,
-            )
-        )
 
-    collection = LogicalFieldCollection(logical_fields)
+        # Use new factory function for type-safe field creation
+        field = create_field(
+            spin=spin,
+            nside=Par.nside,
+            lmax=Par.lmax,
+            mask=mask[:, counter - 1],
+            labels=labels,
+        )
+        fields.append(field)
+
+    # Create collection using new design
+    collection = FieldCollection(Par, fields)
 
     npixs = []
-    for lf in logical_fields:
-        npixs += lf.N_active
+    for field in fields:
+        npixs += field.n_active if field.spin == 0 else field.n_active * 2
 
     point_vectors = tuple(
         np.empty((npixs[i], 3), dtype=np.float64) for i in range(len(npixs))
@@ -81,30 +82,8 @@ def get_signal_covmat(fields):
             * Par.calibration**2
         )
 
-    clfid = readcl(Par.inputclfile, Par)
-
-    collection.set_cls(clfid)
-
-    beam_dict = compute_beam(
-        lmax=Par.lmax,
-        nside=Par.nside,
-        smoothtype=Par.smoothing_type,
-        fwhmarcmin=Par.fwhmarcmin,
-        beam_file=Par.beam_file,
-    )
-
-    counter = 0
-    for i, lf in enumerate(collection.logical_fields):
-        if lf.spin == 0:
-            lf.set_beam(beam_dict[lf.maps_label[0]])
-            counter += 1
-        elif lf.spin == 2:
-            beam_array = np.array([beam_dict["E"], beam_dict["B"]], dtype=np.float64)
-            lf.set_beam(beam_array.T)
-            counter += 2
-    collection.beam = collection.get_beam()
-
-    collection.apply_smoothing()
+    collection.set_cls()
+    collection.set_beams()
 
     Sig = np.zeros_like(NCov1, dtype=np.float64)
     Sig = np.asfortranarray(Sig, dtype=np.float64)
