@@ -3,11 +3,11 @@ from typing import TYPE_CHECKING
 import numpy as np
 from numba import njit
 
-from cosmocore.settings import InputParams
+from cosmocore import InputParams
 
 
 if TYPE_CHECKING:
-    from cosmocore.fields import BaseField
+    from cosmocore import BaseField
 
 
 @njit(cache=True)
