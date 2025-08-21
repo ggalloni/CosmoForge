@@ -26,6 +26,8 @@ from .fields import (
 from .harmonic import (
     BeamManager,
     SpectraManager,
+    cl_to_vec,
+    vec_to_cl,
 )
 from .in_out import (
     output_geometry,
@@ -74,6 +76,10 @@ __all__ = [
     "write_covmat_reduced",
     "write_out_matrix",
     # harmonic
+    "BeamManager",
+    "SpectraManager",
+    "cl_to_vec",
+    "vec_to_cl",
     "compute_beam",
     # core
     "Core",

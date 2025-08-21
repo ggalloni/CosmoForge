@@ -54,6 +54,17 @@ class InputParams:
         self.outfilefisher = "outputs/fisher.dat"
         self.ordering = 1
 
+        self.nsims = None
+        self.ssim = 1
+        self.zerofill = 3
+        self.endname1 = ""
+        self.endname2 = ""
+        self.inputmapfile1 = ""
+        self.inputmapfile2 = ""
+        self.outcovmatfile = ""
+        self.outerrfile = ""
+        self.remove_nb = True
+
         self.compute_derived()
 
     def compute_derived(self):
