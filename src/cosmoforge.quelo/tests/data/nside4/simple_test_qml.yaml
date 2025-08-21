@@ -1,6 +1,13 @@
 nside: 4
 spins: [0, 2]
-labels: ["T", "E", "B"]
+labels: ["T", "P"]
+
+nsims: 3
+ssim: 1
+zerofill: 3
+inputmapfile1: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/maps/simple_sim_'
+endname1: '_T_P.fits'
+remove_nb: false
 
 do_cross: false
 
@@ -28,30 +35,3 @@ outnoisecovmat2: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo
 feedback: 0
 outinvcovmatfile1: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/invCOV1.bin'
 outinvcovmatfile2: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/invCOV2.bin'
-
-# Fisher matrix output
-outfilefisher: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/TQU_fisher.dat'
-
-# Fisher matrix output
-outfilefisher: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/TQU_fisher.dat'
-
-# QML-specific parameters
-nsims: 3
-ssim: 1
-zerofill: 3
-endname1: '_TQU'
-endname2: '_TQU'
-inputmapfile1: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/maps/sim'
-inputmapfile2: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/maps/sim'
-
-# Output files for QML
-outcovmatfile: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/TQU_cov_matrix.dat'
-outerrfile: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/TQU_errors.dat'
-
-# Fisher matrix file (if precomputed)
-outfilefisher: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/TQU_fisher.dat'
-
-# QML options
-remove_nb: true
-nspectra: 6
-
