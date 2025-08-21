@@ -50,6 +50,7 @@ from .pixel import (
 )
 from .settings import InputParams
 
+
 __all__ = [
     # settings
     "InputParams",

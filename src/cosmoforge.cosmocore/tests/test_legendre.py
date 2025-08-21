@@ -7,6 +7,8 @@ Includes 00, 22, and 02 cases with unified and individual implementations.
 import time
 
 import numpy as np
+from numba import njit
+
 from cosmocore import (
     legendre_00,
     legendre_00_inplace,
@@ -17,7 +19,6 @@ from cosmocore import (
     legendre_unified,
     legendre_unified_inplace,
 )
-from numba import njit
 
 
 @njit(cache=True)

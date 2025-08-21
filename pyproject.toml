@@ -24,6 +24,11 @@ select = ["E713", "E703", "E714", "E741", "E10", "E11", "E20", "E22", "E23", "E2
 extend-select = ["I"]
 ignore = []
 
+[tool.ruff.lint.isort]
+known-first-party = ["quelo", "cosmocore", "cosmoforge"]
+force-single-line = false
+lines-after-imports = 2
+
 [tool.ruff.lint.per-file-ignores]
 "*/__init__.py" = ["F401"]
 "docs/*" = ["F401"]

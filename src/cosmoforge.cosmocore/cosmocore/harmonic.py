@@ -5,6 +5,7 @@ from numba import njit
 
 from cosmocore.settings import InputParams
 
+
 if TYPE_CHECKING:
     from cosmocore.fields import BaseField
 

@@ -3,7 +3,9 @@ import sys
 
 import healpy as hp
 import numpy as np
+
 from cosmocore import InputParams
+
 
 compute_case = sys.argv[1]
 outpath = sys.argv[2]

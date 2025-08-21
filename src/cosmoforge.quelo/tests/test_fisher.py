@@ -2,7 +2,8 @@ import os
 
 import numpy as np
 import pytest
-from quelo.fisher import Fisher
+
+from quelo import Fisher
 
 
 def get_fisher_matrix(fields: str = "TEB", local_path: str = None) -> np.ndarray:

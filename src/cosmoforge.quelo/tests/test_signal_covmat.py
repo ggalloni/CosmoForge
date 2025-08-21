@@ -2,6 +2,8 @@ import os
 
 import healpy as hp
 import numpy as np
+from matplotlib import pyplot as plt
+
 from cosmocore import (
     FieldCollection,
     InputParams,
@@ -11,7 +13,6 @@ from cosmocore import (
     read_covmat,
     read_mask,
 )
-from matplotlib import pyplot as plt
 
 
 def get_signal_covmat(fields, local_path):

@@ -8,6 +8,8 @@ calculations for cosmological parameter estimation.
 import time
 
 import numpy as np
+from mpi4py import MPI
+
 from cosmocore import (
     Core,
     InputParams,
@@ -19,7 +21,6 @@ from cosmocore import (
     write_covmat_reduced,
     write_out_matrix,
 )
-from mpi4py import MPI
 
 
 class Fisher(Core):
