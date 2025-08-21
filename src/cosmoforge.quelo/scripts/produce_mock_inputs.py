@@ -8,10 +8,11 @@ from cosmocore import InputParams
 
 
 compute_case = sys.argv[1]
+
 outpath = sys.argv[2]
 
 path = os.path.abspath(__file__.split("/scripts/produce_mock_inputs.py")[0])
-Par = InputParams.read_parameter_file(f"{path}/quelo/{compute_case}_defaults.yaml")
+Par = InputParams.read_parameter_file(sys.argv[3])
 
 nside = Par.nside
 npix = hp.nside2npix(nside)
@@ -99,4 +100,21 @@ elif compute_case == "TQU" or compute_case == "TEB":
         f"{outpath}/{compute_case}_dls.txt",
         new_clfid,
         header="ell TT EE BB TE TB EB",
+    )
+
+os.makedirs(f"{outpath}/maps", exist_ok=True)
+nsims = Par.nsims
+for i in range(nsims):
+    sim = hp.synfast(new_clfid[:, 1:].T, nside=nside, new=True, pol=True)
+    hp.write_map(
+        f"{outpath}/maps/sim_{str(i).zfill(3)}_TQU.fits",
+        sim,
+        overwrite=True,
+    )
+
+    sim = hp.synfast(new_clfid[:, 1:].T, nside=nside, new=True, pol=False)
+    hp.write_map(
+        f"{outpath}/maps/sim_{str(i).zfill(3)}_TEB.fits",
+        sim,
+        overwrite=True,
     )
