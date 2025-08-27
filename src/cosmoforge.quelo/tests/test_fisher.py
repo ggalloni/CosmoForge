@@ -43,7 +43,7 @@ def test_fisher_computation(fields, local_path):
 
 
 if __name__ == "__main__":
-    fields_list = ["TQU", "TEB"]
+    fields_list = ["T", "QU", "TQU", "TEB"]
 
     path = os.path.abspath(__file__.split("/tests/test_fisher.py")[0])
 
