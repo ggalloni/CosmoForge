@@ -146,8 +146,6 @@ class SpectraManager:
         # Use precomputed normalization factors
         normalization_factors = self.compute_normalization_factors()
 
-        print(f"Applying normalization factors: {normalization_factors}")
-
         for idx, label in enumerate(self._spectra_labels):
             if label in normalization_factors:
                 # Apply normalization factor
@@ -350,8 +348,6 @@ class BeamManager:
         """Apply beam smoothing to power spectra."""
         # Use precomputed smoothing factors
         smoothing_factors = spectra_manager.compute_smoothing_factors(self)
-
-        print(f"Applying smoothing factors: {smoothing_factors}")
 
         for label in spectra_manager.labels:
             if label not in spectra_manager._cls_dict:
