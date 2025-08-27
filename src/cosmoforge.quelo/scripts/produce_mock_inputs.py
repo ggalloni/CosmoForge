@@ -4,6 +4,7 @@ import sys
 import healpy as hp
 import numpy as np
 from astropy.io import fits
+from tqdm import tqdm
 
 from cosmocore import InputParams
 
@@ -105,11 +106,25 @@ nsims = Par.nsims
 tqu_hdus = [fits.PrimaryHDU()]  # Primary HDU
 teb_hdus = [fits.PrimaryHDU()]
 
-for i in range(nsims):
-    noise[0] = np.random.normal(0, sigma_pix_T, npix)
-    noise[1] = np.random.normal(0, sigma_pix_P, npix)
-    noise[2] = np.random.normal(0, sigma_pix_P, npix)
+# Set up proper seeding for reproducible simulations
+master_seed = 123456789
+sequence = np.random.SeedSequence(master_seed)
+child_sequence = sequence.spawn(nsims)
 
+rngs = [np.random.default_rng(s) for s in child_sequence]
+
+print(f"Using master seed: {master_seed}")
+print(f"Generating {nsims} simulations with reproducible seeding...")
+
+for i in tqdm(range(nsims), desc="Producing simulations...".center(30)):
+    # Use the seeded RNG for noise generation
+    noise[0] = rngs[i].normal(0, sigma_pix_T, npix)
+    noise[1] = rngs[i].normal(0, sigma_pix_P, npix)
+    noise[2] = rngs[i].normal(0, sigma_pix_P, npix)
+
+    # Generate alm with seed for reproducibility
+    sim_seed = child_sequence[i].entropy
+    np.random.seed(sim_seed)
     alm = hp.synalm(new_clfid[:, 1:].T, lmax=Par.lmax, new=True)
 
     alm[0] = hp.almxfl(alm[0], beam[0, : Par.lmax + 1])
@@ -126,6 +141,8 @@ for i in range(nsims):
     header["ORDERING"] = "RING"
     header["COORDSYS"] = "G"
     header["FIELDS"] = "T,Q,U"
+    header["SEED"] = sim_seed  # Store the seed used for this simulation
+    header["MASTER"] = master_seed  # Store the master seed
 
     # Add as ImageHDU
     tqu_hdus.append(fits.ImageHDU(data=sim_tqu, header=header, name=f"SIM_{i:03d}"))
