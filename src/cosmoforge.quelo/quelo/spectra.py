@@ -176,6 +176,7 @@ class Spectra(Core):
                 maps=self.maps1,
                 filename=self.params.inputmapfile1,
                 pixact=self.pixact,
+                field_labels=self.params.physical_labels,
                 calibration=self.params.calibration,
             )
 
@@ -186,6 +187,7 @@ class Spectra(Core):
                     maps=self.maps2,
                     filename=self.params.inputmapfile2,
                     pixact=self.pixact,
+                    field_labels=self.params.physical_labels,
                     calibration=self.params.calibration,
                 )
 
