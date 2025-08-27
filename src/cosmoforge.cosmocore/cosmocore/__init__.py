@@ -34,6 +34,7 @@ from .harmonic import (
 from .in_out import (
     output_geometry,
     read_covmat,
+    read_maps,
     read_mask,
     readcl,
     write_covmat_reduced,
@@ -73,6 +74,7 @@ __all__ = [
     # in_out
     "output_geometry",
     "read_covmat",
+    "read_maps",
     "read_mask",
     "readcl",
     "write_covmat_reduced",

@@ -1,5 +1,6 @@
 import healpy as hp
 import numpy as np
+from astropy.io import fits
 
 from .settings import InputParams
 
@@ -69,3 +70,25 @@ def write_out_matrix(outfilematrix, matrix):
         for i in range(n):
             line = "".join(f"{matrix[i, j]:15.7E}" for j in range(n))
             f.write(line + "\n")
+
+
+def read_maps(maps, filename, pixact, calibration: float = 1.0):
+    assert maps.shape[0] == sum(len(p) for p in pixact), "maps array has incorrect shape"
+    nsims = maps.shape[1]
+
+    with fits.open(filename) as hdul:
+        for isim in range(nsims):
+            sim_data = hdul[f"SIM_{isim:03d}"].data
+
+            counter = 0
+            for field_idx in range(len(pixact)):
+                pixels = pixact[field_idx].astype(int)
+                if len(pixels) > 0 and (
+                    pixels.min() < 0 or pixels.max() >= sim_data.shape[1]
+                ):
+                    raise ValueError(f"Pixel indices out of bounds for field {field_idx}")
+                n_active = pixels.size
+                maps[counter : counter + n_active, isim] = sim_data[field_idx][pixels]
+                counter += n_active
+
+    maps *= calibration
