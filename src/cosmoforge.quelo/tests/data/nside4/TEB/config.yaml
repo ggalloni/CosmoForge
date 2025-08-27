@@ -34,12 +34,8 @@ outfilefisher: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/t
 
 # QML-specific parameters
 nsims: 300
-ssim: 1
-zerofill: 3
-endname1: '_TEB'
-endname2: '_TEB'
-inputmapfile1: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/maps/sim'
-inputmapfile2: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/maps/sim'
+inputmapfile1: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/maps/all_sims_TEB.fits'
+inputmapfile2: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/maps/all_sims_TEB.fits'
 
 # Output files for QML
 outcovmatfile: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/TEB/cov_matrix.dat'
