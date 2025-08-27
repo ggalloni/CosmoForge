@@ -3,6 +3,7 @@ import sys
 
 import healpy as hp
 import numpy as np
+from astropy.io import fits
 
 from cosmocore import InputParams
 
@@ -37,15 +38,13 @@ hp.write_map(f"{outpath}/{compute_case}_mask.fits", mask, overwrite=True)
 # Matrices Production
 # =========================
 
+sigma_pix_T = 100 / 180 / 60 * np.pi / hp.nside2resol(Par.nside)
+sigma_pix_P = 10 / 180 / 60 * np.pi / hp.nside2resol(Par.nside)
 if compute_case == "T":
-    sigma_pix = 100 / 180 / 60 * np.pi / hp.nside2resol(Par.nside)
-    Mat = np.diag(np.ones(npix * 1)) * sigma_pix**2
+    Mat = np.diag(np.ones(npix * 1)) * sigma_pix_T**2
 elif compute_case == "QU":
-    sigma_pix = 100 / 180 / 60 * np.pi / hp.nside2resol(Par.nside)
-    Mat = np.diag(np.ones(npix * 2)) * sigma_pix**2
+    Mat = np.diag(np.ones(npix * 2)) * sigma_pix_P**2
 else:  # TQU or TEB
-    sigma_pix_T = 100 / 180 / 60 * np.pi / hp.nside2resol(Par.nside)
-    sigma_pix_P = 10 / 180 / 60 * np.pi / hp.nside2resol(Par.nside)
     Mat = np.diag(np.ones(npix * 3))
     Mat[:npix, :npix] *= sigma_pix_T**2  # T
     Mat[npix:, npix:] *= sigma_pix_P**2  # E - B
@@ -60,61 +59,89 @@ Mat.tofile(Par.covmatfile2)
 
 clfid = np.loadtxt(f"{outpath}/dls.txt")
 
-new_clfid = np.zeros((clfid.shape[0], 1 + Par.nspectra))
+new_clfid = np.zeros((clfid.shape[0], 1 + 6))
 
-print(Par.nspectra)
 print(Par.nfields)
 print("new_clfid shape:", new_clfid.shape)
 
-if compute_case == "T":
-    new_clfid[:, 0] = clfid[:, 0]
-    new_clfid[:, 1] = clfid[:, 1]
-elif compute_case == "QU":
-    new_clfid[:, 0] = clfid[:, 0]
-    new_clfid[:, 1] = clfid[:, 2]
-    new_clfid[:, 2] = clfid[:, 3]
-    new_clfid[:, 3] = clfid[:, 4] * 0.0
-elif compute_case == "TQU" or compute_case == "TEB":
-    new_clfid[:, 0] = clfid[:, 0]
-    new_clfid[:, 1] = clfid[:, 1]
-    new_clfid[:, 2] = clfid[:, 2]
-    new_clfid[:, 3] = clfid[:, 3]
-    new_clfid[:, 4] = clfid[:, 4]
-    new_clfid[:, 5] = clfid[:, 4] * 0.0
-    new_clfid[:, 6] = clfid[:, 4] * 0.0
+new_clfid[:, 0] = clfid[:, 0]
+new_clfid[:, 1] = clfid[:, 1]
+new_clfid[:, 2] = clfid[:, 2]
+new_clfid[:, 3] = clfid[:, 3]
+new_clfid[:, 4] = clfid[:, 4]
+new_clfid[:, 5] = clfid[:, 4] * 0.0
+new_clfid[:, 6] = clfid[:, 4] * 0.0
 
 print(new_clfid.shape)
 print(new_clfid[:5, 0])
 print(new_clfid[:5, 1])
 
-if compute_case == "T":
-    np.savetxt(f"{outpath}/{compute_case}_dls.txt", new_clfid, header="ell TT")
-elif compute_case == "QU":
-    np.savetxt(
-        f"{outpath}/{compute_case}_dls.txt",
-        new_clfid,
-        header="ell EE BB EB",
-    )
-elif compute_case == "TQU" or compute_case == "TEB":
-    np.savetxt(
-        f"{outpath}/{compute_case}_dls.txt",
-        new_clfid,
-        header="ell TT EE BB TE TB EB",
-    )
+np.savetxt(
+    f"{outpath}/{compute_case}_dls.txt",
+    new_clfid,
+    header="ell TT EE BB TE TB EB",
+)
+
+
+ell = new_clfid[:, 0]
+todl = ell * (ell + 1) / (2 * np.pi)
+
+new_clfid[:, 1:] = new_clfid[:, 1:] / todl[:, None]
+
+new_clfid = np.insert(new_clfid, 0, 0.0, axis=0)
+new_clfid = np.insert(new_clfid, 1, 0.0, axis=0)
+
+noise = np.zeros((3, npix))
+
+beam = hp.read_cl(Par.beam_file)
+print("Beam shape:", beam.shape)
 
 os.makedirs(f"{outpath}/maps", exist_ok=True)
 nsims = Par.nsims
-for i in range(nsims):
-    sim = hp.synfast(new_clfid[:, 1:].T, nside=nside, new=True, pol=True)
-    hp.write_map(
-        f"{outpath}/maps/sim_{str(i).zfill(3)}_TQU.fits",
-        sim,
-        overwrite=True,
-    )
 
-    sim = hp.synfast(new_clfid[:, 1:].T, nside=nside, new=True, pol=False)
-    hp.write_map(
-        f"{outpath}/maps/sim_{str(i).zfill(3)}_TEB.fits",
-        sim,
-        overwrite=True,
-    )
+# Initialize HDU lists for both TQU and TEB
+tqu_hdus = [fits.PrimaryHDU()]  # Primary HDU
+teb_hdus = [fits.PrimaryHDU()]
+
+for i in range(nsims):
+    noise[0] = np.random.normal(0, sigma_pix_T, npix)
+    noise[1] = np.random.normal(0, sigma_pix_P, npix)
+    noise[2] = np.random.normal(0, sigma_pix_P, npix)
+
+    alm = hp.synalm(new_clfid[:, 1:].T, lmax=Par.lmax, new=True)
+
+    alm[0] = hp.almxfl(alm[0], beam[0, : Par.lmax + 1])
+    alm[1] = hp.almxfl(alm[1], beam[1, : Par.lmax + 1])
+    alm[2] = hp.almxfl(alm[2], beam[2, : Par.lmax + 1])
+
+    # TQU maps (polarization=True)
+    sim_tqu = hp.alm2map(alm, nside=nside, pol=True) + noise
+
+    # Create header with simulation info
+    header = fits.Header()
+    header["SIM_NUM"] = i
+    header["NSIDE"] = nside
+    header["ORDERING"] = "RING"
+    header["COORDSYS"] = "G"
+    header["FIELDS"] = "T,Q,U"
+
+    # Add as ImageHDU
+    tqu_hdus.append(fits.ImageHDU(data=sim_tqu, header=header, name=f"SIM_{i:03d}"))
+
+    sim_teb = hp.alm2map(alm, nside=nside, pol=False) + noise  # Keep pol=True for T,E,B
+
+    header_teb = header.copy()
+    header_teb["FIELDS"] = "T,E,B"
+
+    teb_hdus.append(fits.ImageHDU(data=sim_teb, header=header_teb, name=f"SIM_{i:03d}"))
+
+# Write multi-extension FITS files
+tqu_hdulist = fits.HDUList(tqu_hdus)
+teb_hdulist = fits.HDUList(teb_hdus)
+
+tqu_hdulist.writeto(f"{outpath}/maps/all_sims_TQU.fits", overwrite=True)
+teb_hdulist.writeto(f"{outpath}/maps/all_sims_TEB.fits", overwrite=True)
+
+print(f"Saved {nsims} simulations to multi-extension FITS files")
+print(f"TQU file: {outpath}/maps/all_sims_TQU.fits")
+print(f"TEB file: {outpath}/maps/all_sims_TEB.fits")
