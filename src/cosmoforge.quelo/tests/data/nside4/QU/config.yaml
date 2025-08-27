@@ -17,7 +17,7 @@ lmax: 16
 load_inverted: false
 calibration: 1.0
 
-smoothing_type: 1
+smoothing_type: 3
 fwhmarcmin: 440.0
 apply_pixwin: false
 beam_file: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/inputs/beam_440TP_pixwin16.fits'
@@ -50,5 +50,5 @@ outfilefisher: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/t
 
 # QML options
 remove_nb: true
-nspectra: 1
+nspectra: 3
 
