@@ -360,6 +360,8 @@ def do_derivative_step(
     npixs = fields.n_active
     label = fields.spectra_labels[spectrum]
 
+    S.fill(0.0)
+
     for idx, field in enumerate(fields.fields):
         if label[0] in field.maps_label:
             idx_i = idx
