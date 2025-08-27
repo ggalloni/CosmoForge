@@ -7,7 +7,6 @@ power spectrum estimation for cosmological analysis.
 
 import time
 
-import healpy as hp
 import numpy as np
 from mpi4py import MPI
 
@@ -17,78 +16,12 @@ from cosmocore import (
     matrix_inverse_symm,
     matrix_mult,
     matrix_trace,
+    read_maps,
     vec_to_cl,
     write_out_matrix,
 )
 from cosmocore.settings import InputParams
 from quelo import Fisher
-
-
-def read_maps(
-    inputmapfile, maps_array, pixact, ntemp, npol, nside, ssim, zerofill, endname
-):
-    """
-    Read HEALPix maps for QML analysis.
-
-    Parameters:
-    -----------
-    inputmapfile : str
-        Base filename for input maps
-    maps_array : ndarray
-        Array to store the maps (ntot, nsims)
-    pixact : ndarray
-        Active pixel indices
-    ntemp : int
-        Number of temperature fields
-    npol : int
-        Number of polarization fields
-    nside : int
-        HEALPix nside
-    ssim : int
-        Starting simulation number
-    zerofill : int
-        Zero-padding for simulation numbers
-    endname : str
-        Ending name for files
-
-    Returns:
-    --------
-    maps_array : ndarray
-        Filled maps array
-    """
-    nsims = maps_array.shape[1]
-
-    for isim in range(nsims):
-        sim_num = str(ssim + isim - 1).zfill(zerofill)
-        filename = f"{inputmapfile}_{sim_num}{endname}.fits"
-
-        # Read the map
-        if ntemp + npol == 1:
-            # Single field
-            map_data = hp.read_map(filename)
-            if len(map_data.shape) == 1:
-                map_data = map_data.reshape(1, -1)
-        else:
-            # Multiple fields
-            map_data = hp.read_map(filename, field=None)
-            print(f"Reading {filename} with fields: {map_data.shape}")
-            if len(map_data.shape) == 1:
-                map_data = map_data.reshape(1, -1)
-
-        # Extract active pixels and store in the array
-        idx = 0
-        for ifield in range(ntemp + npol):
-            if ifield < map_data.shape[0] and ifield < len(pixact):
-                field_data = map_data[ifield]
-                active_pixels = pixact[ifield]
-                # Ensure active_pixels is integer array
-                if hasattr(active_pixels, "astype"):
-                    active_pixels = active_pixels.astype(int)
-                n_active = len(active_pixels)
-                maps_array[idx : idx + n_active, isim] = field_data[active_pixels]
-                idx += n_active
-
-    return maps_array
 
 
 class Spectra(Core):
@@ -180,10 +113,24 @@ class Spectra(Core):
         if hasattr(self.fisher_instance, "Sig") and self.fisher_instance.Sig is not None:
             self.Sig = self.fisher_instance.Sig
 
-        ntot = sum(self.npixs)
-        self.invNCov1 = np.fromfile(self.params.outinvcovmatfile1).reshape(ntot, ntot)
+        # Load covariance matrices
+        self._load_covariance_matrices()
+
+    def _load_covariance_matrices(self):
+        """
+        Load covariance matrices from files.
+        """
+        ntot = sum(self.collection.n_active)
+
+        # Load inverted covariance matrices
+        self.invCov1 = np.fromfile(self.params.outinvcovmatfile1).reshape(ntot, ntot)
         if self.params.do_cross:
-            self.invNCov2 = np.fromfile(self.params.outinvcovmatfile2).reshape(ntot, ntot)
+            self.invCov2 = np.fromfile(self.params.outinvcovmatfile2).reshape(ntot, ntot)
+
+        # Load noise covariance matrices
+        self.NCov1 = np.fromfile(self.params.covmatfile1).reshape(ntot, ntot)
+        if self.params.do_cross:
+            self.NCov2 = np.fromfile(self.params.covmatfile2).reshape(ntot, ntot)
 
     def _get_fisher(self) -> Fisher:
         """
@@ -221,40 +168,26 @@ class Spectra(Core):
                 )
 
             # Read maps using the core functionality
-            ntot = sum(self.npixs)
+            ntot = sum(self.collection.n_active)
             self.maps1 = np.empty((ntot, self.params.nsims), dtype=np.float64)
 
             # Read maps1
-            self.maps1 = read_maps(
-                self.params.inputmapfile1,
-                self.maps1,
-                self.pixact,
-                len([s for s in self.params.spins if s == 0]),  # ntemp
-                len([s for s in self.params.spins if s != 0]),  # npol fields
-                self.params.nside,
-                self.params.ssim,
-                self.params.zerofill,
-                self.params.endname1,
+            read_maps(
+                maps=self.maps1,
+                filename=self.params.inputmapfile1,
+                pixact=self.pixact,
+                calibration=self.params.calibration,
             )
-
-            # Apply calibration
-            self.maps1 *= self.params.calibration
 
             # Read maps2 if doing cross-correlation
             if self.params.do_cross:
                 self.maps2 = np.empty((ntot, self.params.nsims), dtype=np.float64)
-                self.maps2 = read_maps(
-                    self.params.inputmapfile2,
-                    self.maps2,
-                    self.pixact,
-                    len([s for s in self.params.spins if s == 0]),  # ntemp
-                    len([s for s in self.params.spins if s != 0]),  # npol fields
-                    self.params.nside,
-                    self.params.ssim,
-                    self.params.zerofill,
-                    self.params.endname2,
+                read_maps(
+                    maps=self.maps2,
+                    filename=self.params.inputmapfile2,
+                    pixact=self.pixact,
+                    calibration=self.params.calibration,
                 )
-                self.maps2 *= self.params.calibration
 
     def setup_fisher_inversion(self):
         """
@@ -270,7 +203,38 @@ class Spectra(Core):
 
             self.invfisher = fisher_matrix.copy()
 
+            # Compute vecmul (smoothing factors) - this is critical!
+            self.log("Computing smoothing factors and vecmul", level=2)
+            smoothing_factors = self.collection.spectra_manager.compute_smoothing_factors(
+                self.collection.beam_manager
+            )
+
+            # Create vecmul array
+            nell = self.params.nspectra * (self.params.lmax - 1)
+            self.vecmul = np.zeros(nell, dtype=np.float64)
+
+            # Fill vecmul array
+            idx = 0
+            for ispec, spectrum_label in enumerate(
+                self.collection.spectra_manager.labels
+            ):
+                if spectrum_label in smoothing_factors:
+                    smooth_factor = smoothing_factors[spectrum_label]
+                    for ell_idx in range(self.params.lmax - 1):
+                        self.vecmul[idx] = smooth_factor[ell_idx]
+                        idx += 1
+                else:
+                    # Fill with ones if no smoothing factors available
+                    for ell_idx in range(self.params.lmax - 1):
+                        self.vecmul[idx] = 1.0
+                        idx += 1
+
+            # Apply vecmul normalization to Fisher matrix
+            self.log("Applying vecmul normalization to Fisher matrix", level=2)
+            self.invfisher = self.invfisher * np.outer(self.vecmul, self.vecmul)
+
             # Invert Fisher matrix
+            self.log("Inverting normalized Fisher matrix", level=2)
             start_time = time.time()
             self.invfisher = matrix_inverse_symm(self.invfisher)
 
@@ -321,11 +285,11 @@ class Spectra(Core):
             E operator matrix
         """
         if self.params.do_cross:
-            # E = 0.5 * NCov2^{-1} * derS * NCov1^{-1}
-            E = 0.5 * matrix_mult(self.invNCov2, matrix_mult(der_s, self.invNCov1))
+            # E = 0.5 * invCov2^{-1} * derS * invCov1^{-1}
+            E = 0.5 * matrix_mult(self.invCov2, matrix_mult(der_s, self.invCov1))
         else:
-            # E = 0.5 * NCov1^{-1} * derS * NCov1^{-1}
-            E = 0.5 * matrix_mult(self.invNCov1, matrix_mult(der_s, self.invNCov1))
+            # E = 0.5 * invCov1^{-1} * derS * invCov1^{-1}
+            E = 0.5 * matrix_mult(self.invCov1, matrix_mult(der_s, self.invCov1))
 
         return E
 
@@ -341,7 +305,7 @@ class Spectra(Core):
         start_time = time.time()
 
         nell = self.params.nspectra * (self.params.lmax - 1)
-        ntot = sum(self.npixs)
+        ntot = sum(self.collection.n_active)
 
         # Allocate derivative matrix
         der_s = np.zeros((ntot, ntot), dtype=np.float64)
@@ -354,8 +318,15 @@ class Spectra(Core):
                 spectrum_idx = il // (self.params.lmax - 1)
                 ell = (il % (self.params.lmax - 1)) + 2
 
-                # Compute derivative step (this would need to be implemented in cosmocore)
-                der_s = self._compute_derivative_step(spectrum_idx, ell)
+                # Compute derivative step
+                do_derivative_step(
+                    der_s,
+                    spectrum_idx,
+                    self.npixs,
+                    self.params.spins,
+                    ell,
+                    self.collection,
+                )
 
                 # Compute E operator
                 E = self.compute_e_operator(il, der_s)
@@ -363,19 +334,18 @@ class Spectra(Core):
                 if self.params.do_cross:
                     # Cross-correlation case
                     for isim in range(self.params.nsims):
-                        self.y[isim, il] = np.sum(
-                            self.maps2[:, isim] * np.dot(E, self.maps1[:, isim])
+                        self.y[isim, il] = matrix_mult(
+                            self.maps2[:, isim].T, matrix_mult(E, self.maps1[:, isim])
                         )
                 else:
                     # Auto-correlation case
-                    if hasattr(self.params, "remove_nb") and self.params.remove_nb:
-                        # Compute noise bias
-                        tr_ne = matrix_trace(self.NCov1, E)
-                        self.ynb[il] = tr_ne
+                    # Compute noise bias
+                    tr_ne = matrix_trace(self.NCov1, E)
+                    self.ynb[il] = tr_ne
 
                     for isim in range(self.params.nsims):
-                        qml_value = np.sum(
-                            self.maps1[:, isim] * np.dot(E, self.maps1[:, isim])
+                        qml_value = matrix_mult(
+                            self.maps1[:, isim].T, matrix_mult(E, self.maps1[:, isim])
                         )
 
                         if hasattr(self.params, "remove_nb") and self.params.remove_nb:
@@ -418,37 +388,6 @@ class Spectra(Core):
             self.y = red_y
             if not self.params.do_cross:
                 self.ynb = red_ynb
-
-    def _compute_derivative_step(self, spectrum_idx: int, ell: int) -> np.ndarray:
-        """
-        Compute derivative of signal matrix for given spectrum and multipole.
-
-        Parameters:
-        -----------
-        spectrum_idx : int
-            Index of the spectrum (0=TT, 1=EE, 2=BB, 3=TE, 4=TB, 5=EB)
-        ell : int
-            Multipole moment
-
-        Returns:
-        --------
-        np.ndarray
-            Derivative matrix
-        """
-        ntot = sum(self.npixs)
-        der_s = np.zeros((ntot, ntot), dtype=np.float64)
-
-        # Call the derivative computation from cosmocore
-        do_derivative_step(
-            der_s,
-            spectrum_idx,
-            self.npixs,
-            self.params.spins,
-            ell,
-            self.collection,
-        )
-
-        return der_s
 
     def _write_cl(self, filename: str, cl_array: np.ndarray):
         """
@@ -494,6 +433,8 @@ class Spectra(Core):
                 self.setup_covariance_matrices()
                 self.setup_cls()
                 self.setup_beams()
+                # Load covariance matrices for the case when not reusing Fisher instance
+                self._load_covariance_matrices()
 
             # QML-specific setup
             self.setup_maps()
@@ -530,22 +471,27 @@ class Spectra(Core):
 
         # Broadcast covariance matrices
         self.NCov1 = self.comm.bcast(self.NCov1 if self.rank == 0 else None, root=0)
+        self.invCov1 = self.comm.bcast(self.invCov1 if self.rank == 0 else None, root=0)
         if self.params.do_cross:
             self.NCov2 = self.comm.bcast(self.NCov2 if self.rank == 0 else None, root=0)
+            self.invCov2 = self.comm.bcast(
+                self.invCov2 if self.rank == 0 else None, root=0
+            )
 
         # Broadcast maps
         self.maps1 = self.comm.bcast(self.maps1 if self.rank == 0 else None, root=0)
         if self.params.do_cross:
             self.maps2 = self.comm.bcast(self.maps2 if self.rank == 0 else None, root=0)
 
-        # Broadcast inverted Fisher matrix
+        # Broadcast inverted Fisher matrix and vecmul
         self.invfisher = self.comm.bcast(
             self.invfisher if self.rank == 0 else None, root=0
         )
+        self.vecmul = self.comm.bcast(self.vecmul if self.rank == 0 else None, root=0)
 
     def get_power_spectra(self) -> np.ndarray | None:
         """
-        Get the computed power spectra.
+        Get the computed power spectra with final Fisher matrix multiplication.
 
         Returns:
         --------
@@ -553,7 +499,13 @@ class Spectra(Core):
             Power spectra (only available on rank 0 after computation)
         """
         if self.rank == 0 and self.y is not None:
-            return self.y
+            # Apply final Fisher matrix multiplication as in the notebook
+            power_spectra = np.zeros_like(self.y)
+            for field_idx in range(self.params.nsims):
+                # Element-wise multiplication first, then matrix multiplication
+                redy_times_vecmul = self.y[field_idx, :] * self.vecmul
+                power_spectra[field_idx, :] = np.matmul(redy_times_vecmul, self.invfisher)
+            return power_spectra
         return None
 
     def get_noise_bias(self) -> np.ndarray | None:
