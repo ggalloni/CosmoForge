@@ -519,6 +519,9 @@ class Spectra(Core):
         np.ndarray or None
             Noise bias (only available on rank 0 after computation, auto-correlation only)
         """
-        if self.rank == 0 and not self.params.do_cross and self.ynb is not None:
-            return self.ynb
+        if self.rank == 0 and self.ynb is not None:
+            # Apply final Fisher matrix multiplication to noise bias
+            redynb_times_vecmul = self.ynb * self.vecmul
+            noise_bias = np.matmul(redynb_times_vecmul, self.invfisher)
+            return noise_bias
         return None
