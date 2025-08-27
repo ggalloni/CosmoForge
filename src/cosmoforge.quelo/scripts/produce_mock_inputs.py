@@ -123,7 +123,7 @@ for i in tqdm(range(nsims), desc="Producing simulations...".center(30)):
     noise[2] = rngs[i].normal(0, sigma_pix_P, npix)
 
     # Generate alm with seed for reproducibility
-    sim_seed = child_sequence[i].entropy
+    sim_seed = rngs[i].integers(0, 2**30)
     np.random.seed(sim_seed)
     alm = hp.synalm(new_clfid[:, 1:].T, lmax=Par.lmax, new=True)
 
