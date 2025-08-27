@@ -1,3 +1,4 @@
+import healpy as hp
 import numpy as np
 import yaml
 
@@ -70,6 +71,8 @@ class InputParams:
     def compute_derived(self):
         self.nfields = len(self.labels)
         self.nspectra = self.nfields * (self.nfields + 1) // 2
+
+        self.npix = hp.nside2npix(self.nside)
 
         self.cross_idxs = np.array(
             [
