@@ -84,7 +84,7 @@ qml.run()
 
 ## Package Structure
 
-```
+```text
 CosmoForge/
 ├── src/
 │   ├── cosmoforge.cosmocore/    # Core functionality
@@ -148,12 +148,14 @@ If you use CosmoForge in your research, please cite:
 ## Support
 
 For questions and support:
+
 - Open an issue on GitHub
 - Contact: [contact information]
 
 ## Acknowledgments
 
 CosmoForge builds upon established cosmological analysis methods and libraries:
+
 - HEALPix for pixelization
 - NumPy/SciPy for numerical computations
 - MPI for parallelization

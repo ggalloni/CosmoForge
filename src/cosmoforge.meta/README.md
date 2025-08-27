@@ -289,8 +289,6 @@ print(f"Author: {pkg_info['author']}")
 print(f"License: {pkg_info['license']}")
 ```
 
-## Development Tools
-
 ### Code Quality
 
 ```python
