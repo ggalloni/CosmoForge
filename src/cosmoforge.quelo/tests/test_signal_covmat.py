@@ -2,7 +2,7 @@ import os
 
 import healpy as hp
 import numpy as np
-from matplotlib import pyplot as plt
+import pytest
 
 from cosmocore import (
     FieldCollection,
@@ -17,7 +17,7 @@ from cosmocore import (
 
 def get_signal_covmat(fields, local_path):
     Par = InputParams.read_parameter_file(
-        local_path + f"/tests/data/nside8/{fields}_nside8.yaml"
+        local_path + f"/tests/data/nside8/{fields}/config.yaml"
     )
 
     npix = hp.nside2npix(Par.nside)
@@ -36,6 +36,8 @@ def get_signal_covmat(fields, local_path):
             counter += 2
 
         # Use new factory function for type-safe field creation
+        if mask.ndim == 1:
+            mask = mask[:, np.newaxis]
         field = create_field(
             spin=spin,
             nside=Par.nside,
@@ -100,194 +102,36 @@ def get_signal_covmat(fields, local_path):
     return Sig
 
 
-def test_signal_covmat_TQU(local_path, show_fig=False):
+@pytest.mark.parametrize("fields", ["T", "QU", "TQU", "TEB"])
+def test_signal_covmat(local_path, fields):
     Par = InputParams.read_parameter_file(
-        local_path + "/tests/data/nside8/TQU_nside8.yaml"
+        local_path + f"/tests/data/nside8/{fields}/config.yaml"
     )
-    npix = hp.nside2npix(Par.nside)
 
-    file = local_path + "/tests/data/nside8/TQU_ref_signal.bin"
-    ref = np.fromfile(file, dtype=np.float64).reshape((npix * 3, npix * 3))
+    file = local_path + f"/tests/data/nside8/{fields}/ref_signal.bin"
+    ref = np.fromfile(file, dtype=np.float64).reshape(
+        (Par.npix * Par.nfields, Par.npix * Par.nfields)
+    )
 
-    ref = np.asfortranarray(ref, dtype=np.float64)
-
-    Sig = get_signal_covmat("TQU", local_path=local_path)
+    Sig = get_signal_covmat(fields, local_path=local_path)
 
     diff = np.abs(Sig - ref)
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(ref[:npix, :npix], origin="lower")
-    plt.colorbar()
-    plt.title("Test Covariance Matrix T")
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(Sig[:npix, :npix], origin="lower")
-    plt.colorbar()
-    plt.title("Signal Covariance Matrix T")
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(diff[:npix, :npix], origin="lower")
-    plt.colorbar()
-    plt.title("Difference between Signal Matrices T")
-    if show_fig:
-        plt.show()
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(ref[npix:, npix:], origin="lower")
-    plt.colorbar()
-    plt.title("Test Covariance Matrix QU")
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(Sig[npix:, npix:], origin="lower")
-    plt.colorbar()
-    plt.title("Signal Covariance Matrix QU")
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(diff[npix:, npix:], origin="lower")
-    plt.colorbar()
-    plt.title("Difference between Signal Matrices QU")
-    if show_fig:
-        plt.show()
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(ref[:npix, npix:], origin="lower")
-    plt.colorbar()
-    plt.title("Test Covariance Matrix T-QU")
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(Sig[:npix, npix:], origin="lower")
-    plt.colorbar()
-    plt.title("Signal Covariance Matrix T-QU")
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(diff[:npix, npix:], origin="lower")
-    plt.colorbar()
-    plt.title("Difference between Signal Matrices T-QU")
-    if show_fig:
-        plt.show()
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(ref[npix:, :npix], origin="lower")
-    plt.colorbar()
-    plt.title("Test Covariance Matrix QU-T")
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(Sig[npix:, :npix], origin="lower")
-    plt.colorbar()
-    plt.title("Signal Covariance Matrix QU-T")
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(diff[npix:, :npix], origin="lower")
-    plt.colorbar()
-    plt.title("Difference between Signal Matrices QU-T")
-    if show_fig:
-        plt.show()
-
     np.testing.assert_almost_equal(
         diff,
         0.0,
-        decimal=7,
+        decimal=14,
         err_msg="TQU Signal covariance matrix does not match reference.",
     )
 
 
-def test_signal_covmat_TEB(local_path, show_fig=False):
-    Par = InputParams.read_parameter_file(
-        local_path + "/tests/data/nside8/TEB_nside8.yaml"
-    )
-    npix = hp.nside2npix(Par.nside)
-
-    file = local_path + "/tests/data/nside8/TEB_ref_signal.bin"
-    ref = np.fromfile(file, dtype=np.float64).reshape((npix * 3, npix * 3))
-
-    ref = np.asfortranarray(ref, dtype=np.float64)
-
-    Sig = get_signal_covmat("TEB", local_path=local_path)
-
-    diff = np.abs(Sig - ref)
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(ref[:npix, :npix], origin="lower")
-    plt.colorbar()
-    plt.title("Test Covariance Matrix T")
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(Sig[:npix, :npix], origin="lower")
-    plt.colorbar()
-    plt.title("Signal Covariance Matrix T")
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(diff[:npix, :npix], origin="lower")
-    plt.colorbar()
-    plt.title("Difference between Signal Matrices T")
-    if show_fig:
-        plt.show()
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(ref[npix : 2 * npix, npix : 2 * npix], origin="lower")
-    plt.colorbar()
-    plt.title("Test Covariance Matrix E")
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(Sig[npix : 2 * npix, npix : 2 * npix], origin="lower")
-    plt.colorbar()
-    plt.title("Signal Covariance Matrix E")
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(diff[npix : 2 * npix, npix : 2 * npix], origin="lower")
-    plt.colorbar()
-    plt.title("Difference between Signal Matrices E")
-    if show_fig:
-        plt.show()
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(ref[-npix:, -npix:], origin="lower")
-    plt.colorbar()
-    plt.title("Test Covariance Matrix B")
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(Sig[-npix:, -npix:], origin="lower")
-    plt.colorbar()
-    plt.title("Signal Covariance Matrix B")
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(diff[-npix:, -npix:], origin="lower")
-    plt.colorbar()
-    plt.title("Difference between Signal Matrices B")
-    if show_fig:
-        plt.show()
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(ref[npix:, :npix], origin="lower")
-    plt.colorbar()
-    plt.title("Test Covariance Matrix EB-T")
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(Sig[npix:, :npix], origin="lower")
-    plt.colorbar()
-    plt.title("Signal Covariance Matrix EB-T")
-
-    plt.figure(figsize=(8, 6))
-    plt.imshow(diff[npix:, :npix], origin="lower")
-    plt.colorbar()
-    plt.title("Difference between Signal Matrices EB-T")
-    if show_fig:
-        plt.show()
-
-    np.testing.assert_almost_equal(
-        diff,
-        0.0,
-        decimal=7,
-        err_msg="TEB Signal covariance matrix does not match reference.",
-    )
-
-
 if __name__ == "__main__":
+    fields_list = ["T", "QU", "TQU", "TEB"]
+
     path = os.path.abspath(__file__.split("/tests/test_signal_covmat.py")[0])
 
-    print(f"Running tests in directory: {path}")
+    print(f"Running tests in directory {path} for fields: {fields_list}")
 
-    test_signal_covmat_TQU(path, show_fig=True)
-    test_signal_covmat_TEB(path, show_fig=True)
+    for fields in fields_list:
+        test_signal_covmat(path, fields=fields)
 
     print("All tests passed successfully.")
