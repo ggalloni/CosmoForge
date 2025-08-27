@@ -1,0 +1,54 @@
+nside: 4
+spins: [2]
+labels: ["E", "B"]
+
+do_cross: false
+
+maskfile: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/QU/mask.fits'
+output_geometry_file: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/QU/geometry.dat'
+ordering: 2
+
+inputclfile: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/QU/dls.txt'
+covmatfile1: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/QU/NCVM1.bin'
+covmatfile2: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/QU/NCVM2.bin'
+
+lmax: 16
+
+load_inverted: false
+calibration: 1.0
+
+smoothing_type: 1
+fwhmarcmin: 440.0
+apply_pixwin: false
+beam_file: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/inputs/beam_440TP_pixwin16.fits'
+
+outnoisecovmat1: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/QU/reduced_NCVM1.bin'
+outnoisecovmat2: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/QU/reduced_NCVM2.bin'
+
+feedback: 1
+outinvcovmatfile1: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/QU/invCOV1.bin'
+outinvcovmatfile2: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/QU/invCOV2.bin'
+
+# Fisher matrix output
+outfilefisher: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/QU/fisher.dat'
+
+# QML-specific parameters
+nsims: 300
+ssim: 1
+zerofill: 3
+endname1: '_TQU'
+endname2: '_TQU'
+inputmapfile1: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/maps/sim'
+inputmapfile2: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/maps/sim'
+
+# Output files for QML
+outcovmatfile: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/QU/cov_matrix.dat'
+outerrfile: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/QU/errors.dat'
+
+# Fisher matrix file (if precomputed)
+outfilefisher: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/QU/fisher.dat'
+
+# QML options
+remove_nb: true
+nspectra: 1
+
