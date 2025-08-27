@@ -18,7 +18,8 @@ def get_fisher_matrix(fields: str = "TEB", local_path: str = None) -> np.ndarray
     return fisher_matrix
 
 
-@pytest.mark.parametrize("fields", ["TEB", "TQU"])
+# @pytest.mark.parametrize("fields", ["TEB", "TQU"])
+@pytest.mark.parametrize("fields", ["TQU", "TEB"])
 def test_fisher_computation(fields, local_path):
     # Test the Fisher matrix computation for the specified fields
     fisher_matrix = get_fisher_matrix(fields, local_path=local_path)
