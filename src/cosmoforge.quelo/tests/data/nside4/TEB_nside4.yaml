@@ -17,7 +17,7 @@ lmax: 16
 load_inverted: false
 calibration: 1.0
 
-smoothing_type: 1
+smoothing_type: 3
 fwhmarcmin: 440.0
 apply_pixwin: false
 beam_file: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/inputs/beam_440TP_pixwin16.fits'
@@ -25,7 +25,7 @@ beam_file: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/input
 outnoisecovmat1: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/reduced_NCVM1.bin'
 outnoisecovmat2: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/reduced_NCVM2.bin'
 
-feedback: 0
+feedback: 3
 outinvcovmatfile1: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/invCOV1.bin'
 outinvcovmatfile2: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/invCOV2.bin'
 
@@ -33,7 +33,7 @@ outinvcovmatfile2: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.que
 outfilefisher: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside4/TEB_fisher.dat'
 
 # QML-specific parameters
-nsims: 3
+nsims: 10
 ssim: 1
 zerofill: 3
 endname1: '_TEB'
