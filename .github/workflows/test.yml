@@ -1,0 +1,277 @@
+name: Test CosmoForge Packages
+
+on:
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      affected-packages: ${{ steps.changes.outputs.affected-packages }}
+      test-cosmocore: ${{ steps.changes.outputs.test-cosmocore }}
+      test-quelo: ${{ steps.changes.outputs.test-quelo }}
+      test-meta: ${{ steps.changes.outputs.test-meta }}
+      test-all: ${{ steps.changes.outputs.test-all }}
+      strategy: ${{ steps.changes.outputs.strategy }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Detect changes and determine test strategy
+        id: changes
+        run: |
+          # Make the script executable
+          chmod +x scripts/detect-changes.py
+          
+          # Run the change detection script
+          output=$(python scripts/detect-changes.py origin/${{ github.event.repository.default_branch }})
+          echo "$output"
+          
+          # Parse the output to set GitHub Actions outputs
+          affected_packages=$(echo "$output" | grep "AFFECTED_PACKAGES=" | cut -d'=' -f2)
+          
+          # Set outputs for each package
+          echo "affected-packages=$affected_packages" >> $GITHUB_OUTPUT
+          
+          # Check if we need to test all packages
+          if echo "$output" | grep -q "TEST_ALL="; then
+            echo "test-all=true" >> $GITHUB_OUTPUT
+            echo "test-cosmocore=true" >> $GITHUB_OUTPUT
+            echo "test-quelo=true" >> $GITHUB_OUTPUT
+            echo "test-meta=true" >> $GITHUB_OUTPUT
+          else
+            echo "test-all=false" >> $GITHUB_OUTPUT
+            
+            # Check individual packages
+            if echo "$output" | grep -q "TEST_COSMOCORE="; then
+              echo "test-cosmocore=true" >> $GITHUB_OUTPUT
+            else
+              echo "test-cosmocore=false" >> $GITHUB_OUTPUT
+            fi
+            
+            if echo "$output" | grep -q "TEST_QUELO="; then
+              echo "test-quelo=true" >> $GITHUB_OUTPUT
+            else
+              echo "test-quelo=false" >> $GITHUB_OUTPUT
+            fi
+            
+            if echo "$output" | grep -q "TEST_META="; then
+              echo "test-meta=true" >> $GITHUB_OUTPUT
+            else
+              echo "test-meta=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+          
+          # Store the full strategy output for debugging
+          strategy=$(echo "$output" | grep -A 20 "🧪 Test strategy:")
+          echo "strategy<<EOF" >> $GITHUB_OUTPUT
+          echo "$strategy" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+  test-cosmocore:
+    name: Test CosmoCore
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.test-cosmocore == 'true'
+    defaults:
+      run:
+        working-directory: src/cosmoforge.cosmocore
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v2
+
+      - name: Install dependencies
+        run: |
+          uv sync --dev
+
+      - name: Run linting
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Run type checking
+        run: |
+          uv run mypy cosmocore/
+
+      - name: Run tests
+        run: |
+          uv run pytest tests/ -v --cov=cosmocore --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        if: github.event_name == 'push'
+        uses: codecov/codecov-action@v3
+        with:
+          file: src/cosmoforge.cosmocore/coverage.xml
+          flags: cosmocore
+
+  test-quelo:
+    name: Test Quelo
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.test-quelo == 'true'
+    defaults:
+      run:
+        working-directory: src/cosmoforge.quelo
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v2
+
+      - name: Install dependencies
+        run: |
+          uv sync --dev
+
+      - name: Run linting
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Run type checking
+        run: |
+          uv run mypy quelo/
+
+      - name: Run tests
+        run: |
+          uv run pytest tests/ -v --cov=quelo --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        if: github.event_name == 'push'
+        uses: codecov/codecov-action@v3
+        with:
+          file: src/cosmoforge.quelo/coverage.xml
+          flags: quelo
+
+  test-meta:
+    name: Test Meta
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.test-meta == 'true'
+    defaults:
+      run:
+        working-directory: src/cosmoforge.meta
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v2
+
+      - name: Install dependencies
+        run: |
+          uv sync --dev
+
+      - name: Run linting
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Run type checking
+        run: |
+          uv run mypy meta/
+
+      - name: Run tests
+        run: |
+          uv run pytest tests/ -v --cov=meta --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        if: github.event_name == 'push'
+        uses: codecov/codecov-action@v3
+        with:
+          file: src/cosmoforge.meta/coverage.xml
+          flags: meta
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [detect-changes, test-cosmocore, test-quelo, test-meta]
+    if: |
+      always() && 
+      needs.detect-changes.outputs.test-all == 'true' &&
+      (needs.test-cosmocore.result == 'success' || needs.test-cosmocore.result == 'skipped') &&
+      (needs.test-quelo.result == 'success' || needs.test-quelo.result == 'skipped') &&
+      (needs.test-meta.result == 'success' || needs.test-meta.result == 'skipped')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v2
+
+      - name: Install all packages
+        run: |
+          uv sync --dev
+
+      - name: Run integration tests
+        run: |
+          # Run tests that span multiple packages
+          echo "Running integration tests..."
+          # Add your integration test commands here
+
+  summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [detect-changes, test-cosmocore, test-quelo, test-meta, integration-tests]
+    if: always()
+    steps:
+      - name: Print test strategy
+        run: |
+          echo "## Test Strategy Summary"
+          echo "Affected packages: ${{ needs.detect-changes.outputs.affected-packages }}"
+          echo ""
+          echo "${{ needs.detect-changes.outputs.strategy }}"
+          echo ""
+          echo "## Test Results"
+          echo "- CosmoCore: ${{ needs.test-cosmocore.result }}"
+          echo "- Quelo: ${{ needs.test-quelo.result }}"
+          echo "- Meta: ${{ needs.test-meta.result }}"
+          echo "- Integration: ${{ needs.integration-tests.result }}"
+
+      - name: Check if all tests passed
+        run: |
+          if [[ "${{ needs.test-cosmocore.result }}" == "failure" ]] || \
+             [[ "${{ needs.test-quelo.result }}" == "failure" ]] || \
+             [[ "${{ needs.test-meta.result }}" == "failure" ]] || \
+             [[ "${{ needs.integration-tests.result }}" == "failure" ]]; then
+            echo "❌ Some tests failed"
+            exit 1
+          else
+            echo "✅ All tests passed or were skipped appropriately"
+          fi
