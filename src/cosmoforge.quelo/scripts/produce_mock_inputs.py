@@ -32,7 +32,7 @@ if cut_sky:
     print("Cutting sky...")
     gal_cut = np.radians(30)
     mask[:, hp.query_strip(nside, np.pi / 2 - gal_cut, np.pi / 2 + gal_cut)] = 0.0
-hp.write_map(f"{outpath}/{compute_case}_mask.fits", mask, overwrite=True)
+hp.write_map(f"{outpath}/{compute_case}/mask.fits", mask, overwrite=True)
 
 # =========================
 # Matrices Production
@@ -57,7 +57,8 @@ Mat.tofile(Par.covmatfile2)
 # Spectra Production
 # =========================
 
-clfid = np.loadtxt(f"{outpath}/dls.txt")
+path = os.path.abspath(__file__.split("/produce_mock_inputs.py")[0])
+clfid = np.loadtxt(f"{path}/dls.txt")
 
 new_clfid = np.zeros((clfid.shape[0], 1 + 6))
 
@@ -77,7 +78,7 @@ print(new_clfid[:5, 0])
 print(new_clfid[:5, 1])
 
 np.savetxt(
-    f"{outpath}/{compute_case}_dls.txt",
+    f"{outpath}/{compute_case}/dls.txt",
     new_clfid,
     header="ell TT EE BB TE TB EB",
 )
@@ -93,7 +94,8 @@ new_clfid = np.insert(new_clfid, 1, 0.0, axis=0)
 
 noise = np.zeros((3, npix))
 
-beam = hp.read_cl(Par.beam_file)
+path = os.path.abspath(__file__.split("/produce_mock_inputs.py")[0])
+beam = hp.read_cl(f"{path}/beam_440TP_pixwin16.fits")
 print("Beam shape:", beam.shape)
 
 os.makedirs(f"{outpath}/maps", exist_ok=True)
