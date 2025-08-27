@@ -30,9 +30,13 @@ def idx2spec(idx, nfields):
 
 class InputParams:
     def __init__(self):
+        self.set_defaults()
+
+    def set_defaults(self):
         self.nside = 16
         self.spins = [0, 2]  # TQU
         self.labels = ["T", "E", "B"]
+        self.physical_labels = None
 
         self.feedback = 1
         self.inputclfile = "inputs/cls.dat"
@@ -56,10 +60,6 @@ class InputParams:
         self.ordering = 1
 
         self.nsims = None
-        self.ssim = 1
-        self.zerofill = 3
-        self.endname1 = ""
-        self.endname2 = ""
         self.inputmapfile1 = ""
         self.inputmapfile2 = ""
         self.outcovmatfile = ""
@@ -90,6 +90,8 @@ class InputParams:
             if hasattr(self, key):
                 setattr(self, key, value)
         self.compute_derived()
+        if self.physical_labels is None:
+            self.physical_labels = self.labels.copy()
 
     @staticmethod
     def read_parameter_file(yaml_file):

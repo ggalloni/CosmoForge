@@ -72,7 +72,7 @@ def write_out_matrix(outfilematrix, matrix):
             f.write(line + "\n")
 
 
-def read_maps(maps, filename, pixact, calibration: float = 1.0):
+def read_maps(maps, filename, pixact, field_labels, calibration: float = 1.0):
     assert maps.shape[0] == sum(len(p) for p in pixact), "maps array has incorrect shape"
     nsims = maps.shape[1]
 
@@ -82,13 +82,58 @@ def read_maps(maps, filename, pixact, calibration: float = 1.0):
 
             counter = 0
             for field_idx in range(len(pixact)):
+                label = field_labels[field_idx]
+                field_index = get_field_index(hdul[f"SIM_{isim:03d}"], label)
+
+                # get_field_index always returns a list, but for individual fields
+                # it should be length 1
+                if len(field_index) != 1:
+                    raise ValueError(
+                        f"Expected single field index for '{label}', got {field_index}"
+                    )
+
+                field_index = field_index[0]  # Extract the single index
                 pixels = pixact[field_idx].astype(int)
+
                 if len(pixels) > 0 and (
                     pixels.min() < 0 or pixels.max() >= sim_data.shape[1]
                 ):
                     raise ValueError(f"Pixel indices out of bounds for field {field_idx}")
+
                 n_active = pixels.size
-                maps[counter : counter + n_active, isim] = sim_data[field_idx][pixels]
+                maps[counter : counter + n_active, isim] = sim_data[field_index][pixels]
                 counter += n_active
 
     maps *= calibration
+
+
+def get_field_index(hdu, field_name):
+    fields_str = hdu.header.get("FIELDS", "")
+
+    # Detect format: comma-separated vs concatenated
+    if "," in fields_str:
+        # Comma-separated format: "T,Q,U"
+        available_fields = [f.strip() for f in fields_str.split(",")]
+    else:
+        # Concatenated format: "TQU" -> ["T", "Q", "U"]
+        available_fields = list(fields_str.strip())
+
+    # Handle multi-character field specifications like "TQU", "QU", etc.
+    if len(field_name) > 1:
+        # Split the field_name into individual characters
+        requested_fields = list(field_name)
+        indices = []
+
+        for field in requested_fields:
+            if field not in available_fields:
+                raise ValueError(f"Field '{field}' not found in {available_fields}")
+            indices.append(available_fields.index(field))
+
+        return indices
+
+    # Handle single field
+    else:
+        if field_name not in available_fields:
+            raise ValueError(f"Field '{field_name}' not found in {available_fields}")
+
+        return [available_fields.index(field_name)]
