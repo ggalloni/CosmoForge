@@ -27,6 +27,8 @@ from .harmonic import (
     BeamManager,
     SpectraManager,
     cl_to_vec,
+    normcl,
+    smoothcl,
     vec_to_cl,
 )
 from .in_out import (
@@ -79,6 +81,8 @@ __all__ = [
     "BeamManager",
     "SpectraManager",
     "cl_to_vec",
+    "normcl",
+    "smoothcl",
     "vec_to_cl",
     "compute_beam",
     # core

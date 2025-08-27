@@ -3,11 +3,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 from numba import njit
 
-from cosmocore import InputParams
-
 
 if TYPE_CHECKING:
-    from cosmocore import BaseField
+    from cosmocore import BaseField, InputParams
 
 
 @njit(cache=True)
@@ -145,30 +143,95 @@ class SpectraManager:
 
     def apply_normalization(self) -> None:
         """Apply normalization factors based on spin combinations."""
+        # Use precomputed normalization factors
+        normalization_factors = self.compute_normalization_factors()
+
+        print(f"Applying normalization factors: {normalization_factors}")
+
+        for idx, label in enumerate(self._spectra_labels):
+            if label in normalization_factors:
+                # Apply normalization factor
+                self._cls_matrix[:, idx] *= normalization_factors[label]
+                # Update dictionary
+                self._cls_dict[label] = self._cls_matrix[:, idx]
+
+    def compute_normalization_factors(self) -> dict[str, np.ndarray]:
+        """
+        Compute normalization factors for all spectrum labels.
+
+        Returns:
+        --------
+        dict[str, np.ndarray]
+            Dictionary mapping spectrum labels to normalization factor arrays
+        """
         lmax = self.fields[0].lmax
         ell = np.arange(2, lmax + 1, dtype=np.float64)
+
+        # Base factors for different spin combinations
         factor2 = 1 / ((ell + 2) * (ell + 1) * ell * (ell - 1))
         factor = np.sqrt(factor2)
         chngconv = (2 * ell + 1) / (4 * np.pi)
 
-        for idx, label in enumerate(self._spectra_labels):
+        normalization_factors = {}
+
+        for label in self._spectra_labels:
             # Find the field pair for this spectrum
             for (i, j, mode), spec_label in self._spectra_map.items():
                 if spec_label == label:
                     spin_i = self.fields[i].spin
                     spin_j = self.fields[j].spin
 
-                    # Apply appropriate normalization
-                    self._cls_matrix[:, idx] *= chngconv
+                    # Compute normalization factor based on spin combination
+                    norm_factor = chngconv.copy()
                     if spin_i == 2 and spin_j == 2:
-                        self._cls_matrix[:, idx] *= factor2
+                        norm_factor *= factor2
                     elif (spin_i, spin_j) in [(0, 2), (2, 0)]:
-                        self._cls_matrix[:, idx] *= factor
+                        norm_factor *= factor
                     # spin_i == 0 and spin_j == 0: no additional factor
 
-                    # Update dictionary
-                    self._cls_dict[label] = self._cls_matrix[:, idx]
+                    normalization_factors[label] = norm_factor
                     break
+
+        return normalization_factors
+
+    def compute_smoothing_factors(
+        self, beam_manager: "BeamManager"
+    ) -> dict[str, np.ndarray]:
+        """
+        Compute smoothing factors for all spectrum labels.
+
+        Parameters:
+        -----------
+        beam_manager : BeamManager
+            BeamManager instance for smoothing factors
+
+        Returns:
+        --------
+        dict[str, np.ndarray]
+            Dictionary mapping spectrum labels to smoothing factor arrays
+        """
+        lmax = self.fields[0].lmax
+        ell = np.arange(2, lmax + 1, dtype=np.float64)
+        chngconv_smooth = 2 * np.pi / (ell * (ell + 1.0))
+
+        # Get beam dictionary
+        beam_dict = beam_manager.get_beam_dict()
+        smoothing_factors = {}
+
+        for label in self._spectra_labels:
+            # Compute smoothing factor (beam + conversion)
+            smooth_factor = chngconv_smooth.copy()
+
+            # Extract field labels from spectrum label
+            # (e.g., "TE" -> "T", "E")
+            label1, label2 = label[0], label[1]
+            if label1 in beam_dict and label2 in beam_dict:
+                beam_factor = beam_dict[label1] * beam_dict[label2]
+                smooth_factor *= beam_factor
+
+            smoothing_factors[label] = smooth_factor
+
+        return smoothing_factors
 
 
 class BeamManager:
@@ -236,7 +299,7 @@ class BeamManager:
             "B": beam[2, :],
         }
 
-    def set_beams_from_params(self, params: InputParams) -> None:
+    def set_beams_from_params(self, params: "InputParams") -> None:
         """Set beams for all fields using parameter configuration."""
         beam_dict = self.compute_beams(
             lmax=params.lmax,
@@ -285,24 +348,77 @@ class BeamManager:
 
     def apply_smoothing(self, spectra_manager: SpectraManager) -> None:
         """Apply beam smoothing to power spectra."""
-        lmax = self.fields[0].lmax
-        ell = np.arange(2, lmax + 1, dtype=np.float64)
-        chngconv = 2 * np.pi / (ell * (ell + 1.0))
+        # Use precomputed smoothing factors
+        smoothing_factors = spectra_manager.compute_smoothing_factors(self)
 
-        beam_dict = self.get_beam_dict()
+        print(f"Applying smoothing factors: {smoothing_factors}")
 
         for label in spectra_manager.labels:
             if label not in spectra_manager._cls_dict:
                 print(f"Warning: No power spectrum found for {label}...")
                 continue
 
-            # Extract field labels from spectrum label (e.g., "TE" -> "T", "E")
-            label1, label2 = label[0], label[1]
+            if label in smoothing_factors:
+                # Apply smoothing factor
+                spectra_manager._cls_dict[label] *= smoothing_factors[label]
 
-            if label1 in beam_dict and label2 in beam_dict:
-                beam_factor = beam_dict[label1] * beam_dict[label2]
-                spectra_manager._cls_dict[label] *= beam_factor
+        # Update matrix from dictionary
+        for idx, label in enumerate(spectra_manager._spectra_labels):
+            spectra_manager._cls_matrix[:, idx] = spectra_manager._cls_dict[label]
 
-        # Apply conversion factor to matrix
-        for idx in range(spectra_manager.n_spectra):
-            spectra_manager._cls_matrix[:, idx] *= chngconv
+
+@njit(cache=True)
+def normcl(cl, lmax):
+    """
+    Compute normalization factor for power spectra.
+
+    Parameters:
+    -----------
+    cl : ndarray
+        Power spectrum array (lmax-1, n_spec)
+    lmax : int
+        Maximum multipole
+
+    Returns:
+    --------
+    ndarray
+        Normalization factors
+    """
+    ell = np.arange(2, lmax + 1, dtype=np.float64)
+    norm_factor = 2 * np.pi / (ell * (ell + 1.0))
+    n_spec = cl.shape[1]
+
+    # Create normalization matrix
+    norm_matrix = np.zeros_like(cl)
+    for ispec in range(n_spec):
+        norm_matrix[:, ispec] = norm_factor
+
+    return norm_matrix
+
+
+@njit(cache=True)
+def smoothcl(cl, beam, lmax):
+    """
+    Apply beam smoothing to power spectra.
+
+    Parameters:
+    -----------
+    cl : ndarray
+        Power spectrum array (lmax-1, n_spec)
+    beam : ndarray
+        Beam function array
+    lmax : int
+        Maximum multipole
+
+    Returns:
+    --------
+    ndarray
+        Smoothed power spectra
+    """
+    smoothed_cl = np.zeros_like(cl)
+    n_spec = cl.shape[1]
+
+    for ispec in range(n_spec):
+        smoothed_cl[:, ispec] = cl[:, ispec] * beam
+
+    return smoothed_cl
