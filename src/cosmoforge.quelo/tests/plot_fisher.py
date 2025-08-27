@@ -2,7 +2,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 
-def fisher_plotting():
+def fisher_plotting(show_fig=False, save_fig=False):
     print("Hello from test!")
 
     file = "src/cosmoforge.quelo/outputs/TEB_fisher.dat"
@@ -109,10 +109,11 @@ def fisher_plotting():
         )
         plt.colorbar()
         plt.title(f"Fisher Matrix QUELO - Block ({i})")
-        plt.savefig(
-            f"src/cosmoforge.quelo/plots/QUELO_fisher_block_{i}.png", bbox_inches="tight"
-        )
-        plt.close()
+        if save_fig:
+            plt.savefig(
+                f"src/cosmoforge.quelo/plots/QUELO_fisher_block_{i}.png",
+                bbox_inches="tight",
+            )
 
         plt.figure(figsize=(8, 6))
         plt.imshow(
@@ -121,11 +122,11 @@ def fisher_plotting():
         )
         plt.colorbar()
         plt.title(f"Fisher Matrix pse_qml - Block ({j})")
-        plt.savefig(
-            f"src/cosmoforge.quelo/plots/pse_qml_fisher_block_{j}.png",
-            bbox_inches="tight",
-        )
-        plt.close()
+        if save_fig:
+            plt.savefig(
+                f"src/cosmoforge.quelo/plots/pse_qml_fisher_block_{j}.png",
+                bbox_inches="tight",
+            )
 
         diff = (
             fisher[n_ell * i : n_ell * (i + 1), n_ell * i : n_ell * (i + 1)]
@@ -138,11 +139,13 @@ def fisher_plotting():
         )
         plt.colorbar()
         plt.title(f"Absolute Difference - Block ({i}, {j})")
-        plt.savefig(
-            f"src/cosmoforge.quelo/plots/QUELO_pse_qml_fisher_diff_block_{i}_{j}.png",
-            bbox_inches="tight",
-        )
-        plt.close()
+        if save_fig:
+            plt.savefig(
+                f"src/cosmoforge.quelo/plots/QUELO_pse_qml_fisher_diff_block_{i}_{j}.png",
+                bbox_inches="tight",
+            )
+        if show_fig:
+            plt.show()
 
     # off diagonal blocks
 
@@ -153,11 +156,11 @@ def fisher_plotting():
     )
     plt.colorbar()
     plt.title("Fisher Matrix QUELO - Off-diagonal Block (T-QU)")
-    plt.savefig(
-        "src/cosmoforge.quelo/plots/QUELO_fisher_offdiag_block_T-QU.png",
-        bbox_inches="tight",
-    )
-    plt.close()
+    if save_fig:
+        plt.savefig(
+            "src/cosmoforge.quelo/plots/QUELO_fisher_offdiag_block_T-QU.png",
+            bbox_inches="tight",
+        )
 
     plt.figure(figsize=(8, 6))
     plt.imshow(
@@ -166,11 +169,11 @@ def fisher_plotting():
     )
     plt.colorbar()
     plt.title("Fisher Matrix pse_qml - Off-diagonal Block (T-QU)")
-    plt.savefig(
-        "src/cosmoforge.quelo/plots/pse_qml_fisher_offdiag_block_T-QU.png",
-        bbox_inches="tight",
-    )
-    plt.close()
+    if save_fig:
+        plt.savefig(
+            "src/cosmoforge.quelo/plots/pse_qml_fisher_offdiag_block_T-QU.png",
+            bbox_inches="tight",
+        )
 
     diff = fisher[:n_ell, n_ell : n_ell * 3] - fisher2[:n_ell, n_ell : n_ell * 3]
     plt.figure(figsize=(8, 6))
@@ -180,13 +183,13 @@ def fisher_plotting():
     )
     plt.colorbar()
     plt.title("Absolute Difference - Off-diagonal Block (T-QU)")
-    plt.savefig(
-        "src/cosmoforge.quelo/plots/QUELO_pse_qml_fisher_offdiag_diff_block_T-QU.png",
-        bbox_inches="tight",
-    )
-    plt.close()
-
-    # plt.show()
+    if save_fig:
+        plt.savefig(
+            "src/cosmoforge.quelo/plots/QUELO_pse_qml_fisher_offdiag_diff_block_T-QU.png",
+            bbox_inches="tight",
+        )
+    if show_fig:
+        plt.show()
 
     plt.figure(figsize=(8, 6))
     plt.imshow(
@@ -195,8 +198,10 @@ def fisher_plotting():
     )
     plt.colorbar()
     plt.title("Fisher Matrix QUELO - Off-diagonal Block full")
-    plt.savefig("src/cosmoforge.quelo/plots/QUELO_fisher_full.png", bbox_inches="tight")
-    plt.close()
+    if save_fig:
+        plt.savefig(
+            "src/cosmoforge.quelo/plots/QUELO_fisher_full.png", bbox_inches="tight"
+        )
 
     plt.figure(figsize=(8, 6))
     plt.imshow(
@@ -205,8 +210,10 @@ def fisher_plotting():
     )
     plt.colorbar()
     plt.title("Fisher Matrix pse_qml - Off-diagonal Block full")
-    plt.savefig("src/cosmoforge.quelo/plots/pse_qml_fisher_full.png", bbox_inches="tight")
-    plt.close()
+    if save_fig:
+        plt.savefig(
+            "src/cosmoforge.quelo/plots/pse_qml_fisher_full.png", bbox_inches="tight"
+        )
 
     diff = fisher - fisher2
     plt.figure(figsize=(8, 6))
@@ -216,14 +223,14 @@ def fisher_plotting():
     )
     plt.colorbar()
     plt.title("Absolute Difference - Off-diagonal Block full")
-    plt.savefig(
-        "src/cosmoforge.quelo/plots/QUELO_pse_qml_fisher_offdifull.png",
-        bbox_inches="tight",
-    )
-    plt.close()
-
-    # plt.show()
+    if save_fig:
+        plt.savefig(
+            "src/cosmoforge.quelo/plots/QUELO_pse_qml_fisher_offdifull.png",
+            bbox_inches="tight",
+        )
+    if show_fig:
+        plt.show()
 
 
 if __name__ == "__main__":
-    fisher_plotting()
+    fisher_plotting(show_fig=True, save_fig=False)
