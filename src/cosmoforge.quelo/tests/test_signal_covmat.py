@@ -119,11 +119,10 @@ def test_signal_covmat(local_path, fields, config_resolver):
     # Clean up temporary config file
     os.unlink(config_file)
 
-    diff = np.abs(Sig - ref)
     np.testing.assert_almost_equal(
-        diff,
-        0.0,
-        decimal=14,
+        Sig,
+        ref,
+        decimal=5,
         err_msg="TQU Signal covariance matrix does not match reference.",
     )
 

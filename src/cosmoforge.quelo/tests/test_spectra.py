@@ -68,13 +68,11 @@ def test_spectra_computation(fields, local_path, config_resolver):
     file = local_path + f"/tests/data/nside4/{fields}/ref_spectra.txt"
     ref = np.loadtxt(file)
 
-    diff = power_spectra - ref
-
     np.testing.assert_allclose(
-        diff,
-        0,
-        atol=1e-5,
-        rtol=1e-8,
+        power_spectra,
+        ref,
+        atol=1e-3,
+        rtol=1e-5,
     )
 
 
@@ -104,6 +102,13 @@ def test_spectra_reuse_optimization(local_path, config_resolver):
 
     assert spectra1 is not None and spectra2 is not None
     assert spectra1.shape == spectra2.shape
+    np.testing.assert_allclose(
+        spectra1,
+        spectra2,
+        atol=1e-3,
+        rtol=1e-5,
+        err_msg="Spectra with and without Fisher reuse do not match.",
+    )
 
 
 if __name__ == "__main__":

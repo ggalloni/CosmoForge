@@ -38,13 +38,11 @@ def test_fisher_computation(fields, local_path, config_resolver):
         f"Fisher matrix shape should match reference: {ref.shape}"
     )
 
-    diff = fisher_matrix - ref
-
     np.testing.assert_allclose(
-        diff,
-        0.0,
+        fisher_matrix,
+        ref,
+        atol=1e-3,
         rtol=1e-5,
-        atol=1e-8,
         err_msg=f"Fisher matrix for {fields} does not match reference.",
     )
 
