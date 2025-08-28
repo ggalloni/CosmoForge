@@ -94,7 +94,7 @@ def matrix_inverse_inplace(M):
     return M
 
 
-def test_matrix_inverse(configure_plt):
+def test_matrix_inverse(configure_plt, show_fig=False):
     configure_plt()
 
     sizes = [200, 500, 800, 1000, 2000]  # , 3072, 5000]
@@ -168,10 +168,11 @@ def test_matrix_inverse(configure_plt):
     plt.ylabel("Average time per run (s)")
     plt.title("Benchmark: Matrix Inversion Performance")
     plt.legend()
-    plt.show()
+    if show_fig:
+        plt.show()
 
 
 if __name__ == "__main__":
     from conftest import _configure_plt
 
-    test_matrix_inverse(_configure_plt)
+    test_matrix_inverse(_configure_plt, show_fig=True)

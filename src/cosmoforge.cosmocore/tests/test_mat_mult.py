@@ -20,7 +20,7 @@ def matrix_mult(A, B):
     return C
 
 
-def test_mat_multiplication(configure_plt):
+def test_mat_multiplication(configure_plt, show_fig=False):
     configure_plt()
 
     # --- Setup ---
@@ -96,10 +96,11 @@ def test_mat_multiplication(configure_plt):
     plt.ylabel("Average time per run (s)")
     plt.title("Benchmark: Matrix Multiplication Performance")
     plt.legend()
-    plt.show()
+    if show_fig:
+        plt.show()
 
 
 if __name__ == "__main__":
     from conftest import _configure_plt
 
-    test_mat_multiplication(_configure_plt)
+    test_mat_multiplication(_configure_plt, show_fig=True)
