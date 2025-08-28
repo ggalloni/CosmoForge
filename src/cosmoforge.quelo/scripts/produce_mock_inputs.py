@@ -8,7 +8,6 @@ from tqdm import tqdm
 
 from cosmocore import InputParams
 
-
 compute_case = sys.argv[1]
 
 outpath = sys.argv[2]

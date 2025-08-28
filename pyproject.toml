@@ -27,7 +27,6 @@ ignore = []
 [tool.ruff.lint.isort]
 known-first-party = ["quelo", "cosmocore", "cosmoforge"]
 force-single-line = false
-lines-after-imports = 2
 
 [tool.ruff.lint.per-file-ignores]
 "*/__init__.py" = ["F401"]

@@ -56,7 +56,6 @@ from .pixel import (
 )
 from .settings import InputParams
 
-
 __all__ = [
     # settings
     "InputParams",
@@ -88,19 +87,14 @@ __all__ = [
     "normcl",
     "smoothcl",
     "vec_to_cl",
-    "compute_beam",
     # core
     "Core",
     # fields
     "BaseField",
-    "BeamManager",
-    "Field",
     "FieldCollection",
     "FieldConfig",
-    "FieldCollection",
     "PolarizationField",
     "ScalarField",
-    "SpectraManager",
     "create_field",
     # basics
     "cross_index",
