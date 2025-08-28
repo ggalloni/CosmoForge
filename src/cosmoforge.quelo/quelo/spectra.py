@@ -215,7 +215,7 @@ class Spectra(Core):
 
             # Create vecmul array
             nell = self.params.nspectra * (self.params.lmax - 1)
-            self.vecmul = np.zeros(nell, dtype=np.float64)
+            self.normalization = np.zeros(nell, dtype=np.float64)
 
             # Fill vecmul array
             idx = 0
@@ -225,17 +225,19 @@ class Spectra(Core):
                 if spectrum_label in smoothing_factors:
                     smooth_factor = smoothing_factors[spectrum_label]
                     for ell_idx in range(self.params.lmax - 1):
-                        self.vecmul[idx] = smooth_factor[ell_idx]
+                        self.normalization[idx] = smooth_factor[ell_idx]
                         idx += 1
                 else:
                     # Fill with ones if no smoothing factors available
                     for ell_idx in range(self.params.lmax - 1):
-                        self.vecmul[idx] = 1.0
+                        self.normalization[idx] = 1.0
                         idx += 1
 
             # Apply vecmul normalization to Fisher matrix
             self.log("Applying vecmul normalization to Fisher matrix", level=2)
-            self.invfisher = self.invfisher * np.outer(self.vecmul, self.vecmul)
+            self.invfisher = self.invfisher * np.outer(
+                self.normalization, self.normalization
+            )
 
             # Invert Fisher matrix
             self.log("Inverting normalized Fisher matrix", level=2)
@@ -267,10 +269,10 @@ class Spectra(Core):
         nell = self.params.nspectra * (self.params.lmax - 1)
 
         # Initialize y vectors for QML estimation
-        self.y = np.zeros((self.params.nsims, nell), dtype=np.float64)
+        self.qml_results = np.zeros((self.params.nsims, nell), dtype=np.float64)
 
         if not self.params.do_cross:
-            self.ynb = np.zeros(nell, dtype=np.float64)
+            self.qml_noise_bias = np.zeros(nell, dtype=np.float64)
 
     def compute_e_operator(self, il: int, der_s: np.ndarray) -> np.ndarray:
         """
@@ -500,6 +502,12 @@ class Spectra(Core):
             raise ValueError("Fisher inversion and normalization must be set up first.")
 
         normalized_spectra = np.zeros_like(spectra)
+
+        if spectra.ndim == 1:
+            reduced_res_x_normalization = spectra * self.normalization
+            normalized_spectra = np.matmul(reduced_res_x_normalization, self.invfisher)
+            return normalized_spectra
+
         for field_idx in range(spectra.shape[0]):
             reduced_res_x_normalization = spectra[field_idx, :] * self.normalization
             normalized_spectra[field_idx, :] = np.matmul(
