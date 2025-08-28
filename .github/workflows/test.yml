@@ -55,20 +55,23 @@ jobs:
           else
             echo "test-all=false" >> $GITHUB_OUTPUT
             
-            # Check individual packages
-            if echo "$output" | grep -q "TEST_COSMOCORE="; then
+            # Check individual packages - only run tests if "test" is in the strategy
+            cosmocore_strategy=$(echo "$output" | grep "TEST_COSMOCORE=" | cut -d'=' -f2)
+            if echo "$cosmocore_strategy" | grep -q "test"; then
               echo "test-cosmocore=true" >> $GITHUB_OUTPUT
             else
               echo "test-cosmocore=false" >> $GITHUB_OUTPUT
             fi
             
-            if echo "$output" | grep -q "TEST_QUELO="; then
+            quelo_strategy=$(echo "$output" | grep "TEST_QUELO=" | cut -d'=' -f2)
+            if echo "$quelo_strategy" | grep -q "test"; then
               echo "test-quelo=true" >> $GITHUB_OUTPUT
             else
               echo "test-quelo=false" >> $GITHUB_OUTPUT
             fi
             
-            if echo "$output" | grep -q "TEST_META="; then
+            meta_strategy=$(echo "$output" | grep "TEST_META=" | cut -d'=' -f2)
+            if echo "$meta_strategy" | grep -q "test"; then
               echo "test-meta=true" >> $GITHUB_OUTPUT
             else
               echo "test-meta=false" >> $GITHUB_OUTPUT
