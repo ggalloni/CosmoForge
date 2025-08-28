@@ -96,6 +96,9 @@ language = "en"
 html_theme = "sphinx_rtd_theme"  # Use Read the Docs theme
 html_static_path = ["_static"]
 
+# Copy .nojekyll file to output directory for GitHub Pages
+html_extra_path = [".nojekyll"]
+
 # HTML theme options
 html_theme_options = {
     "analytics_id": "",  # Provided by you if you have Google Analytics
