@@ -21,7 +21,7 @@ calibration: 1.0
 smoothing_type: 1
 fwhmarcmin: 440.0
 apply_pixwin: false
-beam_file: 'inputs/beam_440TP_pixwin16.fits'
+beam_file: 'scripts/beam_440TP_pixwin16.fits'
 
 outnoisecovmat1: 'tests/data/nside8/QU/reduced_NCVM1.bin'
 outnoisecovmat2: 'tests/data/nside8/QU/reduced_NCVM2.bin'
@@ -47,5 +47,5 @@ outfilefisher: 'tests/data/nside8/QU/fisher.dat'
 
 # QML options
 remove_nb: true
-nspectra: 1
+nspectra: 3
 

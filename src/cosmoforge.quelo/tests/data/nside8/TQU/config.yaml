@@ -21,7 +21,7 @@ calibration: 1.0
 smoothing_type: 3
 fwhmarcmin: 440.0
 apply_pixwin: false
-beam_file: 'inputs/beam_440TP_pixwin16.fits'
+beam_file: 'scripts/beam_440TP_pixwin16.fits'
 
 outnoisecovmat1: 'tests/data/nside8/TQU/reduced_NCVM1.bin'
 outnoisecovmat2: 'tests/data/nside8/TQU/reduced_NCVM2.bin'
