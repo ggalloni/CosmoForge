@@ -91,7 +91,7 @@ spectra_mgr.apply_normalization()
 beam_mgr.apply_smoothing(spectra_mgr)
 ```
 
-### Matrix Operations
+### Matrix Operations Example
 
 ```python
 from cosmocore import matrix_mult, matrix_inverse_symm, matrix_trace
