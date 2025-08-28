@@ -36,4 +36,4 @@ def _configure_plt():
 
 @pytest.fixture
 def configure_plt():
-    _configure_plt()
+    return _configure_plt
