@@ -8,43 +8,149 @@ CosmoForge ecosystem.
 Overview
 --------
 
-The Meta package serves as the organizational hub for CosmoForge, containing:
+CosmoForge.Meta Package
+=======================
 
-* **Project Metadata**: Version information, authorship, and project details
-* **Configuration Management**: Global configuration utilities and defaults
-* **Utility Functions**: Helper functions used across packages
-* **Documentation Assets**: Shared documentation resources  
-* **Build Configuration**: Setup and installation configurations
+Meta is the umbrella package for CosmoForge, designed to provide a convenient way to 
+install and manage all CosmoForge components. It serves as the main entry point for 
+users who want to install the complete CosmoForge framework.
 
-Features
+Overview
 --------
 
-Metadata Management
-^^^^^^^^^^^^^^^^^^^
+The Meta package is a meta-package that:
 
-* **Version Control**: Centralized version management for all packages
-* **Author Information**: Contributor and maintainer details
-* **Package Dependencies**: Cross-package dependency management
+* **Dependency Management**: Automatically installs cosmocore and quelo packages
+* **Unified Installation**: Provides single-command installation of entire framework
+* **Version Coordination**: Ensures compatible versions across all CosmoForge components
+* **Project Organization**: Maintains project-wide metadata and documentation
 
-Configuration Utilities
+Purpose
+-------
+
+Installation Convenience
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-* **Global Settings**: Framework-wide configuration options
-* **Environment Detection**: Runtime environment and capability detection
-* **Path Management**: Standardized path handling across packages
+Instead of installing packages individually:
 
-Package Structure
+.. code-block:: bash
+
+   # Without meta package
+   pip install cosmocore
+   pip install quelo
+
+Users can install everything at once:
+
+.. code-block:: bash
+
+   # With meta package  
+   pip install cosmoforge.meta
+
+Dependency Coordination
+^^^^^^^^^^^^^^^^^^^^^^^
+
+The meta package ensures that:
+
+* Compatible versions of all components are installed together
+* Dependencies between cosmocore and quelo are properly resolved
+* Future CosmoForge packages are automatically included
+
+Project Structure
 -----------------
 
-.. autosummary::
-   :toctree: generated/
-   :recursive:
+The meta package coordinates the following CosmoForge components:
 
-   cosmoforge.meta
+.. list-table::
+   :header-rows: 1
+   :widths: 20 80
 
-Main Modules
+   * - Package
+     - Description
+   * - :doc:`cosmocore`
+     - Core mathematical and computational infrastructure
+   * - :doc:`quelo`
+     - Fisher matrix and QML power spectrum estimation
+
+Installation
 ------------
 
-.. note::
-   Full API documentation for Meta package modules will be added as the package 
-   documentation is completed.
+To install the complete CosmoForge framework:
+
+.. code-block:: bash
+
+   # Install from PyPI (when available)
+   pip install cosmoforge.meta
+   
+   # Install from source
+   git clone https://github.com/ggalloni/CosmoForge.git
+   cd CosmoForge
+   pip install -e .
+
+This will automatically install:
+
+* ``cosmoforge.cosmocore`` - Core functionality
+* ``cosmoforge.quelo`` - Analysis engines
+* All required dependencies (numpy, scipy, healpy, etc.)
+
+Usage
+-----
+
+After installation, import and use any CosmoForge component:
+
+.. code-block:: python
+
+   # Import from cosmocore
+   from cosmoforge.cosmocore import Core, InputParams
+   
+   # Import from quelo
+   from cosmoforge.quelo import Fisher, Spectra
+   
+   # Use the full framework
+   params = InputParams("config.yaml")
+   fisher = Fisher(params)
+   fisher.run()
+
+Development
+-----------
+
+For developers working on CosmoForge:
+
+.. code-block:: bash
+
+   # Clone repository
+   git clone https://github.com/ggalloni/CosmoForge.git
+   cd CosmoForge
+   
+   # Install in development mode
+   pip install -e .
+   
+   # Install development dependencies
+   pip install -e ".[dev]"
+
+This installs all packages in editable mode, allowing changes to be immediately 
+reflected without reinstallation.
+
+Package Information
+-------------------
+
+:Version: 0.1.0
+:Author: Giacomo Galloni
+:License: [License information]
+:Repository: https://github.com/ggalloni/CosmoForge
+
+Dependencies
+^^^^^^^^^^^^
+
+The meta package automatically installs:
+
+* **cosmoforge.cosmocore**: Core computational framework
+* **cosmoforge.quelo**: Fisher matrix and QML estimation
+* **Python >= 3.11**: Minimum Python version requirement
+
+See Also
+--------
+
+* :doc:`cosmocore` : Core mathematical and computational infrastructure  
+* :doc:`quelo` : Fisher matrix and QML power spectrum estimation
+* :doc:`../installation` : Detailed installation instructions
+* :doc:`../quickstart` : Getting started guide

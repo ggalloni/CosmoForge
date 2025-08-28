@@ -49,7 +49,7 @@ napoleon_type_aliases = None
 napoleon_attr_annotations = True
 
 # Autosummary settings
-autosummary_generate = True
+autosummary_generate = False  # Disable autosummary to avoid import issues
 autosummary_imported_members = False
 
 # Autodoc settings
@@ -60,6 +60,21 @@ autodoc_default_options = {
     "undoc-members": True,
     "exclude-members": "__weakref__",
 }
+
+# Mock imports for modules that might not be available during documentation build
+autodoc_mock_imports = [
+    "cosmoforge.cosmocore",
+    "cosmoforge.quelo",
+    "cosmoforge.meta",
+    "numpy",
+    "scipy",
+    "healpy",
+    "numba",
+    "mpi4py",
+    "yaml",
+    "astropy",
+    "matplotlib",
+]
 
 # Intersphinx mapping
 intersphinx_mapping = {
@@ -85,7 +100,6 @@ html_static_path = ["_static"]
 html_theme_options = {
     "analytics_id": "",  # Provided by you if you have Google Analytics
     "logo_only": False,
-    "display_version": True,
     "prev_next_buttons_location": "bottom",
     "style_external_links": False,
     "collapse_navigation": True,

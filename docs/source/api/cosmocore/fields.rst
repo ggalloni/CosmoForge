@@ -1,7 +1,7 @@
 cosmocore.fields module
 =======================
 
-.. automodule:: cosmoforge.cosmocore.cosmocore.fields
+.. automodule:: cosmoforge.cosmocore.fields
    :members:
    :undoc-members:
    :show-inheritance:

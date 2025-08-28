@@ -19,11 +19,8 @@ CosmoCore serves as the base layer for all cosmological computations in CosmoFor
 Package Structure
 -----------------
 
-.. autosummary::
-   :toctree: generated/
-   :recursive:
-
-   cosmoforge.cosmocore
+The CosmoCore package contains the following modules, each documented with comprehensive
+mathematical foundations and implementation details:
 
 Core Modules
 ------------

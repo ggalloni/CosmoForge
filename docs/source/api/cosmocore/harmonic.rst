@@ -1,7 +1,7 @@
 cosmocore.harmonic module
-========================
+==========================
 
-.. automodule:: cosmoforge.cosmocore.cosmocore.harmonic
+.. automodule:: cosmoforge.cosmocore.harmonic
    :members:
    :undoc-members:
    :show-inheritance:
