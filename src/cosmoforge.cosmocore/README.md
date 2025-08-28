@@ -1,5 +1,11 @@
 # CosmoForge.CosmoCore
 
+[![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
+[![Documentation](https://img.shields.io/badge/docs-cosmocore-blue.svg)](https://ggalloni.github.io/CosmoForge/api/cosmocore.html)
+[![Performance](https://img.shields.io/badge/performance-numba-green.svg)](https://numba.pydata.org/)
+
+> **📚 [CosmoCore Documentation](https://ggalloni.github.io/CosmoForge/api/cosmocore.html) | [API Reference](https://ggalloni.github.io/CosmoForge/api/cosmocore/basics.html) | [Main Documentation](https://ggalloni.github.io/CosmoForge/)**
+
 CosmoCore is the foundational package of CosmoForge, providing core functionality for cosmological analysis including field management, matrix operations, I/O utilities, and fundamental mathematical operations.
 
 ## Overview
@@ -40,6 +46,16 @@ CosmoCore is automatically installed as part of CosmoForge:
 ```bash
 pip install -e /path/to/CosmoForge
 ```
+
+## Documentation
+
+For detailed API documentation and examples:
+
+- **[Core Module](https://ggalloni.github.io/CosmoForge/api/cosmocore/core.html)** - Main Core class and pipeline functionality
+- **[Fields Module](https://ggalloni.github.io/CosmoForge/api/cosmocore/fields.html)** - Field management and HEALPix operations
+- **[Basics Module](https://ggalloni.github.io/CosmoForge/api/cosmocore/basics.html)** - Mathematical utilities and matrix operations
+- **[Harmonic Module](https://ggalloni.github.io/CosmoForge/api/cosmocore/harmonic.html)** - Power spectrum and beam management
+- **[I/O Module](https://ggalloni.github.io/CosmoForge/api/cosmocore/in_out.html)** - Data input/output utilities
 
 ## Usage
 

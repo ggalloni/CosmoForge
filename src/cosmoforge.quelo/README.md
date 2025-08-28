@@ -1,5 +1,12 @@
 # CosmoForge.Quelo
 
+[![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
+[![Documentation](https://img.shields.io/badge/docs-quelo-blue.svg)](https://ggalloni.github.io/CosmoForge/api/quelo.html)
+[![Parallelization](https://img.shields.io/badge/MPI-parallel-orange.svg)](https://www.mpi-forum.org/)
+[![QML Method](https://img.shields.io/badge/method-QML-red.svg)](https://en.wikipedia.org/wiki/Maximum_likelihood_estimation)
+
+> **📚 [Quelo Documentation](https://ggalloni.github.io/CosmoForge/api/quelo.html) | [Fisher Analysis API](https://ggalloni.github.io/CosmoForge/api/quelo/fisher.html) | [Spectra API](https://ggalloni.github.io/CosmoForge/api/quelo/spectra.html) | [Main Documentation](https://ggalloni.github.io/CosmoForge/)**
+
 Quelo is the analysis engine of CosmoForge, implementing Fisher matrix analysis and Quadratic Maximum Likelihood (QML) power spectrum estimation for cosmological parameter inference from CMB data.
 
 ## Overview
@@ -49,6 +56,15 @@ For MPI support:
 ```bash
 pip install mpi4py
 ```
+
+## Documentation
+
+For detailed API documentation and examples:
+
+- **[Fisher Analysis](https://ggalloni.github.io/CosmoForge/api/quelo/fisher.html)** - Fisher matrix computation and parameter forecasting
+- **[Spectra Analysis](https://ggalloni.github.io/CosmoForge/api/quelo/spectra.html)** - QML power spectrum estimation
+- **[Main Scripts](https://ggalloni.github.io/CosmoForge/api/quelo/main_fisher.html)** - Command-line interfaces for analysis
+- **[Mock Data Generation](https://ggalloni.github.io/CosmoForge/api/quelo/produce_mock_inputs.html)** - Mock data generation utilities
 
 ## Quick Start
 

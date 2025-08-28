@@ -1,5 +1,10 @@
 # CosmoForge.Meta
 
+[![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
+[![Documentation](https://img.shields.io/badge/docs-meta-blue.svg)](https://ggalloni.github.io/CosmoForge/api/meta.html)
+
+> **📚 [Meta Documentation](https://ggalloni.github.io/CosmoForge/api/meta.html) | [Main Documentation](https://ggalloni.github.io/CosmoForge/) | [Contributing Guide](https://ggalloni.github.io/CosmoForge/contributing.html)**
+
 Meta is the metadata and utilities package for CosmoForge, providing project-wide configuration, version management, and helper utilities that support the entire CosmoForge ecosystem.
 
 ## Overview
@@ -42,6 +47,15 @@ Meta is automatically installed as part of CosmoForge:
 ```bash
 pip install -e /path/to/CosmoForge
 ```
+
+## Documentation
+
+For comprehensive project documentation:
+
+- **[Meta API Documentation](https://ggalloni.github.io/CosmoForge/api/meta.html)** - Meta package utilities and configuration
+- **[Contributing Guide](https://ggalloni.github.io/CosmoForge/contributing.html)** - How to contribute to CosmoForge
+- **[Project Documentation](https://ggalloni.github.io/CosmoForge/)** - Complete CosmoForge documentation
+- **[Installation Guide](https://ggalloni.github.io/CosmoForge/installation.html)** - Detailed installation instructions
 
 ## Usage
 

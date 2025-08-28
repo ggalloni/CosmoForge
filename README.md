@@ -1,5 +1,15 @@
 # CosmoForge
 
+[![Build Status](https://github.com/ggalloni/CosmoForge/workflows/CI/badge.svg)](https://github.com/ggalloni/CosmoForge/actions)
+[![Documentation](https://github.com/ggalloni/CosmoForge/workflows/Documentation/badge.svg)](https://ggalloni.github.io/CosmoForge/)
+[![Coverage](https://codecov.io/gh/ggalloni/CosmoForge/branch/master/graph/badge.svg)](https://codecov.io/gh/ggalloni/CosmoForge)
+[![PyPI](https://img.shields.io/pypi/v/cosmoforge.svg)](https://pypi.org/project/cosmoforge/)
+[![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
+> **📚 [Complete Documentation](https://ggalloni.github.io/CosmoForge/) | [Installation Guide](https://ggalloni.github.io/CosmoForge/installation.html) | [Quick Start](https://ggalloni.github.io/CosmoForge/quickstart.html) | [API Reference](https://ggalloni.github.io/CosmoForge/api/cosmocore.html)**
+
 CosmoForge is a comprehensive Python framework for cosmological analysis, focusing on Cosmic Microwave Background (CMB) data analysis using Fisher matrix and Quadratic Maximum Likelihood (QML) power spectrum estimation methods.
 
 ## Overview
@@ -21,6 +31,8 @@ CosmoForge consists of several interconnected packages designed for efficient an
 
 ## Installation
 
+> **📖 For detailed installation instructions, see the [Installation Guide](https://ggalloni.github.io/CosmoForge/installation.html)**
+
 ### Requirements
 
 - Python 3.8+
@@ -40,6 +52,8 @@ pip install -e .
 ```
 
 ## Quick Start
+
+> **🚀 For comprehensive tutorials and examples, visit the [Quick Start Guide](https://ggalloni.github.io/CosmoForge/quickstart.html) and [Tutorials](https://ggalloni.github.io/CosmoForge/tutorials/index.html)**
 
 ### Fisher Matrix Analysis
 
@@ -146,6 +160,8 @@ If you use CosmoForge in your research, please cite:
 [Add citation information]
 
 ## Support
+
+> **📖 Complete documentation is available at: [https://ggalloni.github.io/CosmoForge/](https://ggalloni.github.io/CosmoForge/)**
 
 For questions and support:
 
