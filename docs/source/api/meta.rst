@@ -1,16 +1,6 @@
 CosmoForge.Meta Package
 =======================
 
-Meta is the metadata and utilities package for CosmoForge, providing project-wide 
-configuration, version management, and helper utilities that support the entire 
-CosmoForge ecosystem.
-
-Overview
---------
-
-CosmoForge.Meta Package
-=======================
-
 Meta is the umbrella package for CosmoForge, designed to provide a convenient way to 
 install and manage all CosmoForge components. It serves as the main entry point for 
 users who want to install the complete CosmoForge framework.

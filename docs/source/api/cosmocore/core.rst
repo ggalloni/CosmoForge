@@ -1,7 +1,7 @@
 cosmocore.core module
 =====================
 
-.. automodule:: cosmoforge.cosmocore.core
+.. automodule:: cosmocore.core
    :members:
    :undoc-members:
    :show-inheritance:

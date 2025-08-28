@@ -1,7 +1,7 @@
 Fisher Matrix Analysis
 ======================
 
-.. currentmodule:: cosmoforge.quelo.fisher
+.. currentmodule:: quelo.fisher
 
 The Fisher class provides comprehensive Fisher information matrix computation for 
 cosmological parameter forecasting and optimal experiment design. The implementation 
@@ -31,6 +31,7 @@ Class Documentation
 -------------------
 
 .. autoclass:: Fisher
+   :no-index:
    :members:
    :undoc-members:
    :show-inheritance:
@@ -42,22 +43,31 @@ Initialization and Setup
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. automethod:: Fisher.__init__
+   :no-index:
 .. automethod:: Fisher.setup_signal_matrix
+   :no-index:
 .. automethod:: Fisher.prepare_covariance_matrices
+   :no-index:
 .. automethod:: Fisher.setup_fisher_matrices
+   :no-index:
 
 Core Computation
 ^^^^^^^^^^^^^^^^^
 
 .. automethod:: Fisher.compute_fisher_element
+   :no-index:
 .. automethod:: Fisher.compute
+   :no-index:
 .. automethod:: Fisher.run
+   :no-index:
 
 Results Retrieval
 ^^^^^^^^^^^^^^^^^^
 
 .. automethod:: Fisher.get_fisher_matrix
+   :no-index:
 .. automethod:: Fisher.get_parameter_errors
+   :no-index:
 
 Usage Examples
 --------------
@@ -196,6 +206,6 @@ Key YAML configuration parameters for Fisher analysis:
 See Also
 --------
 
-* :class:`cosmoforge.quelo.spectra.Spectra` : QML power spectrum estimation using Fisher results
-* :mod:`cosmoforge.cosmocore` : Underlying computational infrastructure
-* :doc:`../main_fisher` : Main execution script for Fisher analysis
+* :class:`quelo.spectra.Spectra` : QML power spectrum estimation using Fisher results
+* :mod:`cosmocore` : Underlying computational infrastructure
+* :doc:`main_fisher` : Main execution script for Fisher analysis

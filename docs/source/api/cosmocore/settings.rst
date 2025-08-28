@@ -1,7 +1,7 @@
 cosmocore.settings module
 ==========================
 
-.. automodule:: cosmoforge.cosmocore.settings
+.. automodule:: cosmocore.settings
    :members:
    :undoc-members:
    :show-inheritance:

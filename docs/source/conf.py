@@ -8,6 +8,10 @@ import sys
 
 # Add the source code path to Python path for autodoc
 sys.path.insert(0, os.path.abspath("../../src"))
+# Add specific package paths
+sys.path.insert(0, os.path.abspath("../../src/cosmoforge.cosmocore"))
+sys.path.insert(0, os.path.abspath("../../src/cosmoforge.quelo"))
+sys.path.insert(0, os.path.abspath("../../src/cosmoforge.meta"))
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
@@ -63,9 +67,6 @@ autodoc_default_options = {
 
 # Mock imports for modules that might not be available during documentation build
 autodoc_mock_imports = [
-    "cosmoforge.cosmocore",
-    "cosmoforge.quelo",
-    "cosmoforge.meta",
     "numpy",
     "scipy",
     "healpy",

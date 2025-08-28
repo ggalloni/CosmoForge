@@ -1,7 +1,7 @@
 Power Spectrum Estimation  
 ==========================
 
-.. currentmodule:: cosmoforge.quelo.spectra
+.. currentmodule:: quelo.spectra
 
 The Spectra class implements Quadratic Maximum Likelihood (QML) estimation for 
 power spectrum recovery from CMB observations. This method provides unbiased, 
@@ -49,6 +49,7 @@ Class Documentation
    :members:
    :undoc-members:
    :show-inheritance:
+   :no-index:
 
 Key Methods
 -----------
@@ -57,24 +58,35 @@ Initialization
 ^^^^^^^^^^^^^^
 
 .. automethod:: Spectra.__init__
+   :no-index:
 .. automethod:: Spectra.setup_geometry
+   :no-index:
 
 Core Computation
 ^^^^^^^^^^^^^^^^^
 
 .. automethod:: Spectra.setup_maps
+   :no-index:
 .. automethod:: Spectra.setup_fisher_inversion
+   :no-index:
 .. automethod:: Spectra.setup_qml_computation
+   :no-index:
 .. automethod:: Spectra.compute_e_operator
+   :no-index:
 .. automethod:: Spectra.compute_qml_spectra
+   :no-index:
 .. automethod:: Spectra.compute
+   :no-index:
 .. automethod:: Spectra.run
+   :no-index:
 
 Results Processing
 ^^^^^^^^^^^^^^^^^^
 
 .. automethod:: Spectra.get_power_spectra
+   :no-index:
 .. automethod:: Spectra.get_noise_bias
+   :no-index:
 
 Usage Examples
 --------------
@@ -291,7 +303,7 @@ Systematic Error Studies
 See Also
 --------
 
-* :class:`cosmoforge.quelo.fisher.Fisher` : Fisher information matrix computation
-* :mod:`cosmoforge.cosmocore.harmonic` : Spherical harmonic transformations  
-* :doc:`../main_qml` : Main execution script for QML analysis
-* :doc:`../produce_mock_inputs` : Mock data generation for testing
+* :class:`quelo.fisher.Fisher` : Fisher information matrix computation
+* :mod:`cosmocore.harmonic` : Spherical harmonic transformations  
+* :doc:`main_qml` : Main execution script for QML analysis
+* :doc:`produce_mock_inputs` : Mock data generation for testing
