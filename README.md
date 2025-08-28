@@ -1,11 +1,11 @@
 # CosmoForge
 
-[![Build Status](https://github.com/ggalloni/CosmoForge/workflows/CI/badge.svg)](https://github.com/ggalloni/CosmoForge/actions)
-[![Documentation](https://github.com/ggalloni/CosmoForge/workflows/Documentation/badge.svg)](https://ggalloni.github.io/CosmoForge/)
+[![Build Status](https://github.com/ggalloni/CosmoForge/workflows/Quick%20CI/badge.svg)](https://github.com/ggalloni/CosmoForge/actions)
+[![Documentation](https://github.com/ggalloni/CosmoForge/workflows/Build%20and%20Deploy%20Documentation/badge.svg)](https://ggalloni.github.io/CosmoForge/)
 [![Coverage](https://codecov.io/gh/ggalloni/CosmoForge/branch/master/graph/badge.svg)](https://codecov.io/gh/ggalloni/CosmoForge)
 [![PyPI](https://img.shields.io/pypi/v/cosmoforge.svg)](https://pypi.org/project/cosmoforge/)
-[![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
+[![Code style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/charliermarsh/ruff)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 > **📚 [Complete Documentation](https://ggalloni.github.io/CosmoForge/) | [Installation Guide](https://ggalloni.github.io/CosmoForge/installation.html) | [Quick Start](https://ggalloni.github.io/CosmoForge/quickstart.html) | [API Reference](https://ggalloni.github.io/CosmoForge/api/cosmocore.html)**
