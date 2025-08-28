@@ -215,11 +215,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install MPI
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libopenmpi-dev openmpi-bin
-
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
