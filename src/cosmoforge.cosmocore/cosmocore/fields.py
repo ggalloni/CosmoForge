@@ -245,6 +245,11 @@ class FieldCollection:
                 n_active += field.n_active
         return n_active
 
+    @property
+    def total_active_pixels(self) -> int:
+        """Total number of active pixels across all field components."""
+        return sum(self.n_active)
+
     def get_active_pixels(self) -> np.ndarray:
         """Get active pixels for each field component (backward compatible format)."""
         active_list = []
