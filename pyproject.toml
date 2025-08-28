@@ -57,3 +57,37 @@ line-ending = "auto"
 exclude = ["build", ".eggs"]
 line-length = 90
 
+[tool.coverage.run]
+source = ["src/"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+    "*/setup.py",
+    "*/conftest.py",
+    "*/.pytest_cache/*",
+    "*/egg-info/*",
+    "*/build/*",
+    "*/dist/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "def __str__",
+    "pass",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "raise ValueError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+show_missing = true
+precision = 2
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+[tool.coverage.xml]
+output = "coverage.xml"
