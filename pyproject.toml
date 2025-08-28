@@ -9,6 +9,14 @@ authors = [
 requires-python = ">=3.11"
 dependencies = []
 
+[dependency-groups]
+docs = [
+    "sphinx>=8.2.3",
+    "sphinx-rtd-theme>=3.0.2",
+    "myst-parser>=4.0.1",
+    "sphinx-autodoc-typehints>=2.6.1",
+]
+
 [tool.uv]
 package = false  # Don't treat the root directory as a package
 
