@@ -51,6 +51,8 @@ This module is heavily optimized for performance in cosmological analysis:
 - Robust matrix operations using LAPACK routines
 """
 
+from __future__ import annotations
+
 from functools import lru_cache
 
 import numpy as np
