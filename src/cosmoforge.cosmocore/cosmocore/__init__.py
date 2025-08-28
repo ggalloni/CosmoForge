@@ -39,6 +39,7 @@ from .in_out import (
     readcl,
     write_covmat_reduced,
     write_out_matrix,
+    writecl,
 )
 from .pixel import (
     compute_00_contribution,
@@ -79,6 +80,7 @@ __all__ = [
     "readcl",
     "write_covmat_reduced",
     "write_out_matrix",
+    "writecl",
     # harmonic
     "BeamManager",
     "SpectraManager",

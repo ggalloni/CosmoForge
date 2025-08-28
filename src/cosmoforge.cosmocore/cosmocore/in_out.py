@@ -64,6 +64,22 @@ def readcl(inputclfile, Params: InputParams):
     return cls_dict
 
 
+def writecl(filename: str, power_spectra: np.ndarray):
+    """
+    Write Cl array to file.
+
+    Parameters:
+    -----------
+    filename : str
+        Output filename
+    power_spectra : np.ndarray
+        Power spectra array to write
+    """
+    # Use simple numpy save for now
+    # Could be enhanced to use a more sophisticated format
+    np.savetxt(filename, power_spectra)
+
+
 def write_out_matrix(outfilematrix, matrix):
     n = matrix.shape[0]
     with open(outfilematrix, "w") as f:
