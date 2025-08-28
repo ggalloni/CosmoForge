@@ -4,13 +4,13 @@ labels: ["T", "E", "B"]
 
 do_cross: false
 
-maskfile: 'src/cosmoforge.quelo/inputs/TEB_mask.fits'
-output_geometry_file: 'src/cosmoforge.quelo/outputs/TEB_geometry.dat'
+maskfile: 'inputs/TEB_mask.fits'
+output_geometry_file: 'outputs/TEB_geometry.dat'
 ordering: 2
 
-inputclfile: 'src/cosmoforge.quelo/inputs/TEB_dls.txt'
-covmatfile1: 'src/cosmoforge.quelo/inputs/TEB_NCVM1.bin'
-covmatfile2: 'src/cosmoforge.quelo/inputs/TEB_NCVM2.bin'
+inputclfile: 'inputs/TEB_dls.txt'
+covmatfile1: 'inputs/TEB_NCVM1.bin'
+covmatfile2: 'inputs/TEB_NCVM2.bin'
 
 lmax: 32
 
@@ -20,13 +20,13 @@ calibration: 1.0
 smoothing_type: 3
 fwhmarcmin: [440.0, 440.0, 440.0]
 apply_pixwin: false
-beam_file: 'src/cosmoforge.quelo/inputs/beam_440TP_pixwin16.fits'
+beam_file: 'inputs/beam_440TP_pixwin16.fits'
 
-outnoisecovmat1: 'src/cosmoforge.quelo/outputs/reduced_TEB_NCVM1.bin'
-outnoisecovmat2: 'src/cosmoforge.quelo/outputs/reduced_TEB_NCVM2.bin'
+outnoisecovmat1: 'outputs/reduced_TEB_NCVM1.bin'
+outnoisecovmat2: 'outputs/reduced_TEB_NCVM2.bin'
 
 feedback: 5
-outinvcovmatfile1: 'src/cosmoforge.quelo/outputs/TEB_invCOV1.bin'
-outinvcovmatfile2: 'src/cosmoforge.quelo/outputs/TEB_invCOV2.bin'
+outinvcovmatfile1: 'outputs/TEB_invCOV1.bin'
+outinvcovmatfile2: 'outputs/TEB_invCOV2.bin'
 
-outfilefisher: 'src/cosmoforge.quelo/outputs/TEB_fisher.dat'
+outfilefisher: 'outputs/TEB_fisher.dat'

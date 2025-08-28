@@ -7,33 +7,49 @@ import pytest
 from quelo import Fisher, Spectra
 
 
-def get_fisher_instance(fields: str = "TEB", local_path: str = None) -> Fisher:
+def get_fisher_instance(
+    fields: str = "TEB", config_resolver=None, local_path: str = None
+) -> Fisher:
     """Create a Fisher instance for QML power spectrum estimation."""
 
     print("Creating Fisher instance...")
-    fisher = Fisher(local_path + f"/tests/data/nside4/{fields}/config.yaml")
+    config_file = config_resolver(f"tests/data/nside4/{fields}/config.yaml")
+    fisher = Fisher(config_file)
     fisher.run()
+
+    # Clean up temporary config file
+    os.unlink(config_file)
+
     return fisher
 
 
-def get_qml_analyzer(fields: str = "TEB", local_path: str = None) -> Spectra:
+def get_qml_analyzer(
+    fields: str = "TEB", config_resolver=None, local_path: str = None
+) -> Spectra:
     """Create a Spectra instance for QML power spectrum estimation."""
 
     print("Creating QML analyzer...")
 
-    qml_analyzer = Spectra(local_path + f"/tests/data/nside4/{fields}/config.yaml")
+    config_file = config_resolver(f"tests/data/nside4/{fields}/config.yaml")
+    qml_analyzer = Spectra(config_file)
 
     qml_analyzer.run()
+
+    # Clean up temporary config file
+    os.unlink(config_file)
 
     return qml_analyzer
 
 
 def get_qml_spectra(
-    fields: str = "TEB", local_path: str = None, qml_analyzer: Spectra = None
+    fields: str = "TEB",
+    config_resolver=None,
+    local_path: str = None,
+    qml_analyzer: Spectra = None,
 ) -> tuple[np.ndarray, Fisher]:
     """Get QML power spectra computation results."""
     if qml_analyzer is None:
-        qml_analyzer = get_qml_analyzer(fields, local_path=local_path)
+        qml_analyzer = get_qml_analyzer(fields, config_resolver=config_resolver)
 
     power_spectra = qml_analyzer.get_power_spectra()
     noise_bias = qml_analyzer.get_noise_bias()
@@ -42,11 +58,11 @@ def get_qml_spectra(
 
 
 @pytest.mark.parametrize("fields", ["T", "QU", "TQU", "TEB"])
-def test_spectra_computation(fields, local_path):
+def test_spectra_computation(fields, local_path, config_resolver):
     """Test the QML power spectra computation for the specified fields."""
-    qml_analyzer = get_qml_analyzer(fields, local_path=local_path)
+    qml_analyzer = get_qml_analyzer(fields, config_resolver=config_resolver)
     power_spectra, noise_bias, fisher = get_qml_spectra(
-        fields, local_path=local_path, qml_analyzer=qml_analyzer
+        fields, config_resolver=config_resolver, qml_analyzer=qml_analyzer
     )
 
     file = local_path + f"/tests/data/nside4/{fields}/ref_spectra.txt"
@@ -62,20 +78,22 @@ def test_spectra_computation(fields, local_path):
     )
 
 
-def test_spectra_reuse_optimization(local_path):
-    fisher = get_fisher_instance(fields="TQU", local_path=local_path)
+def test_spectra_reuse_optimization(local_path, config_resolver):
+    fisher = get_fisher_instance(fields="TQU", config_resolver=config_resolver)
 
     start_time = time.time()
-    qml_with_fisher = Spectra(
-        local_path + "/tests/data/nside4/TQU/config.yaml", fisher=fisher
-    )
+    config_file1 = config_resolver("tests/data/nside4/TQU/config.yaml")
+    qml_with_fisher = Spectra(config_file1, fisher=fisher)
     qml_with_fisher.run()
     time_with_reuse = time.time() - start_time
+    os.unlink(config_file1)
 
     start_time = time.time()
-    qml_without_fisher = Spectra(local_path + "/tests/data/nside4/TQU/config.yaml")
+    config_file2 = config_resolver("tests/data/nside4/TQU/config.yaml")
+    qml_without_fisher = Spectra(config_file2)
     qml_without_fisher.run()
     time_without_reuse = time.time() - start_time
+    os.unlink(config_file2)
 
     print(f"Time with Fisher reuse: {time_with_reuse:.2f}s")
     print(f"Time without Fisher reuse: {time_without_reuse:.2f}s")
