@@ -202,54 +202,7 @@ jobs:
       - name: Run tests
         working-directory: src/cosmoforge.meta
         run: |
-          uv run pytest tests/ -v --cov=meta --cov-report=xml
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          file: src/cosmoforge.meta/coverage.xml
-          flags: meta
-          name: meta-coverage
-          fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
-          slug: ggalloni/CosmoForge
-
-  integration-tests:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    needs: [detect-changes, test-cosmocore, test-quelo, test-meta]
-    if: |
-      always() && 
-      needs.detect-changes.outputs.test-all == 'true' &&
-      (needs.test-cosmocore.result == 'success' || needs.test-cosmocore.result == 'skipped') &&
-      (needs.test-quelo.result == 'success' || needs.test-quelo.result == 'skipped') &&
-      (needs.test-meta.result == 'success' || needs.test-meta.result == 'skipped')
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install MPI
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libopenmpi-dev openmpi-bin
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v2
-
-      - name: Install all packages
-        run: |
-          uv sync --dev
-
-      - name: Run integration tests
-        run: |
-          # Run tests that span multiple packages
-          echo "Running integration tests..."
-          # Add your integration test commands here
+          uv run pytest tests/ -v
 
   combined-coverage:
     name: Combined Coverage Report
@@ -319,7 +272,7 @@ jobs:
   summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [detect-changes, test-cosmocore, test-quelo, test-meta, integration-tests, combined-coverage]
+    needs: [detect-changes, test-cosmocore, test-quelo, test-meta, combined-coverage]
     if: always()
     steps:
       - name: Print test strategy
@@ -333,14 +286,12 @@ jobs:
           echo "- CosmoCore: ${{ needs.test-cosmocore.result }}"
           echo "- Quelo: ${{ needs.test-quelo.result }}"
           echo "- Meta: ${{ needs.test-meta.result }}"
-          echo "- Integration: ${{ needs.integration-tests.result }}"
 
       - name: Check if all tests passed
         run: |
           if [[ "${{ needs.test-cosmocore.result }}" == "failure" ]] || \
              [[ "${{ needs.test-quelo.result }}" == "failure" ]] || \
-             [[ "${{ needs.test-meta.result }}" == "failure" ]] || \
-             [[ "${{ needs.integration-tests.result }}" == "failure" ]]; then
+             [[ "${{ needs.test-meta.result }}" == "failure" ]]; then
             echo "❌ Some tests failed"
             exit 1
           else
