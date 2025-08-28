@@ -15,6 +15,8 @@ Key functions:
     - coswinbeam: Generate cosine window beam functions
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -193,7 +195,7 @@ class SpectraManager:
     cosmological models and may be excluded.
     """
 
-    def __init__(self, fields: list["BaseField"]):
+    def __init__(self, fields: list[BaseField]):
         self.fields = fields
         self._spectra_labels = []
         self._spectra_map = {}
@@ -490,7 +492,7 @@ class SpectraManager:
         return normalization_factors
 
     def compute_smoothing_factors(
-        self, beam_manager: "BeamManager"
+        self, beam_manager: BeamManager
     ) -> dict[str, np.ndarray]:
         """
         Compute smoothing factors for all spectrum labels.
@@ -573,7 +575,7 @@ class BeamManager:
         - smoothtype=3: Custom beam from file
     """
 
-    def __init__(self, fields: list["BaseField"]):
+    def __init__(self, fields: list[BaseField]):
         self.fields = fields
         self._beam_dict = {}
 
@@ -635,7 +637,7 @@ class BeamManager:
             "B": beam[2, :],
         }
 
-    def set_beams_from_params(self, params: "InputParams") -> None:
+    def set_beams_from_params(self, params: InputParams) -> None:
         """
         Set beams for all fields using parameter configuration.
 

@@ -19,6 +19,8 @@ and I/O operations. The Core class provides common functionality that can
 be extended by concrete analysis implementations.
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 
 import healpy as hp

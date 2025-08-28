@@ -45,6 +45,8 @@ References
    Phys. Rev. D 70, 083511 (2004)
 """
 
+from __future__ import annotations
+
 import time
 
 import numpy as np

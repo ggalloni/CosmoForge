@@ -21,6 +21,8 @@ Key features:
     - Type-safe field configuration with validation
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
@@ -383,7 +385,7 @@ class BaseField(ABC):
         pass
 
     @abstractmethod
-    def get_cross_spectrum_labels(self, other: "BaseField") -> list[str]:
+    def get_cross_spectrum_labels(self, other: BaseField) -> list[str]:
         """
         Get labels for cross-spectra with another field.
 
@@ -492,7 +494,7 @@ class ScalarField(BaseField):
         label = self.labels[0].upper()
         return [f"{label}{label}"]
 
-    def get_cross_spectrum_labels(self, other: "BaseField") -> list[str]:
+    def get_cross_spectrum_labels(self, other: BaseField) -> list[str]:
         """
         Get cross-spectrum labels with another field.
 
@@ -625,7 +627,7 @@ class PolarizationField(BaseField):
         e_label, b_label = (label.upper() for label in self.labels)
         return [f"{e_label}{e_label}", f"{b_label}{b_label}", f"{e_label}{b_label}"]
 
-    def get_cross_spectrum_labels(self, other: "BaseField") -> list[str]:
+    def get_cross_spectrum_labels(self, other: BaseField) -> list[str]:
         """
         Get cross-spectrum labels with another field.
 

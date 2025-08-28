@@ -36,6 +36,8 @@ References
    MNRAS 301, 657-688 (1998)
 """
 
+from __future__ import annotations
+
 import time
 
 import numpy as np
