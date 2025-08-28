@@ -1,0 +1,40 @@
+CosmoForge.CosmoCore Package
+============================
+
+CosmoCore is the foundational package of CosmoForge, providing core functionality for 
+cosmological analysis including field management, matrix operations, I/O utilities, 
+and fundamental mathematical operations.
+
+Overview
+--------
+
+CosmoCore serves as the base layer for all cosmological computations in CosmoForge. It provides:
+
+* **Field Management**: Scalar and polarization field handling with HEALPix integration
+* **Matrix Operations**: Optimized linear algebra operations with Numba acceleration  
+* **I/O Utilities**: Reading and writing of cosmological data formats
+* **Harmonic Analysis**: Power spectrum management and beam handling
+* **Pixel Operations**: HEALPix pixel-based computations
+
+Package Structure
+-----------------
+
+.. autosummary::
+   :toctree: generated/
+   :recursive:
+
+   cosmoforge.cosmocore
+
+Core Modules
+------------
+
+.. toctree::
+   :maxdepth: 1
+
+   cosmocore/basics
+   cosmocore/core
+   cosmocore/fields
+   cosmocore/harmonic
+   cosmocore/in_out
+   cosmocore/pixel
+   cosmocore/settings
