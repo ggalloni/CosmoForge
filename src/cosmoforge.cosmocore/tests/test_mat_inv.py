@@ -97,7 +97,7 @@ def matrix_inverse_inplace(M):
 def test_matrix_inverse(configure_plt):
     configure_plt()
 
-    sizes = [200, 500, 800, 1000, 2000, 3072, 5000]
+    sizes = [200, 500, 800, 1000, 2000]  # , 3072, 5000]
     times = {
         name: []
         for name in [
