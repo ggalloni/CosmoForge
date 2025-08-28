@@ -201,12 +201,6 @@ def cl_to_vec(cl, vec):
 
 def vec_to_cl(vec, cl):
     """Convert vector to Cl array format."""
-
-def normcl(cl, lmax):
-    """Apply normalization to power spectra."""
-
-def smoothcl(cl, beam, lmax):
-    """Apply beam smoothing to power spectra."""
 ```
 
 ## Testing

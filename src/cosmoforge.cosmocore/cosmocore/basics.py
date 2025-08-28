@@ -1,3 +1,56 @@
+"""
+Basic mathematical utilities for cosmological computations.
+
+This module provides fundamental mathematical functions optimized for
+cosmological analysis, including Legendre polynomials, vector operations,
+rotation calculations, and matrix operations. Many functions are optimized
+with Numba for performance in numerical calculations.
+
+Functions
+---------
+cross_index
+    Compute cross-correlation index for field pairs.
+ext_prod
+    Vector cross product in 3D.
+scalar_prod
+    Vector dot product in 3D.
+legendre_00
+    Standard Legendre polynomials P_l(x).
+legendre_22
+    Associated Legendre polynomials P_l^{22}(x) for spin-2.
+legendre_02
+    Associated Legendre polynomials P_l^{02}(x) for spin-0 to spin-2.
+legendre_00_inplace
+    In-place computation of standard Legendre polynomials.
+legendre_22_inplace
+    In-place computation of spin-2 associated Legendre polynomials.
+legendre_02_inplace
+    In-place computation of spin-0 to spin-2 associated Legendre polynomials.
+legendre_unified
+    Unified Legendre polynomial computation for different spin cases.
+legendre_unified_inplace
+    In-place unified Legendre polynomial computation.
+project_and_norm
+    Project vector and normalize for rotation calculations.
+get_rotation_angle
+    Compute rotation angles between vectors on the sphere.
+lower_triangular_inverse
+    Compute inverse of lower triangular matrix.
+copy_lower_to_upper
+    Copy lower triangular part to upper triangular.
+matrix_inverse_symm
+    Compute inverse of symmetric positive definite matrix.
+
+Notes
+-----
+This module is heavily optimized for performance in cosmological analysis:
+- Numba @njit decorators for compiled performance
+- In-place operations to avoid memory allocations
+- Optimized recurrence relations for Legendre polynomials
+- Efficient vector operations for spherical geometry
+- Robust matrix operations using LAPACK routines
+"""
+
 from functools import lru_cache
 
 import numpy as np
@@ -7,6 +60,27 @@ from scipy.linalg import lapack
 
 @lru_cache
 def cross_index(i, j, nfields):
+    """
+    Compute cross-correlation index for field pairs.
+
+    Parameters
+    ----------
+    i, j : int
+        Field indices for cross-correlation.
+    nfields : int
+        Total number of fields.
+
+    Returns
+    -------
+    int
+        Linear index for the (i,j) cross-correlation in upper triangular format.
+
+    Notes
+    -----
+    Computes the index for cross-correlations in compressed upper triangular
+    storage. Automatically swaps indices to ensure i <= j. Uses LRU cache
+    for performance in repeated calls.
+    """
     if i > j:
         i, j = j, i
     return i * nfields + j - ((i + 2) * (i + 1)) // 2
@@ -14,6 +88,24 @@ def cross_index(i, j, nfields):
 
 @njit(cache=True)
 def ext_prod(vec1, vec2):
+    """
+    Compute the cross product of two 3D vectors.
+
+    Parameters
+    ----------
+    vec1, vec2 : numpy.ndarray
+        3D vectors of length 3.
+
+    Returns
+    -------
+    numpy.ndarray
+        Cross product vec1 × vec2 as a 3D vector.
+
+    Notes
+    -----
+    Optimized with Numba for performance. Computes the standard
+    cross product: (a×b)_i = ε_ijk a_j b_k.
+    """
     vec3 = np.empty(3, dtype=np.float64)
     vec3[0] = vec1[1] * vec2[2] - vec1[2] * vec2[1]
     vec3[1] = vec1[2] * vec2[0] - vec1[0] * vec2[2]
@@ -23,14 +115,51 @@ def ext_prod(vec1, vec2):
 
 @njit(cache=True)
 def scalar_prod(vec1, vec2):
+    """
+    Compute the dot product of two 3D vectors.
+
+    Parameters
+    ----------
+    vec1, vec2 : numpy.ndarray
+        3D vectors of length 3.
+
+    Returns
+    -------
+    float
+        Dot product vec1 · vec2.
+
+    Notes
+    -----
+    Optimized with Numba for performance. Computes the standard
+    dot product: a · b = Σ a_i b_i.
+    """
     return vec1[0] * vec2[0] + vec1[1] * vec2[1] + vec1[2] * vec2[2]
 
 
 @njit(cache=True)
 def legendre_00(scalar_prod, lmax):
-    """Optimized P_l(x) Legendre polynomials for l=0 case.
+    """
+    Compute standard Legendre polynomials P_l(x) for spin-0 fields.
 
-    Uses three-term recurrence: P_l(x) = ((2l-1)xP_{l-1}(x) - (l-1)P_{l-2}(x))/l
+    Parameters
+    ----------
+    scalar_prod : float
+        Argument x for the Legendre polynomials.
+    lmax : int
+        Maximum multipole moment.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of Legendre polynomial values P_l(x) for l=1 to lmax.
+
+    Notes
+    -----
+    Optimized computation using three-term recurrence relation:
+    P_l(x) = ((2l-1)xP_{l-1}(x) - (l-1)P_{l-2}(x))/l
+
+    Base cases: P_1(x) = x, P_2(x) = (3x² - 1)/2
+    Used for temperature (spin-0) correlations in CMB analysis.
     """
     if lmax <= 0:
         return np.empty(0, dtype=np.float64)
@@ -63,9 +192,28 @@ def legendre_00(scalar_prod, lmax):
 
 @njit(cache=True)
 def legendre_22(scalar_prod, lmax):
-    """Optimized P_l^{22}(x) associated Legendre polynomials for spin-2.
+    """
+    Compute associated Legendre polynomials P_l^{22}(x) for spin-2 fields.
 
-    Uses modified recurrence for the 22 case.
+    Parameters
+    ----------
+    scalar_prod : float
+        Argument x for the associated Legendre polynomials.
+    lmax : int
+        Maximum multipole moment.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of associated Legendre polynomial values P_l^{22}(x) for l=2 to lmax.
+
+    Notes
+    -----
+    Optimized computation using modified recurrence relation for the 22 case:
+    P_l^{22}(x) = (x(2l-1)P_{l-1}^{22}(x) - (l+1)P_{l-2}^{22}(x))/(l-2)
+
+    Base case: P_2^{22}(x) = 3
+    Used for polarization (spin-2) auto-correlations in CMB analysis.
     """
     if lmax <= 1:
         return np.zeros(max(0, lmax), dtype=np.float64)
@@ -94,11 +242,21 @@ def legendre_22(scalar_prod, lmax):
 
 @njit(cache=True)
 def legendre_00_inplace(scalar_prod, legendre):
-    """In-place version of legendre_00 to avoid allocations.
+    """
+    In-place computation of standard Legendre polynomials P_l(x).
 
-    Args:
-        scalar_prod: The argument x for P_l(x)
-        legendre: Pre-allocated array to fill with results
+    Parameters
+    ----------
+    scalar_prod : float
+        Argument x for the Legendre polynomials.
+    legendre : numpy.ndarray
+        Pre-allocated array to fill with P_l(x) values.
+
+    Notes
+    -----
+    Memory-efficient version that avoids allocations in hot loops.
+    Uses the same three-term recurrence as legendre_00 but operates
+    on pre-allocated arrays for maximum performance.
     """
     lmax = len(legendre)
     # Base cases
@@ -117,11 +275,23 @@ def legendre_00_inplace(scalar_prod, legendre):
 
 @njit(cache=True)
 def legendre_22_inplace(scalar_prod, legendre, f1, f2):
-    """In-place version of legendre_22 to avoid allocations.
+    """
+    In-place computation of associated Legendre polynomials P_l^{22}(x).
 
-    Args:
-        scalar_prod: The argument x for P_l^{22}(x)
-        legendre: Pre-allocated array to fill with results (will be zeroed first)
+    Parameters
+    ----------
+    scalar_prod : float
+        Argument x for the associated Legendre polynomials.
+    legendre : numpy.ndarray
+        Pre-allocated array to fill with P_l^{22}(x) values.
+    f1, f2 : numpy.ndarray
+        Pre-allocated temporary arrays for intermediate calculations.
+
+    Notes
+    -----
+    Memory-efficient version for spin-2 computations. Fills the provided
+    arrays in-place to avoid allocations in performance-critical loops.
+    Used for polarization correlation calculations.
     """
     lmax = len(legendre)
 
@@ -153,10 +323,29 @@ def legendre_22_inplace(scalar_prod, legendre, f1, f2):
 
 @njit(cache=True)
 def legendre_02(scalar_prod, lmax):
-    """Optimized P_l^{02}(x) associated Legendre polynomials for spin-0 to spin-2.
+    """
+    Compute associated Legendre polynomials P_l^{02}(x) for
+    spin-0 to spin-2 cross-correlations.
 
-    Uses modified recurrence: P_l^{02} = (x(2l-1)P_{l-1}^{02} - (l+1)P_{l-2}^{02})/(l-2)
-    Base case: P_2^{02} = 3(1 - x^2)
+    Parameters
+    ----------
+    scalar_prod : float
+        Argument x for the associated Legendre polynomials.
+    lmax : int
+        Maximum multipole moment.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of associated Legendre polynomial values P_l^{02}(x) for l=2 to lmax.
+
+    Notes
+    -----
+    Optimized computation using modified recurrence relation for the 02 case:
+    P_l^{02}(x) = (x(2l-1)P_{l-1}^{02}(x) - (l+1)P_{l-2}^{02}(x))/(l-2)
+
+    Base case: P_2^{02}(x) = 3(1 - x²)
+    Used for temperature-polarization cross-correlations in CMB analysis.
     """
     if lmax <= 1:
         return np.zeros(max(0, lmax), dtype=np.float64)
@@ -185,11 +374,21 @@ def legendre_02(scalar_prod, lmax):
 
 @njit(cache=True)
 def legendre_02_inplace(scalar_prod, legendre):
-    """In-place version of legendre_02 to avoid allocations.
+    """
+    In-place computation of associated Legendre polynomials P_l^{02}(x).
 
-    Args:
-        scalar_prod: The argument x for P_l^{02}(x)
-        legendre: Pre-allocated array to fill with results (will be zeroed first)
+    Parameters
+    ----------
+    scalar_prod : float
+        Argument x for the associated Legendre polynomials.
+    legendre : numpy.ndarray
+        Pre-allocated array to fill with P_l^{02}(x) values (will be zeroed first).
+
+    Notes
+    -----
+    Memory-efficient version that avoids allocations in hot loops.
+    Used for temperature-polarization cross-correlations. The array
+    is zeroed and then filled using the optimized recurrence relation.
     """
     lmax = len(legendre)
 
@@ -209,18 +408,29 @@ def legendre_02_inplace(scalar_prod, legendre):
 
 @njit(cache=True)
 def legendre_unified(scalar_prod, lmax, spin_case):
-    """Unified Legendre polynomial computation for all spin cases.
+    """
+    Unified Legendre polynomial computation for all spin cases.
 
-    Args:
-        scalar_prod: The argument x
-        lmax: Maximum l value
-        spin_case: 0 for P_l (00 case), 1 for P_l^{22} (22 case), 2 for P_l^{02} (02 case)
+    Parameters
+    ----------
+    scalar_prod : float
+        Argument x for the Legendre polynomials.
+    lmax : int
+        Maximum multipole moment.
+    spin_case : str
+        Spin case identifier: "00" for P_l, "22" for P_l^{22}, "02" for P_l^{02}.
 
-    Returns:
-        Array of Legendre polynomial values
+    Returns
+    -------
+    numpy.ndarray
+        Array of Legendre polynomial values for the specified spin case.
 
-    This unified function reduces code duplication and allows for better optimization
-    by factorizing common operations.
+    Notes
+    -----
+    This unified function reduces code duplication and allows for better
+    optimization by factorizing common operations across all three spin
+    cases used in CMB analysis. Each case uses appropriate base conditions
+    and recurrence relations.
     """
     if lmax <= 0:
         return np.empty(0, dtype=np.float64)
@@ -262,10 +472,24 @@ def legendre_unified(scalar_prod, lmax, spin_case):
 
 @njit(cache=True)
 def legendre_unified_inplace(scalar_prod, legendre, spin_case):
-    """In-place unified Legendre polynomial computation.
+    """
+    In-place unified Legendre polynomial computation.
 
+    Parameters
+    ----------
+    scalar_prod : float
+        Argument x for the Legendre polynomials.
+    legendre : numpy.ndarray
+        Pre-allocated array to fill with polynomial values (will be zeroed first).
+    spin_case : str
+        Spin case identifier: "00" for P_l, "22" for P_l^{22}, "02" for P_l^{02}.
+
+    Notes
+    -----
     This is the most efficient version for hot loops - avoids all allocations
-    and unifies the three recurrence relations.
+    and unifies the three recurrence relations. The array is cleared and then
+    populated with the appropriate base cases and recurrence relation for
+    the specified spin case.
     """
     lmax = len(legendre)
     if lmax <= 0:
@@ -316,6 +540,27 @@ def legendre_unified_inplace(scalar_prod, legendre, spin_case):
 
 @lru_cache
 def spec2idx(i, j, nfields):
+    """
+    Convert field indices to spectrum index for compressed storage.
+
+    Parameters
+    ----------
+    i, j : int
+        Field indices for the spectrum.
+    nfields : int
+        Total number of fields.
+
+    Returns
+    -------
+    int
+        Linear index for spectrum storage in compressed format.
+
+    Notes
+    -----
+    Converts 2D field indices to 1D spectrum indices for efficient storage.
+    Auto-spectra (i==j) are stored first, followed by cross-spectra in
+    upper triangular order. Uses LRU cache for performance.
+    """
     if i == j:
         return i  # auto
     elif i < j:
@@ -326,6 +571,31 @@ def spec2idx(i, j, nfields):
 
 @lru_cache
 def idx2spec(idx, nfields):
+    """
+    Convert spectrum index back to field indices.
+
+    Parameters
+    ----------
+    idx : int
+        Linear spectrum index in compressed storage.
+    nfields : int
+        Total number of fields.
+
+    Returns
+    -------
+    tuple of int
+        Field indices (i, j) corresponding to the spectrum index.
+
+    Raises
+    ------
+    ValueError
+        If index is out of bounds for the given number of fields.
+
+    Notes
+    -----
+    Inverse operation of spec2idx. Converts linear spectrum indices back
+    to the original field pair indices. Uses LRU cache for performance.
+    """
     if idx < nfields:
         return idx, idx
     idx_cross = idx - nfields
@@ -349,6 +619,26 @@ _ex_eps_x, _ex_eps_y, _ex_eps_z = _eps, 0.0, 0.0
 
 @njit(cache=True)
 def project_and_norm(vx, vy, vz):
+    """
+    Project vector onto tangent plane and normalize.
+
+    Parameters
+    ----------
+    vx, vy, vz : float
+        Components of the 3D vector to project.
+
+    Returns
+    -------
+    tuple of float
+        Normalized projected vector components (px, py, pz).
+
+    Notes
+    -----
+    Projects the input vector onto the tangent plane at the north pole
+    by taking the cross product with the z-axis (0,0,1). If the projection
+    is too small (nearly parallel to z), adds a small epsilon perturbation
+    in the x-direction to ensure numerical stability.
+    """
     # cross with zz = (0,0,1)
     px = _zzy * vz - _zzz * vy  # 0*vz - 1*vy = -vy
     py = _zzz * vx - _zzx * vz  # 1*vx - 0*vz = vx
@@ -365,6 +655,27 @@ def project_and_norm(vx, vy, vz):
 
 @njit(cache=True)
 def get_rotation_angle(r1, r2):
+    """
+    Compute rotation angles between two 3D vectors on the sphere.
+
+    Parameters
+    ----------
+    r1, r2 : numpy.ndarray
+        3D unit vectors pointing to different positions on the sphere.
+
+    Returns
+    -------
+    tuple of float
+        Two rotation angles (a12, a21) needed for coordinate transformations
+        between the local coordinate systems at the two positions.
+
+    Notes
+    -----
+    This function computes the rotation angles needed for transforming
+    spin-2 quantities (like polarization) between different coordinate
+    systems on the sphere. Essential for proper handling of polarization
+    correlations in curved geometry.
+    """
     # cross-product r1 × r2 → r12
     r12x = r1[1] * r2[2] - r1[2] * r2[1]
     r12y = r1[2] * r2[0] - r1[0] * r2[2]
@@ -409,11 +720,48 @@ def get_rotation_angle(r1, r2):
 
 
 def matrix_mult(A, B):
+    """
+    Matrix multiplication wrapper.
+
+    Parameters
+    ----------
+    A, B : numpy.ndarray
+        2D matrices to multiply.
+
+    Returns
+    -------
+    numpy.ndarray
+        Result of matrix multiplication A @ B.
+
+    Notes
+    -----
+    Simple wrapper around NumPy's matmul for consistency with
+    other matrix operations in the module.
+    """
     return np.matmul(A, B)
 
 
 @njit(cache=True)
 def matrix_trace(A, B):
+    """
+    Compute trace of matrix product A @ B.
+
+    Parameters
+    ----------
+    A, B : numpy.ndarray
+        2D square matrices of the same size.
+
+    Returns
+    -------
+    float
+        Trace of the matrix product: tr(A @ B) = Σ_i Σ_j A_ij B_ji.
+
+    Notes
+    -----
+    Optimized computation that avoids explicitly forming the matrix
+    product. Computes tr(AB) = Σ_i Σ_j A_ij B_ji directly for better
+    performance and memory efficiency.
+    """
     n = A.shape[0]
     s = 0.0
     for i in range(n):
@@ -425,6 +773,30 @@ def matrix_trace(A, B):
 # Basic Cholesky factorization (lower triangular)
 @njit(cache=True)
 def cholesky_lower(A):
+    """
+    Compute Cholesky decomposition of symmetric positive definite matrix.
+
+    Parameters
+    ----------
+    A : numpy.ndarray
+        2D symmetric positive definite matrix.
+
+    Returns
+    -------
+    numpy.ndarray
+        Lower triangular Cholesky factor L such that A = L @ L.T.
+
+    Raises
+    ------
+    ValueError
+        If matrix is not positive definite.
+
+    Notes
+    -----
+    Implements the basic Cholesky decomposition algorithm optimized
+    with Numba. Used for efficient matrix operations in covariance
+    matrix computations.
+    """
     n = A.shape[0]
     L = np.zeros_like(A)
     for i in range(n):
@@ -445,6 +817,25 @@ def cholesky_lower(A):
 # Inverse of lower triangular matrix L
 @njit(cache=True)
 def invert_lower_triangular(L):
+    """
+    Compute inverse of lower triangular matrix.
+
+    Parameters
+    ----------
+    L : numpy.ndarray
+        2D lower triangular matrix to invert.
+
+    Returns
+    -------
+    numpy.ndarray
+        Inverse of the lower triangular matrix L.
+
+    Notes
+    -----
+    Efficient algorithm for inverting lower triangular matrices using
+    forward substitution. Optimized with Numba for performance in
+    matrix decomposition operations.
+    """
     n = L.shape[0]
     Linv = np.zeros_like(L)
     for i in range(n):
@@ -459,6 +850,26 @@ def invert_lower_triangular(L):
 
 @njit
 def copy_lower_to_upper(M):
+    """
+    Copy lower triangular part to upper triangular part of matrix.
+
+    Parameters
+    ----------
+    M : numpy.ndarray
+        2D square matrix to symmetrize.
+
+    Returns
+    -------
+    numpy.ndarray
+        Symmetric matrix with upper part copied from lower part.
+
+    Notes
+    -----
+    In-place operation that makes a matrix symmetric by copying
+    the lower triangular elements to the corresponding upper
+    triangular positions. Used after Cholesky decomposition
+    operations to reconstruct full symmetric matrices.
+    """
     n = M.shape[0]
     for i in range(n):
         for j in range(i):
@@ -467,6 +878,30 @@ def copy_lower_to_upper(M):
 
 
 def matrix_inverse_symm(M):
+    """
+    Compute inverse of symmetric positive definite matrix.
+
+    Parameters
+    ----------
+    M : numpy.ndarray
+        2D square symmetric positive definite matrix to invert.
+
+    Returns
+    -------
+    numpy.ndarray
+        Inverse of the input matrix.
+
+    Raises
+    ------
+    ValueError
+        If matrix is not square or if Cholesky decomposition fails.
+
+    Notes
+    -----
+    Uses LAPACK's dpotrf (Cholesky decomposition) and dpotri (inverse)
+    for efficient and numerically stable inversion of symmetric positive
+    definite matrices. Essential for covariance matrix operations.
+    """
     if M.shape[0] != M.shape[1]:
         raise ValueError("Matrix must be square")
 

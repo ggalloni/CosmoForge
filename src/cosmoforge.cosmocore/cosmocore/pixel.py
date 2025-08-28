@@ -1,3 +1,44 @@
+"""
+Pixel-space operations for cosmological analysis.
+
+This module provides optimized functions for pixel-space computations in
+cosmological data analysis, including signal matrix calculations, pointing
+vector computations, and pixel masking operations. Many functions are
+optimized with Numba for performance.
+
+Functions
+---------
+count_nonzero_mask
+    Count non-zero pixels in a mask.
+pixel_active
+    Extract active pixel indices from multi-field masks.
+compute_pointings
+    Compute 3D pointing vectors for HEALPix pixels.
+compute_00_contribution
+    Compute spin-0 x spin-0 field contributions to signal matrix.
+compute_22_contribution
+    Compute spin-2 x spin-2 field contributions to signal matrix.
+compute_02_contribution
+    Compute spin-0 x spin-2 field contributions to signal matrix.
+compute_signal_matrix
+    Build the full signal covariance matrix.
+derivative_step_00
+    Derivative computation for spin-0 x spin-0 correlations.
+derivative_step_02
+    Derivative computation for spin-0 x spin-2 correlations.
+derivative_step_22
+    Derivative computation for spin-2 x spin-2 correlations.
+do_derivative_step
+    Execute derivative step for Fisher matrix calculations.
+
+Notes
+-----
+This module heavily uses Numba's @njit decorator for performance optimization.
+The signal matrix calculations implement the full pixel-space likelihood for
+CMB analysis with proper handling of spin-0 (temperature) and spin-2
+(polarization) fields.
+"""
+
 import healpy as hp
 import numpy as np
 from numba import njit
@@ -13,6 +54,24 @@ from .fields import FieldCollection
 
 @njit(cache=True)
 def count_nonzero_mask(mask):
+    """
+    Count non-zero pixels in a 1D mask array.
+
+    Parameters
+    ----------
+    mask : numpy.ndarray
+        1D array representing pixel mask values.
+
+    Returns
+    -------
+    int
+        Number of pixels with absolute value > 0.5.
+
+    Notes
+    -----
+    This function is optimized with Numba for performance in tight loops.
+    Uses threshold of 0.5 to determine active pixels.
+    """
     npix = mask.shape
     npixs = 0
     ntemp = 0
@@ -25,6 +84,25 @@ def count_nonzero_mask(mask):
 
 @njit(cache=True)
 def pixel_active(mask):
+    """
+    Extract active pixel indices from a multi-field mask.
+
+    Parameters
+    ----------
+    mask : numpy.ndarray
+        2D array of shape (npix, nmaps) containing mask values for each field.
+
+    Returns
+    -------
+    numpy.ndarray
+        1D array of active pixel indices in flattened format where each index
+        is computed as field_index * npix + pixel_index.
+
+    Notes
+    -----
+    This function flattens multi-field pixel indices into a single array
+    for efficient matrix operations. Optimized with Numba for performance.
+    """
     npix, nmaps = mask.shape
     count = 0
     for j in range(nmaps):
@@ -43,6 +121,34 @@ def pixel_active(mask):
 
 
 def compute_pointings(nside, npixs, point_vectors, active, ordering):
+    """
+    Compute 3D pointing vectors for active HEALPix pixels.
+
+    Parameters
+    ----------
+    nside : int
+        HEALPix resolution parameter.
+    npixs : list of int
+        Number of active pixels for each field.
+    point_vectors : tuple of numpy.ndarray
+        Tuple of arrays to store pointing vectors for each field.
+        Each array has shape (n_active, 3).
+    active : numpy.ndarray or tuple
+        Active pixel indices for each field.
+    ordering : int
+        HEALPix pixel ordering scheme (0 for RING, 1 for NESTED).
+
+    Returns
+    -------
+    tuple of numpy.ndarray
+        Updated pointing vectors with normalized 3D unit vectors.
+
+    Notes
+    -----
+    Converts HEALPix pixel indices to 3D Cartesian unit vectors pointing
+    to pixel centers. Used for spherical harmonic calculations and
+    geometric operations.
+    """
     nmaps = len(npixs)
 
     for field_idx in range(nmaps):
@@ -63,6 +169,31 @@ def compute_pointings(nside, npixs, point_vectors, active, ordering):
 
 @njit(cache=True)
 def compute_00_contribution(cl, S_slice, vec1, vec2, legendre, mode, remove_dipole=False):
+    """
+    Compute spin-0 x spin-0 field contribution to signal matrix.
+
+    Parameters
+    ----------
+    cl : numpy.ndarray
+        Power spectrum coefficients for the field correlation.
+    S_slice : numpy.ndarray
+        2D array slice of signal matrix to fill.
+    vec1, vec2 : numpy.ndarray
+        3D pointing vectors for the two fields, shape (npix, 3).
+    legendre : numpy.ndarray
+        Temporary array for Legendre polynomial computation.
+    mode : int
+        Computation mode (0 for symmetric, 1 for general).
+    remove_dipole : bool, optional
+        Whether to suppress dipole contribution for temperature autocorrelation.
+
+    Notes
+    -----
+    Implements the pixel-space covariance for scalar fields (e.g., temperature).
+    Uses Legendre polynomials to compute angular correlations. The dipole
+    removal is applied for temperature-temperature correlations to handle
+    coordinate system effects.
+    """
     npix = S_slice.shape[0]
     if mode == 0:
         entry = np.sum(cl)
@@ -87,6 +218,29 @@ def compute_00_contribution(cl, S_slice, vec1, vec2, legendre, mode, remove_dipo
 
 @njit(cache=True)
 def compute_22_contribution(cl11, cl22, cl12, S_slice, vec1, vec2, legendre, f1, f2):
+    """
+    Compute spin-2 x spin-2 field contribution to signal matrix.
+
+    Parameters
+    ----------
+    cl11, cl22, cl12 : numpy.ndarray
+        Power spectra for EE, BB, and EB correlations respectively.
+    S_slice : numpy.ndarray
+        2D array slice of signal matrix to fill.
+    vec1, vec2 : numpy.ndarray
+        3D pointing vectors for the two fields, shape (npix, 3).
+    legendre : numpy.ndarray
+        Temporary array for Legendre polynomial computation.
+    f1, f2 : numpy.ndarray
+        Temporary arrays for spin-2 harmonic functions.
+
+    Notes
+    -----
+    Implements the pixel-space covariance for polarization fields with proper
+    rotation handling. Accounts for E/B mode mixing and coordinate rotations
+    between different pixel positions. The matrix structure handles Q and U
+    Stokes parameters with appropriate geometric transformations.
+    """
     npix = S_slice.shape[0] // 2
 
     legendre_22_inplace(1.0, legendre, f1, f2)
@@ -132,6 +286,28 @@ def compute_22_contribution(cl11, cl22, cl12, S_slice, vec1, vec2, legendre, f1,
 
 @njit(cache=True)
 def compute_02_contribution(cl12, cl13, S_slice, vec0, vec2, legendre):
+    """
+    Compute spin-0 x spin-2 field contribution to signal matrix.
+
+    Parameters
+    ----------
+    cl12, cl13 : numpy.ndarray
+        Cross-power spectra for T-Q and T-U correlations respectively.
+    S_slice : numpy.ndarray
+        2D array slice of signal matrix to fill.
+    vec0 : numpy.ndarray
+        3D pointing vectors for spin-0 field, shape (npix, 3).
+    vec2 : numpy.ndarray
+        3D pointing vectors for spin-2 field, shape (npix, 3).
+    legendre : numpy.ndarray
+        Temporary array for Legendre polynomial computation.
+
+    Notes
+    -----
+    Implements cross-correlations between temperature (spin-0) and polarization
+    (spin-2) fields. Handles coordinate rotations and the coupling between
+    scalar and tensor modes on the sphere.
+    """
     npix_spin0 = vec0.shape[0]
     npix_spin2 = vec2.shape[0]
 
@@ -152,6 +328,34 @@ def compute_signal_matrix(
     lmax,
     fields: FieldCollection,
 ):
+    """
+    Build the full signal covariance matrix for cosmological fields.
+
+    Parameters
+    ----------
+    S : numpy.ndarray
+        2D array to store the signal covariance matrix.
+    lmax : int
+        Maximum multipole for power spectrum computations.
+    fields : FieldCollection
+        Collection of cosmological fields with power spectra and pointing vectors.
+
+    Notes
+    -----
+    Constructs the complete pixel-space signal covariance matrix by combining
+    contributions from all field pairs. Handles different spin combinations:
+    - Spin-0 x Spin-0: Temperature-like correlations
+    - Spin-2 x Spin-2: Polarization-like correlations
+    - Spin-0 x Spin-2: Temperature-polarization cross-correlations
+
+    The matrix structure accounts for proper field ordering and spin weights.
+    Cross-correlations between different spin-2 fields are not yet implemented.
+
+    Raises
+    ------
+    NotImplementedError
+        If cross-correlation between different spin-2 fields is requested.
+    """
     spins = fields.spin
     npixs = fields.n_active
 
@@ -241,6 +445,29 @@ def compute_signal_matrix(
 
 @njit(cache=True)
 def derivative_step_00(S_slice, wl, vec1, vec2, current_ell, legendre, mode):
+    """
+    Compute derivative step for spin-0 x spin-0 field correlations.
+
+    Parameters
+    ----------
+    S_slice : numpy.ndarray
+        2D array slice to store derivative contributions.
+    wl : numpy.ndarray
+        Weighted coefficients for the current multipole.
+    vec1, vec2 : numpy.ndarray
+        3D pointing vectors for the two fields.
+    current_ell : int
+        Current multipole moment for the derivative calculation.
+    legendre : numpy.ndarray
+        Temporary array for Legendre polynomial computation.
+    mode : int
+        Computation mode (0 for symmetric, 1 for general).
+
+    Notes
+    -----
+    Computes the derivative of the signal matrix with respect to power spectrum
+    parameters for scalar field correlations. Used in Fisher matrix calculations.
+    """
     npix = S_slice.shape[0]
     if mode == 0:
         for i in range(npix):
@@ -264,6 +491,32 @@ def derivative_step_00(S_slice, wl, vec1, vec2, current_ell, legendre, mode):
 
 @njit(cache=True)
 def derivative_step_02(S_slice, wl, vec0, vec2, current_ell, mode, legendre):
+    """
+    Compute derivative step for spin-0 x spin-2 field correlations.
+
+    Parameters
+    ----------
+    S_slice : numpy.ndarray
+        2D array slice to store derivative contributions.
+    wl : numpy.ndarray
+        Weighted coefficients for the current multipole.
+    vec0 : numpy.ndarray
+        3D pointing vectors for the spin-0 field.
+    vec2 : numpy.ndarray
+        3D pointing vectors for the spin-2 field.
+    current_ell : int
+        Current multipole moment for the derivative calculation.
+    mode : int
+        Computation mode (0 for T-Q, 1 for T-U correlations).
+    legendre : numpy.ndarray
+        Temporary array for Legendre polynomial computation.
+
+    Notes
+    -----
+    Computes derivatives for temperature-polarization cross-correlations.
+    Handles coordinate rotations and mode-dependent sign conventions.
+    Used in Fisher matrix calculations for cross-spectrum parameters.
+    """
     npix_spin0 = vec0.shape[0]
     npix_spin2 = vec2.shape[0]
 
@@ -289,6 +542,32 @@ def derivative_step_02(S_slice, wl, vec0, vec2, current_ell, mode, legendre):
 
 @njit(cache=True)
 def derivative_step_22(S_slice, wl, vec1, vec2, current_ell, mode, legendre, f1, f2):
+    """
+    Compute derivative step for spin-2 x spin-2 field correlations.
+
+    Parameters
+    ----------
+    S_slice : numpy.ndarray
+        2D array slice to store derivative contributions.
+    wl : numpy.ndarray
+        Weighted coefficients for the current multipole.
+    vec1, vec2 : numpy.ndarray
+        3D pointing vectors for the two spin-2 fields.
+    current_ell : int
+        Current multipole moment for the derivative calculation.
+    mode : int
+        Polarization mode (0 for EE, 1 for BB, 2 for EB).
+    legendre : numpy.ndarray
+        Temporary array for Legendre polynomial computation.
+    f1, f2 : numpy.ndarray
+        Temporary arrays for spin-2 harmonic functions.
+
+    Notes
+    -----
+    Computes derivatives for polarization-polarization correlations including
+    proper E/B mode decomposition and coordinate rotations. Handles the three
+    independent polarization power spectra: EE, BB, and EB.
+    """
     npix = S_slice.shape[0] // 2
 
     legendre_22_inplace(1.0, legendre, f1, f2)
@@ -356,6 +635,33 @@ def do_derivative_step(
     current_ell,
     fields: FieldCollection,
 ):
+    """
+    Execute derivative step for Fisher matrix calculations.
+
+    Parameters
+    ----------
+    S : numpy.ndarray
+        2D signal matrix to fill with derivative contributions.
+    spectrum : int
+        Index of the power spectrum being differentiated.
+    npixs : list of int
+        Number of active pixels for each field (deprecated, use fields.n_active).
+    spins : list of int
+        Spin values for each field (deprecated, use fields.spin).
+    current_ell : int
+        Current multipole moment for the derivative calculation.
+    fields : FieldCollection
+        Collection of cosmological fields with power spectra and metadata.
+
+    Notes
+    -----
+    Orchestrates the computation of signal matrix derivatives with respect to
+    power spectrum parameters. Determines the appropriate field combinations
+    and calls the corresponding derivative functions based on spin values.
+
+    Used in Fisher matrix calculations to compute parameter sensitivities.
+    The function handles different field types and cross-correlations automatically.
+    """
     spins = fields.spin
     npixs = fields.n_active
     label = fields.spectra_labels[spectrum]
