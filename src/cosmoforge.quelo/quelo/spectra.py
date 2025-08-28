@@ -73,8 +73,8 @@ class Spectra(Core):
         # Initialize QML-specific variables
         self.maps1 = None
         self.maps2 = None
-        self.y = None
-        self.ynb = None
+        self.qml_results = None
+        self.qml_noise_bias = None
         self.invfisher = None
 
     def _reuse_fisher_components(self):
@@ -122,7 +122,7 @@ class Spectra(Core):
         """
         Load covariance matrices from files.
         """
-        ntot = sum(self.collection.n_active)
+        ntot = self.collection.total_active_pixels
 
         # Load inverted covariance matrices
         self.invCov1 = np.fromfile(self.params.outinvcovmatfile1).reshape(ntot, ntot)
@@ -338,14 +338,14 @@ class Spectra(Core):
                 if self.params.do_cross:
                     # Cross-correlation case
                     for isim in range(self.params.nsims):
-                        self.y[isim, il] = matrix_mult(
+                        self.qml_results[isim, il] = matrix_mult(
                             self.maps2[:, isim].T, matrix_mult(E, self.maps1[:, isim])
                         )
                 else:
                     # Auto-correlation case
                     # Compute noise bias
                     tr_ne = matrix_trace(self.NCov1, E)
-                    self.ynb[il] = tr_ne
+                    self.qml_noise_bias[il] = tr_ne
 
                     for isim in range(self.params.nsims):
                         qml_value = matrix_mult(
@@ -355,7 +355,7 @@ class Spectra(Core):
                         if hasattr(self.params, "remove_nb") and self.params.remove_nb:
                             qml_value -= tr_ne
 
-                        self.y[isim, il] = qml_value
+                        self.qml_results[isim, il] = qml_value
 
         # Synchronize all processes
         self.comm.Barrier()
@@ -380,33 +380,20 @@ class Spectra(Core):
             Number of multipole bins
         """
         # Reduce y vectors
-        red_y = np.zeros((self.params.nsims, nell), dtype=np.float64)
-        self.comm.Reduce(self.y, red_y, op=MPI.SUM, root=0)
+        reduced_qml_results = np.zeros((self.params.nsims, nell), dtype=np.float64)
+        self.comm.Reduce(self.qml_results, reduced_qml_results, op=MPI.SUM, root=0)
 
         if not self.params.do_cross:
             # Reduce noise bias
-            red_ynb = np.zeros(nell, dtype=np.float64)
-            self.comm.Reduce(self.ynb, red_ynb, op=MPI.SUM, root=0)
+            reduced_qml_noise_bias = np.zeros(nell, dtype=np.float64)
+            self.comm.Reduce(
+                self.qml_noise_bias, reduced_qml_noise_bias, op=MPI.SUM, root=0
+            )
 
         if self.rank == 0:
-            self.y = red_y
+            self.qml_results = reduced_qml_results
             if not self.params.do_cross:
-                self.ynb = red_ynb
-
-    def _write_cl(self, filename: str, cl_array: np.ndarray):
-        """
-        Write Cl array to file.
-
-        Parameters:
-        -----------
-        filename : str
-            Output filename
-        cl_array : np.ndarray
-            Cl array to write
-        """
-        # Use simple numpy save for now
-        # Could be enhanced to use a more sophisticated format
-        np.savetxt(filename, cl_array)
+                self.qml_noise_bias = reduced_qml_noise_bias
 
     def compute(self):
         """
@@ -491,7 +478,35 @@ class Spectra(Core):
         self.invfisher = self.comm.bcast(
             self.invfisher if self.rank == 0 else None, root=0
         )
-        self.vecmul = self.comm.bcast(self.vecmul if self.rank == 0 else None, root=0)
+        self.normalization = self.comm.bcast(
+            self.normalization if self.rank == 0 else None, root=0
+        )
+
+    def _normalize_spectra(self, spectra: np.ndarray) -> np.ndarray:
+        """
+        Apply final Fisher matrix multiplication to normalize spectra.
+
+        Parameters:
+        -----------
+        spectra : np.ndarray
+            Raw spectra to normalize
+
+        Returns:
+        --------
+        np.ndarray
+            Normalized spectra
+        """
+        if self.invfisher is None or self.normalization is None:
+            raise ValueError("Fisher inversion and normalization must be set up first.")
+
+        normalized_spectra = np.zeros_like(spectra)
+        for field_idx in range(spectra.shape[0]):
+            reduced_res_x_normalization = spectra[field_idx, :] * self.normalization
+            normalized_spectra[field_idx, :] = np.matmul(
+                reduced_res_x_normalization, self.invfisher
+            )
+
+        return normalized_spectra
 
     def get_power_spectra(self) -> np.ndarray | None:
         """
@@ -502,13 +517,8 @@ class Spectra(Core):
         np.ndarray or None
             Power spectra (only available on rank 0 after computation)
         """
-        if self.rank == 0 and self.y is not None:
-            # Apply final Fisher matrix multiplication as in the notebook
-            power_spectra = np.zeros_like(self.y)
-            for field_idx in range(self.params.nsims):
-                # Element-wise multiplication first, then matrix multiplication
-                redy_times_vecmul = self.y[field_idx, :] * self.vecmul
-                power_spectra[field_idx, :] = np.matmul(redy_times_vecmul, self.invfisher)
+        if self.rank == 0 and self.qml_results is not None:
+            power_spectra = self._normalize_spectra(self.qml_results)
             return power_spectra
         return None
 
@@ -521,9 +531,7 @@ class Spectra(Core):
         np.ndarray or None
             Noise bias (only available on rank 0 after computation, auto-correlation only)
         """
-        if self.rank == 0 and self.ynb is not None:
-            # Apply final Fisher matrix multiplication to noise bias
-            redynb_times_vecmul = self.ynb * self.vecmul
-            noise_bias = np.matmul(redynb_times_vecmul, self.invfisher)
+        if self.rank == 0 and self.qml_noise_bias is not None:
+            noise_bias = self._normalize_spectra(self.qml_noise_bias)
             return noise_bias
         return None
