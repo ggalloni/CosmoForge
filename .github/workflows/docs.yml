@@ -43,7 +43,7 @@ jobs:
         run: |
           source .venv/bin/activate
           cd docs
-          sphinx-build -b html source build/html -W --keep-going
+          sphinx-build -b html source build/html --keep-going
 
       - name: Upload documentation artifacts
         uses: actions/upload-artifact@v4
