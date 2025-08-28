@@ -1,0 +1,31 @@
+[run]
+source = src/
+omit = 
+    */tests/*
+    */test_*
+    */__pycache__/*
+    */setup.py
+    */conftest.py
+    */.pytest_cache/*
+    */egg-info/*
+    */build/*
+    */dist/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    def __str__
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+
+show_missing = True
+precision = 2
+
+[html]
+directory = htmlcov
+
+[xml]
+output = coverage.xml

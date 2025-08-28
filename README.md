@@ -2,7 +2,7 @@
 
 [![Build Status](https://github.com/ggalloni/CosmoForge/workflows/Quick%20CI/badge.svg)](https://github.com/ggalloni/CosmoForge/actions)
 [![Documentation](https://github.com/ggalloni/CosmoForge/workflows/Build%20and%20Deploy%20Documentation/badge.svg)](https://ggalloni.github.io/CosmoForge/)
-[![Coverage](https://codecov.io/gh/ggalloni/CosmoForge/branch/master/graph/badge.svg)](https://codecov.io/gh/ggalloni/CosmoForge)
+[![codecov](https://codecov.io/gh/ggalloni/CosmoForge/graph/badge.svg?token=UOm3LdvL7J)](https://codecov.io/gh/ggalloni/CosmoForge)
 [![PyPI](https://img.shields.io/pypi/v/cosmoforge.svg)](https://pypi.org/project/cosmoforge/)
 [![Code style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/charliermarsh/ruff)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
