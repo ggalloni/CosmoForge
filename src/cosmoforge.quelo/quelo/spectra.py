@@ -12,6 +12,7 @@ from mpi4py import MPI
 
 from cosmocore import (
     Core,
+    FieldCollection,
     do_derivative_step,
     matrix_inverse_symm,
     matrix_mult,
@@ -19,6 +20,7 @@ from cosmocore import (
     read_maps,
     vec_to_cl,
     write_out_matrix,
+    writecl,
 )
 from cosmocore.settings import InputParams
 from quelo import Fisher
@@ -84,7 +86,7 @@ class Spectra(Core):
             hasattr(self.fisher_instance, "collection")
             and self.fisher_instance.collection is not None
         ):
-            self.collection = self.fisher_instance.collection
+            self.collection: FieldCollection = self.fisher_instance.collection
         if (
             hasattr(self.fisher_instance, "npixs")
             and self.fisher_instance.npixs is not None
@@ -249,14 +251,14 @@ class Spectra(Core):
             write_out_matrix(self.params.outcovmatfile, self.invfisher)
 
             # Compute and write parameter errors
-            vecerr = np.sqrt(np.diag(self.invfisher))
+            vec_error_bars = np.sqrt(np.diag(self.invfisher))
 
             # Convert vector to Cl format and write errors
             n_ell = self.params.lmax - 1
-            nspectra = len(vecerr) // n_ell
-            errl = np.zeros((n_ell, nspectra), dtype=np.float64)
-            vec_to_cl(vecerr, errl)
-            self._write_cl(self.params.outerrfile, errl)
+            nspectra = len(vec_error_bars) // n_ell
+            error_bars = np.zeros((n_ell, nspectra), dtype=np.float64)
+            vec_to_cl(vec_error_bars, error_bars)
+            writecl(self.params.outerrfile, error_bars)
 
     def setup_qml_computation(self):
         """
