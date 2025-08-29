@@ -96,7 +96,7 @@ language = "en"
 html_theme = "sphinx_rtd_theme"  # Use Read the Docs theme
 html_static_path = ["_static"]
 
-html_logo = "_static/logo_cosmoforge_light.png"
+html_logo = "_static/logo_cosmoforge_dark.png"
 
 # Copy .nojekyll file to output directory for GitHub Pages
 html_extra_path = [".nojekyll"]
@@ -105,8 +105,6 @@ html_extra_path = [".nojekyll"]
 html_theme_options = {
     "analytics_id": "",  # Provided by you if you have Google Analytics
     "logo_only": False,
-    "light_logo": "logo_cosmoforge_light.png",
-    "dark_logo": "logo_cosmoforge_dark.png",
     "prev_next_buttons_location": "bottom",
     "style_external_links": False,
     "collapse_navigation": True,
