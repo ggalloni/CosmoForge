@@ -1,4 +1,5 @@
 from .basics import (
+    get_rotation_angle,
     idx2spec,
     legendre_00,
     legendre_02,
@@ -6,6 +7,7 @@ from .basics import (
     matrix_inverse_symm,
     matrix_mult,
     matrix_trace,
+    spec2idx,
 )
 from .core import Core
 from .fields import (
@@ -84,6 +86,7 @@ __all__ = [
     "ScalarField",
     "create_field",
     # basics
+    "get_rotation_angle",
     "idx2spec",
     "legendre_00",
     "legendre_02",
@@ -91,4 +94,5 @@ __all__ = [
     "matrix_inverse_symm",
     "matrix_mult",
     "matrix_trace",
+    "spec2idx",
 ]
