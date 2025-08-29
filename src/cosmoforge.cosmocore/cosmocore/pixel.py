@@ -43,9 +43,9 @@ from numba import njit
 
 from .basics import (
     get_rotation_angle,
-    legendre_00_inplace,
-    legendre_02_inplace,
-    legendre_22_inplace,
+    legendre_00,
+    legendre_02,
+    legendre_22,
 )
 from .fields import FieldCollection
 
@@ -164,7 +164,7 @@ def compute_00_contribution(cl, S_slice, vec1, vec2, legendre, mode, remove_dipo
 
         for i in range(npix):
             for j in range(i + 1, npix):
-                legendre_00_inplace(vec1[j] @ vec2[i].T, legendre)
+                legendre_00(vec1[j] @ vec2[i].T, legendre)
                 S_slice[j, i] = np.sum(cl * legendre[1:])
                 if remove_dipole:
                     S_slice[j, i] += 1000.0 * cl[0] * (1.0 + legendre[0])
@@ -172,7 +172,7 @@ def compute_00_contribution(cl, S_slice, vec1, vec2, legendre, mode, remove_dipo
     elif mode == 1:
         for i in range(npix):
             for j in range(npix):
-                legendre_00_inplace(vec1[j] @ vec2[i].T, legendre)
+                legendre_00(vec1[j] @ vec2[i].T, legendre)
                 S_slice[j, i] = np.sum(cl * legendre[1:])
 
 
@@ -203,7 +203,7 @@ def compute_22_contribution(cl11, cl22, cl12, S_slice, vec1, vec2, legendre, f1,
     """
     npix = S_slice.shape[0] // 2
 
-    legendre_22_inplace(1.0, legendre, f1, f2)
+    legendre_22(1.0, legendre, f1, f2)
 
     qq = np.sum(cl11 * f1[1:]) - np.sum(cl22 * f2[1:])
     uu = np.sum(cl22 * f1[1:]) - np.sum(cl11 * f2[1:])
@@ -217,7 +217,7 @@ def compute_22_contribution(cl11, cl22, cl12, S_slice, vec1, vec2, legendre, f1,
 
     for i in range(npix):
         for j in range(i + 1, npix):
-            legendre_22_inplace(vec1[j] @ vec2[i].T, legendre, f1, f2)
+            legendre_22(vec1[j] @ vec2[i].T, legendre, f1, f2)
 
             qq = np.sum(cl11 * f1[1:]) - np.sum(cl22 * f2[1:])
             uu = np.sum(cl22 * f1[1:]) - np.sum(cl11 * f2[1:])
@@ -273,7 +273,7 @@ def compute_02_contribution(cl12, cl13, S_slice, vec0, vec2, legendre):
 
     for i in range(npix_spin0):
         for j in range(npix_spin2):
-            legendre_02_inplace(vec2[j] @ vec0[i].T, legendre)
+            legendre_02(vec2[j] @ vec0[i].T, legendre)
             tq = -np.sum(cl12 * legendre[1:])
             tu = -np.sum(cl13 * legendre[1:])
             ang1, _ = get_rotation_angle(vec2[j], vec0[i])
@@ -435,7 +435,7 @@ def derivative_step_00(S_slice, wl, vec1, vec2, current_ell, legendre, mode):
 
         for i in range(npix):
             for j in range(i + 1, npix):
-                legendre_00_inplace(vec1[j] @ vec2[i].T, legendre)
+                legendre_00(vec1[j] @ vec2[i].T, legendre)
                 S_slice[j, i] = legendre[current_ell - 1] * wl[current_ell - 2]
 
         for i in range(S_slice.shape[0]):
@@ -445,7 +445,7 @@ def derivative_step_00(S_slice, wl, vec1, vec2, current_ell, legendre, mode):
     elif mode == 1:
         for i in range(npix):
             for j in range(npix):
-                legendre_00_inplace(vec1[j] @ vec2[i].T, legendre)
+                legendre_00(vec1[j] @ vec2[i].T, legendre)
                 S_slice[j, i] = legendre[current_ell - 1] * wl[current_ell - 2]
 
 
@@ -482,7 +482,7 @@ def derivative_step_02(S_slice, wl, vec0, vec2, current_ell, mode, legendre):
 
     for i in range(npix_spin0):
         for j in range(npix_spin2):
-            legendre_02_inplace(vec2[j] @ vec0[i].T, legendre)
+            legendre_02(vec2[j] @ vec0[i].T, legendre)
 
             ang1, _ = get_rotation_angle(vec2[j], vec0[i])
             cos1 = np.cos(ang1)
@@ -530,7 +530,7 @@ def derivative_step_22(S_slice, wl, vec1, vec2, current_ell, mode, legendre, f1,
     """
     npix = S_slice.shape[0] // 2
 
-    legendre_22_inplace(1.0, legendre, f1, f2)
+    legendre_22(1.0, legendre, f1, f2)
 
     if mode == 0:  # such as EE
         qq = f1[current_ell - 1] * wl[current_ell - 2]
@@ -553,7 +553,7 @@ def derivative_step_22(S_slice, wl, vec1, vec2, current_ell, mode, legendre, f1,
 
     for i in range(npix):
         for j in range(i + 1, npix):
-            legendre_22_inplace(vec1[j] @ vec2[i].T, legendre, f1, f2)
+            legendre_22(vec1[j] @ vec2[i].T, legendre, f1, f2)
             if mode == 0:  # such as EE
                 qq = f1[current_ell - 1] * wl[current_ell - 2]
                 uu = -f2[current_ell - 1] * wl[current_ell - 2]

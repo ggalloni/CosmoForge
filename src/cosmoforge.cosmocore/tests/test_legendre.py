@@ -10,10 +10,9 @@ import numpy as np
 from numba import njit
 
 from cosmocore import (
-    legendre_00_inplace,
-    legendre_02_inplace,
-    legendre_22_inplace,
-    legendre_unified_inplace,
+    legendre_00,
+    legendre_02,
+    legendre_22,
 )
 
 
@@ -158,6 +157,71 @@ def legendre_02_non_inplace(scalar_prod, lmax):
         p_prev1 = p_curr
 
     return legendre
+
+
+@njit(cache=True)
+def legendre_unified_inplace(scalar_prod, legendre, spin_case):
+    """
+    In-place unified Legendre polynomial computation.
+
+    Parameters
+    ----------
+    scalar_prod : float
+        Argument x for the Legendre polynomials.
+    legendre : numpy.ndarray
+        Pre-allocated array to fill with polynomial values (will be zeroed first).
+    spin_case : str
+        Spin case identifier: "00" for P_l, "22" for P_l^{22}, "02" for P_l^{02}.
+
+    Notes
+    -----
+    This is the most efficient version for hot loops - avoids all allocations
+    and unifies the three recurrence relations. The array is cleared and then
+    populated with the appropriate base cases and recurrence relation for
+    the specified spin case.
+    """
+    lmax = len(legendre)
+    # Clear array
+    legendre[:] = 0.0
+
+    x = scalar_prod
+    x2 = x * x
+
+    # Set base cases
+    if spin_case == "00":  # P_l case (00)
+        if lmax >= 1:
+            legendre[0] = x
+        if lmax >= 2:
+            legendre[1] = 1.5 * x2 - 0.5
+    elif spin_case == "22":  # P_l^{22} case (22)
+        if lmax >= 2:
+            legendre[1] = 3.0
+    elif spin_case == "02":  # P_l^{02} case (02)
+        if lmax >= 2:
+            legendre[1] = 3.0 * (1.0 - x2)
+
+    if lmax == 2:
+        return
+
+    # Unified recurrence - factorized for maximum efficiency
+    for ell in range(3, lmax + 1):
+        coeff_2l_minus_1 = 2 * ell - 1
+
+        if spin_case == "00":  # ((2l-1)xP_{l-1} - (l-1)P_{l-2})/l
+            numerator = (
+                coeff_2l_minus_1 * x * legendre[ell - 2] - (ell - 1) * legendre[ell - 3]
+            )
+            legendre[ell - 1] = numerator / ell
+        elif spin_case == "22":  # (x(2l-1)P_{l-1} - (l+1)P_{l-2})/(l-2)
+            numerator = (
+                coeff_2l_minus_1 * x * legendre[ell - 2] - (ell + 1) * legendre[ell - 3]
+            )
+            legendre[ell - 1] = numerator / (ell - 2)
+        elif spin_case == "02":  # (x(2l-1)P_{l-1} - (l+1)P_{l-2})/(l-2)
+            numerator = (
+                coeff_2l_minus_1 * x * legendre[ell - 2] - (ell + 1) * legendre[ell - 3]
+            )
+            legendre[ell - 1] = numerator / (ell - 2)
 
 
 @njit(cache=True)
@@ -322,7 +386,7 @@ def correctness():
     unified_00 = legendre_unified_non_inplace(scalar_prod, lmax, "00")
 
     buffer_00 = np.empty(lmax, dtype=np.float64)
-    legendre_00_inplace(scalar_prod, buffer_00)
+    legendre_00(scalar_prod, buffer_00)
 
     buffer_unified_00 = np.empty(lmax, dtype=np.float64)
     legendre_unified_inplace(scalar_prod, buffer_unified_00, "00")
@@ -341,7 +405,7 @@ def correctness():
     buffer_22 = np.empty(lmax, dtype=np.float64)
     buffer_f1 = np.empty(lmax, dtype=np.float64)
     buffer_f2 = np.empty(lmax, dtype=np.float64)
-    legendre_22_inplace(scalar_prod, buffer_22, buffer_f1, buffer_f2)
+    legendre_22(scalar_prod, buffer_22, buffer_f1, buffer_f2)
 
     buffer_unified_22 = np.empty(lmax, dtype=np.float64)
     legendre_unified_inplace(scalar_prod, buffer_unified_22, "22")
@@ -358,7 +422,7 @@ def correctness():
     unified_02 = legendre_unified_non_inplace(scalar_prod, lmax, "02")
 
     buffer_02 = np.empty(lmax, dtype=np.float64)
-    legendre_02_inplace(scalar_prod, buffer_02)
+    legendre_02(scalar_prod, buffer_02)
 
     buffer_unified_02 = np.empty(lmax, dtype=np.float64)
     legendre_unified_inplace(scalar_prod, buffer_unified_02, "02")
@@ -401,7 +465,7 @@ def test_all_legendre():
         buffer_f1 = np.empty(lmax, dtype=np.float64)
         buffer_f2 = np.empty(lmax, dtype=np.float64)
         benchmark_inplace(
-            legendre_00_inplace, scalar_prod, buffer, "Optimized (in-place)", n_runs
+            legendre_00, scalar_prod, buffer, "Optimized (in-place)", n_runs
         )
         benchmark_inplace(
             legendre_unified_inplace,
@@ -423,7 +487,7 @@ def test_all_legendre():
         )
 
         benchmark_inplace_22(
-            legendre_22_inplace,
+            legendre_22,
             scalar_prod,
             buffer,
             buffer_f1,
@@ -451,7 +515,7 @@ def test_all_legendre():
         )
 
         benchmark_inplace(
-            legendre_02_inplace, scalar_prod, buffer, "Optimized (in-place)", n_runs
+            legendre_02, scalar_prod, buffer, "Optimized (in-place)", n_runs
         )
         benchmark_inplace(
             legendre_unified_inplace,

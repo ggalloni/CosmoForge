@@ -9,27 +9,15 @@ with Numba for performance in numerical calculations.
 Functions
 ---------
 legendre_00
-    Standard Legendre polynomials P_l(x).
-legendre_22
-    Associated Legendre polynomials P_l^{22}(x) for spin-2.
-legendre_02
-    Associated Legendre polynomials P_l^{02}(x) for spin-0 to spin-2.
-legendre_00_inplace
     In-place computation of standard Legendre polynomials.
-legendre_22_inplace
+legendre_22
     In-place computation of spin-2 associated Legendre polynomials.
-legendre_02_inplace
+legendre_02
     In-place computation of spin-0 to spin-2 associated Legendre polynomials.
-legendre_unified
-    Unified Legendre polynomial computation for different spin cases.
-legendre_unified_inplace
-    In-place unified Legendre polynomial computation.
 project_and_norm
     Project vector and normalize for rotation calculations.
 get_rotation_angle
     Compute rotation angles between vectors on the sphere.
-lower_triangular_inverse
-    Compute inverse of lower triangular matrix.
 copy_lower_to_upper
     Copy lower triangular part to upper triangular.
 matrix_inverse_symm
@@ -55,7 +43,7 @@ from scipy.linalg import lapack
 
 
 @njit(cache=True)
-def legendre_00_inplace(scalar_prod, legendre):
+def legendre_00(scalar_prod, legendre):
     """
     In-place computation of standard Legendre polynomials P_l(x).
 
@@ -88,7 +76,7 @@ def legendre_00_inplace(scalar_prod, legendre):
 
 
 @njit(cache=True)
-def legendre_22_inplace(scalar_prod, legendre, f1, f2):
+def legendre_22(scalar_prod, legendre, f1, f2):
     """
     In-place computation of associated Legendre polynomials P_l^{22}(x).
 
@@ -136,7 +124,7 @@ def legendre_22_inplace(scalar_prod, legendre, f1, f2):
 
 
 @njit(cache=True)
-def legendre_02_inplace(scalar_prod, legendre):
+def legendre_02(scalar_prod, legendre):
     """
     In-place computation of associated Legendre polynomials P_l^{02}(x).
 
@@ -167,71 +155,6 @@ def legendre_02_inplace(scalar_prod, legendre):
             scalar_prod * (2 * ell - 1) * legendre[ell - 2]
             - (ell + 1) * legendre[ell - 3]
         ) / (ell - 2)
-
-
-@njit(cache=True)
-def legendre_unified_inplace(scalar_prod, legendre, spin_case):
-    """
-    In-place unified Legendre polynomial computation.
-
-    Parameters
-    ----------
-    scalar_prod : float
-        Argument x for the Legendre polynomials.
-    legendre : numpy.ndarray
-        Pre-allocated array to fill with polynomial values (will be zeroed first).
-    spin_case : str
-        Spin case identifier: "00" for P_l, "22" for P_l^{22}, "02" for P_l^{02}.
-
-    Notes
-    -----
-    This is the most efficient version for hot loops - avoids all allocations
-    and unifies the three recurrence relations. The array is cleared and then
-    populated with the appropriate base cases and recurrence relation for
-    the specified spin case.
-    """
-    lmax = len(legendre)
-    # Clear array
-    legendre[:] = 0.0
-
-    x = scalar_prod
-    x2 = x * x
-
-    # Set base cases
-    if spin_case == "00":  # P_l case (00)
-        if lmax >= 1:
-            legendre[0] = x
-        if lmax >= 2:
-            legendre[1] = 1.5 * x2 - 0.5
-    elif spin_case == "22":  # P_l^{22} case (22)
-        if lmax >= 2:
-            legendre[1] = 3.0
-    elif spin_case == "02":  # P_l^{02} case (02)
-        if lmax >= 2:
-            legendre[1] = 3.0 * (1.0 - x2)
-
-    if lmax == 2:
-        return
-
-    # Unified recurrence - factorized for maximum efficiency
-    for ell in range(3, lmax + 1):
-        coeff_2l_minus_1 = 2 * ell - 1
-
-        if spin_case == "00":  # ((2l-1)xP_{l-1} - (l-1)P_{l-2})/l
-            numerator = (
-                coeff_2l_minus_1 * x * legendre[ell - 2] - (ell - 1) * legendre[ell - 3]
-            )
-            legendre[ell - 1] = numerator / ell
-        elif spin_case == "22":  # (x(2l-1)P_{l-1} - (l+1)P_{l-2})/(l-2)
-            numerator = (
-                coeff_2l_minus_1 * x * legendre[ell - 2] - (ell + 1) * legendre[ell - 3]
-            )
-            legendre[ell - 1] = numerator / (ell - 2)
-        elif spin_case == "02":  # (x(2l-1)P_{l-1} - (l+1)P_{l-2})/(l-2)
-            numerator = (
-                coeff_2l_minus_1 * x * legendre[ell - 2] - (ell + 1) * legendre[ell - 3]
-            )
-            legendre[ell - 1] = numerator / (ell - 2)
 
 
 @lru_cache
