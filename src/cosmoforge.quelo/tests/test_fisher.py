@@ -2,6 +2,7 @@ import os
 
 import numpy as np
 import pytest
+from mpi4py import MPI
 
 from quelo import Fisher
 
@@ -25,6 +26,47 @@ def get_fisher_matrix(
     os.unlink(config_file)
 
     return fisher_matrix
+
+
+@pytest.mark.skipif(
+    "OMPI_COMM_WORLD_RANK" not in os.environ and "PMI_RANK" not in os.environ,
+    reason="MPI test: run with mpirun/mpiexec",
+)
+def test_fisher_mpi_structure(local_path, config_resolver):
+    """
+    Test that only rank 0 gets the Fisher matrix, others get None,
+    and all ranks reach the end of run without error.
+    """
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+
+    fields = "TEB"
+    fisher_matrix = get_fisher_matrix(fields, config_resolver=config_resolver)
+
+    if rank == 0:
+        assert fisher_matrix is not None, "Rank 0 should get Fisher matrix"
+    else:
+        assert fisher_matrix is None, f"Rank {rank} should get None for Fisher matrix"
+
+    # Optionally, broadcast a success flag to ensure all ranks finished
+    success = True
+    all_success = comm.allreduce(success, op=MPI.LAND)
+    assert all_success, "All ranks should reach the end of the test"
+
+    if rank == 0:
+        file = local_path + f"/tests/data/nside4/{fields}/ref_fisher.dat"
+        ref = np.loadtxt(file, dtype=np.float64)
+        assert fisher_matrix.shape == ref.shape, (
+            f"Fisher matrix shape should match reference: {ref.shape}"
+        )
+
+        np.testing.assert_allclose(
+            fisher_matrix,
+            ref,
+            atol=1e-3,
+            rtol=1e-5,
+            err_msg=f"Fisher matrix for {fields} does not match reference.",
+        )
 
 
 @pytest.mark.parametrize("fields", ["T", "QU", "TQU", "TEB"])
