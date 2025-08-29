@@ -239,7 +239,6 @@ jobs:
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: ggalloni/CosmoForge
-          functionalities: carryforward
 
   summary:
     name: Test Summary
