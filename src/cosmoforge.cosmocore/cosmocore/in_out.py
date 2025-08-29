@@ -35,11 +35,27 @@ This module handles various file formats commonly used in CMB analysis:
 - Multi-simulation FITS files with structured field organization
 """
 
+import os
+
 import healpy as hp
 import numpy as np
 from astropy.io import fits
 
 from .settings import InputParams
+
+
+def _ensure_output_directory(filepath):
+    """
+    Ensure the parent directory of the given filepath exists.
+
+    Parameters
+    ----------
+    filepath : str
+        Path to a file for which the parent directory should be created.
+    """
+    output_dir = os.path.dirname(filepath.strip())
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
 
 def read_covmat(covmatfile, npix, nmaps, active, C):
@@ -99,6 +115,8 @@ def write_covmat_reduced(outcovmatfile, C):
     Writes the matrix in binary format using numpy's tofile method.
     The output can be read back using numpy.fromfile with appropriate reshaping.
     """
+    _ensure_output_directory(outcovmatfile)
+
     with open(outcovmatfile.strip(), "wb") as f:
         C.tofile(f)
 
@@ -155,6 +173,8 @@ def output_geometry(filegeometry, npixs, point_vectors, active):
     This format can be used for geometry debugging and external processing.
     """
     nmaps = len(npixs)
+
+    _ensure_output_directory(filegeometry)
 
     with open(filegeometry.strip(), "w") as f:
         for field_idx in range(nmaps):
@@ -251,6 +271,9 @@ def write_out_matrix(outfilematrix, matrix):
     to be human-readable or imported into other analysis tools.
     """
     n = matrix.shape[0]
+
+    _ensure_output_directory(outfilematrix)
+
     with open(outfilematrix, "w") as f:
         for i in range(n):
             line = "".join(f"{matrix[i, j]:15.7E}" for j in range(n))
