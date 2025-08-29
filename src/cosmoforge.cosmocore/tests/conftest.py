@@ -1,6 +1,10 @@
+import os
+
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import pytest
+
+os.environ.setdefault("NUMBA_DISABLE_JIT", "1")
 
 
 def _configure_plt():

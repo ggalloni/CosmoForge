@@ -163,16 +163,10 @@ def legendre_00(scalar_prod, lmax):
     Base cases: P_1(x) = x, P_2(x) = (3x² - 1)/2
     Used for temperature (spin-0) correlations in CMB analysis.
     """
-    if lmax <= 0:
-        return np.empty(0, dtype=np.float64)
-
     legendre = np.empty(lmax, dtype=np.float64)
 
     # Base cases
     legendre[0] = scalar_prod
-    if lmax == 1:
-        return legendre
-
     legendre[1] = 1.5 * scalar_prod * scalar_prod - 0.5
     if lmax == 2:
         return legendre
@@ -217,9 +211,6 @@ def legendre_22(scalar_prod, lmax):
     Base case: P_2^{22}(x) = 3
     Used for polarization (spin-2) auto-correlations in CMB analysis.
     """
-    if lmax <= 1:
-        return np.zeros(max(0, lmax), dtype=np.float64)
-
     legendre = np.zeros(lmax, dtype=np.float64)
 
     # Base case for l=2
@@ -349,9 +340,6 @@ def legendre_02(scalar_prod, lmax):
     Base case: P_2^{02}(x) = 3(1 - x²)
     Used for temperature-polarization cross-correlations in CMB analysis.
     """
-    if lmax <= 1:
-        return np.zeros(max(0, lmax), dtype=np.float64)
-
     legendre = np.zeros(lmax, dtype=np.float64)
 
     # Base case for l=2: P_2^{02} = 3(1 - x^2)
@@ -434,9 +422,6 @@ def legendre_unified(scalar_prod, lmax, spin_case):
     cases used in CMB analysis. Each case uses appropriate base conditions
     and recurrence relations.
     """
-    if lmax <= 0:
-        return np.empty(0, dtype=np.float64)
-
     legendre = np.zeros(lmax, dtype=np.float64)
     x = scalar_prod
     x2 = x * x
@@ -494,9 +479,6 @@ def legendre_unified_inplace(scalar_prod, legendre, spin_case):
     the specified spin case.
     """
     lmax = len(legendre)
-    if lmax <= 0:
-        return
-
     # Clear array
     legendre[:] = 0.0
 

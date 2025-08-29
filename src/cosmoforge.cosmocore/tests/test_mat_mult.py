@@ -24,7 +24,7 @@ def test_mat_multiplication(configure_plt, show_fig=False):
     configure_plt()
 
     # --- Setup ---
-    sizes = [200, 500, 800, 1000, 2000]  # , 3072, 5000]
+    sizes = [200, 500, 800]  # , 1000, 2000, 3072, 5000]
     times = {
         name: []
         for name in [

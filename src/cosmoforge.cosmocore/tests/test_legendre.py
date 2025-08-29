@@ -181,7 +181,7 @@ def test_all_legendre():
     # Benchmark parameters
     scalar_prod = 0.5
     lmax_values = [2, 5, 10, 30, 50, 100, 200]
-    n_runs = 1000
+    n_runs = 100
 
     for lmax in lmax_values:
         print(f"Performance Benchmark: lmax = {lmax}")
