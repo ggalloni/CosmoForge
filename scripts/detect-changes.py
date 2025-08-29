@@ -248,6 +248,13 @@ def main():
     for package, tests in test_strategy.items():
         print(f"TEST_{package.upper()}={','.join(tests)}")
 
+    # If testing all packages, also output individual package strategies
+    # for workflow parsing
+    if "all" in test_strategy:
+        print("TEST_COSMOCORE=lint,test")
+        print("TEST_QUELO=lint,test")
+        print("TEST_META=lint,test")
+
 
 if __name__ == "__main__":
     main()
