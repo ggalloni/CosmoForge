@@ -355,8 +355,8 @@ def get_field_index(hdu, field_name):
     hdu : astropy.io.fits.HDU
         FITS HDU containing field information in header.
     field_name : str
-        Field name(s) to look up. Can be single character ("T") or
-        multiple characters ("QU", "TQU") for multiple fields.
+        Field name to look up. Can be single field name ("T", "T1") or
+        multiple field names concatenated ("TQU") when using single-character fields.
 
     Returns
     -------
@@ -371,25 +371,31 @@ def get_field_index(hdu, field_name):
     Notes
     -----
     Supports two header formats for the "FIELDS" keyword:
-    - Comma-separated: "T,Q,U"
-    - Concatenated: "TQU"
+    - Comma-separated: "T,Q,U" or "T1,T2,T3"
+    - Concatenated: "TQU" (only for single-character field names)
 
-    For multi-character field_name, splits into individual characters
-    and returns indices for each requested field in order.
+    The function first tries to match the field_name as-is against available fields.
+    If that fails and all available fields are single characters, it splits the
+    field_name into individual characters and looks up each one.
     """
     fields_str = hdu.header.get("FIELDS", "")
 
     # Detect format: comma-separated vs concatenated
     if "," in fields_str:
-        # Comma-separated format: "T,Q,U"
+        # Comma-separated format: "T,Q,U" or "T1,T2,T3"
         available_fields = [f.strip() for f in fields_str.split(",")]
     else:
         # Concatenated format: "TQU" -> ["T", "Q", "U"]
         available_fields = list(fields_str.strip())
 
-    # Handle multi-character field specifications like "TQU", "QU", etc.
-    if len(field_name) > 1:
-        # Split the field_name into individual characters
+    # First, try to match field_name as-is (handles multi-character field names)
+    if field_name in available_fields:
+        return [available_fields.index(field_name)]
+
+    # If that fails and we have multi-character field_name, try splitting it
+    # into individual characters (only if all available fields are single chars)
+    if len(field_name) > 1 and all(len(f) == 1 for f in available_fields):
+        # Split the field_name into individual characters for legacy compatibility
         requested_fields = list(field_name)
         indices = []
 
@@ -400,9 +406,5 @@ def get_field_index(hdu, field_name):
 
         return indices
 
-    # Handle single field
-    else:
-        if field_name not in available_fields:
-            raise ValueError(f"Field '{field_name}' not found in {available_fields}")
-
-        return [available_fields.index(field_name)]
+    # If we get here, the field wasn't found
+    raise ValueError(f"Field '{field_name}' not found in {available_fields}")
