@@ -8,6 +8,11 @@
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
+<p align="center">
+  <img src="logos/logo_cosmoforge_light.png#gh-light-mode-only" alt="CosmoForge logo (light)" style="max-width:40%; height:auto;"/>
+  <img src="logos/logo_cosmoforge_dark.png#gh-dark-mode-only" alt="CosmoForge logo (dark)" style="max-width:40%; height:auto;"/>
+</p>
+
 > **📚 [Complete Documentation](https://ggalloni.github.io/CosmoForge/) | [Installation Guide](https://ggalloni.github.io/CosmoForge/installation.html) | [Quick Start](https://ggalloni.github.io/CosmoForge/quickstart.html) | [API Reference](https://ggalloni.github.io/CosmoForge/api/cosmocore.html)**
 
 CosmoForge is a comprehensive Python framework for cosmological analysis, focusing on Cosmic Microwave Background (CMB) data analysis using Fisher matrix and Quadratic Maximum Likelihood (QML) power spectrum estimation methods.
