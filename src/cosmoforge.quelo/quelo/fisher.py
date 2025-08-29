@@ -281,6 +281,7 @@ class Fisher(Core):
 
         # Add signal to noise covariance
         self.NCov1 = self.NCov1 + self.Sig
+        self.NCov1 = np.asfortranarray(self.NCov1)
         self.log(f"Combined covariance matrix shape: {self.NCov1.shape}", level=4)
 
         # Save combined covariance if not doing cross-correlation
@@ -295,6 +296,7 @@ class Fisher(Core):
         write_covmat_reduced(self.params.outinvcovmatfile1, self.NCov1)
 
         if self.params.do_cross:
+            self.NCov2 = self.NCov2 + self.Sig
             self.NCov2 = np.asfortranarray(self.NCov2)
             self.NCov2 = matrix_inverse_symm(self.NCov2)
             write_covmat_reduced(self.params.outinvcovmatfile2, self.NCov2)
