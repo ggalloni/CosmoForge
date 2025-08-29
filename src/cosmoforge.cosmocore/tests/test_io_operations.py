@@ -4,6 +4,7 @@ import inspect
 
 import healpy as hp
 import numpy as np
+from astropy.io import fits
 
 from cosmocore import read_covmat, read_maps, read_mask, writecl
 
@@ -94,41 +95,51 @@ def test_writecl_basic(tmp_path):
     np.testing.assert_allclose(data, power_spectra)
 
 
-def test_read_maps_basic(tmp_path):
+def test_read_maps(tmp_path):
     """Test map reading with simplified setup."""
     # Create a simple test case for read_maps
     nside = 2
     npix = hp.nside2npix(nside)  # 48 pixels
+    n_sims = 10
+
+    input_maps = []
+    hdus = [fits.PrimaryHDU()]
+    for i in range(n_sims):
+        header = fits.Header()
+        header["SIM_NUM"] = i
+        header["FIELDS"] = "T1,T2,T3"  # Use multi-character field names
+
+        map_data = np.ones((3, npix))
+        input_maps.append(map_data)
+        hdus.append(fits.ImageHDU(data=map_data, header=header, name=f"SIM_{i:03d}"))
+    input_maps = np.array(input_maps)
+    hdulist = fits.HDUList(hdus)
+
+    maps_file = tmp_path / "test_maps.fits"
+    hdulist.writeto(str(maps_file), overwrite=True)
 
     # Create active pixel indices for single field
-    n_active = 5
-    pixact = [np.array([0, 1, 2, 3, 4], dtype=np.int32)]  # First 5 pixels active
+    n_active = 3 * npix
+    pixact = np.array([np.arange(npix) for _ in range(3)])
 
-    # We need to create a FITS file with the expected structure
-    # For now, let's create a simple test that ensures the function can be called
-    # without crashing, even if we can't fully test the file reading
+    maps_output = np.empty((n_active, n_sims))
+    read_maps(
+        maps_output,
+        str(maps_file),
+        pixact,
+        ["T1", "T2", "T3"],  # Use multi-character field labels
+        1.0,
+    )
 
-    # Pre-allocate maps array
-    n_sims = 1
-    maps_output = np.zeros((n_active, n_sims), dtype=np.float64)
-
-    # Create a dummy FITS file (this will likely fail but tests the function signature)
-    maps_file = tmp_path / "test_maps.fits"
-
-    # Create simple map data and save with HEALPix
-    simple_map = np.random.randn(npix).astype(np.float32)
-    hp.write_map(str(maps_file), simple_map, overwrite=True)
-
-    # The function expects a specific FITS structure, so this will likely fail
-    # but we can at least test that it gets called with correct parameters
-    try:
-        read_maps(maps_output, str(maps_file), pixact, ["T"], 1.0)
-        # If it succeeds, check the output
-        assert maps_output.shape == (n_active, n_sims)
-    except (KeyError, AssertionError, ValueError):
-        # Expected to fail due to FITS structure mismatch
-        # This tests that the function signature is correct
-        assert True  # Pass the test since we verified the signature works
+    for sim_idx in range(n_sims):
+        for field_idx in range(3):
+            start = field_idx * npix
+            end = (field_idx + 1) * npix
+            np.testing.assert_allclose(
+                maps_output[start:end, sim_idx],
+                input_maps[sim_idx, field_idx, :],
+                rtol=1e-12,
+            )
 
 
 def test_io_operations_signatures():
