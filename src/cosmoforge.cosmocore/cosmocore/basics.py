@@ -14,12 +14,16 @@ legendre_22
     In-place computation of spin-2 associated Legendre polynomials.
 legendre_02
     In-place computation of spin-0 to spin-2 associated Legendre polynomials.
-project_and_norm
-    Project vector and normalize for rotation calculations.
+spec2idx
+    Convert field indices to spectrum index for compressed storage.
+idx2spec
+    Convert spectrum index back to field indices.
 get_rotation_angle
     Compute rotation angles between vectors on the sphere.
-copy_lower_to_upper
-    Copy lower triangular part to upper triangular.
+matrix_mult
+    Matrix multiplication wrapper.
+matrix_trace
+    Compute trace of matrix product A @ B.
 matrix_inverse_symm
     Compute inverse of symmetric positive definite matrix.
 
@@ -57,8 +61,8 @@ def legendre_00(scalar_prod, legendre):
     Notes
     -----
     Memory-efficient version that avoids allocations in hot loops.
-    Uses the same three-term recurrence as legendre_00 but operates
-    on pre-allocated arrays for maximum performance.
+    Uses the standard three-term recurrence relation for Legendre
+    polynomials but operates on pre-allocated arrays for maximum performance.
     """
     lmax = len(legendre)
     # Base cases
@@ -237,7 +241,7 @@ _ex_eps_x, _ex_eps_y, _ex_eps_z = _eps, 0.0, 0.0
 
 
 @njit(cache=True)
-def project_and_norm(vx, vy, vz):
+def _project_and_norm(vx, vy, vz):
     """
     Project vector onto tangent plane and normalize.
 
@@ -308,8 +312,8 @@ def get_rotation_angle(r1, r2):
     r12y /= mod
     r12z /= mod
 
-    r1sx, r1sy, _ = project_and_norm(r1[0], r1[1], r1[2])
-    r2sx, r2sy, _ = project_and_norm(r2[0], r2[1], r2[2])
+    r1sx, r1sy, _ = _project_and_norm(r1[0], r1[1], r1[2])
+    r2sx, r2sy, _ = _project_and_norm(r2[0], r2[1], r2[2])
 
     # dot r12·r1star  and decide sign from r12·zz
     dot1 = r12x * r1sx + r12y * r1sy
@@ -390,7 +394,7 @@ def matrix_trace(A, B):
 
 
 @njit
-def copy_lower_to_upper(M):
+def _copy_lower_to_upper(M):
     """
     Copy lower triangular part to upper triangular part of matrix.
 
@@ -454,4 +458,4 @@ def matrix_inverse_symm(M):
     if info != 0:
         raise ValueError(f"dpotri failed with info={info}")
 
-    return copy_lower_to_upper(inv_L)
+    return _copy_lower_to_upper(inv_L)
