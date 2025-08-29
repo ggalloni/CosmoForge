@@ -62,7 +62,11 @@ def config_resolver(local_path):
         # Update relative paths in config
         for key, value in config.items():
             if isinstance(value, str):
-                if value.startswith("tests/") or value.startswith("inputs/"):
+                if (
+                    value.startswith("tests/")
+                    or value.startswith("inputs/")
+                    or value.startswith("scripts/")
+                ):
                     # Add package prefix if needed
                     config[key] = package_prefix + value
 
