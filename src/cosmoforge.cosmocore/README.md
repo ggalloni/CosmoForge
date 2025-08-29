@@ -1,10 +1,40 @@
 # CosmoForge.CosmoCore
 
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![Documentation](https://img.shields.io/badge/docs-cosmocore-blue.svg)](https://ggalloni.github.io/CosmoForge/api/cosmocore.html)
-[![Performance](https://img.shields.io/badge/performance-numba-green.svg)](https://numba.pydata.org/)
+<p align="center">
+  <a href="https://github.com/ggalloni/CosmoForge/actions?query=workflow%3A%22Test+CosmoForge+Packages%22">
+    <img src="https://img.shields.io/github/actions/workflow/status/ggalloni/CosmoForge/test.yml?branch=master&label=CI&logo=github&style=for-the-badge" alt="CI Status">
+  </a>
+  <a href="https://ggalloni.github.io/CosmoForge/api/cosmocore.html">
+    <img src="https://img.shields.io/badge/docs-cosmocore-blue.svg?style=for-the-badge" alt="CosmoCore Documentation">
+  </a>
+  <a href="https://numba.pydata.org/">
+    <img src="https://img.shields.io/badge/performance-numba-green.svg?style=for-the-badge" alt="Numba Performance">
+  </a>
+  <a href="https://ggalloni.github.io/CosmoForge/">
+    <img src="https://img.shields.io/badge/docs-gh--pages-blue?logo=readthedocs&style=for-the-badge" alt="Main Documentation">
+  </a>
+  <a href="https://codecov.io/gh/ggalloni/CosmoForge">
+    <img src="https://img.shields.io/codecov/c/github/ggalloni/CosmoForge?logo=codecov&style=for-the-badge" alt="Coverage">
+  </a>
+  <a href="https://pypi.org/project/cosmoforge/">
+    <img src="https://img.shields.io/pypi/v/cosmoforge.svg?logo=pypi&style=for-the-badge" alt="PyPI">
+  </a>
+  <a href="https://github.com/charliermarsh/ruff">
+    <img src="https://img.shields.io/badge/code%20style-ruff-000000.svg?style=for-the-badge" alt="Code style: Ruff">
+  </a>
+  <a href="https://www.python.org/downloads/">
+    <img src="https://img.shields.io/badge/python-3.10%2B-blue.svg?logo=python&style=for-the-badge" alt="Python Version">
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-green.svg?style=for-the-badge" alt="License">
+  </a>
+</p>
 
-> **📚 [CosmoCore Documentation](https://ggalloni.github.io/CosmoForge/api/cosmocore.html) | [API Reference](https://ggalloni.github.io/CosmoForge/api/cosmocore/basics.html) | [Main Documentation](https://ggalloni.github.io/CosmoForge/)**
+---
+
+## 📚 Documentation
+
+> **[CosmoCore Documentation](https://ggalloni.github.io/CosmoForge/api/cosmocore.html) | [API Reference](https://ggalloni.github.io/CosmoForge/api/cosmocore/basics.html) | [Main Documentation](https://ggalloni.github.io/CosmoForge/)**
 
 CosmoCore is the foundational package of CosmoForge, providing core functionality for cosmological analysis including field management, matrix operations, I/O utilities, and fundamental mathematical operations.
 
@@ -190,7 +220,7 @@ def legendre_unified(cos_theta, lmax, pl_00, pl_02, pl_22):
 
 ```python
 def create_field(spin, nside, lmax, mask=None, labels=None):
-    """Create field based on spin value."""
+    """Create field based on spin value.""" 
     
 def compute_pointings(nside, active_pixels, ordering=1):
     """Compute pointing vectors for active pixels."""
