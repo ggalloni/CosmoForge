@@ -1,39 +1,11 @@
-# CosmoForge Quelo
+# CosmoForge.Quelo
 
-<p align="center">
-  <a href="https://github.com/ggalloni/CosmoForge/actions?query=workflow%3A%22Test+CosmoForge+Packages%22">
-    <img src="https://img.shields.io/github/actions/workflow/status/ggalloni/CosmoForge/test.yml?branch=master&label=CI&logo=github&style=for-the-badge" alt="CI Status">
-  </a>
-  <a href="https://ggalloni.github.io/CosmoForge/">
-    <img src="https://img.shields.io/badge/docs-gh--pages-blue?logo=readthedocs&style=for-the-badge" alt="Documentation">
-  </a>
-  <a href="https://codecov.io/gh/ggalloni/CosmoForge">
-    <img src="https://img.shields.io/codecov/c/github/ggalloni/CosmoForge?logo=codecov&style=for-the-badge" alt="Coverage">
-  </a>
-  <a href="https://pypi.org/project/cosmoforge/">
-    <img src="https://img.shields.io/pypi/v/cosmoforge.svg?logo=pypi&style=for-the-badge" alt="PyPI">
-  </a>
-  <a href="https://github.com/charliermarsh/ruff">
-    <img src="https://img.shields.io/badge/code%20style-ruff-000000.svg?style=for-the-badge" alt="Code style: Ruff">
-  </a>
-  <a href="https://www.python.org/downloads/">
-    <img src="https://img.shields.io/badge/python-3.10%2B-blue.svg?logo=python&style=for-the-badge" alt="Python Version">
-  </a>
-  <a href="LICENSE">
-    <img src="https://img.shields.io/badge/license-MIT-green.svg?style=for-the-badge" alt="License">
-  </a>
-    <img src="https://img.shields.io/badge/MPI-parallel-orange.svg?style=for-the-badge" alt="Parallelization">
-  </a>
-    <img src="https://img.shields.io/badge/method-QML-red.svg?style=for-the-badge" alt="QML Method">
-  </a>
-</p>
-</p>
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![Documentation](https://img.shields.io/badge/docs-quelo-blue.svg)](https://ggalloni.github.io/CosmoForge/api/quelo.html)
+[![Parallelization](https://img.shields.io/badge/MPI-parallel-orange.svg)](https://www.mpi-forum.org/)
+[![QML Method](https://img.shields.io/badge/method-QML-red.svg)](https://en.wikipedia.org/wiki/Maximum_likelihood_estimation)
 
----
-
-## 📚 Documentation
-
-See the main [CosmoForge documentation](https://ggalloni.github.io/CosmoForge/) for API reference and usage guides.
+> **📚 [Quelo Documentation](https://ggalloni.github.io/CosmoForge/api/quelo.html) | [Fisher Analysis API](https://ggalloni.github.io/CosmoForge/api/quelo/fisher.html) | [Spectra API](https://ggalloni.github.io/CosmoForge/api/quelo/spectra.html) | [Main Documentation](https://ggalloni.github.io/CosmoForge/)**
 
 Quelo is the analysis engine of CosmoForge, implementing Fisher matrix analysis and Quadratic Maximum Likelihood (QML) power spectrum estimation for cosmological parameter inference from CMB data.
 

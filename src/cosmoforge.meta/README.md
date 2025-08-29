@@ -1,37 +1,9 @@
 # CosmoForge.Meta
 
-<p align="center">
-  <a href="https://github.com/ggalloni/CosmoForge/actions?query=workflow%3A%22Test+CosmoForge+Packages%22">
-    <img src="https://img.shields.io/github/actions/workflow/status/ggalloni/CosmoForge/test.yml?branch=master&label=CI&logo=github&style=for-the-badge" alt="CI Status">
-  </a>
-  <a href="https://ggalloni.github.io/CosmoForge/api/meta.html">
-    <img src="https://img.shields.io/badge/docs-meta-blue.svg?style=for-the-badge" alt="Meta Documentation">
-  </a>
-  <a href="https://ggalloni.github.io/CosmoForge/">
-    <img src="https://img.shields.io/badge/docs-gh--pages-blue?logo=readthedocs&style=for-the-badge" alt="Main Documentation">
-  </a>
-  <a href="https://codecov.io/gh/ggalloni/CosmoForge">
-    <img src="https://img.shields.io/codecov/c/github/ggalloni/CosmoForge?logo=codecov&style=for-the-badge" alt="Coverage">
-  </a>
-  <a href="https://pypi.org/project/cosmoforge/">
-    <img src="https://img.shields.io/pypi/v/cosmoforge.svg?logo=pypi&style=for-the-badge" alt="PyPI">
-  </a>
-  <a href="https://github.com/charliermarsh/ruff">
-    <img src="https://img.shields.io/badge/code%20style-ruff-000000.svg?style=for-the-badge" alt="Code style: Ruff">
-  </a>
-  <a href="https://www.python.org/downloads/">
-    <img src="https://img.shields.io/badge/python-3.10%2B-blue.svg?logo=python&style=for-the-badge" alt="Python Version">
-  </a>
-  <a href="LICENSE">
-    <img src="https://img.shields.io/badge/license-MIT-green.svg?style=for-the-badge" alt="License">
-  </a>
-</p>
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![Documentation](https://img.shields.io/badge/docs-meta-blue.svg)](https://ggalloni.github.io/CosmoForge/api/meta.html)
 
----
-
-## 📚 Documentation
-
-> **[Meta API Documentation](https://ggalloni.github.io/CosmoForge/api/meta.html) | [Main Documentation](https://ggalloni.github.io/CosmoForge/) | [Contributing Guide](https://ggalloni.github.io/CosmoForge/contributing.html)**
+> **📚 [Meta Documentation](https://ggalloni.github.io/CosmoForge/api/meta.html) | [Main Documentation](https://ggalloni.github.io/CosmoForge/) | [Contributing Guide](https://ggalloni.github.io/CosmoForge/contributing.html)**
 
 Meta is the metadata and utilities package for CosmoForge, providing project-wide configuration, version management, and helper utilities that support the entire CosmoForge ecosystem.
 
