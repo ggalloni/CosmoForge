@@ -52,29 +52,38 @@ jobs:
             echo "test-cosmocore=true" >> $GITHUB_OUTPUT
             echo "test-quelo=true" >> $GITHUB_OUTPUT
             echo "test-meta=true" >> $GITHUB_OUTPUT
+            echo "cosmocore-strategy=lint,test,build" >> $GITHUB_OUTPUT
+            echo "quelo-strategy=lint,test,build" >> $GITHUB_OUTPUT
+            echo "meta-strategy=lint,test,build" >> $GITHUB_OUTPUT
           else
             echo "test-all=false" >> $GITHUB_OUTPUT
             
-            # Check individual packages - only run tests if "test" is in the strategy
+            # Check individual packages - run job if ANY strategy is present (lint, test, or build)
             cosmocore_strategy=$(echo "$output" | grep "TEST_COSMOCORE=" | cut -d'=' -f2)
-            if echo "$cosmocore_strategy" | grep -q "test"; then
+            if [[ -n "$cosmocore_strategy" && "$cosmocore_strategy" != "none" ]]; then
               echo "test-cosmocore=true" >> $GITHUB_OUTPUT
+              echo "cosmocore-strategy=$cosmocore_strategy" >> $GITHUB_OUTPUT
             else
               echo "test-cosmocore=false" >> $GITHUB_OUTPUT
+              echo "cosmocore-strategy=none" >> $GITHUB_OUTPUT
             fi
             
             quelo_strategy=$(echo "$output" | grep "TEST_QUELO=" | cut -d'=' -f2)
-            if echo "$quelo_strategy" | grep -q "test"; then
+            if [[ -n "$quelo_strategy" && "$quelo_strategy" != "none" ]]; then
               echo "test-quelo=true" >> $GITHUB_OUTPUT
+              echo "quelo-strategy=$quelo_strategy" >> $GITHUB_OUTPUT
             else
               echo "test-quelo=false" >> $GITHUB_OUTPUT
+              echo "quelo-strategy=none" >> $GITHUB_OUTPUT
             fi
             
             meta_strategy=$(echo "$output" | grep "TEST_META=" | cut -d'=' -f2)
-            if echo "$meta_strategy" | grep -q "test"; then
+            if [[ -n "$meta_strategy" && "$meta_strategy" != "none" ]]; then
               echo "test-meta=true" >> $GITHUB_OUTPUT
+              echo "meta-strategy=$meta_strategy" >> $GITHUB_OUTPUT
             else
               echo "test-meta=false" >> $GITHUB_OUTPUT
+              echo "meta-strategy=none" >> $GITHUB_OUTPUT
             fi
           fi
           
@@ -111,11 +120,13 @@ jobs:
           uv run ruff format --check src/cosmoforge.cosmocore/
 
       - name: Run tests
+        if: contains(needs.detect-changes.outputs.cosmocore-strategy, 'test')
         working-directory: src/cosmoforge.cosmocore
         run: |
           uv run pytest tests/ -v --cov=cosmocore --cov-report=xml
 
       - name: Upload coverage to Codecov
+        if: contains(needs.detect-changes.outputs.cosmocore-strategy, 'test')
         uses: codecov/codecov-action@v4
         with:
           file: src/cosmoforge.cosmocore/coverage.xml
@@ -157,11 +168,13 @@ jobs:
           uv run ruff format --check src/cosmoforge.quelo/
 
       - name: Run tests
+        if: contains(needs.detect-changes.outputs.quelo-strategy, 'test')
         working-directory: src/cosmoforge.quelo
         run: |
           uv run pytest tests/ -v --cov=quelo --cov-report=xml
 
       - name: Upload coverage to Codecov
+        if: contains(needs.detect-changes.outputs.quelo-strategy, 'test')
         uses: codecov/codecov-action@v4
         with:
           file: src/cosmoforge.quelo/coverage.xml
@@ -203,14 +216,35 @@ jobs:
           uv run ruff format --check src/cosmoforge.meta/
 
       - name: Run tests
+        if: contains(needs.detect-changes.outputs.meta-strategy, 'test')
         working-directory: src/cosmoforge.meta
         run: |
           uv run pytest tests/ -v
 
+  # Ensure all flags are present in codecov, carrying forward previous coverage if needed
+  codecov-finalize:
+    name: Finalize Codecov Coverage
+    runs-on: ubuntu-latest
+    needs: [detect-changes, test-cosmocore, test-quelo, test-meta]
+    if: always()
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Finalize coverage with carry-forward
+        uses: codecov/codecov-action@v4
+        with:
+          flags: cosmocore,quelo
+          name: carry-forward-finalize
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: ggalloni/CosmoForge
+          functionalities: carryforward
+
   summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [detect-changes, test-cosmocore, test-quelo, test-meta]
+    needs: [detect-changes, test-cosmocore, test-quelo, test-meta, codecov-finalize]
     if: always()
     steps:
       - name: Print test strategy
@@ -221,9 +255,18 @@ jobs:
           echo "${{ needs.detect-changes.outputs.strategy }}"
           echo ""
           echo "## Test Results"
-          echo "- CosmoCore: ${{ needs.test-cosmocore.result }}"
-          echo "- Quelo: ${{ needs.test-quelo.result }}"
-          echo "- Meta: ${{ needs.test-meta.result }}"
+          echo "- CosmoCore: ${{ needs.test-cosmocore.result }} (strategy: ${{ needs.detect-changes.outputs.cosmocore-strategy }})"
+          echo "- Quelo: ${{ needs.test-quelo.result }} (strategy: ${{ needs.detect-changes.outputs.quelo-strategy }})"
+          echo "- Meta: ${{ needs.test-meta.result }} (strategy: ${{ needs.detect-changes.outputs.meta-strategy }})"
+          echo ""
+          echo "## Coverage Notes"
+          if [[ "${{ needs.detect-changes.outputs.test-cosmocore }}" == "false" ]]; then
+            echo "- CosmoCore: No changes detected, coverage preserved from previous runs"
+          fi
+          if [[ "${{ needs.detect-changes.outputs.test-quelo }}" == "false" ]]; then
+            echo "- Quelo: No changes detected, coverage preserved from previous runs"
+          fi
+          echo "- Meta: No coverage tracking (package contains no source code to cover)"
 
       - name: Check if all tests passed
         run: |
