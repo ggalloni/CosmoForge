@@ -18,6 +18,9 @@ jobs:
       test-quelo: ${{ steps.changes.outputs.test-quelo }}
       test-meta: ${{ steps.changes.outputs.test-meta }}
       test-all: ${{ steps.changes.outputs.test-all }}
+      cosmocore-strategy: ${{ steps.changes.outputs.cosmocore-strategy }}
+      quelo-strategy: ${{ steps.changes.outputs.quelo-strategy }}
+      meta-strategy: ${{ steps.changes.outputs.meta-strategy }}
       strategy: ${{ steps.changes.outputs.strategy }}
     steps:
       - name: Checkout code
