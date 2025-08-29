@@ -203,6 +203,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Install MPI
+        if: contains(needs.detect-changes.outputs.meta-strategy, 'test')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libopenmpi-dev openmpi-bin
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
