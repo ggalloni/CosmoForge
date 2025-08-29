@@ -47,7 +47,6 @@ def get_changed_files(base_branch: str = "master") -> List[str]:
                 if line and not line.startswith("#"):
                     files.append(line)
             if files:
-                print(f"✓ Used command: {' '.join(cmd)}")
                 return files
 
     # Try fallback commands for local development
@@ -66,7 +65,6 @@ def get_changed_files(base_branch: str = "master") -> List[str]:
                             if " -> " in filename:
                                 filename = filename.split(" -> ")[-1]
                             files.append(filename)
-                print(f"✓ Used command: {' '.join(cmd)}")
                 return files
             else:
                 # Parse git diff output - filter out empty lines and clean whitespace
@@ -76,10 +74,8 @@ def get_changed_files(base_branch: str = "master") -> List[str]:
                     if line and not line.startswith("#"):
                         files.append(line)
                 if files:
-                    print(f"✓ Used command: {' '.join(cmd)}")
                     return files
 
-    print("⚠️  No git commands returned results")
     return []
 
 
@@ -99,8 +95,6 @@ def map_files_to_packages(changed_files: List[str]) -> Dict[str, Set[str]]:
         if not file:
             continue
 
-        print(f"🔍 Processing file: '{file}'")
-
         # Check if file belongs to a specific package
         matched = False
         for package, path_prefix in package_mapping.items():
@@ -109,7 +103,6 @@ def map_files_to_packages(changed_files: List[str]) -> Dict[str, Set[str]]:
             elif file.startswith(path_prefix):
                 affected_packages[package].add(file)
                 matched = True
-                print(f"   ✓ Matched to package: {package}")
                 break
 
         # If not matched to a specific package, consider it root
@@ -136,17 +129,9 @@ def map_files_to_packages(changed_files: List[str]) -> Dict[str, Set[str]]:
 
             if matches_file or matches_path or is_root_file:
                 affected_packages["root"].add(file)
-                print(
-                    f"   ✓ Matched to root (file={matches_file}, "
-                    f"path={matches_path}, root={is_root_file})"
-                )
-            else:
-                print(f"   ⚠️  No match found for file: {file}")
 
     # Remove empty sets
-    result = {pkg: files for pkg, files in affected_packages.items() if files}
-    print(f"📦 Final package mapping: {dict((k, len(v)) for k, v in result.items())}")
-    return result
+    return {pkg: files for pkg, files in affected_packages.items() if files}
 
 
 def determine_test_strategy(
