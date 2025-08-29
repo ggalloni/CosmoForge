@@ -14,7 +14,7 @@ from cosmocore import (
 )
 
 
-def test_signal_covmat():
+def test_signal_covmat(data_resolver):
     Par = InputParams()
     mock_config_dict = {
         "nside": 4,
@@ -104,11 +104,12 @@ def test_signal_covmat():
 
     os.remove(mock_config_dict["maskfile"])
 
-    ref = np.loadtxt("tests/data/ref_TQU_signal.dat")
+    ref_path = data_resolver("tests/data/ref_TQU_signal.dat")
+    ref = np.loadtxt(ref_path)
     np.testing.assert_allclose(signal_covmat, ref, rtol=1e-12)
 
 
-def test_signal_covmat_multiple_scalar_fields():
+def test_signal_covmat_multiple_scalar_fields(data_resolver):
     """Test signal covariance matrix with multiple scalar fields to trigger mode=1."""
     Par = InputParams()
     mock_config_dict = {
@@ -193,7 +194,8 @@ def test_signal_covmat_multiple_scalar_fields():
         fields=collection,
     )
 
-    ref = np.loadtxt("tests/data/ref_T1T2_signal.dat")
+    ref_path = data_resolver("tests/data/ref_T1T2_signal.dat")
+    ref = np.loadtxt(ref_path)
 
     # Clean up
     os.remove(mock_config_dict["maskfile"])

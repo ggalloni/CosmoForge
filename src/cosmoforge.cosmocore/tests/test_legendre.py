@@ -10,15 +10,215 @@ import numpy as np
 from numba import njit
 
 from cosmocore import (
-    legendre_00,
     legendre_00_inplace,
-    legendre_02,
     legendre_02_inplace,
-    legendre_22,
     legendre_22_inplace,
-    legendre_unified,
     legendre_unified_inplace,
 )
+
+
+@njit(cache=True)
+def legendre_00_non_inplace(scalar_prod, lmax):
+    """
+    Compute standard Legendre polynomials P_l(x) for spin-0 fields.
+
+    Parameters
+    ----------
+    scalar_prod : float
+        Argument x for the Legendre polynomials.
+    lmax : int
+        Maximum multipole moment.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of Legendre polynomial values P_l(x) for l=1 to lmax.
+
+    Notes
+    -----
+    Optimized computation using three-term recurrence relation:
+    P_l(x) = ((2l-1)xP_{l-1}(x) - (l-1)P_{l-2}(x))/l
+
+    Base cases: P_1(x) = x, P_2(x) = (3x² - 1)/2
+    Used for temperature (spin-0) correlations in CMB analysis.
+    """
+    legendre = np.empty(lmax, dtype=np.float64)
+
+    # Base cases
+    legendre[0] = scalar_prod
+    legendre[1] = 1.5 * scalar_prod * scalar_prod - 0.5
+    if lmax == 2:
+        return legendre
+
+    # Optimized recurrence: avoid division in loop
+    x = scalar_prod
+    p_prev2 = legendre[0]  # P_{l-2}
+    p_prev1 = legendre[1]  # P_{l-1}
+
+    for ell in range(3, lmax + 1):
+        # P_l = ((2l-1)xP_{l-1} - (l-1)P_{l-2})/l
+        p_curr = ((2 * ell - 1) * x * p_prev1 - (ell - 1) * p_prev2) / ell
+        legendre[ell - 1] = p_curr
+        p_prev2 = p_prev1
+        p_prev1 = p_curr
+
+    return legendre
+
+
+@njit(cache=True)
+def legendre_22_non_inplace(scalar_prod, lmax):
+    """
+    Compute associated Legendre polynomials P_l^{22}(x) for spin-2 fields.
+
+    Parameters
+    ----------
+    scalar_prod : float
+        Argument x for the associated Legendre polynomials.
+    lmax : int
+        Maximum multipole moment.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of associated Legendre polynomial values P_l^{22}(x) for l=2 to lmax.
+
+    Notes
+    -----
+    Optimized computation using modified recurrence relation for the 22 case:
+    P_l^{22}(x) = (x(2l-1)P_{l-1}^{22}(x) - (l+1)P_{l-2}^{22}(x))/(l-2)
+
+    Base case: P_2^{22}(x) = 3
+    Used for polarization (spin-2) auto-correlations in CMB analysis.
+    """
+    legendre = np.zeros(lmax, dtype=np.float64)
+
+    # Base case for l=2
+    legendre[1] = 3.0
+    if lmax == 2:
+        return legendre
+
+    # Optimized recurrence: avoid division in loop, cache scalar_prod
+    x = scalar_prod
+    p_prev2 = 0.0  # P_{l-2}^{22}
+    p_prev1 = legendre[1]  # P_{l-1}^{22}
+
+    for ell in range(3, lmax + 1):
+        # Modified recurrence for 22 case
+        p_curr = (x * (2 * ell - 1) * p_prev1 - (ell + 1) * p_prev2) / (ell - 2)
+        legendre[ell - 1] = p_curr
+        p_prev2 = p_prev1
+        p_prev1 = p_curr
+
+    return legendre
+
+
+@njit(cache=True)
+def legendre_02_non_inplace(scalar_prod, lmax):
+    """
+    Compute associated Legendre polynomials P_l^{02}(x) for
+    spin-0 to spin-2 cross-correlations.
+
+    Parameters
+    ----------
+    scalar_prod : float
+        Argument x for the associated Legendre polynomials.
+    lmax : int
+        Maximum multipole moment.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of associated Legendre polynomial values P_l^{02}(x) for l=2 to lmax.
+
+    Notes
+    -----
+    Optimized computation using modified recurrence relation for the 02 case:
+    P_l^{02}(x) = (x(2l-1)P_{l-1}^{02}(x) - (l+1)P_{l-2}^{02}(x))/(l-2)
+
+    Base case: P_2^{02}(x) = 3(1 - x²)
+    Used for temperature-polarization cross-correlations in CMB analysis.
+    """
+    legendre = np.zeros(lmax, dtype=np.float64)
+
+    # Base case for l=2: P_2^{02} = 3(1 - x^2)
+    legendre[1] = 3.0 * (1.0 - scalar_prod * scalar_prod)
+    if lmax == 2:
+        return legendre
+
+    # Optimized recurrence: avoid division in loop, cache scalar_prod
+    x = scalar_prod
+    p_prev2 = 0.0  # P_{l-2}^{02}
+    p_prev1 = legendre[1]  # P_{l-1}^{02}
+
+    for ell in range(3, lmax + 1):
+        # Modified recurrence for 02 case: (x(2l-1)P_{l-1} - (l+1)P_{l-2})/(l-2)
+        p_curr = (x * (2 * ell - 1) * p_prev1 - (ell + 1) * p_prev2) / (ell - 2)
+        legendre[ell - 1] = p_curr
+        p_prev2 = p_prev1
+        p_prev1 = p_curr
+
+    return legendre
+
+
+@njit(cache=True)
+def legendre_unified_non_inplace(scalar_prod, lmax, spin_case):
+    """
+    Unified Legendre polynomial computation for all spin cases.
+
+    Parameters
+    ----------
+    scalar_prod : float
+        Argument x for the Legendre polynomials.
+    lmax : int
+        Maximum multipole moment.
+    spin_case : str
+        Spin case identifier: "00" for P_l, "22" for P_l^{22}, "02" for P_l^{02}.
+
+    Returns
+    -------
+    numpy.ndarray
+        Array of Legendre polynomial values for the specified spin case.
+
+    Notes
+    -----
+    This unified function reduces code duplication and allows for better
+    optimization by factorizing common operations across all three spin
+    cases used in CMB analysis. Each case uses appropriate base conditions
+    and recurrence relations.
+    """
+    legendre = np.zeros(lmax, dtype=np.float64)
+    x = scalar_prod
+    x2 = x * x
+
+    # Set base cases based on spin case
+    if spin_case == "00":  # P_l case (00)
+        if lmax >= 1:
+            legendre[0] = x
+        if lmax >= 2:
+            legendre[1] = 1.5 * x2 - 0.5
+    elif spin_case == "22":  # P_l^{22} case (22)
+        if lmax >= 2:
+            legendre[1] = 3.0
+    elif spin_case == "02":  # P_l^{02} case (02)
+        if lmax >= 2:
+            legendre[1] = 3.0 * (1.0 - x2)
+
+    if lmax == 2:
+        return legendre
+
+    # Unified recurrence computation
+    # All cases follow pattern: P_l = (a*x*P_{l-1} - b*P_{l-2}) / c
+    for ell in range(3, lmax + 1):
+        if spin_case == "00":  # Standard Legendre: ((2l-1)xP_{l-1} - (l-1)P_{l-2})/l
+            a, b, c = 2 * ell - 1, ell - 1, ell
+        elif spin_case == "22":  # P_l^{22}: (x(2l-1)P_{l-1} - (l+1)P_{l-2})/(l-2)
+            a, b, c = 2 * ell - 1, ell + 1, ell - 2
+        elif spin_case == "02":  # P_l^{02}: (x(2l-1)P_{l-1} - (l+1)P_{l-2})/(l-2)
+            a, b, c = 2 * ell - 1, ell + 1, ell - 2
+
+        legendre[ell - 1] = (a * x * legendre[ell - 2] - b * legendre[ell - 3]) / c
+
+    return legendre
 
 
 @njit(cache=True)
@@ -118,8 +318,8 @@ def correctness():
 
     # Test 00 case
     orig_00 = original_legendre_00(scalar_prod, lmax)
-    opt_00 = legendre_00(scalar_prod, lmax)
-    unified_00 = legendre_unified(scalar_prod, lmax, "00")
+    opt_00 = legendre_00_non_inplace(scalar_prod, lmax)
+    unified_00 = legendre_unified_non_inplace(scalar_prod, lmax, "00")
 
     buffer_00 = np.empty(lmax, dtype=np.float64)
     legendre_00_inplace(scalar_prod, buffer_00)
@@ -135,8 +335,8 @@ def correctness():
 
     # Test 22 case
     orig_22 = original_legendre_22(scalar_prod, lmax)
-    opt_22 = legendre_22(scalar_prod, lmax)
-    unified_22 = legendre_unified(scalar_prod, lmax, "22")
+    opt_22 = legendre_22_non_inplace(scalar_prod, lmax)
+    unified_22 = legendre_unified_non_inplace(scalar_prod, lmax, "22")
 
     buffer_22 = np.empty(lmax, dtype=np.float64)
     buffer_f1 = np.empty(lmax, dtype=np.float64)
@@ -154,8 +354,8 @@ def correctness():
 
     # Test 02 case
     orig_02 = original_legendre_02(scalar_prod, lmax)
-    opt_02 = legendre_02(scalar_prod, lmax)
-    unified_02 = legendre_unified(scalar_prod, lmax, "02")
+    opt_02 = legendre_02_non_inplace(scalar_prod, lmax)
+    unified_02 = legendre_unified_non_inplace(scalar_prod, lmax, "02")
 
     buffer_02 = np.empty(lmax, dtype=np.float64)
     legendre_02_inplace(scalar_prod, buffer_02)
@@ -190,8 +390,12 @@ def test_all_legendre():
         # 00 Case benchmarks
         print("P_l polynomials (00 case):")
         benchmark_function(original_legendre_00, (scalar_prod, lmax), "Original", n_runs)
-        benchmark_function(legendre_00, (scalar_prod, lmax), "Optimized", n_runs)
-        benchmark_function(legendre_unified, (scalar_prod, lmax, "00"), "Unified", n_runs)
+        benchmark_function(
+            legendre_00_non_inplace, (scalar_prod, lmax), "Optimized", n_runs
+        )
+        benchmark_function(
+            legendre_unified_non_inplace, (scalar_prod, lmax, "00"), "Unified", n_runs
+        )
 
         buffer = np.empty(lmax, dtype=np.float64)
         buffer_f1 = np.empty(lmax, dtype=np.float64)
@@ -211,8 +415,12 @@ def test_all_legendre():
         # 22 Case benchmarks
         print("P_l^{22} polynomials (22 case):")
         benchmark_function(original_legendre_22, (scalar_prod, lmax), "Original", n_runs)
-        benchmark_function(legendre_22, (scalar_prod, lmax), "Optimized", n_runs)
-        benchmark_function(legendre_unified, (scalar_prod, lmax, "22"), "Unified", n_runs)
+        benchmark_function(
+            legendre_22_non_inplace, (scalar_prod, lmax), "Optimized", n_runs
+        )
+        benchmark_function(
+            legendre_unified_non_inplace, (scalar_prod, lmax, "22"), "Unified", n_runs
+        )
 
         benchmark_inplace_22(
             legendre_22_inplace,
@@ -235,8 +443,12 @@ def test_all_legendre():
         # 02 Case benchmarks
         print("P_l^{02} polynomials (02 case):")
         benchmark_function(original_legendre_02, (scalar_prod, lmax), "Original", n_runs)
-        benchmark_function(legendre_02, (scalar_prod, lmax), "Optimized", n_runs)
-        benchmark_function(legendre_unified, (scalar_prod, lmax, "02"), "Unified", n_runs)
+        benchmark_function(
+            legendre_02_non_inplace, (scalar_prod, lmax), "Optimized", n_runs
+        )
+        benchmark_function(
+            legendre_unified_non_inplace, (scalar_prod, lmax, "02"), "Unified", n_runs
+        )
 
         benchmark_inplace(
             legendre_02_inplace, scalar_prod, buffer, "Optimized (in-place)", n_runs
