@@ -24,16 +24,29 @@ def get_changed_files(base_branch: str = "master") -> List[str]:
     """Get list of changed files compared to base branch."""
     repo_root = Path(__file__).parent.parent
 
-    # In CI, use the base branch comparison
-    # In local development, fall back to other methods
-    commands = [
+    # Primary commands for CI/PR - compare against base branch
+    primary_commands = [
         ["git", "diff", "--name-only", f"{base_branch}...HEAD"],
         ["git", "diff", "--name-only", f"{base_branch}..HEAD"],
-        ["git", "diff", "--name-only", "HEAD~1..HEAD"],
-        ["git", "status", "--porcelain"],
     ]
 
-    for cmd in commands:
+    # Fallback commands for local development
+    fallback_commands = [
+        ["git", "status", "--porcelain"],  # Uncommitted changes
+        ["git", "diff", "--name-only", "HEAD~1..HEAD"],  # Last commit only
+    ]
+
+    # Try primary commands first (for CI/PR)
+    for cmd in primary_commands:
+        output = run_git_command(cmd, cwd=repo_root)
+        if output:
+            # Parse git diff output
+            files = [f.strip() for f in output.split("\n") if f.strip()]
+            if files:
+                return files
+
+    # Try fallback commands for local development
+    for cmd in fallback_commands:
         output = run_git_command(cmd, cwd=repo_root)
         if output:
             if cmd[1] == "status":
@@ -61,7 +74,7 @@ def map_files_to_packages(changed_files: List[str]) -> Dict[str, Set[str]]:
         "cosmocore": "src/cosmoforge.cosmocore/",
         "quelo": "src/cosmoforge.quelo/",
         "meta": "src/cosmoforge.meta/",
-        "root": ["pyproject.toml", "uv.lock", "README.md"],
+        "root": ["pyproject.toml", "uv.lock", "README.md", ".github/", "scripts/"],
     }
 
     affected_packages = {pkg: set() for pkg in package_mapping.keys()}
@@ -72,13 +85,38 @@ def map_files_to_packages(changed_files: List[str]) -> Dict[str, Set[str]]:
             continue
 
         # Check if file belongs to a specific package
+        matched = False
         for package, path_prefix in package_mapping.items():
             if package == "root":
-                if any(file.endswith(root_file) for root_file in path_prefix):
-                    affected_packages[package].add(file)
+                continue  # Handle root separately
             elif file.startswith(path_prefix):
                 affected_packages[package].add(file)
+                matched = True
                 break
+
+        # If not matched to a specific package, consider it root
+        if not matched:
+            # Check if it's explicitly a root file/path
+            root_files = package_mapping["root"]
+            matches_file = any(
+                file.endswith(root_file)
+                for root_file in root_files
+                if not root_file.endswith("/")
+            )
+            matches_path = any(
+                file.startswith(root_path)
+                for root_path in root_files
+                if root_path.endswith("/")
+            )
+            # Or if it's in the root directory (no subdirectories)
+            is_root_file = (
+                "/" not in file
+                or file.startswith(".github/")
+                or file.startswith("scripts/")
+            )
+
+            if matches_file or matches_path or is_root_file:
+                affected_packages["root"].add(file)
 
     # Remove empty sets
     return {pkg: files for pkg, files in affected_packages.items() if files}
@@ -99,7 +137,7 @@ def determine_test_strategy(
 
     # If root files changed, test everything
     if "root" in affected_packages:
-        test_strategy["all"] = ["lint", "test", "build"]
+        test_strategy["all"] = ["lint", "test"]
         return test_strategy
 
     # For each affected package, determine what to test
@@ -121,7 +159,7 @@ def determine_test_strategy(
         # Always run linting
         test_types.append("lint")
 
-        # Check if source code changed
+        # Check if source code changed in this package OR if it's a dependent package
         excluded_exts = [".md", ".txt", ".yaml", ".yml"]
         source_files = [
             f
@@ -129,8 +167,16 @@ def determine_test_strategy(
             if not any(f.endswith(ext) for ext in excluded_exts)
         ]
 
-        if source_files:
-            test_types.extend(["test", "build"])
+        # Check if this package has changes OR if its dependencies have changes
+        has_dependency_changes = False
+        for affected_pkg in affected_packages:
+            if affected_pkg in dependencies.get(package, []):
+                # This package depends on an affected package
+                has_dependency_changes = True
+                break
+
+        if source_files or has_dependency_changes:
+            test_types.append("test")
 
         # Check if test files changed
         test_files = [

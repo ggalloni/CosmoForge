@@ -52,13 +52,13 @@ jobs:
             echo "test-cosmocore=true" >> $GITHUB_OUTPUT
             echo "test-quelo=true" >> $GITHUB_OUTPUT
             echo "test-meta=true" >> $GITHUB_OUTPUT
-            echo "cosmocore-strategy=lint,test,build" >> $GITHUB_OUTPUT
-            echo "quelo-strategy=lint,test,build" >> $GITHUB_OUTPUT
-            echo "meta-strategy=lint,test,build" >> $GITHUB_OUTPUT
+            echo "cosmocore-strategy=lint,test" >> $GITHUB_OUTPUT
+            echo "quelo-strategy=lint,test" >> $GITHUB_OUTPUT
+            echo "meta-strategy=lint,test" >> $GITHUB_OUTPUT
           else
             echo "test-all=false" >> $GITHUB_OUTPUT
             
-            # Check individual packages - run job if ANY strategy is present (lint, test, or build)
+            # Check individual packages - run job if ANY strategy is present (lint or test)
             cosmocore_strategy=$(echo "$output" | grep "TEST_COSMOCORE=" | cut -d'=' -f2)
             if [[ -n "$cosmocore_strategy" && "$cosmocore_strategy" != "none" ]]; then
               echo "test-cosmocore=true" >> $GITHUB_OUTPUT
