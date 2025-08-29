@@ -1,14 +1,8 @@
 from .basics import (
-    cross_index,
     idx2spec,
-    invert_lower_triangular,
-    legendre_00,
     legendre_00_inplace,
-    legendre_02,
     legendre_02_inplace,
-    legendre_22,
     legendre_22_inplace,
-    legendre_unified,
     legendre_unified_inplace,
     matrix_inverse_symm,
     matrix_mult,
@@ -50,7 +44,6 @@ from .pixel import (
     derivative_step_02,
     derivative_step_22,
     do_derivative_step,
-    pixel_active,
 )
 from .settings import InputParams
 
@@ -68,7 +61,6 @@ __all__ = [
     "derivative_step_02",
     "derivative_step_22",
     "do_derivative_step",
-    "pixel_active",
     # in_out
     "output_geometry",
     "read_covmat",
@@ -93,16 +85,10 @@ __all__ = [
     "ScalarField",
     "create_field",
     # basics
-    "cross_index",
     "idx2spec",
-    "invert_lower_triangular",
-    "legendre_00",
     "legendre_00_inplace",
-    "legendre_02",
     "legendre_02_inplace",
-    "legendre_22",
     "legendre_22_inplace",
-    "legendre_unified",
     "legendre_unified_inplace",
     "matrix_inverse_symm",
     "matrix_mult",

@@ -10,8 +10,6 @@ Functions
 ---------
 count_nonzero_mask
     Count non-zero pixels in a mask.
-pixel_active
-    Extract active pixel indices from multi-field masks.
 compute_pointings
     Compute 3D pointing vectors for HEALPix pixels.
 compute_00_contribution
@@ -80,44 +78,6 @@ def count_nonzero_mask(mask):
             ntemp += 1
     npixs = ntemp
     return npixs
-
-
-@njit(cache=True)
-def pixel_active(mask):
-    """
-    Extract active pixel indices from a multi-field mask.
-
-    Parameters
-    ----------
-    mask : numpy.ndarray
-        2D array of shape (npix, nmaps) containing mask values for each field.
-
-    Returns
-    -------
-    numpy.ndarray
-        1D array of active pixel indices in flattened format where each index
-        is computed as field_index * npix + pixel_index.
-
-    Notes
-    -----
-    This function flattens multi-field pixel indices into a single array
-    for efficient matrix operations. Optimized with Numba for performance.
-    """
-    npix, nmaps = mask.shape
-    count = 0
-    for j in range(nmaps):
-        for i in range(npix):
-            if abs(mask[i, j]) > 0.5:
-                count += 1
-
-    active = np.empty(count, dtype=np.int32)
-    idx = 0
-    for j in range(nmaps):
-        for i in range(npix):
-            if abs(mask[i, j]) > 0.5:
-                active[idx] = j * npix + i
-                idx += 1
-    return active
 
 
 def compute_pointings(nside, npixs, point_vectors, active, ordering):
