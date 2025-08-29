@@ -52,9 +52,15 @@ jobs:
             echo "test-cosmocore=true" >> $GITHUB_OUTPUT
             echo "test-quelo=true" >> $GITHUB_OUTPUT
             echo "test-meta=true" >> $GITHUB_OUTPUT
-            echo "cosmocore-strategy=lint,test" >> $GITHUB_OUTPUT
-            echo "quelo-strategy=lint,test" >> $GITHUB_OUTPUT
-            echo "meta-strategy=lint,test" >> $GITHUB_OUTPUT
+            
+            # Parse individual strategies even in TEST_ALL case
+            cosmocore_strategy=$(echo "$output" | grep "TEST_COSMOCORE=" | cut -d'=' -f2)
+            quelo_strategy=$(echo "$output" | grep "TEST_QUELO=" | cut -d'=' -f2)
+            meta_strategy=$(echo "$output" | grep "TEST_META=" | cut -d'=' -f2)
+            
+            echo "cosmocore-strategy=$cosmocore_strategy" >> $GITHUB_OUTPUT
+            echo "quelo-strategy=$quelo_strategy" >> $GITHUB_OUTPUT
+            echo "meta-strategy=$meta_strategy" >> $GITHUB_OUTPUT
           else
             echo "test-all=false" >> $GITHUB_OUTPUT
             
