@@ -59,7 +59,9 @@ def get_changed_files(base_branch: str = "master") -> List[str]:
                 for line in output.split("\n"):
                     if line.strip():
                         # Remove status indicators and get filename
-                        filename = line[3:].strip()
+                        # Porcelain format: "XY filename" where X,Y are status codes
+                        # We need to skip the first 2 chars (status) and any spaces
+                        filename = line[2:].strip()
                         if filename:
                             # Handle renamed files (old -> new format)
                             if " -> " in filename:
