@@ -7,10 +7,12 @@ from quelo import Fisher
 
 
 def get_fisher_matrix(
-    fields: str = "TEB", config_resolver=None, local_path: str = None
+    fields: str = "TEB",
+    config_resolver=None,
+    config_type: str = "config",
 ) -> np.ndarray:
     # Create Fisher instance with parameter file
-    config_file = config_resolver(f"tests/data/nside4/{fields}/config.yaml")
+    config_file = config_resolver(f"tests/data/nside4/{fields}/{config_type}.yaml")
     fisher_analyzer = Fisher(config_file)
 
     # Run the complete analysis pipeline
@@ -29,6 +31,29 @@ def get_fisher_matrix(
 def test_fisher_computation(fields, local_path, config_resolver):
     # Test the Fisher matrix computation for the specified fields
     fisher_matrix = get_fisher_matrix(fields, config_resolver=config_resolver)
+    assert fisher_matrix is not None, "Fisher matrix should not be None"
+
+    file = local_path + f"/tests/data/nside4/{fields}/ref_fisher.dat"
+    ref = np.loadtxt(file, dtype=np.float64)
+
+    assert fisher_matrix.shape == ref.shape, (
+        f"Fisher matrix shape should match reference: {ref.shape}"
+    )
+
+    np.testing.assert_allclose(
+        fisher_matrix,
+        ref,
+        atol=1e-3,
+        rtol=1e-5,
+        err_msg=f"Fisher matrix for {fields} does not match reference.",
+    )
+
+
+@pytest.mark.parametrize("fields", ["QU"])
+def test_cross_fisher_computation(fields, local_path, config_resolver):
+    fisher_matrix = get_fisher_matrix(
+        fields, config_resolver=config_resolver, config_type="cross_config"
+    )
     assert fisher_matrix is not None, "Fisher matrix should not be None"
 
     file = local_path + f"/tests/data/nside4/{fields}/ref_fisher.dat"
