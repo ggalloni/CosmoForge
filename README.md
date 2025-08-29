@@ -1,6 +1,6 @@
 # CosmoForge
 
-[![Build Status](https://github.com/ggalloni/CosmoForge/workflows/Quick%20CI/badge.svg)](https://github.com/ggalloni/CosmoForge/actions)
+[![Build Status](https://github.com/ggalloni/CosmoForge/workflows/Test%20CosmoForge%20Packages/badge.svg)](https://github.com/ggalloni/CosmoForge/actions)
 [![Documentation](https://github.com/ggalloni/CosmoForge/workflows/Build%20and%20Deploy%20Documentation/badge.svg)](https://ggalloni.github.io/CosmoForge/)
 [![codecov](https://codecov.io/gh/ggalloni/CosmoForge/graph/badge.svg?token=UOm3LdvL7J)](https://codecov.io/gh/ggalloni/CosmoForge)
 [![PyPI](https://img.shields.io/pypi/v/cosmoforge.svg)](https://pypi.org/project/cosmoforge/)

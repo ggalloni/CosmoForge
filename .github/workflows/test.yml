@@ -36,9 +36,6 @@ jobs:
       - name: Detect changes and determine test strategy
         id: changes
         run: |
-          # Make the script executable
-          chmod +x scripts/detect-changes.py
-          
           # Run the change detection script
           output=$(python scripts/detect-changes.py origin/${{ github.event.repository.default_branch }})
           echo "$output"
