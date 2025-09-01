@@ -6,7 +6,7 @@ import healpy as hp
 import numpy as np
 from astropy.io import fits
 
-from cosmocore import read_covmat, read_maps, read_mask, writecl
+from cosmocore import read_covmat, read_maps, read_mask, write_out_matrix, writecl
 
 
 def test_read_mask(tmp_path):
@@ -67,6 +67,33 @@ def test_read_covmat_basic(tmp_path):
 
     # Verify it's symmetric
     np.testing.assert_allclose(result, result.T, rtol=1e-12)
+
+
+def test_write_matrix(tmp_path):
+    """Test covariance matrix writing."""
+    # Create test covariance matrix
+    npix = 4
+    nmaps = 2
+
+    # Create a full covariance matrix
+    full_size = npix * nmaps
+    full_cov = np.random.randn(full_size, full_size).astype(np.float64)
+    full_cov = full_cov @ full_cov.T  # Make positive definite
+    full_cov = 0.5 * (full_cov + full_cov.T)  # Ensure symmetry
+
+    # Save as text file
+    cov_file = tmp_path / "test_matrix.txt"
+    write_out_matrix(str(cov_file), full_cov)
+
+    # Test reading covariance matrix
+    C_output = np.loadtxt(str(cov_file))
+
+    # Check output shape
+    assert C_output.shape == (full_size, full_size)
+
+    # Verify it's symmetric
+    np.testing.assert_allclose(C_output, C_output.T, rtol=1e-12)
+    np.testing.assert_allclose(C_output, full_cov, rtol=1e-12)
 
 
 def test_writecl_basic(tmp_path):
