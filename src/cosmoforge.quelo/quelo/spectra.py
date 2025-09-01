@@ -635,19 +635,14 @@ class Spectra(Core):
 
             # Fill vecmul array
             idx = 0
-            for ispec, spectrum_label in enumerate(
-                self.collection.spectra_manager.labels
-            ):
+            for _, spectrum_label in enumerate(self.collection.spectra_manager.labels):
                 if spectrum_label in smoothing_factors:
                     smooth_factor = smoothing_factors[spectrum_label]
                     for ell_idx in range(self.params.lmax - 1):
                         self.normalization[idx] = smooth_factor[ell_idx]
                         idx += 1
                 else:
-                    # Fill with ones if no smoothing factors available
-                    for ell_idx in range(self.params.lmax - 1):
-                        self.normalization[idx] = 1.0
-                        idx += 1
+                    raise ValueError(f"No smoothing factors found for {spectrum_label}")
 
             # Apply vecmul normalization to Fisher matrix
             self.log("Applying vecmul normalization to Fisher matrix", level=2)
@@ -660,9 +655,10 @@ class Spectra(Core):
             start_time = time.time()
             self.invfisher = matrix_inverse_symm(self.invfisher)
 
-            if self.params.feedback > 3:
-                elapsed = time.time() - start_time
-                self.log(f"Fisher matrix inversion time: {elapsed:.2f} seconds", level=4)
+            self.log(
+                f"Fisher matrix inversion time: {time.time() - start_time:.2f} seconds",
+                level=3,
+            )
 
             # Write out covariance matrix and errors
             self.log("Writing out covariance and errors", level=2)
@@ -918,10 +914,9 @@ class Spectra(Core):
 
         if self.rank == 0:
             self.log("QML computation done", level=2)
-
-        if self.params.feedback > 3 and self.rank == 0:
-            elapsed = time.time() - start_time
-            self.log(f"QML computation time: {elapsed:.2f} seconds", level=4)
+            self.log(
+                f"QML computation time: {time.time() - start_time:.2f} seconds", level=3
+            )
 
         # Reduce results from all processes
         self._reduce_qml_results(nell)
@@ -1456,7 +1451,7 @@ class Spectra(Core):
         See Also
         --------
         get_noise_bias : Retrieve noise bias estimates for auto-correlation
-        Fisher.get_parameter_errors : Statistical uncertainties from Fisher matrix
+        Fisher.get_error_bars : Statistical uncertainties from Fisher matrix
         _normalize_spectra : Internal normalization method called by this function
         """
         if self.rank == 0 and self.qml_results is not None:

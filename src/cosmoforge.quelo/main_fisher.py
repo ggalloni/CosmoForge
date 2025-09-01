@@ -121,7 +121,7 @@ def main():
         print(f"Matrix condition number: {fisher_matrix.max() / fisher_matrix.min():.2e}")
 
         # Compute and display parameter error forecasts
-        errors = fisher_analyzer.get_parameter_errors()
+        errors = fisher_analyzer.get_error_bars()
         if errors is not None:
             print("\nParameter error forecasts (1σ marginal):")
             print(f"Number of parameters: {len(errors)}")

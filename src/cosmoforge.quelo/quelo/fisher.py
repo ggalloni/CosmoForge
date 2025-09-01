@@ -105,7 +105,7 @@ class Fisher(Core):
     >>> fisher = Fisher("config/fisher_analysis.yaml")
     >>> fisher.run()
     >>> F_matrix = fisher.get_fisher_matrix()
-    >>> param_errors = fisher.get_parameter_errors()
+    >>> param_errors = fisher.get_error_bars()
 
     MPI parallel execution:
 
@@ -648,7 +648,7 @@ class Fisher(Core):
         >>> fisher = Fisher("high_resolution_config.yaml")
         >>> fisher.run()
         >>> if fisher.rank == 0:
-        ...     errors = fisher.get_parameter_errors()
+        ...     errors = fisher.get_error_bars()
         ...     print(f"Parameter constraints: {errors}")
         """
         # Only rank 0 does the initial setup
@@ -674,7 +674,6 @@ class Fisher(Core):
             self.setup_beams()
             self.log("Beam functions setup completed", level=3)
 
-            self.setup_signal_matrix()
             self.prepare_covariance_matrices()
             self.log("Signal matrix and covariance preparation completed", level=3)
 
@@ -745,7 +744,7 @@ class Fisher(Core):
             return self.fisher
         return None
 
-    def get_parameter_errors(self) -> np.ndarray | None:
+    def get_error_bars(self) -> np.ndarray | None:
         """
         Compute parameter forecast errors from the Fisher matrix.
 
@@ -784,7 +783,7 @@ class Fisher(Core):
         >>> fisher = Fisher("config.yaml")
         >>> fisher.run()
         >>> if fisher.rank == 0:
-        ...     errors = fisher.get_parameter_errors()
+        ...     errors = fisher.get_error_bars()
         ...     if errors is not None:
         ...         print(f"Parameter errors: {errors}")
         ...         # Relative errors

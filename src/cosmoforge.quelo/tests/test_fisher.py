@@ -19,6 +19,10 @@ def get_fisher_matrix(
     # Run the complete analysis pipeline
     fisher_analyzer.run()
 
+    errors = fisher_analyzer.get_error_bars()
+
+    assert errors is not None, "Error bars should not be None"
+
     # Optionally, get results (only available on rank 0)
     fisher_matrix = fisher_analyzer.get_fisher_matrix()
 
