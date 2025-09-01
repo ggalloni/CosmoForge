@@ -108,8 +108,13 @@ Create a configuration file for your analysis:
    
    # Analysis parameters
    lmax: 192
-   labels: ["T", "E", "B"]
+   labels: ["T", "E", "B"]           # Analysis field labels
+   physical_labels: ["T", "Q", "U"]  # Map field labels  
    spins: [0, 2]
+   
+   # Field expansion examples (alternative formats):
+   # physical_labels: ["TQU"]        # Auto-expands to ["T", "Q", "U"] 
+   # labels: ["T1_T2"]               # Auto-expands to ["T1", "T2"]
    
    # Instrument parameters
    fwhmarcmin: 5.0

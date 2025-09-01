@@ -43,7 +43,8 @@ Use YAML files for configuration:
    # config.yaml
    nside: 32
    lmax: 128
-   labels: ["T", "E", "B"]
+   labels: ["T", "E", "B"]          # Analysis field labels
+   physical_labels: ["T", "Q", "U"] # Map field labels (or "TQU", "T1_T2")
    fwhmarcmin: 5.0
    apply_pixwin: true
 
@@ -51,6 +52,24 @@ Use YAML files for configuration:
 
    # Load configuration
    params = InputParams.read_parameter_file('config.yaml')
+
+Field Expansion
+^^^^^^^^^^^^^^^
+
+CosmoForge supports automatic field label expansion:
+
+.. code-block:: yaml
+
+   # Concatenated single-character fields
+   physical_labels: ["QU"]      # Expands to ["Q", "U"]
+   labels: ["TEB"]              # Expands to ["T", "E", "B"]
+   
+   # Underscore-separated multi-character fields  
+   labels: ["T1_T2"]            # Expands to ["T1", "T2"]
+   physical_labels: ["LOW_HIGH"] # Expands to ["LOW", "HIGH"]
+   
+   # Mixed configurations
+   labels: ["T", "QU", "E1_E2"]  # Expands to ["T", "Q", "U", "E1", "E2"]
 
 Mathematical Utilities
 ^^^^^^^^^^^^^^^^^^^^^^

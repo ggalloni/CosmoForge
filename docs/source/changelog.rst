@@ -13,6 +13,9 @@ Version 0.1.0 (In Development)
 * HEALPix integration for spherical harmonic analysis
 * Numba-optimized computational functions
 * YAML-based configuration system
+* **Automatic field label expansion**: Support for concatenated field labels
+  (e.g., "QU" → ["Q", "U"]) and underscore-separated multi-character fields
+  (e.g., "T1_T2" → ["T1", "T2"])
 * Comprehensive documentation with Sphinx
 
 **API:**
