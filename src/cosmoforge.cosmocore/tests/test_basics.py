@@ -9,7 +9,7 @@ def test_idx2spec():
     """Test inverse spectrum index conversion."""
     nfields = 3
 
-    # Test auto-spectra
+    # Test auto-spectra indices
     assert idx2spec(0, nfields) == (0, 0)
     assert idx2spec(1, nfields) == (1, 1)
     assert idx2spec(2, nfields) == (2, 2)
