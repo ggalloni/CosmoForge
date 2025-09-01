@@ -1,7 +1,7 @@
 nside: 4
 spins: [2]
 labels: ["E", "B"]
-physical_labels: ["Q", "U"]
+physical_labels: ["QU"]
 
 do_cross: true
 
