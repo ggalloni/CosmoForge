@@ -1,6 +1,6 @@
 # CosmoForge.Meta
 
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/python-3.11%7C3.12%7C3.13-blue.svg)](https://www.python.org/downloads/)
 [![Documentation](https://img.shields.io/badge/docs-meta-blue.svg)](https://ggalloni.github.io/CosmoForge/api/meta.html)
 
 > **📚 [Meta Documentation](https://ggalloni.github.io/CosmoForge/api/meta.html) | [Main Documentation](https://ggalloni.github.io/CosmoForge/) | [Contributing Guide](https://ggalloni.github.io/CosmoForge/contributing.html)**
