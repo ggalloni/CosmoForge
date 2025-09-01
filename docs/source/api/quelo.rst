@@ -129,7 +129,7 @@ Basic Fisher Matrix Analysis
    # Get results (master process only)
    if fisher.rank == 0:
        F_matrix = fisher.get_fisher_matrix()
-       errors = fisher.get_parameter_errors()
+       errors = fisher.get_error_bars()
        print(f"Parameter constraints: {errors}")
 
 QML Power Spectrum Estimation

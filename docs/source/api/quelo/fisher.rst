@@ -66,7 +66,7 @@ Results Retrieval
 
 .. automethod:: Fisher.get_fisher_matrix
    :no-index:
-.. automethod:: Fisher.get_parameter_errors
+.. automethod:: Fisher.get_error_bars
    :no-index:
 
 Usage Examples
@@ -88,7 +88,7 @@ Basic Fisher Matrix Computation
    # Get results (master process only)
    if fisher.rank == 0:
        F_matrix = fisher.get_fisher_matrix()
-       param_errors = fisher.get_parameter_errors()
+       param_errors = fisher.get_error_bars()
        
        print(f"Fisher matrix shape: {F_matrix.shape}")
        print(f"Parameter errors: {param_errors}")
@@ -118,7 +118,7 @@ Parameter Forecasting
        fisher.run()
        
        if fisher.rank == 0:
-           errors = fisher.get_parameter_errors()
+           errors = fisher.get_error_bars()
            # Analyze parameter constraints...
 
 Computational Notes

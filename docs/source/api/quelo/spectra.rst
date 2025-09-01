@@ -159,7 +159,7 @@ Error Analysis
    
    if spectra.rank == 0:
        # Compare with Fisher forecasts
-       fisher_errors = fisher.get_parameter_errors()
+       fisher_errors = fisher.get_error_bars()
        qml_estimates = spectra.get_power_spectra('TT')
 
 Computational Performance
