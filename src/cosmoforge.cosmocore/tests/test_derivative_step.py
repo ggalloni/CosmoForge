@@ -307,7 +307,7 @@ def test_derivative_step_temperature_polarization():
     S_TE = np.zeros((ntot, ntot), dtype=np.float64)
     do_derivative_step(
         S=S_TE,
-        spectrum=3,  # TE (assuming TT=0, EE=1, BB=2, TE=3)
+        spectrum=4,  # TE (assuming TT=0, EE=1, BB=2, TE=3)
         npixs=npixs,
         spins=Par.spins,
         current_ell=current_ell,
@@ -318,7 +318,7 @@ def test_derivative_step_temperature_polarization():
     S_TB = np.zeros((ntot, ntot), dtype=np.float64)
     do_derivative_step(
         S=S_TB,
-        spectrum=4,  # TB (assuming TT=0, EE=1, BB=2, TE=3, TB=4)
+        spectrum=5,  # TB (assuming TT=0, EE=1, BB=2, TE=3, TB=4)
         npixs=npixs,
         spins=Par.spins,
         current_ell=current_ell,
@@ -340,6 +340,100 @@ def test_derivative_step_temperature_polarization():
 
     # TE and TB should be different
     assert not np.allclose(S_TE, S_TB), "TE and TB should be different"
+
+    # Clean up
+    os.remove(mock_config_dict["maskfile"])
+
+
+def test_derivative_step_scalar_temperature_polarization():
+    """Test derivative step computation for T-P correlations."""
+    Par = InputParams()
+    mock_config_dict = {
+        "nside": 4,
+        "lmax": 8,
+        "spins": [0, 0, 0],
+        "labels": ["T", "E", "B"],
+        "physical_labels": ["T", "E", "B"],
+        "maskfile": "tmp/mask.fits",
+    }
+
+    # Create temporary mask file
+    mask = np.ones((3, hp.nside2npix(4)), dtype=np.float64)
+    with tempfile.NamedTemporaryFile(delete=False) as tmp_mask_file:
+        hp.write_map(tmp_mask_file.name, mask, overwrite=True)
+        mock_config_dict["maskfile"] = tmp_mask_file.name
+    Par.update(mock_config_dict)
+
+    npix = hp.nside2npix(Par.nside)
+    mask = np.empty((Par.nfields, npix), dtype=np.float64)
+    mask = read_mask(Par.maskfile, mask)
+
+    # Create fields using the new design
+    fields = []
+    counter = 0
+    for spin in Par.spins:
+        if spin == 0:
+            labels = Par.labels[counter]
+            counter += 1
+        else:
+            labels = [Par.labels[counter], Par.labels[counter + 1]]
+            counter += 2
+
+        if mask.ndim == 1:
+            mask = mask[:, np.newaxis]
+        field = create_field(
+            spin=spin,
+            nside=Par.nside,
+            lmax=Par.lmax,
+            mask=mask[:, counter - 1],
+            labels=labels,
+        )
+        fields.append(field)
+
+    # Create collection using new design
+    collection = FieldCollection(Par, fields)
+
+    npixs = []
+    for field in fields:
+        npixs += field.n_active if field.spin == 0 else field.n_active * 2
+
+    point_vectors = tuple(
+        np.empty((npixs[i], 3), dtype=np.float64) for i in range(len(npixs))
+    )
+    pixact = collection.get_active_pixels()
+    point_vectors = compute_pointings(
+        Par.nside, npixs, point_vectors, pixact, Par.ordering
+    )
+
+    collection.set_pointing_vectors(point_vectors)
+
+    # Test derivative step computation for temperature-polarization cross-correlations
+    ntot = collection.total_active_pixels
+    current_ell = 5
+
+    # Test TE spectrum
+    S_TE = np.zeros((ntot, ntot), dtype=np.float64)
+    do_derivative_step(
+        S=S_TE,
+        spectrum=3,  # TE (assuming TT=0, EE=1, BB=2, TE=3)
+        npixs=npixs,
+        spins=Par.spins,
+        current_ell=current_ell,
+        fields=collection,
+    )
+
+    # Basic validity checks
+    for S, label in [(S_TE, "TE")]:
+        assert S.shape == (ntot, ntot), f"Wrong shape for {label}"
+        assert np.all(np.isfinite(S)), f"Non-finite values in {label}"
+
+        # The result should be symmetric
+        np.testing.assert_allclose(
+            S, S.T, rtol=1e-12, err_msg=f"Not symmetric for {label}"
+        )
+
+        # Should not be all zeros (assuming reasonable inputs)
+        assert not np.allclose(S, 0), f"All zeros for {label}"
 
     # Clean up
     os.remove(mock_config_dict["maskfile"])

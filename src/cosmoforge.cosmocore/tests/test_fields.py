@@ -2,6 +2,7 @@
 
 import healpy as hp
 import numpy as np
+import pytest
 
 from cosmocore import (
     PolarizationField,
@@ -96,3 +97,56 @@ def test_active_pixels_and_pointings():
     assert len(pixact_t) == npix // 2  # Half pixels active
     assert len(pixact_pol) == npix // 2
     assert np.all(pixact_t < npix // 2)  # Only first half active
+
+
+def test_cross_spectrum_labels():
+    """Test cross spectrum label generation for different field combinations."""
+    nside = 4
+    lmax = 8
+    npix = hp.nside2npix(nside)
+    mask = np.ones(npix, dtype=np.float64)
+
+    # Create different field types
+    temp_field = create_field(spin=0, nside=nside, lmax=lmax, mask=mask, labels="T")
+    pol_field = create_field(spin=2, nside=nside, lmax=lmax, mask=mask, labels=["Q", "U"])
+
+    # Test PolarizationField x ScalarField (covers lines 659-663)
+    cross_labels = pol_field.get_cross_spectrum_labels(temp_field)
+    assert cross_labels == ["TQ", "TU"]
+
+    # Test PolarizationField x PolarizationField (covers lines 664-668)
+    cross_labels_pol = pol_field.get_cross_spectrum_labels(pol_field)
+    assert cross_labels_pol == ["QQ", "QU", "UQ", "UU"]
+
+    # Test invalid field type (covers line 669)
+    with pytest.raises(TypeError, match="Unknown field type"):
+        pol_field.get_cross_spectrum_labels("invalid_field")
+
+
+def test_field_collection_properties():
+    """Test FieldCollection properties for missing coverage."""
+    nside = 4
+    lmax = 8
+    npix = hp.nside2npix(nside)
+    mask = np.ones(npix, dtype=np.float64)
+
+    # Create fields
+    temp_field = create_field(spin=0, nside=nside, lmax=lmax, mask=mask, labels="T")
+    pol_field = create_field(spin=2, nside=nside, lmax=lmax, mask=mask, labels=["Q", "U"])
+
+    # Test FieldCollection properties (covers lines 786, 791)
+    from cosmocore import InputParams
+    from cosmocore.fields import FieldCollection
+
+    # Create minimal params for FieldCollection
+    params = InputParams()
+    collection = FieldCollection(params, [temp_field, pol_field])
+
+    # Test lmax property (line 786)
+    assert collection.lmax == lmax
+
+    # Test spin property (line 791)
+    expected_spins = [0, 2]
+    assert collection.spin == expected_spins
+
+    assert collection.nside == nside
