@@ -1,0 +1,86 @@
+[project]
+name = "picslike"
+version = "0.1.0"
+description = "PICSLike: Pixel-based likelihood for cosmological parameter inference"
+readme = "README.md"
+authors = [
+    { name = "Giacomo Galloni", email = "giacomo.galloni@unife.it" }
+]
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "cosmocore",
+    "tqdm>=4.67.1",
+    "scipy>=1.11.0",
+]
+
+[tool.uv.sources]
+cosmocore = { workspace = true }
+
+[build-system]
+requires = ["setuptools>=64", "setuptools_scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = [
+    "picslike",
+    "tests",
+]
+
+[tool.setuptools.package-data]
+"tests" = ["data/**/*"]
+
+[tool.ruff.lint]
+select = ["E713", "E703", "E714", "E741", "E10", "E11", "E20", "E22", "E23", "E25", "E262", "E27", "E301", "E302", "E304", "E9", "F405", "F406", "F5", "F6", "F7", "F8", "E501", "W191", "F401", "W1", "W292", "W293", "W3"]
+extend-select = ["I"]
+ignore = []
+
+[tool.ruff.lint.isort]
+known-first-party = ["picslike", "cosmocore", "cosmoforge"]
+force-single-line = false
+
+[tool.ruff.lint.per-file-ignores]
+"*/__init__.py" = ["F401"]
+"docs/*" = ["F401"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.ruff]
+line-length = 90
+target-version = "py311"
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--cov=picslike",
+    "--cov-report=html",
+    "--cov-report=term-missing",
+    "--cov-fail-under=90",
+]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["picslike"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
