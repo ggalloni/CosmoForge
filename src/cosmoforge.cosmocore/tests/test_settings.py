@@ -99,3 +99,61 @@ def test_input_params_update_method():
     # Verify derived parameters are recomputed
     assert params.nside != orig_nside
     assert params.lmax != orig_lmax
+
+
+def test_field_expansion_single_char():
+    """Test expansion of concatenated single-character field labels."""
+    params = InputParams()
+
+    # Test QU expansion
+    params.update({"physical_labels": ["QU"]})
+    assert params.physical_labels == ["Q", "U"]
+
+    # Test TQU expansion
+    params.update({"labels": ["TQU"]})
+    assert params.labels == ["T", "Q", "U"]
+    assert params.nfields == 3
+    assert params.nspectra == 6
+
+    # Test mixed expansion
+    params.update({"labels": ["T", "QU"], "physical_labels": ["T", "QU"]})
+    assert params.labels == ["T", "Q", "U"]
+    assert params.physical_labels == ["T", "Q", "U"]
+
+
+def test_field_expansion_multichar():
+    """Test multi-character field support and underscore separators."""
+    params = InputParams()
+
+    # Multi-character fields should be preserved
+    params.update({"labels": ["T1", "T2", "E1"]})
+    assert params.labels == ["T1", "T2", "E1"]
+
+    # Test underscore separator expansion
+    params.update({"labels": ["T1_T2"], "physical_labels": ["MAP1_MAP2"]})
+    assert params.labels == ["T1", "T2"]
+    assert params.physical_labels == ["MAP1", "MAP2"]
+
+    # Test mixed: single-char concat, multi-char individual, underscore
+    params.update(
+        {
+            "labels": ["T1", "QU", "E1_E2"],
+            "physical_labels": ["MAP1", "QU", "FREQ1_FREQ2"],
+        }
+    )
+    assert params.labels == ["T1", "Q", "U", "E1", "E2"]
+    assert params.physical_labels == ["MAP1", "Q", "U", "FREQ1", "FREQ2"]
+
+
+def test_field_expansion_compatibility():
+    """Test backward compatibility with existing configurations."""
+    params = InputParams()
+
+    # Standard configuration should work unchanged
+    config = {"labels": ["T", "E", "B"], "physical_labels": ["T", "Q", "U"], "nside": 16}
+    params.update(config)
+
+    assert params.labels == ["T", "E", "B"]
+    assert params.physical_labels == ["T", "Q", "U"]
+    assert params.nfields == 3
+    assert params.nspectra == 6

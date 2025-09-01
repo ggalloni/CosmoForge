@@ -26,6 +26,7 @@ Key functionality includes:
 - Default parameter initialization
 - Configuration file loading and parsing
 - Automatic computation of derived parameters
+- Automatic field label expansion (e.g., "QU" -> ["Q", "U"])
 - Parameter validation and updates
 """
 
@@ -58,8 +59,11 @@ class InputParams:
         Spin values for fields, e.g., [0, 2] for temperature and polarization.
     labels : list of str
         Field labels, e.g., ["T", "E", "B"] for temperature and polarization.
+        Supports automatic expansion: "QU" -> ["Q", "U"], "T1_T2" -> ["T1", "T2"].
     physical_labels : list of str or None
-        Physical field labels (defaults to same as labels).
+        Physical field labels for map data (defaults to same as labels).
+        Supports automatic expansion: "TQU" -> ["T", "Q", "U"],
+        "LOW_HIGH" -> ["LOW", "HIGH"].
     lmax : int
         Maximum multipole moment for spherical harmonic analysis.
     feedback : int
@@ -116,11 +120,31 @@ class InputParams:
     >>> print(params.npix)  # Automatically recomputed
     12288
 
+    Field label expansion:
+
+    >>> params.update({'physical_labels': ['QU']})
+    >>> print(params.physical_labels)  # Expands to ['Q', 'U']
+    ['Q', 'U']
+    >>> params.update({'labels': ['T1_T2']})
+    >>> print(params.labels)  # Expands to ['T1', 'T2']
+    ['T1', 'T2']
+
     Notes
     -----
     The class automatically computes derived parameters when base parameters
     are updated. This ensures consistency between related parameters like
     nside and npix, or labels and nfields.
+
+    **Field Label Expansion:**
+    The class supports automatic expansion of concatenated field labels:
+
+    - Single-character concatenation: "QU" -> ["Q", "U"], "TEB" -> ["T", "E", "B"]
+    - Underscore separation: "T1_T2" -> ["T1", "T2"], "LOW_HIGH" -> ["LOW", "HIGH"]
+    - Mixed formats: ["T", "QU", "E1_E2"] -> ["T", "Q", "U", "E1", "E2"]
+
+    This expansion is applied automatically when updating 'labels' or
+    'physical_labels' parameters, providing backward compatibility while
+    supporting flexible field specification formats.
     """
 
     def __init__(self):
@@ -206,6 +230,52 @@ class InputParams:
             [spec2idx(spec, spec, self.nfields) for spec in range(self.nfields)]
         )
 
+    def _expand_concatenated_fields(self, field_labels):
+        """
+        Expand concatenated field labels to individual components.
+
+        Parameters
+        ----------
+        field_labels : list of str
+            Field labels that may contain concatenated fields like "QU" or "T1_T2".
+
+        Returns
+        -------
+        list of str
+            Expanded field labels with concatenated fields split into components.
+
+        Notes
+        -----
+        This method detects and expands concatenated field labels:
+        - Single character fields can be concatenated: "QU" -> ["Q", "U"]
+        - Multi-character fields can use underscore: "T1_T2" -> ["T1", "T2"]
+        - Mixed cases are handled appropriately
+
+        The expansion follows these rules:
+        1. If a field label contains underscores, split on underscores
+        2. Else if a field label has multiple characters and all characters are
+           valid single-character field names (T, Q, U, E, B), expand it
+        3. Otherwise, keep the field label as-is
+
+        This provides backward compatibility while supporting both concatenated
+        and explicit field specifications.
+        """
+        expanded = []
+        valid_single_chars = {"T", "Q", "U", "E", "B", "I"}  # Common CMB field names
+
+        for label in field_labels:
+            if "_" in label:
+                # Underscore-separated multi-character fields: "T1_T2" -> ["T1", "T2"]
+                expanded.extend(label.split("_"))
+            elif len(label) > 1 and all(c in valid_single_chars for c in label):
+                # Concatenated single-character fields: "QU" -> ["Q", "U"]
+                expanded.extend(list(label))
+            else:
+                # Single field or multi-character field name without underscores
+                expanded.append(label)
+
+        return expanded
+
     def update(self, config_dict):
         """
         Update parameters from a configuration dictionary.
@@ -220,11 +290,20 @@ class InputParams:
         Updates any existing parameter attributes with values from the
         configuration dictionary. After updating, automatically recomputes
         derived parameters and sets physical_labels if not already defined.
+
+        Field expansion is applied to both 'labels' and 'physical_labels' if
+        they contain concatenated field specifications like "QU" -> ["Q", "U"].
         Non-existent attributes are silently ignored.
         """
         for key, value in config_dict.items():
             if hasattr(self, key):
-                setattr(self, key, value)
+                # Apply field expansion for field label parameters
+                if key in ("labels", "physical_labels") and isinstance(value, list):
+                    expanded_value = self._expand_concatenated_fields(value)
+                    setattr(self, key, expanded_value)
+                else:
+                    setattr(self, key, value)
+
         self.compute_derived()
         if self.physical_labels is None:
             self.physical_labels = self.labels.copy()

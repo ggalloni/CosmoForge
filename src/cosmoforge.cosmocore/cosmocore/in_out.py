@@ -294,6 +294,8 @@ def read_maps(maps, filename, pixact, field_labels, calibration: float = 1.0):
         List of active pixel indices for each field.
     field_labels : list of str
         Labels identifying which fields to read from each simulation.
+        These should be individual field names (e.g., ["T", "Q", "U"]).
+        Field expansion is handled at the parameter level.
     calibration : float, optional
         Calibration factor to multiply all map values. Default is 1.0.
 
@@ -309,11 +311,19 @@ def read_maps(maps, filename, pixact, field_labels, calibration: float = 1.0):
     Reads map data from FITS files with structure:
     - Each HDU named "SIM_XXX" contains one simulation
     - HDU headers contain "FIELDS" keyword describing field organization
-    - Supports both comma-separated ("T,Q,U") and concatenated ("TQU") field formats
+    - Supports both comma-separated ("T,Q,U") and concatenated ("TQU") header formats
     - Applies calibration factor to all loaded data
+    - Field expansion (e.g., "QU" -> ["Q", "U"]) is handled at InputParams level
     """
     assert maps.shape[0] == sum(len(p) for p in pixact), "maps array has incorrect shape"
     nsims = maps.shape[1]
+
+    # Ensure we have the right number of labels
+    if len(field_labels) != len(pixact):
+        raise ValueError(
+            f"Mismatch between pixact length ({len(pixact)}) and "
+            f"field labels ({len(field_labels)}): {field_labels}"
+        )
 
     with fits.open(filename) as hdul:
         for isim in range(nsims):
@@ -324,14 +334,6 @@ def read_maps(maps, filename, pixact, field_labels, calibration: float = 1.0):
                 label = field_labels[field_idx]
                 field_index = get_field_index(hdul[f"SIM_{isim:03d}"], label)
 
-                # get_field_index always returns a list, but for individual fields
-                # it should be length 1
-                if len(field_index) != 1:
-                    raise ValueError(
-                        f"Expected single field index for '{label}', got {field_index}"
-                    )
-
-                field_index = field_index[0]  # Extract the single index
                 pixels = pixact[field_idx].astype(int)
 
                 if len(pixels) > 0 and (
@@ -348,35 +350,33 @@ def read_maps(maps, filename, pixact, field_labels, calibration: float = 1.0):
 
 def get_field_index(hdu, field_name):
     """
-    Extract field indices from FITS HDU header information.
+    Extract field index from FITS HDU header information.
 
     Parameters
     ----------
     hdu : astropy.io.fits.HDU
         FITS HDU containing field information in header.
     field_name : str
-        Field name to look up. Can be single field name ("T", "T1") or
-        multiple field names concatenated ("TQU") when using single-character fields.
+        Field name to look up (e.g., "T", "Q", "U", "T1", "E2").
 
     Returns
     -------
-    list of int
-        List of field indices corresponding to the requested field name(s).
+    int
+        Field index corresponding to the requested field name.
 
     Raises
     ------
     ValueError
-        If requested field(s) are not found in the HDU header.
+        If requested field is not found in the HDU header.
 
     Notes
     -----
     Supports two header formats for the "FIELDS" keyword:
     - Comma-separated: "T,Q,U" or "T1,T2,T3"
-    - Concatenated: "TQU" (only for single-character field names)
+    - Concatenated: "TQU" (for single-character field names)
 
-    The function first tries to match the field_name as-is against available fields.
-    If that fails and all available fields are single characters, it splits the
-    field_name into individual characters and looks up each one.
+    Field expansion is now handled at the InputParams level, so this function
+    expects individual field names only.
     """
     fields_str = hdu.header.get("FIELDS", "")
 
@@ -388,23 +388,8 @@ def get_field_index(hdu, field_name):
         # Concatenated format: "TQU" -> ["T", "Q", "U"]
         available_fields = list(fields_str.strip())
 
-    # First, try to match field_name as-is (handles multi-character field names)
-    if field_name in available_fields:
-        return [available_fields.index(field_name)]
+    # Look up the field name
+    if field_name not in available_fields:
+        raise ValueError(f"Field '{field_name}' not found in {available_fields}")
 
-    # If that fails and we have multi-character field_name, try splitting it
-    # into individual characters (only if all available fields are single chars)
-    if len(field_name) > 1 and all(len(f) == 1 for f in available_fields):
-        # Split the field_name into individual characters for legacy compatibility
-        requested_fields = list(field_name)
-        indices = []
-
-        for field in requested_fields:
-            if field not in available_fields:
-                raise ValueError(f"Field '{field}' not found in {available_fields}")
-            indices.append(available_fields.index(field))
-
-        return indices
-
-    # If we get here, the field wasn't found
-    raise ValueError(f"Field '{field_name}' not found in {available_fields}")
+    return available_fields.index(field_name)
