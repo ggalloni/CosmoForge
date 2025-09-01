@@ -245,12 +245,11 @@ def writecl(filename: str, power_spectra: np.ndarray):
 
     Notes
     -----
-    Currently uses numpy.savetxt for simple text output. Could be enhanced
-    to support more sophisticated formats with headers and labels.
+    Uses high precision format (%.16e) to preserve full double precision.
+    Could be enhanced to support more sophisticated formats with headers and labels.
     """
-    # Use simple numpy save for now
-    # Could be enhanced to use a more sophisticated format
-    np.savetxt(filename, power_spectra)
+    # Use high precision format to preserve full double precision
+    np.savetxt(filename, power_spectra, fmt="%.16e")
 
 
 def write_out_matrix(outfilematrix, matrix):
