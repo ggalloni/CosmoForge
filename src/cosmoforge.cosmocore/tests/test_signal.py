@@ -87,7 +87,7 @@ def test_signal_covmat(data_resolver):
 
     with tempfile.NamedTemporaryFile(delete=False) as tmp_cls_file:
         Par.inputclfile = tmp_cls_file.name
-    np.savetxt(Par.inputclfile, Cls, header="ell TT EE BB TE TB EB")
+    np.savetxt(Par.inputclfile, Cls, header="ell TT EE BB TE TB EB", fmt="%.16e")
 
     collection.set_cls()
     collection.set_beams()
@@ -179,7 +179,7 @@ def test_signal_covmat_multiple_scalar_fields(data_resolver):
 
     with tempfile.NamedTemporaryFile(delete=False) as tmp_cls_file:
         Par.inputclfile = tmp_cls_file.name
-    np.savetxt(Par.inputclfile, Cls, header="ell T1T1 T2T2 T1T2")
+    np.savetxt(Par.inputclfile, Cls, header="ell T1T1 T2T2 T1T2", fmt="%.16e")
 
     collection.set_cls()
     collection.set_beams()

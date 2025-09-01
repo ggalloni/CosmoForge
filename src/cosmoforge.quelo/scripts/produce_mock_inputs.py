@@ -219,6 +219,7 @@ np.savetxt(
     f"{outpath}/{compute_case}/dls.txt",
     new_clfid,
     header="ell TT EE BB TE TB EB",
+    fmt="%.16e",
 )
 print(f"D_l spectra saved to: {outpath}/{compute_case}/dls.txt")
 

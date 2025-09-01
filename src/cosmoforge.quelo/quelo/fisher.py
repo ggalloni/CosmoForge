@@ -175,6 +175,9 @@ class Fisher(Core):
         self.rank = self.comm.Get_rank()
         self.size = self.comm.Get_size()
 
+        # Initialize signal matrix to None
+        self.Sig = None
+
     def setup_signal_matrix(self) -> np.ndarray:
         """
         Compute the theoretical signal covariance matrix from power spectra.

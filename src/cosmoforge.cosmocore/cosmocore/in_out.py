@@ -183,7 +183,7 @@ def output_geometry(filegeometry, npixs, point_vectors, active):
             for i in range(ntemp):
                 idx = active[field_idx, i]
                 vec = point_vectors[field_idx][i, :]
-                f.write(f"{idx:6d}{vec[0]:15.6e}{vec[1]:15.6e}{vec[2]:15.6e}\n")
+                f.write(f"{idx:6d}{vec[0]:24.16e}{vec[1]:24.16e}{vec[2]:24.16e}\n")
 
 
 def readcl(inputclfile, Params: InputParams):
@@ -266,9 +266,10 @@ def write_out_matrix(outfilematrix, matrix):
 
     Notes
     -----
-    Writes the matrix with scientific notation formatting (15.7E format)
+    Writes the matrix with scientific notation formatting (24.16E format)
     with each row on a separate line. Suitable for matrices that need
     to be human-readable or imported into other analysis tools.
+    The 16 decimal places preserve full double precision.
     """
     n = matrix.shape[0]
 
@@ -276,7 +277,7 @@ def write_out_matrix(outfilematrix, matrix):
 
     with open(outfilematrix, "w") as f:
         for i in range(n):
-            line = "".join(f"{matrix[i, j]:15.7E}" for j in range(n))
+            line = "".join(f"{matrix[i, j]:24.16E}" for j in range(n))
             f.write(line + "\n")
 
 
