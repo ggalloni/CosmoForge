@@ -83,6 +83,7 @@ exclude_lines = [
     "raise TypeError",
     "if __name__ == .__main__.:",
     "if TYPE_CHECKING:",
+    "self.log",
 ]
 show_missing = true
 precision = 2
