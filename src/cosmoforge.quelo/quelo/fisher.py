@@ -802,13 +802,7 @@ class Fisher(Core):
         """
         if self.rank == 0 and self.fisher is not None:
             # Invert Fisher matrix to get covariance
-            try:
-                cov_matrix = np.linalg.inv(self.fisher)
-                errors = np.sqrt(np.diag(cov_matrix))
-                return errors
-            except np.linalg.LinAlgError:
-                self.log(
-                    "Warning: Fisher matrix is singular, cannot compute errors", level=1
-                )
-                return None
+            cov_matrix = np.linalg.inv(self.fisher)
+            errors = np.sqrt(np.diag(cov_matrix))
+            return errors
         return None
