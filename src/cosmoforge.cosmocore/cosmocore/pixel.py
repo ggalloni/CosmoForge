@@ -360,8 +360,9 @@ def compute_signal_matrix(
                     cl22 = fields.get_cls(i, i, 1)
                     cl12 = fields.get_cls(i, i, 2)
                 else:
-                    msg = "Cross-correlation for spin-2 fields not implemented yet."
-                    raise NotImplementedError(msg)
+                    raise NotImplementedError(
+                        "Cross-correlation for spin-2 fields not implemented yet."
+                    )
                 f1 = np.empty(lmax, dtype=np.float64)
                 f2 = np.empty(lmax, dtype=np.float64)
                 compute_22_contribution(

@@ -224,8 +224,7 @@ def idx2spec(idx, nfields):
     idx_cross = idx - nfields
     total_cross = nfields * (nfields - 1) // 2
     if idx_cross < 0 or idx_cross >= total_cross:
-        msg = f"Index {idx} out of bounds for nfields={nfields}"
-        raise ValueError(msg)
+        raise ValueError(f"Index {idx} out of bounds for nfields={nfields}")
     i = 0
     while idx_cross >= nfields - i - 1:
         idx_cross -= nfields - i - 1

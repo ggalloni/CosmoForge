@@ -109,12 +109,11 @@ class Core(ABC):
             self.params = InputParams()
             self.params.update(params)
         else:
-            msg = (
+            raise TypeError(
                 "params must be an instance of InputParams, "
                 "a string with the path to a parameter file, "
                 "or a dictionary with parameters."
             )
-            raise TypeError(msg)
 
     def setup_fields(self) -> FieldCollection:
         """
