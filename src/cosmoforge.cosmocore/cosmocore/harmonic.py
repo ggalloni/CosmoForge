@@ -286,48 +286,6 @@ class SpectraManager:
         """
         return self._spectra_map.get((field_i, field_j, mode))
 
-    def read_cls_from_file(self, inputclfile: str, params) -> dict[str, np.ndarray]:
-        """
-        Read power spectra from file.
-
-        Parameters:
-        -----------
-        inputclfile : str
-            Path to power spectra file
-        params : InputParams
-            Parameter object containing configuration
-
-        Returns:
-        --------
-        dict[str, np.ndarray]
-            Dictionary mapping spectrum labels to power spectra arrays
-        """
-        from .in_out import readcl
-
-        return readcl(inputclfile, params)
-
-    def set_cls_from_file(self, inputclfile: str, params) -> None:
-        """
-        Set power spectra by reading from file.
-
-        This is a convenience method that combines reading power spectra from
-        a file and setting them in the manager in one step.
-
-        Parameters
-        ----------
-        inputclfile : str
-            Path to the power spectra file.
-        params : InputParams
-            Parameter object containing file format and configuration details.
-
-        See Also
-        --------
-        read_cls_from_file : Read power spectra without setting them
-        set_cls : Set power spectra from data already in memory
-        """
-        cls_data = self.read_cls_from_file(inputclfile, params)
-        self.set_cls(cls_data)
-
     def set_cls(self, cls_data: dict[str, np.ndarray] | np.ndarray) -> None:
         """
         Set power spectra from dictionary or matrix.
@@ -772,8 +730,7 @@ class BeamManager:
 
         for label in spectra_manager.labels:
             if label not in spectra_manager._cls_dict:
-                print(f"Warning: No power spectrum found for {label}...")
-                continue
+                raise ValueError(f"No power spectrum found for {label}.")
 
             if label in smoothing_factors:
                 # Apply smoothing factor
