@@ -12,6 +12,7 @@ jobs:
   detect-changes:
     name: Detect Changes
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       affected-packages: ${{ steps.changes.outputs.affected-packages }}
       test-cosmocore: ${{ steps.changes.outputs.test-cosmocore }}
@@ -102,6 +103,7 @@ jobs:
   test-cosmocore:
     name: Test CosmoCore
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: detect-changes
     if: needs.detect-changes.outputs.test-cosmocore == 'true'
     steps:
@@ -145,6 +147,7 @@ jobs:
   test-quelo:
     name: Test Quelo
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: detect-changes
     if: needs.detect-changes.outputs.test-quelo == 'true'
     steps:
@@ -184,8 +187,7 @@ jobs:
         if: contains(needs.detect-changes.outputs.quelo-strategy, 'test')
         working-directory: src/cosmoforge.quelo
         run: |
-          mpirun --oversubscribe -np 2 uv run pytest tests/test_fisher.py::test_fisher_mpi_structure -v --cov=quelo --cov-append --cov-report=xml
-          mpirun --oversubscribe -np 2 uv run pytest tests/test_spectra.py::test_spectra_mpi_structure -v --cov=quelo --cov-append --cov-report=xml
+          mpirun --oversubscribe -np 2 uv run pytest -k mpi -v --cov=quelo --cov-append --cov-report=xml
 
       - name: Upload coverage to Codecov
         if: contains(needs.detect-changes.outputs.quelo-strategy, 'test')
@@ -201,6 +203,7 @@ jobs:
   test-meta:
     name: Test Meta
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: detect-changes
     if: needs.detect-changes.outputs.test-meta == 'true'
     steps:
@@ -236,29 +239,11 @@ jobs:
         run: |
           uv run pytest tests/ -v
 
-  # Ensure all flags are present in codecov, carrying forward previous coverage if needed
-  codecov-finalize:
-    name: Finalize Codecov Coverage
-    runs-on: ubuntu-latest
-    needs: [detect-changes, test-cosmocore, test-quelo, test-meta]
-    if: always()
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Finalize coverage with carry-forward
-        uses: codecov/codecov-action@v4
-        with:
-          flags: cosmocore,quelo
-          name: carry-forward-finalize
-          fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
-          slug: ggalloni/CosmoForge
-
   summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [detect-changes, test-cosmocore, test-quelo, test-meta, codecov-finalize]
+    timeout-minutes: 10
+    needs: [detect-changes, test-cosmocore, test-quelo, test-meta]
     if: always()
     steps:
       - name: Print test strategy
