@@ -10,7 +10,6 @@ requires-python = ">=3.11,<3.14"
 dependencies = [
     "cosmocore",
     "tqdm>=4.67.1",
-    "scipy>=1.11.0",
 ]
 
 [tool.uv.sources]
@@ -49,38 +48,42 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.ruff]
+exclude = ["build", ".eggs"]
 line-length = 90
-target-version = "py311"
-
-[tool.pytest.ini_options]
-minversion = "7.0"
-addopts = [
-    "-ra",
-    "--strict-markers",
-    "--strict-config",
-    "--cov=picslike",
-    "--cov-report=html",
-    "--cov-report=term-missing",
-    "--cov-fail-under=90",
-]
-testpaths = ["tests"]
 
 [tool.coverage.run]
-source = ["picslike"]
-branch = true
+source = ["src/"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+    "*/setup.py",
+    "*/conftest.py",
+    "*/.pytest_cache/*",
+    "*/egg-info/*",
+    "*/build/*",
+    "*/dist/*",
+]
 
 [tool.coverage.report]
-show_missing = true
-skip_covered = false
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
-    "if self.debug:",
-    "if settings.DEBUG",
+    "def __str__",
+    "pass",
     "raise AssertionError",
     "raise NotImplementedError",
-    "if 0:",
+    "raise ValueError",
+    "raise TypeError",
     "if __name__ == .__main__.:",
-    "class .*\\bProtocol\\):",
-    "@(abc\\.)?abstractmethod",
+    "if TYPE_CHECKING:",
+    "self.log",
 ]
+show_missing = true
+precision = 2
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+[tool.coverage.xml]
+output = "coverage.xml"

@@ -30,6 +30,7 @@ package = false  # Don't treat the root directory as a package
 [tool.uv.workspace]
 members = [
     "src/cosmoforge.cosmocore",
+    "src/cosmoforge.picslike",
     "src/cosmoforge.quelo",
     "src/cosmoforge.meta",
 ]
@@ -40,7 +41,7 @@ extend-select = ["I"]
 ignore = []
 
 [tool.ruff.lint.isort]
-known-first-party = ["quelo", "cosmocore", "cosmoforge"]
+known-first-party = ["quelo", "cosmocore", "cosmoforge", "picslike"]
 force-single-line = false
 
 [tool.ruff.lint.per-file-ignores]
