@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Giacomo Galloni", email = "giacomo.galloni@unife.it" }
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 dependencies = [
     "healpy>=1.18.1",
     "mpi4py>=4.1.0",
