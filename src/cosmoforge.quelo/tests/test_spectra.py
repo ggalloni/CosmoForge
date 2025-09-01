@@ -29,31 +29,40 @@ class TestSpectra:
         """Teardown method called after each test method."""
         pass
 
-    def get_fisher_instance(self, fields: str) -> Fisher:
+    def get_fisher_instance(self, fields: str, config_type: str = "config") -> Fisher:
         """
-        Get a Fisher instance for the specified fields, using cache for efficiency.
+        Get a Fisher instance for the specified fields and config type, using cache for
+        efficiency.
 
         Parameters
         ----------
         fields : str
             Field specification (e.g., "T", "QU", "TQU", "TEB")
+        config_type : str, optional
+            Configuration type ("config" or "cross_config"), by default "config"
 
         Returns
         -------
         Fisher
-            Fisher instance for the specified fields
+            Fisher instance for the specified fields and configuration
         """
-        if fields not in self._fisher_cache:
-            print(f"Creating Fisher instance for fields: {fields}")
-            config_file = self._config_resolver(f"tests/data/nside4/{fields}/config.yaml")
+        cache_key = f"{fields}_{config_type}"
+        if cache_key not in self._fisher_cache:
+            print(f"Creating Fisher instance for fields: {fields}, config: {config_type}")
+            config_file = self._config_resolver(
+                f"tests/data/nside4/{fields}/{config_type}.yaml"
+            )
             fisher = Fisher(config_file)
             fisher.run()
             os.unlink(config_file)
-            self._fisher_cache[fields] = fisher
+            self._fisher_cache[cache_key] = fisher
         else:
-            print(f"Reusing cached Fisher instance for fields: {fields}")
+            print(
+                f"Reusing cached Fisher instance for fields: {fields}, "
+                f"config: {config_type}"
+            )
 
-        return self._fisher_cache[fields]
+        return self._fisher_cache[cache_key]
 
     def get_qml_analyzer(
         self, fields: str, config_type: str = "config", fisher: Fisher = None
@@ -198,10 +207,10 @@ def test_spectra_mpi_structure(local_path, config_resolver):
 @pytest.mark.parametrize("fields", ["QU"])
 def test_cross_spectra_computation(fields, local_path, config_resolver):
     """Test the QML cross power spectra computation for the specified fields."""
-    # Get cached Fisher instance (same Fisher can be used for cross-spectra)
-    fisher = test_spectra.get_fisher_instance(fields)
+    # Get cached Fisher instance for cross-configuration (different from regular Fisher)
+    fisher = test_spectra.get_fisher_instance(fields, config_type="cross_config")
 
-    # Create QML analyzer for cross-spectra using the cached Fisher
+    # Create QML analyzer for cross-spectra using the cross-configuration Fisher
     qml_analyzer = test_spectra.get_qml_analyzer(
         fields, config_type="cross_config", fisher=fisher
     )
@@ -217,7 +226,7 @@ def test_cross_spectra_computation(fields, local_path, config_resolver):
 
 def test_spectra_reuse_optimization(local_path, config_resolver):
     """Test that Fisher reuse optimization works correctly and gives same results."""
-    fields = "TQU"
+    fields = "QU"
 
     # Get cached Fisher instance
     fisher = test_spectra.get_fisher_instance(fields)
@@ -255,17 +264,34 @@ def test_fisher_cache_efficiency():
     """Test that Fisher instances are properly cached and reused."""
     fields = "TEB"
 
-    # First call should create Fisher
+    # First call should create Fisher for regular config
     fisher1 = test_spectra.get_fisher_instance(fields)
 
-    # Second call should return cached Fisher
+    # Second call should return cached Fisher for regular config
     fisher2 = test_spectra.get_fisher_instance(fields)
 
     # Should be the same object
     assert fisher1 is fisher2, "Fisher instances should be cached and reused"
 
-    # Cache should contain the fields
-    assert fields in test_spectra._fisher_cache, f"Fisher cache should contain {fields}"
+    # Cache should contain the fields with config type
+    cache_key = f"{fields}_config"
+    assert cache_key in test_spectra._fisher_cache, (
+        f"Fisher cache should contain {cache_key}"
+    )
+
+    # Test that cross-config creates a different Fisher instance
+    if fields == "QU":  # Only QU has cross_config available
+        fisher_cross = test_spectra.get_fisher_instance(
+            fields, config_type="cross_config"
+        )
+        assert fisher_cross is not fisher1, (
+            "Cross-config should create different Fisher instance"
+        )
+
+        cache_key_cross = f"{fields}_cross_config"
+        assert cache_key_cross in test_spectra._fisher_cache, (
+            f"Fisher cache should contain {cache_key_cross}"
+        )
 
 
 # Backward compatibility functions for direct usage
