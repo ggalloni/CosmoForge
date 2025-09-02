@@ -183,13 +183,22 @@ jobs:
         if: contains(needs.detect-changes.outputs.quelo-strategy, 'test')
         working-directory: src/cosmoforge.quelo
         run: |
-          uv run pytest tests/ -v --cov=quelo --cov-report=xml
+          uv run pytest tests/ -v --cov=quelo --cov-report=
 
       - name: Run MPI test
         if: contains(needs.detect-changes.outputs.quelo-strategy, 'test')
         working-directory: src/cosmoforge.quelo
         run: |
-          mpirun --oversubscribe -np 2 uv run pytest -k mpi -v --cov=quelo --cov-append --cov-report=xml
+          # Run MPI tests with separate coverage
+          mpirun --oversubscribe -np 2 uv run pytest -k mpi -v --cov=quelo --cov-append --cov-report=
+
+      - name: Generate coverage report
+        if: contains(needs.detect-changes.outputs.quelo-strategy, 'test')
+        working-directory: src/cosmoforge.quelo
+        run: |
+          # Combine all coverage data and generate XML report
+          uv run coverage combine
+          uv run coverage xml
 
       - name: Upload coverage to Codecov
         if: contains(needs.detect-changes.outputs.quelo-strategy, 'test')
