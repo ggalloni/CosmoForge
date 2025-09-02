@@ -341,7 +341,7 @@ def get_version_info() -> dict:
 def get_global_config() -> GlobalConfig:
     """Get global configuration instance."""
 
-def setup_logging(level='INFO', **kwargs) -> logging.Logger:
+def setup_logging(level='INFO', **kwargs) -> logging.CosmoLogger:
     """Setup centralized logging."""
 
 def get_package_root() -> Path:

@@ -46,7 +46,7 @@ class Timer:
         Parameters
         ----------
         logger : CosmoLogger
-            Logger instance to use for timing output
+            CosmoLogger instance to use for timing output
         operation : str
             Description of the operation being timed
         level : int
@@ -93,7 +93,7 @@ class CosmoLogger:
         Parameters
         ----------
         name : str, default="cosmoforge"
-            Logger name
+            CosmoLogger name
         feedback_level : int, default=1
             Feedback level (0=silent, 1=normal, 2=verbose, 3+=debug)
         log_file : str or Path, optional
@@ -360,10 +360,6 @@ class CosmoLogger:
         return Timer(self, operation, level)
 
 
-# Backward compatibility aliases
-Logger = CosmoLogger
-
-
 def get_logger(
     name: str = "cosmoforge",
     feedback_level: int = 1,
@@ -377,7 +373,7 @@ def get_logger(
     Parameters
     ----------
     name : str, default="cosmoforge"
-        Logger name
+        CosmoLogger name
     feedback_level : int, default=1
         Feedback level (0=silent, 1=normal, 2=verbose, 3+=debug)
     log_file : str or Path, optional
@@ -418,7 +414,7 @@ def get_logger_from_params(params, name: str = "cosmoforge") -> CosmoLogger:
     params : InputParams
         CosmoForge parameters object
     name : str, default="cosmoforge"
-        Logger name
+        CosmoLogger name
 
     Returns
     -------
