@@ -127,8 +127,25 @@ class CosmoLogger:
 
         formatter = logging.Formatter(format_string, datefmt="%Y-%m-%d %H:%M:%S")
 
-        # Console handler
-        console_handler = logging.StreamHandler(sys.stdout)
+        # Console handler - create a custom handler that respects stdout redirection
+        class DynamicStreamHandler(logging.StreamHandler):
+            """StreamHandler that dynamically uses current sys.stdout."""
+
+            def __init__(self):
+                # Don't call super().__init__() with a stream argument
+                super().__init__()
+
+            @property
+            def stream(self):
+                """Always use the current sys.stdout."""
+                return sys.stdout
+
+            @stream.setter
+            def stream(self, value):
+                """Ignore attempts to set the stream."""
+                pass
+
+        console_handler = DynamicStreamHandler()
         console_handler.setLevel(self.log_level)
         console_handler.setFormatter(formatter)
         self.logger.addHandler(console_handler)
