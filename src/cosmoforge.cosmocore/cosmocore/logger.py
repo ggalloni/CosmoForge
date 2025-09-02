@@ -12,6 +12,7 @@ import sys
 import time
 from pathlib import Path
 
+import healpy as hp
 import numpy as np
 
 # Feedback to logging level mapping
@@ -303,7 +304,7 @@ class CosmoLogger:
         level : int, default=2
             Feedback level for map info
         """
-        resolution_arcmin = 3.5 * (512 / nside)  # Approximate resolution
+        resolution_arcmin = hp.nside2resol(nside, arcmin=True)
 
         msg = f"{map_name}: nside={nside}, npix={npix:,}, "
         msg += f"resolution≈{resolution_arcmin:.1f}'"
