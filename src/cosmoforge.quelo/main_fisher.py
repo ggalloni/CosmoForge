@@ -103,41 +103,46 @@ def main():
     """
     # Initialize Fisher matrix computation with configuration file
     # TODO: Consider making config file path configurable via command line
-    print("Initializing Fisher matrix computation...")
     fisher_analyzer = Fisher("src/cosmoforge.quelo/quelo/TEB_defaults.yaml")
+    logger = fisher_analyzer.logger
+
+    logger.info("Initializing Fisher matrix computation...")
 
     # Execute the complete Fisher analysis pipeline
     # This includes all setup phases and parallel computation
-    print("Starting Fisher matrix analysis pipeline...")
+    logger.info("Starting Fisher matrix analysis pipeline...")
     fisher_analyzer.run()
 
     # Retrieve and display results (only available on master process)
     fisher_matrix = fisher_analyzer.get_fisher_matrix()
     if fisher_matrix is not None:
-        print("=" * 60)
-        print("FISHER MATRIX COMPUTATION COMPLETED SUCCESSFULLY")
-        print("=" * 60)
-        print(f"Fisher matrix shape: {fisher_matrix.shape}")
-        print(f"Matrix condition number: {fisher_matrix.max() / fisher_matrix.min():.2e}")
+        logger.info("=" * 60)
+        logger.info("FISHER MATRIX COMPUTATION COMPLETED SUCCESSFULLY")
+        logger.info("=" * 60)
+        logger.log_matrix_info("Fisher matrix", fisher_matrix, level=1)
+        condition_number = fisher_matrix.max() / fisher_matrix.min()
+        logger.info(f"Matrix condition number: {condition_number:.2e}")
 
         # Compute and display parameter error forecasts
         errors = fisher_analyzer.get_error_bars()
         if errors is not None:
-            print("\nParameter error forecasts (1σ marginal):")
-            print(f"Number of parameters: {len(errors)}")
-            print(f"Error range: [{errors.min():.3e}, {errors.max():.3e}]")
-            print(f"Mean fractional error: {errors.mean():.3e}")
+            logger.info("\nParameter error forecasts (1σ marginal):")
+            logger.info(f"Number of parameters: {len(errors)}")
+            logger.info(f"Error range: [{errors.min():.3e}, {errors.max():.3e}]")
+            logger.info(f"Mean fractional error: {errors.mean():.3e}")
 
             # Display first few errors as examples
-            print("\nFirst 5 parameter errors:")
+            logger.info("\nFirst 5 parameter errors:")
             for i, err in enumerate(errors[:5]):
-                print(f"  Parameter {i + 1}: {err:.3e}")
+                logger.info(f"  Parameter {i + 1}: {err:.3e}")
         else:
-            print("Warning: Could not compute parameter errors (singular Fisher matrix)")
+            logger.warning(
+                "Warning: Could not compute parameter errors (singular Fisher matrix)"
+            )
     else:
-        print("Fisher matrix computation completed (worker process)")
+        logger.info("Fisher matrix computation completed (worker process)")
 
-    print("\nAnalysis complete. Check output files for detailed results.")
+    logger.info("\nAnalysis complete. Check output files for detailed results.")
 
 
 if __name__ == "__main__":
