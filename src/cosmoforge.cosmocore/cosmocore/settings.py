@@ -170,6 +170,11 @@ class InputParams:
         self.physical_labels = None
 
         self.feedback = 1
+        # Enhanced logging parameters
+        self.log_file = None
+        self.log_format = "scientific"
+        self.log_timing = True
+
         self.inputclfile = "inputs/cls.dat"
         self.maskfile = "inputs/mask.fits"
         self.do_cross = True

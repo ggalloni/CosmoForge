@@ -79,6 +79,13 @@ class Core(ABC):
         """
         self.read_params(params)
 
+        # Initialize enhanced logger
+        from .logger import get_logger_from_params
+
+        self.logger = get_logger_from_params(
+            self.params, name=self.__class__.__name__.lower()
+        )
+
     def read_params(self, params: InputParams | str | dict):
         """
         Read and validate analysis parameters.
@@ -346,7 +353,7 @@ class Core(ABC):
 
     def log(self, message: str, level: int = 1):
         """
-        Log a message based on feedback level.
+        Log a message based on feedback level (backward compatibility).
 
         Parameters
         ----------
@@ -357,12 +364,12 @@ class Core(ABC):
 
         Notes
         -----
-        Messages are only displayed if the analysis parameters include a
-        feedback level greater than or equal to the specified level.
-        This allows for controllable verbosity in analysis runs.
+        This method maintains backward compatibility with the existing feedback
+        system while using the enhanced logger infrastructure. Messages are
+        logged with appropriate formatting and can be output to both console
+        and file if configured.
         """
-        if hasattr(self.params, "feedback") and self.params.feedback >= level:
-            print(message)
+        self.logger.log_with_feedback(message, level)
 
     @abstractmethod
     def compute(self):
