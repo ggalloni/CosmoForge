@@ -170,7 +170,7 @@ class Core(ABC):
             fields.append(field)
 
         # Create collection using new design
-        self.collection = FieldCollection(self.params, fields)
+        self.collection = FieldCollection(self.params, fields, self.logger)
 
         return self.collection
 

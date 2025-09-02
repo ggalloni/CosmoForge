@@ -1,31 +1,31 @@
 """
-Tests for the CosmoForge Logger.
+Tests for the CosmoForge CosmoLogger.
 """
 
 import tempfile
 from pathlib import Path
 
-from cosmocore import Logger, get_logger
+from cosmocore import CosmoLogger, get_logger
 
 
 class TestLogger:
-    """Test the Logger class."""
+    """Test the CosmoLogger class."""
 
     def test_logger_creation(self):
         """Test that logger can be created."""
-        logger = Logger("test_logger")
+        logger = CosmoLogger("test_logger")
         assert logger.name == "test_logger"
         assert logger.logger.name == "test_logger"
 
     def test_get_logger_function(self):
         """Test the get_logger convenience function."""
         logger = get_logger("test_analysis", level="DEBUG")
-        assert isinstance(logger, Logger)
+        assert isinstance(logger, CosmoLogger)
         assert logger.name == "test_analysis"
 
     def test_log_levels(self):
         """Test different log levels work."""
-        logger = Logger("test_levels", level="DEBUG")
+        logger = CosmoLogger("test_levels", level="DEBUG")
 
         # These should not raise exceptions
         logger.debug("Debug message")
@@ -36,7 +36,7 @@ class TestLogger:
 
     def test_level_setting(self):
         """Test changing log levels."""
-        logger = Logger("test_set_level", level="INFO")
+        logger = CosmoLogger("test_set_level", level="INFO")
         logger.set_level("DEBUG")
         logger.set_level(30)  # WARNING level
 
@@ -47,7 +47,7 @@ class TestLogger:
         """Test logging to file."""
         with tempfile.TemporaryDirectory() as temp_dir:
             log_file = Path(temp_dir) / "test.log"
-            logger = Logger("test_file", log_file=log_file)
+            logger = CosmoLogger("test_file", log_file=log_file)
 
             logger.info("Test file logging")
 
@@ -60,7 +60,7 @@ class TestLogger:
     def test_logger_with_custom_format(self):
         """Test logger with custom format string."""
         custom_format = "%(levelname)s: %(message)s"
-        logger = Logger("test_format", format_string=custom_format)
+        logger = CosmoLogger("test_format", format_string=custom_format)
 
         # Should not raise exception
         logger.info("Custom format test")
