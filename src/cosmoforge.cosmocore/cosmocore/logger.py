@@ -7,6 +7,8 @@ including timing utilities, scientific context logging, and seamless integration
 with the existing feedback system.
 """
 
+from __future__ import annotations
+
 import logging
 import sys
 import time
@@ -39,7 +41,7 @@ logging.addLevelName(ULTRA_VERBOSE, "ULTRA")
 class Timer:
     """Context manager for timing operations with automatic logging."""
 
-    def __init__(self, logger: "CosmoLogger", operation: str, level: int = 3):
+    def __init__(self, logger: CosmoLogger, operation: str, level: int = 3):
         """
         Initialize timer context manager.
 
