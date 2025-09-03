@@ -192,14 +192,6 @@ jobs:
           # Run MPI tests with separate coverage
           mpirun --oversubscribe -np 2 uv run pytest -k mpi -v --cov=quelo --cov-append --cov-report=
 
-      - name: Generate coverage report
-        if: contains(needs.detect-changes.outputs.quelo-strategy, 'test')
-        working-directory: src/cosmoforge.quelo
-        run: |
-          # Combine all coverage data and generate XML report
-          uv run coverage combine
-          uv run coverage xml
-
       - name: Upload coverage to Codecov
         if: contains(needs.detect-changes.outputs.quelo-strategy, 'test')
         uses: codecov/codecov-action@v4
