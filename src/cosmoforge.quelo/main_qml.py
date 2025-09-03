@@ -123,59 +123,63 @@ def main():
     """
     # Initialize QML power spectrum estimation with configuration file
     # TODO: Consider making config file path configurable via command line
-    print("Initializing QML power spectrum estimation...")
     qml_analyzer = Spectra("src/cosmoforge.quelo/quelo/TEB_defaults.yaml")
+    logger = qml_analyzer.logger
+
+    logger.info("Initializing QML power spectrum estimation...")
 
     # Execute the complete QML analysis pipeline
     # This includes Fisher computation (if needed), map loading, and QML estimation
-    print("Starting QML analysis pipeline...")
+    logger.info("Starting QML analysis pipeline...")
     qml_analyzer.run()
 
     # Retrieve and display results (only available on master process)
     power_spectra = qml_analyzer.get_power_spectra()
     if power_spectra is not None:
-        print("=" * 60)
-        print("QML POWER SPECTRUM ESTIMATION COMPLETED SUCCESSFULLY")
-        print("=" * 60)
-        print(f"Power spectra shape: {power_spectra.shape}")
-        print(f"Number of simulations: {power_spectra.shape[0]}")
-        print(f"Number of parameters: {power_spectra.shape[1]}")
+        logger.info("=" * 60)
+        logger.info("QML POWER SPECTRUM ESTIMATION COMPLETED SUCCESSFULLY")
+        logger.info("=" * 60)
+        logger.log_matrix_info("Power spectra", power_spectra, level=1)
+        logger.info(f"Number of simulations: {power_spectra.shape[0]}")
+        logger.info(f"Number of parameters: {power_spectra.shape[1]}")
 
         # Display statistical summary of power spectrum estimates
         mean_spectra = power_spectra.mean(axis=0)
         std_spectra = power_spectra.std(axis=0)
-        print("\nPower spectrum statistics:")
+        logger.log_with_feedback("\nPower spectrum statistics:", 3)
         mean_range = f"[{mean_spectra.min():.3e}, {mean_spectra.max():.3e}]"
         std_range = f"[{std_spectra.min():.3e}, {std_spectra.max():.3e}]"
-        print(f"Mean amplitude range: {mean_range}")
-        print(f"Standard deviation range: {std_range}")
+        logger.log_with_feedback(f"Mean amplitude range: {mean_range}", 3)
+        logger.log_with_feedback(f"Standard deviation range: {std_range}", 3)
 
         # Display first few multipoles as examples
-        print("\nFirst 5 multipole estimates (mean ± std):")
+        logger.log_with_feedback("\nFirst 5 multipole estimates (mean ± std):", 3)
         for i in range(min(5, len(mean_spectra))):
-            print(f"  Parameter {i + 1}: {mean_spectra[i]:.3e} ± {std_spectra[i]:.3e}")
+            logger.log_with_feedback(
+                f"  Parameter {i + 1}: {mean_spectra[i]:.3e} ± {std_spectra[i]:.3e}",
+                3,
+            )
 
         # Handle noise bias for auto-correlation analyses
         if not qml_analyzer.params.do_cross:
             noise_bias = qml_analyzer.get_noise_bias()
             if noise_bias is not None:
-                print("\nNoise bias computed successfully:")
-                print(f"Bias shape: {noise_bias.shape}")
-                print(f"Bias range: [{noise_bias.min():.3e}, {noise_bias.max():.3e}]")
-                print(f"Mean bias level: {noise_bias.mean():.3e}")
+                logger.info("\nNoise bias computed successfully:")
+                logger.log_matrix_info("Noise bias", noise_bias, level=2)
+                logger.log_with_feedback(f"Mean bias level: {noise_bias.mean():.3e}", 3)
 
                 # Show bias significance relative to signal
                 bias_significance = abs(noise_bias / mean_spectra)
                 bias_percent = bias_significance.mean()
-                print(f"Bias significance (|bias/signal|): {bias_percent:.2%}")
+                logger.info(f"Bias significance (|bias/signal|): {bias_percent:.2%}")
             else:
-                print("Warning: Could not compute noise bias")
+                logger.warning("Warning: Could not compute noise bias")
         else:
-            print("\nCross-correlation analysis: noise bias not applicable")
+            logger.info("\nCross-correlation analysis: noise bias not applicable")
     else:
-        print("QML computation completed (worker process)")
+        logger.info("QML computation completed (worker process)")
 
-    print("\nAnalysis complete. Check output files for detailed results.")
+    logger.info("\nAnalysis complete. Check output files for detailed results.")
 
 
 if __name__ == "__main__":

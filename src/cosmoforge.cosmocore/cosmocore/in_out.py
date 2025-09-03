@@ -186,7 +186,7 @@ def output_geometry(filegeometry, npixs, point_vectors, active):
                 f.write(f"{idx:6d}{vec[0]:24.16e}{vec[1]:24.16e}{vec[2]:24.16e}\n")
 
 
-def readcl(inputclfile, Params: InputParams):
+def readcl(inputclfile, Params: InputParams, logger=None):
     """
     Read power spectra from text file with header.
 
@@ -196,6 +196,8 @@ def readcl(inputclfile, Params: InputParams):
         Path to text file containing power spectra data.
     Params : InputParams
         Analysis parameters containing lmax and feedback level.
+    logger : CosmoLogger, optional
+        CosmoLogger instance for output. If None, uses print for backward compatibility.
 
     Returns
     -------
@@ -222,8 +224,8 @@ def readcl(inputclfile, Params: InputParams):
             raise ValueError("First line must be a header starting with '#'")
         labels = header.strip().lstrip("#").split()
         arr = np.loadtxt(f, dtype=np.float64)
-        if Params.feedback > 3:
-            print("Read Cls:", arr.shape, labels)
+        if logger is not None:
+            logger.log_with_feedback(f"Read Cls: {arr.shape} {labels}", level=4)
         cls_dict = {}
         for i, label in enumerate(labels):
             if label.lower() == "ell":

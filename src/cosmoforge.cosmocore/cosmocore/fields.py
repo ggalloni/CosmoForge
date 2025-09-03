@@ -721,7 +721,7 @@ class FieldCollection:
     and computes all possible auto- and cross-correlations between fields.
     """
 
-    def __init__(self, core_params: InputParams, fields: list[BaseField]):
+    def __init__(self, core_params: InputParams, fields: list[BaseField], logger=None):
         """
         Initialize field collection.
 
@@ -731,6 +731,8 @@ class FieldCollection:
             Core analysis parameters.
         fields : list of BaseField
             Fields to include in the collection.
+        logger : CosmoLogger, optional
+            CosmoLogger instance for output messages.
 
         Raises
         ------
@@ -738,6 +740,7 @@ class FieldCollection:
             If fields have inconsistent parameters (nside, lmax, etc.).
         """
         self.core_params = core_params
+        self.logger = logger
         self.fields = fields
         self.n_fields = len(fields)
 
@@ -901,7 +904,7 @@ class FieldCollection:
         and applies any necessary normalization based on the analysis parameters.
         """
         if cls_data is None:
-            cls_data = readcl(self.core_params.inputclfile, self.core_params)
+            cls_data = readcl(self.core_params.inputclfile, self.core_params, self.logger)
 
         self.spectra_manager.set_cls(cls_data)
         self.spectra_manager.apply_normalization()
