@@ -226,8 +226,6 @@ def readcl(inputclfile, Params: InputParams, logger=None):
         arr = np.loadtxt(f, dtype=np.float64)
         if logger is not None:
             logger.log_with_feedback(f"Read Cls: {arr.shape} {labels}", level=4)
-        elif Params.feedback > 3:
-            print("Read Cls:", arr.shape, labels)
         cls_dict = {}
         for i, label in enumerate(labels):
             if label.lower() == "ell":

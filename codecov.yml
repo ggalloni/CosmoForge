@@ -1,0 +1,69 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 90%
+        threshold: 2%
+    patch:
+      default:
+        target: 90%
+        threshold: 2%
+
+flag_management:
+  default_rules:
+    carryforward: true
+    statuses:
+      - type: project
+        target: 90%
+        threshold: 1%
+      - type: patch
+        target: 90%
+        threshold: 1%
+  individual_flags:
+    - name: cosmocore
+      paths:
+        - src/cosmoforge.cosmocore/
+      carryforward: true
+      statuses:
+        - type: project
+          target: 90%
+          threshold: 1%
+        - type: patch
+          target: 90%
+          threshold: 1%
+    - name: quelo
+      paths:
+        - src/cosmoforge.quelo/
+      carryforward: true
+      statuses:
+        - type: project
+          target: 90%
+          threshold: 1%
+        - type: patch
+          target: 90%
+          threshold: 1%
+    - name: meta
+      paths:
+        - src/cosmoforge.meta/
+      carryforward: true
+      statuses:
+        - type: project
+          target: 90%
+          threshold: 1%
+        - type: patch
+          target: 90%
+          threshold: 1%
+
+ignore:
+  - "*/tests/*"
+  - "*/test_*"
+  - "*/__pycache__/*"
+  - "*/conftest.py"
+  - "*/setup.py"
+  - "*/.pytest_cache/*"
+  - "*/egg-info/*"
+
+comment:
+  layout: "header, diff, flags, files"
+  behavior: default
+  require_changes: false
