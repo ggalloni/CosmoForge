@@ -146,17 +146,18 @@ def main():
         # Display statistical summary of power spectrum estimates
         mean_spectra = power_spectra.mean(axis=0)
         std_spectra = power_spectra.std(axis=0)
-        logger.info("\nPower spectrum statistics:")
+        logger.log_with_feedback("\nPower spectrum statistics:", 3)
         mean_range = f"[{mean_spectra.min():.3e}, {mean_spectra.max():.3e}]"
         std_range = f"[{std_spectra.min():.3e}, {std_spectra.max():.3e}]"
-        logger.info(f"Mean amplitude range: {mean_range}")
-        logger.info(f"Standard deviation range: {std_range}")
+        logger.log_with_feedback(f"Mean amplitude range: {mean_range}", 3)
+        logger.log_with_feedback(f"Standard deviation range: {std_range}", 3)
 
         # Display first few multipoles as examples
-        logger.info("\nFirst 5 multipole estimates (mean ± std):")
+        logger.log_with_feedback("\nFirst 5 multipole estimates (mean ± std):", 3)
         for i in range(min(5, len(mean_spectra))):
-            logger.info(
-                f"  Parameter {i + 1}: {mean_spectra[i]:.3e} ± {std_spectra[i]:.3e}"
+            logger.log_with_feedback(
+                f"  Parameter {i + 1}: {mean_spectra[i]:.3e} ± {std_spectra[i]:.3e}",
+                3,
             )
 
         # Handle noise bias for auto-correlation analyses
@@ -165,7 +166,7 @@ def main():
             if noise_bias is not None:
                 logger.info("\nNoise bias computed successfully:")
                 logger.log_matrix_info("Noise bias", noise_bias, level=2)
-                logger.info(f"Mean bias level: {noise_bias.mean():.3e}")
+                logger.log_with_feedback(f"Mean bias level: {noise_bias.mean():.3e}", 3)
 
                 # Show bias significance relative to signal
                 bias_significance = abs(noise_bias / mean_spectra)

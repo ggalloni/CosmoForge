@@ -121,20 +121,22 @@ def main():
         logger.info("=" * 60)
         logger.log_matrix_info("Fisher matrix", fisher_matrix, level=1)
         condition_number = fisher_matrix.max() / fisher_matrix.min()
-        logger.info(f"Matrix condition number: {condition_number:.2e}")
+        logger.log_with_feedback(f"Matrix condition number: {condition_number:.2e}", 3)
 
         # Compute and display parameter error forecasts
         errors = fisher_analyzer.get_error_bars()
         if errors is not None:
-            logger.info("\nParameter error forecasts (1σ marginal):")
-            logger.info(f"Number of parameters: {len(errors)}")
-            logger.info(f"Error range: [{errors.min():.3e}, {errors.max():.3e}]")
-            logger.info(f"Mean fractional error: {errors.mean():.3e}")
+            logger.log_with_feedback("\nParameter error forecasts (1σ marginal):", 3)
+            logger.log_with_feedback(f"Number of parameters: {len(errors)}", 1)
+            logger.log_with_feedback(
+                f"Error range: [{errors.min():.3e}, {errors.max():.3e}]", 3
+            )
+            logger.log_with_feedback(f"Mean fractional error: {errors.mean():.3e}", 3)
 
             # Display first few errors as examples
-            logger.info("\nFirst 5 parameter errors:")
+            logger.log_with_feedback("\nFirst 5 parameter errors:", 3)
             for i, err in enumerate(errors[:5]):
-                logger.info(f"  Parameter {i + 1}: {err:.3e}")
+                logger.log_with_feedback(f"  Parameter {i + 1}: {err:.3e}", 3)
         else:
             logger.warning(
                 "Warning: Could not compute parameter errors (singular Fisher matrix)"

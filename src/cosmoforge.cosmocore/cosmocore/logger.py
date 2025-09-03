@@ -41,7 +41,7 @@ logging.addLevelName(ULTRA_VERBOSE, "ULTRA")
 class Timer:
     """Context manager for timing operations with automatic logging."""
 
-    def __init__(self, logger: CosmoLogger, operation: str, level: int = 3):
+    def __init__(self, logger: CosmoLogger, operation: str, level: int = 1):
         """
         Initialize timer context manager.
 
@@ -52,7 +52,7 @@ class Timer:
         operation : str
             Description of the operation being timed
         level : int
-            Feedback level for timing output (default: 3)
+            Feedback level for timing output (default: 1)
         """
         self.logger = logger
         self.operation = operation
@@ -215,8 +215,31 @@ class CosmoLogger:
             ):
                 handler.setLevel(self.log_level)
 
+    def _format_memory_size(self, size_bytes: int) -> str:
+        """
+        Format memory size in human-readable format.
+
+        Parameters
+        ----------
+        size_bytes : int
+            Size in bytes
+
+        Returns
+        -------
+        str
+            Formatted memory string (e.g., "1.2 MB", "512.0 KB")
+        """
+        if size_bytes < 1024:
+            return f"{size_bytes} B"
+        elif size_bytes < 1024 * 1024:
+            return f"{size_bytes / 1024:.1f} KB"
+        elif size_bytes < 1024 * 1024 * 1024:
+            return f"{size_bytes / (1024 * 1024):.1f} MB"
+        else:
+            return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
+
     # Scientific context logging methods
-    def log_timing(self, operation: str, duration: float, level: int = 3):
+    def log_timing(self, operation: str, duration: float, level: int = 1):
         """
         Log operation timing with scientific formatting.
 
@@ -226,7 +249,7 @@ class CosmoLogger:
             Description of the operation
         duration : float
             Duration in seconds
-        level : int, default=3
+        level : int, default=1
             Feedback level for timing output
         """
         if self.enable_timing:
@@ -248,7 +271,7 @@ class CosmoLogger:
 
             self.log_with_feedback(f"{operation} completed in {time_str}", level)
 
-    def log_matrix_info(self, name: str, matrix: np.ndarray, level: int = 4):
+    def log_matrix_info(self, name: str, matrix: np.ndarray, level: int = 1):
         """
         Log matrix information with scientific context.
 
@@ -258,35 +281,29 @@ class CosmoLogger:
             Matrix name/description
         matrix : numpy.ndarray
             Matrix to describe
-        level : int, default=4
+        level : int, default=1
             Feedback level for matrix info
         """
         shape_str = "×".join(str(s) for s in matrix.shape)
         dtype_str = str(matrix.dtype)
 
         # Memory usage
-        memory_mb = matrix.nbytes / 1024 / 1024
-        if memory_mb < 1:
-            memory_str = f"{matrix.nbytes / 1024:.1f} KB"
-        elif memory_mb < 1024:
-            memory_str = f"{memory_mb:.1f} MB"
-        else:
-            memory_str = f"{memory_mb / 1024:.1f} GB"
+        memory_str = self._format_memory_size(matrix.nbytes)
 
         self.log_with_feedback(
             f"{name}: shape={shape_str}, dtype={dtype_str}, memory={memory_str}", level
         )
 
-        # Additional statistics for small matrices
-        if level >= 5 and matrix.size < 10000:
+        # Additional statistics for small matrices (debugging information)
+        if self.feedback_level >= 3 and matrix.size < 10000:
             if np.isrealobj(matrix):
                 self.log_with_feedback(
                     f"{name} stats: min={matrix.min():.3e}, "
                     f"max={matrix.max():.3e}, mean={matrix.mean():.3e}",
-                    level,
+                    3,
                 )
 
-    def log_multipole_range(self, lmin: int, lmax: int, level: int = 2):
+    def log_multipole_range(self, lmin: int, lmax: int, level: int = 1):
         """
         Log multipole range in cosmological notation.
 
@@ -294,7 +311,7 @@ class CosmoLogger:
         ----------
         lmin, lmax : int
             Minimum and maximum multipole moments
-        level : int, default=2
+        level : int, default=1
             Feedback level for multipole info
         """
         self.log_with_feedback(f"Multipole range: ℓ ∈ [{lmin}, {lmax}]", level)
@@ -305,7 +322,7 @@ class CosmoLogger:
         nside: int,
         npix: int,
         rms: float | None = None,
-        level: int = 2,
+        level: int = 1,
     ):
         """
         Log HEALPix map information.
@@ -320,20 +337,29 @@ class CosmoLogger:
             Number of pixels
         rms : float, optional
             RMS value of the map
-        level : int, default=2
+        level : int, default=1
             Feedback level for map info
         """
         resolution_arcmin = hp.nside2resol(nside, arcmin=True)
 
-        msg = f"{map_name}: nside={nside}, npix={npix:,}, "
-        msg += f"resolution≈{resolution_arcmin:.1f}'"
+        # Basic memory information only (level 1) - similar to matrix memory info
+        # Calculate approximate memory usage for HEALPix map (assuming float64)
+        memory_bytes = npix * 8  # 8 bytes per float64
+        memory_str = self._format_memory_size(memory_bytes)
 
-        if rms is not None:
-            msg += f", RMS={rms:.2f} μK"
+        self.log_with_feedback(f"{map_name}: HEALPix map, memory≈{memory_str}", level)
 
-        self.log_with_feedback(msg, level)
+        # Detailed information (level 3 - debugging)
+        if self.feedback_level >= 3:
+            self.log_with_feedback(f"{map_name} nside: {nside}", 3)
+            self.log_with_feedback(f"{map_name} npix: {npix:,}", 3)
+            self.log_with_feedback(f"{map_name} resolution: ≈{resolution_arcmin:.1f}'", 3)
 
-    def log_progress(self, current: int, total: int, operation: str = "", level: int = 2):
+        # Statistical information (level 3 - debugging)
+        if rms is not None and self.feedback_level >= 3:
+            self.log_with_feedback(f"{map_name} RMS: {rms:.2f} μK", 3)
+
+    def log_progress(self, current: int, total: int, operation: str = "", level: int = 1):
         """
         Log progress information.
 
@@ -345,7 +371,7 @@ class CosmoLogger:
             Total steps/iterations
         operation : str, optional
             Description of the operation
-        level : int, default=2
+        level : int, default=1
             Feedback level for progress info
         """
         percentage = (current / total) * 100
@@ -354,7 +380,7 @@ class CosmoLogger:
             f"{prefix}progress: {current}/{total} ({percentage:.1f}%)", level
         )
 
-    def timer(self, operation: str, level: int = 3) -> Timer:
+    def timer(self, operation: str, level: int = 1) -> Timer:
         """
         Create a timing context manager.
 
@@ -362,7 +388,7 @@ class CosmoLogger:
         ----------
         operation : str
             Description of the operation to time
-        level : int, default=3
+        level : int, default=1
             Feedback level for timing output
 
         Returns
