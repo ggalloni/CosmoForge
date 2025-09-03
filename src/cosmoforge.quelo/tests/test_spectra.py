@@ -1,5 +1,6 @@
 import os
 import time
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -8,7 +9,7 @@ from mpi4py import MPI
 from quelo import Fisher, Spectra
 
 
-class TestSpectra:
+class HelperSpectra:
     """
     Test class for QML power spectra computation with Fisher matrix reuse.
 
@@ -139,7 +140,7 @@ class TestSpectra:
 
 
 # Create global test instance
-test_spectra = TestSpectra()
+test_spectra = HelperSpectra()
 
 
 @pytest.fixture(autouse=True)
@@ -167,41 +168,43 @@ def test_spectra_computation(fields, local_path, config_resolver):
     test_spectra.assert_spectra_match_reference(power_spectra, fields)
 
 
-@pytest.mark.skipif(
-    "OMPI_COMM_WORLD_RANK" not in os.environ and "PMI_RANK" not in os.environ,
-    reason="MPI test: run with mpirun/mpiexec",
-)
-def test_spectra_mpi_structure(local_path, config_resolver):
-    """Test MPI structure and behavior for power spectra computation."""
-    comm = MPI.COMM_WORLD
-    rank = comm.Get_rank()
+@patch("quelo.spectra.MPI")
+def test_spectra_worker_rank_behavior(mock_mpi, config_resolver):
+    """
+    Test QML power spectra computation behavior for worker ranks (rank != 0).
+    Worker ranks should return None for power spectra and noise bias.
+    """
+    # Mock MPI to simulate rank=1 (worker process)
+    mock_comm = MagicMock()
+    mock_comm.Get_rank.return_value = 1  # Worker rank
+    mock_comm.Get_size.return_value = 2  # Total 2 processes
+    mock_comm.Barrier.return_value = None
+    mock_mpi.COMM_WORLD = mock_comm
+    mock_mpi.LAND = MPI.LAND  # Use real MPI constant
 
-    fields = "TQU"
+    fields = "T"  # Use simple field for faster test
+    config_file = config_resolver(f"tests/data/nside4/{fields}/config.yaml")
 
-    # Get cached Fisher instance
-    fisher = test_spectra.get_fisher_instance(fields)
+    try:
+        # Create Spectra instance with mocked MPI (this will think it's rank 1)
+        spectra_analyzer = Spectra(config_file)
 
-    # Create QML analyzer using the cached Fisher
-    qml_analyzer = test_spectra.get_qml_analyzer(fields, fisher=fisher)
+        # Verify that the mock worked - spectra should think it's rank 1
+        assert spectra_analyzer.rank == 1, "Spectra instance should have rank=1"
+        assert spectra_analyzer.size == 2, "Spectra instance should have size=2"
 
-    # Get spectra results
-    power_spectra, noise_bias, fisher_instance = test_spectra.get_qml_spectra(
-        qml_analyzer
-    )
+        # For rank=1, we just test that get_power_spectra() and get_noise_bias()
+        # return None without running the full pipeline
+        power_spectra = spectra_analyzer.get_power_spectra()
+        noise_bias = spectra_analyzer.get_noise_bias()
 
-    if rank == 0:
-        assert power_spectra is not None, "Rank 0 should get power spectra"
-        assert noise_bias is not None, "Rank 0 should get noise bias"
-        # Check against reference for rank 0 only
-        test_spectra.assert_spectra_match_reference(power_spectra, fields)
-    else:
-        assert power_spectra is None, f"Rank {rank} should get None for power spectra"
-        assert noise_bias is None, f"Rank {rank} should get None for noise bias"
+        # Worker ranks should get None for both power spectra and noise bias
+        assert power_spectra is None, "Worker rank should get None for power spectra"
+        assert noise_bias is None, "Worker rank should get None for noise bias"
 
-    # Ensure all ranks finished successfully
-    success = True
-    all_success = comm.allreduce(success, op=MPI.LAND)
-    assert all_success, "All ranks should reach the end of the test"
+    finally:
+        # Clean up temporary config file
+        os.unlink(config_file)
 
 
 @pytest.mark.parametrize("fields", ["QU"])

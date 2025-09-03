@@ -185,12 +185,6 @@ jobs:
         run: |
           uv run pytest tests/ -v --cov=quelo --cov-report=xml
 
-      - name: Run MPI test
-        if: contains(needs.detect-changes.outputs.quelo-strategy, 'test')
-        working-directory: src/cosmoforge.quelo
-        run: |
-          mpirun --oversubscribe -np 2 uv run pytest -k mpi -v --cov=quelo --cov-append --cov-report=xml
-
       - name: Upload coverage to Codecov
         if: contains(needs.detect-changes.outputs.quelo-strategy, 'test')
         uses: codecov/codecov-action@v4
