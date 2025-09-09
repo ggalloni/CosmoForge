@@ -9,20 +9,50 @@ coverage:
         target: 90%
         threshold: 2%
 
-  flag_management:
-    default_rules:
+flag_management:
+  default_rules:
+    carryforward: true
+    statuses:
+      - type: project
+        target: 90%
+        threshold: 1%
+      - type: patch
+        target: 90%
+        threshold: 1%
+  individual_flags:
+    - name: cosmocore
+      paths:
+        - src/cosmoforge.cosmocore/
       carryforward: true
-
-flags:
-  cosmocore:
-    paths:
-      - src/cosmoforge.cosmocore/
-  quelo:
-    paths:
-      - src/cosmoforge.quelo/
-  meta:
-    paths:
-      - src/cosmoforge.meta/
+      statuses:
+        - type: project
+          target: 90%
+          threshold: 1%
+        - type: patch
+          target: 90%
+          threshold: 1%
+    - name: quelo
+      paths:
+        - src/cosmoforge.quelo/
+      carryforward: true
+      statuses:
+        - type: project
+          target: 90%
+          threshold: 1%
+        - type: patch
+          target: 90%
+          threshold: 1%
+    - name: meta
+      paths:
+        - src/cosmoforge.meta/
+      carryforward: true
+      statuses:
+        - type: project
+          target: 90%
+          threshold: 1%
+        - type: patch
+          target: 90%
+          threshold: 1%
 
 ignore:
   - "*/tests/*"

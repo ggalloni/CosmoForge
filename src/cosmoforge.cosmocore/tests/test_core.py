@@ -392,8 +392,10 @@ def test_log_functionality():
         core.log("Test message level 3", level=3)
         output3 = captured_output.getvalue()
 
+        # Check that messages appear in formatted log output
         assert "Test message level 1" in output1
         assert "Test message level 2" in output2
+        # Level 3 message should not be printed when feedback=2
         assert "Test message level 3" not in output3.replace(output2, "")
 
     finally:

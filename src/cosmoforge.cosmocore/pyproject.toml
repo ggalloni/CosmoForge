@@ -54,6 +54,8 @@ line-length = 90
 
 [tool.coverage.run]
 source = ["cosmocore/"]
+parallel = true
+concurrency = ["multiprocessing"]
 omit = [
     "*/tests/*",
     "*/test_*",

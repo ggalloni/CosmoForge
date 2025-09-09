@@ -34,6 +34,7 @@ from .in_out import (
     write_out_matrix,
     writecl,
 )
+from .logger import CosmoLogger, Timer, get_logger, get_logger_from_params
 from .pixel import (
     compute_00_contribution,
     compute_02_contribution,
@@ -51,6 +52,11 @@ from .settings import InputParams
 __all__ = [
     # settings
     "InputParams",
+    # logger
+    "CosmoLogger",
+    "Timer",
+    "get_logger",
+    "get_logger_from_params",
     # pixel
     "compute_00_contribution",
     "compute_02_contribution",
