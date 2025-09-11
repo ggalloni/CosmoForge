@@ -7,6 +7,7 @@ including grid generation, parameter management, and MPI distribution.
 
 import numpy as np
 import pytest
+
 from picslike import ParameterGrid
 
 

@@ -7,6 +7,7 @@ PICSLike test suite.
 
 import numpy as np
 import pytest
+
 from picslike import ParameterGrid
 
 
