@@ -21,6 +21,7 @@ and visualization capabilities for understanding parameter constraints.
 from __future__ import annotations
 
 import pickle
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -120,8 +121,8 @@ class LikelihoodResult:
             raise ValueError(msg)
 
         self.parameter_grid = parameter_grid
-        self.chi_squared_values = chi_squared_values.copy()
-        self.log_likelihood_values = log_likelihood_values.copy()
+        self.chi_squared_values = deepcopy(chi_squared_values)
+        self.log_likelihood_values = deepcopy(log_likelihood_values)
 
         # Compute likelihood values (with numerical stability)
         self.likelihood_values = self._compute_likelihood_values()
@@ -424,7 +425,7 @@ class LikelihoodResult:
             "confidence_intervals_68": self.get_confidence_intervals(0.68),
             "confidence_intervals_95": self.get_confidence_intervals(0.95),
             "total_parameter_points": len(self.parameter_grid),
-            "parameter_names": self.parameter_grid.parameter_names.copy(),
+            "parameter_names": deepcopy(self.parameter_grid.parameter_names),
         }
 
         return summary

@@ -22,9 +22,12 @@ retrieving theoretical spectra for specific parameter combinations.
 from __future__ import annotations
 
 import itertools
+from copy import deepcopy
 from typing import Any
 
 import numpy as np
+
+from cosmocore import InputParams, readcl
 
 
 class ParameterGrid:
@@ -81,8 +84,11 @@ class ParameterGrid:
 
     def __init__(
         self,
+        core_params: InputParams,
         parameter_ranges: dict[str, np.ndarray],
-        theoretical_spectra: dict[tuple, np.ndarray],
+        theoretical_spectra: dict[tuple, np.ndarray] | None = None,
+        root_dir: str | None = None,
+        root_filename: str | None = None,
     ) -> None:
         """
         Initialize parameter grid.
@@ -99,12 +105,25 @@ class ParameterGrid:
         ValueError
             If parameter ranges are empty or inconsistent with spectra.
         """
+
+        self.core_params = core_params
+
         self.parameter_names = list(parameter_ranges.keys())
-        self.parameter_ranges = parameter_ranges.copy()
-        self.theoretical_spectra = theoretical_spectra.copy()
+        self.parameter_ranges = deepcopy(parameter_ranges)
 
         # Generate all parameter combinations
         self.grid_points = self._generate_grid_points()
+
+        if theoretical_spectra is not None:
+            self.theoretical_spectra = deepcopy(theoretical_spectra)
+        else:
+            assert root_dir is not None and root_filename is not None, (
+                "Either theoretical_spectra or both root_dir and root_filename "
+                "must be provided to read spectra from files."
+            )
+            self.root_dir = root_dir
+            self.root_filename = root_filename
+            self.read_theoretical_spectra()
 
         # Validate that all grid points have corresponding spectra
         self._validate_spectra()
@@ -131,6 +150,33 @@ class ParameterGrid:
 
         # Generate Cartesian product of all parameter ranges
         return list(itertools.product(*param_values))
+
+    def read_theoretical_spectra(self) -> None:
+        """
+        Placeholder for reading theoretical spectra.
+
+        Notes
+        -----
+        This method should be implemented to load theoretical spectra from
+        files or other sources. Currently, it initializes an empty dictionary.
+        """
+        self.theoretical_spectra = {}
+
+        root = self.root_dir + "/" + self.root_filename
+
+        for point in self.grid_points:
+            filename = (
+                root
+                + "_"
+                + "_".join(
+                    f"{self.parameter_names[i]}{val:.6g}" for i, val in enumerate(point)
+                )
+                + ".txt"
+            )
+
+            self.theoretical_spectra[point] = readcl(
+                inputclfile=filename, Params=self.core_params
+            )
 
     def _validate_spectra(self) -> None:
         """
@@ -326,7 +372,7 @@ class ParameterGrid:
         Useful for cases where spectra are computed on-the-fly or
         loaded incrementally.
         """
-        self.theoretical_spectra[param_point] = spectrum.copy()
+        self.theoretical_spectra[param_point] = deepcopy(spectrum)
 
     def __len__(self) -> int:
         """Return total number of points in the grid."""
@@ -339,3 +385,14 @@ class ParameterGrid:
     def __contains__(self, param_point: tuple) -> bool:
         """Check if parameter point exists in the grid."""
         return param_point in self.grid_points
+
+    def __eq__(self, other):
+        """Check equality with another ParameterGrid."""
+        if not isinstance(other, ParameterGrid):
+            return False
+        return (
+            self.parameter_names == other.parameter_names
+            and self.parameter_ranges == other.parameter_ranges
+            and self.theoretical_spectra == other.theoretical_spectra
+            and self.grid_points == other.grid_points
+        )

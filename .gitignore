@@ -11,7 +11,9 @@ wheels/
 *inputs/
 *outputs/
 *logs/
+*maps/
 *slurms/
 *plots/
+*templates/
 
 run_*.py
