@@ -6,6 +6,7 @@ from .basics import (
     legendre_22,
     matrix_inverse_symm,
     matrix_mult,
+    matrix_slogdet_symm,
     matrix_trace,
     spec2idx,
 )
@@ -99,6 +100,7 @@ __all__ = [
     "legendre_22",
     "matrix_inverse_symm",
     "matrix_mult",
+    "matrix_slogdet_symm",
     "matrix_trace",
     "spec2idx",
 ]

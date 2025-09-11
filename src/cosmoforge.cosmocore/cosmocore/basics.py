@@ -26,6 +26,10 @@ matrix_trace
     Compute trace of matrix product A @ B.
 matrix_inverse_symm
     Compute inverse of symmetric positive definite matrix.
+matrix_slogdet
+    Compute sign and logarithm of determinant using LU decomposition.
+matrix_slogdet_symm
+    Compute sign and logarithm of determinant for symmetric positive definite matrices.
 
 Notes
 -----
@@ -458,3 +462,132 @@ def matrix_inverse_symm(M):
         raise ValueError(f"dpotri failed with info={info}")
 
     return _copy_lower_to_upper(inv_L)
+
+
+def matrix_slogdet(M):
+    """
+    Compute sign and logarithm of the determinant of a matrix.
+
+    Parameters
+    ----------
+    M : numpy.ndarray
+        2D square matrix for which to compute the signed log determinant.
+
+    Returns
+    -------
+    tuple of float
+        (sign, logdet) where sign is ±1 and logdet is log(|det(M)|).
+        If det(M) = 0, returns (0.0, -inf).
+
+    Raises
+    ------
+    ValueError
+        If matrix is not square or if LU decomposition fails.
+
+    Notes
+    -----
+    Uses LAPACK's dgetrf (LU decomposition with partial pivoting) for
+    numerically stable computation of the determinant. More robust than
+    direct determinant computation, especially for large matrices.
+
+    For symmetric positive definite matrices, considers using the
+    Cholesky-based version matrix_slogdet_symm for better performance.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> M = np.array([[2.0, 1.0], [1.0, 2.0]])
+    >>> sign, logdet = matrix_slogdet(M)
+    >>> det_value = sign * np.exp(logdet)  # Recover determinant
+    """
+    if M.shape[0] != M.shape[1]:
+        raise ValueError("Matrix must be square")
+
+    # Use LU decomposition for general matrices
+    lu, piv, info = lapack.dgetrf(M, overwrite_a=False)
+    if info != 0:
+        raise ValueError(f"dgetrf failed with info={info}")
+
+    # Compute log determinant from diagonal of U
+    logdet = 0.0
+    sign = 1.0
+
+    n = M.shape[0]
+    for i in range(n):
+        diag_val = lu[i, i]
+        if abs(diag_val) < 1e-15:  # Singular matrix
+            return 0.0, -np.inf
+        if diag_val < 0:
+            sign *= -1.0
+        logdet += np.log(abs(diag_val))
+
+    # Account for permutations in pivoting
+    for i in range(n):
+        if piv[i] != i + 1:  # LAPACK uses 1-based indexing
+            sign *= -1.0
+
+    return sign, logdet
+
+
+def matrix_slogdet_symm(M):
+    """
+    Compute sign and logarithm of determinant for symmetric positive definite matrix.
+
+    Parameters
+    ----------
+    M : numpy.ndarray
+        2D square symmetric positive definite matrix.
+
+    Returns
+    -------
+    tuple of float
+        (sign, logdet) where sign is +1 and logdet is log(det(M)).
+        For positive definite matrices, sign is always +1.
+
+    Raises
+    ------
+    ValueError
+        If matrix is not square or if Cholesky decomposition fails.
+
+    Notes
+    -----
+    Uses LAPACK's dpotrf (Cholesky decomposition) for efficient computation.
+    For symmetric positive definite matrices, this is more efficient than
+    the general LU-based approach. Since the matrix is positive definite,
+    the determinant is always positive (sign = +1).
+
+    The determinant of a Cholesky factorization M = L @ L.T is:
+    det(M) = det(L)^2 = (∏ L_ii)^2
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> M = np.array([[4.0, 2.0], [2.0, 3.0]])  # Positive definite
+    >>> sign, logdet = matrix_slogdet_symm(M)
+    >>> # sign will be 1.0, logdet = log(det(M))
+    """
+    if M.shape[0] != M.shape[1]:
+        raise ValueError("Matrix must be square")
+
+    # Cholesky decomposition
+    L, info = lapack.dpotrf(M, lower=True, overwrite_a=False, clean=True)
+    if info != 0:
+        raise ValueError(
+            f"dpotrf failed with info={info} - matrix may not be positive definite"
+        )
+
+    # For Cholesky L @ L.T, det(M) = det(L)^2 = (∏ L_ii)^2
+    # So log(det(M)) = 2 * log(∏ L_ii) = 2 * Σ log(L_ii)
+    logdet = 0.0
+    n = M.shape[0]
+    for i in range(n):
+        diag_val = L[i, i]
+        if diag_val <= 0:  # Should not happen for positive definite
+            raise ValueError("Non-positive diagonal element in Cholesky factor")
+        logdet += np.log(diag_val)
+
+    # Factor of 2 because det(M) = det(L)^2
+    logdet *= 2.0
+
+    # Sign is always +1 for positive definite matrices
+    return 1.0, logdet
