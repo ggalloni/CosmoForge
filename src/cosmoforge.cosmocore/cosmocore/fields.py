@@ -362,7 +362,7 @@ class BaseField(ABC):
         """
         expected_rows = self.lmax - 1
         if beam.shape[0] != expected_rows:
-            raise ValueError(f"Beam must have {expected_rows} rows")
+            raise ValueError(f"Beam must have {expected_rows} rows, got {beam.shape[0]}")
         self._beam = beam.copy()
 
     @abstractmethod
