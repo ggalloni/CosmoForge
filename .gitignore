@@ -17,3 +17,4 @@ wheels/
 *templates/
 
 run_*.py
+/src/*/.library
