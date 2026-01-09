@@ -34,7 +34,7 @@ outinvcovmatfile2: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.pic
 outfilefisher: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.picslike/tests/data/nside4/TQU/fisher.dat'
 
 # QML-specific parameters
-nsims: 30
+nsims: 100
 inputmapfile1: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.picslike/tests/data/nside4/maps/all_sims_TQU.fits'
 inputmapfile2: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.picslike/tests/data/nside4/maps/all_sims_TQU.fits'
 

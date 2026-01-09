@@ -332,9 +332,13 @@ def compute_signal_matrix(
             lf_j = fields.fields[j]
             legendre = np.empty(lmax, dtype=np.float64)
             if spin_i == 0 and spin_j == 0:
-                remove_dipole = (
-                    True if lf_i.maps_label + lf_j.maps_label == "TT" else False
-                )
+                # FIXME: remove_dipole feature is broken - it uses cl[0] (ell=2)
+                # instead of the actual dipole (ell=1). Disabling for now.
+                # The original code was:
+                # remove_dipole = (
+                #     True if lf_i.maps_label + lf_j.maps_label == "TT" else False
+                # )
+                remove_dipole = False
                 if i == j:
                     compute_00_contribution(
                         fields.get_cls(i, j, 0),
