@@ -241,7 +241,9 @@ os.makedirs(f"{outpath}/templates", exist_ok=True)
 for i, amp in enumerate(amplitude_values):
     for j, tilt in enumerate(tilt_values):
         template = deepcopy(new_clfid)
-        template = amp * template * ((ell / 10) ** tilt)[:, None]
+        # Only scale spectral columns (1-6), not the ell column (0)
+        tilt_factor = (ell / 10) ** tilt
+        template[:, 1:] *= amp * tilt_factor[:, None]
 
         np.savetxt(
             f"{outpath}/templates/dls_amplitude{amp:.6g}_tilt{tilt:.6g}.txt",
