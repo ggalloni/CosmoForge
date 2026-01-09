@@ -159,6 +159,10 @@ if compute_case == "T":
     # Temperature-only analysis: N_pix x N_pix diagonal matrix
     print("Creating temperature-only noise covariance matrix")
     Mat = np.diag(np.ones(npix * 1)) * sigma_pix_T**2
+elif compute_case == "E" or compute_case == "B":
+    # Temperature-only analysis: N_pix x N_pix diagonal matrix
+    print("Creating temperature-only noise covariance matrix")
+    Mat = np.diag(np.ones(npix * 1)) * sigma_pix_P**2
 elif compute_case == "QU":
     # Polarization-only analysis: 2*N_pix x 2*N_pix diagonal matrix
     print("Creating polarization-only noise covariance matrix")
