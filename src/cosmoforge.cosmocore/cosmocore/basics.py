@@ -39,6 +39,24 @@ This module is heavily optimized for performance in cosmological analysis:
 - Optimized recurrence relations for Legendre polynomials
 - Efficient vector operations for spherical geometry
 - Robust matrix operations using LAPACK routines
+
+References
+----------
+Legendre Polynomials and Spin-Weighted Harmonics:
+.. [1] Abramowitz, M. & Stegun, I.A. "Handbook of Mathematical Functions"
+   Dover Publications (1972) - Chapter 8: Legendre Functions
+.. [2] Newman, E.T. & Penrose, R. "Note on the Bondi-Metzner-Sachs Group"
+   J. Math. Phys. 7, 863 (1966) - Spin-weighted spherical harmonics
+.. [3] Goldberg, J.N. et al. "Spin-s Spherical Harmonics and edth"
+   J. Math. Phys. 8, 2155 (1967)
+.. [4] Zaldarriaga, M. & Seljak, U. "All-sky analysis of polarization in the
+   microwave background" Phys. Rev. D 55, 1830 (1997)
+
+Numerical Methods:
+.. [5] Anderson, E. et al. "LAPACK Users' Guide" SIAM, Philadelphia (1999)
+   - Cholesky decomposition (dpotrf/dpotri), LU factorization (dgetrf)
+.. [6] Golub, G.H. & Van Loan, C.F. "Matrix Computations" Johns Hopkins
+   University Press (2013) - Numerical stability of matrix algorithms
 """
 
 from __future__ import annotations

@@ -33,12 +33,23 @@ parameter grids and handles memory optimization for large-scale analyses.
 
 References
 ----------
-.. [1] Wandelt, B.D. et al. "Global, exact cosmic microwave background data analysis"
+.. [1] Wandelt, B.D., Larson, D.L. & Lakshminarayanan, A. "Global, exact cosmic
+   microwave background data analysis using Gibbs sampling"
    Phys. Rev. D 70, 083511 (2004)
-.. [2] Jewell, J. et al. "Application of MCMC methods to multi-frequency CMB data"
-   Astrophys. J. 609, 1-6 (2004)
-.. [3] Chu, M. et al. "Cosmic microwave background likelihood approximation by a
-   Gaussianized Blackwell-Rao estimator" Phys. Rev. D 71, 103002 (2005)
+.. [2] Jewell, J., Levin, S. & Anderson, C.H. "Application of Monte Carlo algorithms
+   to the Bayesian analysis of the cosmic microwave background"
+   Astrophys. J. 609, 1-14 (2004)
+.. [3] Chu, M. et al. "Cosmological parameter constraints as derived from the Wilkinson
+   Microwave Anisotropy Probe data via Gibbs sampling and the Blackwell-Rao estimator"
+   Phys. Rev. D 71, 103002 (2005)
+.. [4] Eriksen, H.K. et al. "Power Spectrum Estimation from High-Resolution Maps by
+   Gibbs Sampling" Astrophys. J. Suppl. 155, 227-241 (2004)
+.. [5] Hinshaw, G. et al. "First-Year Wilkinson Microwave Anisotropy Probe (WMAP)
+   Observations: Angular Power Spectrum" Astrophys. J. Suppl. 148, 135-159 (2003)
+.. [6] Planck Collaboration "Planck 2018 results. V. CMB power spectra and likelihoods"
+   Astron. Astrophys. 641, A5 (2020)
+.. [7] Tegmark, M. "How to measure CMB power spectra without losing information"
+   Phys. Rev. D 55, 5895 (1997) - For connection between pixel-based and QML methods
 """
 
 from __future__ import annotations
