@@ -19,10 +19,12 @@ jobs:
       affected-packages: ${{ steps.changes.outputs.affected-packages }}
       test-cosmocore: ${{ steps.changes.outputs.test-cosmocore }}
       test-quelo: ${{ steps.changes.outputs.test-quelo }}
+      test-picslike: ${{ steps.changes.outputs.test-picslike }}
       test-meta: ${{ steps.changes.outputs.test-meta }}
       test-all: ${{ steps.changes.outputs.test-all }}
       cosmocore-strategy: ${{ steps.changes.outputs.cosmocore-strategy }}
       quelo-strategy: ${{ steps.changes.outputs.quelo-strategy }}
+      picslike-strategy: ${{ steps.changes.outputs.picslike-strategy }}
       meta-strategy: ${{ steps.changes.outputs.meta-strategy }}
       strategy: ${{ steps.changes.outputs.strategy }}
     steps:
@@ -54,15 +56,18 @@ jobs:
             echo "test-all=true" >> $GITHUB_OUTPUT
             echo "test-cosmocore=true" >> $GITHUB_OUTPUT
             echo "test-quelo=true" >> $GITHUB_OUTPUT
+            echo "test-picslike=true" >> $GITHUB_OUTPUT
             echo "test-meta=true" >> $GITHUB_OUTPUT
-            
+
             # Parse individual strategies even in TEST_ALL case
             cosmocore_strategy=$(echo "$output" | grep "TEST_COSMOCORE=" | cut -d'=' -f2)
             quelo_strategy=$(echo "$output" | grep "TEST_QUELO=" | cut -d'=' -f2)
+            picslike_strategy=$(echo "$output" | grep "TEST_PICSLIKE=" | cut -d'=' -f2)
             meta_strategy=$(echo "$output" | grep "TEST_META=" | cut -d'=' -f2)
-            
+
             echo "cosmocore-strategy=$cosmocore_strategy" >> $GITHUB_OUTPUT
             echo "quelo-strategy=$quelo_strategy" >> $GITHUB_OUTPUT
+            echo "picslike-strategy=$picslike_strategy" >> $GITHUB_OUTPUT
             echo "meta-strategy=$meta_strategy" >> $GITHUB_OUTPUT
           else
             echo "test-all=false" >> $GITHUB_OUTPUT
@@ -85,7 +90,16 @@ jobs:
               echo "test-quelo=false" >> $GITHUB_OUTPUT
               echo "quelo-strategy=none" >> $GITHUB_OUTPUT
             fi
-            
+
+            picslike_strategy=$(echo "$output" | grep "TEST_PICSLIKE=" | cut -d'=' -f2)
+            if [[ -n "$picslike_strategy" && "$picslike_strategy" != "none" ]]; then
+              echo "test-picslike=true" >> $GITHUB_OUTPUT
+              echo "picslike-strategy=$picslike_strategy" >> $GITHUB_OUTPUT
+            else
+              echo "test-picslike=false" >> $GITHUB_OUTPUT
+              echo "picslike-strategy=none" >> $GITHUB_OUTPUT
+            fi
+
             meta_strategy=$(echo "$output" | grep "TEST_META=" | cut -d'=' -f2)
             if [[ -n "$meta_strategy" && "$meta_strategy" != "none" ]]; then
               echo "test-meta=true" >> $GITHUB_OUTPUT
@@ -196,6 +210,50 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: ggalloni/CosmoForge
 
+  test-picslike:
+    name: Test PICSLike
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: detect-changes
+    if: needs.detect-changes.outputs.test-picslike == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v2
+
+      - name: Install workspace dependencies
+        run: |
+          uv sync --dev
+
+      - name: Run linting
+        run: |
+          uv run ruff check src/cosmoforge.picslike/
+          uv run ruff format --check src/cosmoforge.picslike/
+
+      - name: Run tests
+        if: contains(needs.detect-changes.outputs.picslike-strategy, 'test')
+        working-directory: src/cosmoforge.picslike
+        run: |
+          uv run pytest tests/ -v -m "not slow" --cov=picslike --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        if: contains(needs.detect-changes.outputs.picslike-strategy, 'test')
+        uses: codecov/codecov-action@v4
+        with:
+          file: src/cosmoforge.picslike/coverage.xml
+          flags: picslike
+          name: picslike-coverage
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: ggalloni/CosmoForge
+
   test-meta:
     name: Test Meta
     runs-on: ubuntu-latest
@@ -239,7 +297,7 @@ jobs:
     name: Test Summary
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [detect-changes, test-cosmocore, test-quelo, test-meta]
+    needs: [detect-changes, test-cosmocore, test-quelo, test-picslike, test-meta]
     if: always()
     steps:
       - name: Print test strategy
@@ -252,6 +310,7 @@ jobs:
           echo "## Test Results"
           echo "- CosmoCore: ${{ needs.test-cosmocore.result }} (strategy: ${{ needs.detect-changes.outputs.cosmocore-strategy }})"
           echo "- Quelo: ${{ needs.test-quelo.result }} (strategy: ${{ needs.detect-changes.outputs.quelo-strategy }})"
+          echo "- PICSLike: ${{ needs.test-picslike.result }} (strategy: ${{ needs.detect-changes.outputs.picslike-strategy }})"
           echo "- Meta: ${{ needs.test-meta.result }} (strategy: ${{ needs.detect-changes.outputs.meta-strategy }})"
           echo ""
           echo "## Coverage Notes"
@@ -261,12 +320,16 @@ jobs:
           if [[ "${{ needs.detect-changes.outputs.test-quelo }}" == "false" ]]; then
             echo "- Quelo: No changes detected, coverage preserved from previous runs"
           fi
+          if [[ "${{ needs.detect-changes.outputs.test-picslike }}" == "false" ]]; then
+            echo "- PICSLike: No changes detected, coverage preserved from previous runs"
+          fi
           echo "- Meta: No coverage tracking (package contains no source code to cover)"
 
       - name: Check if all tests passed
         run: |
           if [[ "${{ needs.test-cosmocore.result }}" == "failure" ]] || \
              [[ "${{ needs.test-quelo.result }}" == "failure" ]] || \
+             [[ "${{ needs.test-picslike.result }}" == "failure" ]] || \
              [[ "${{ needs.test-meta.result }}" == "failure" ]]; then
             echo "❌ Some tests failed"
             exit 1
