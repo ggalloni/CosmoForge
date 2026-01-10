@@ -388,6 +388,29 @@ class TestEdgeCases:
         best_fit = result.get_best_fit()
         assert best_fit is not None
 
+    def test_zero_likelihood_confidence_interval(
+        self,
+        sample_parameter_grid,
+    ):
+        """Test confidence interval when likelihood sums to zero."""
+        n_points = sample_parameter_grid.get_total_points()
+        # Create extremely negative log-likelihood that results in zero likelihood
+        chi2 = np.ones(n_points) * 1e10  # Very large chi-squared
+        log_like = -0.5 * chi2  # Very negative log-likelihood
+
+        result = LikelihoodResult(
+            parameter_grid=sample_parameter_grid,
+            chi_squared_values=chi2,
+            log_likelihood_values=log_like,
+        )
+
+        # The _compute_parameter_interval handles zero likelihood case
+        # by returning full parameter range
+        intervals = result.get_confidence_intervals()
+        assert intervals is not None
+        for param, interval in intervals.items():
+            assert interval[0] <= interval[1]
+
     def test_very_large_chi_squared(
         self,
         sample_parameter_grid,

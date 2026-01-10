@@ -132,13 +132,12 @@ class TestSetupMaps:
             picslike.setup_maps()
 
 
-@pytest.mark.slow
 class TestComputeSignalMatrix:
     """Test suite for signal matrix computation (requires full pipeline)."""
 
-    def test_compute_signal_matrix_requires_covariance(self, config_path):
+    def test_compute_signal_matrix_requires_covariance(self, fast_config_path):
         """Test that compute_signal_matrix requires covariance setup."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
         picslike.setup_fields()
         picslike.setup_geometry()
         picslike.setup_parameter_grid()
@@ -148,9 +147,9 @@ class TestComputeSignalMatrix:
         with pytest.raises((ValueError, AttributeError)):
             picslike.compute_signal_matrix(param_point)
 
-    def test_compute_signal_matrix_shape(self, config_path):
+    def test_compute_signal_matrix_shape(self, fast_config_path):
         """Test that signal matrix has correct shape."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
         picslike.setup_fields()
         picslike.setup_geometry()
         picslike.setup_covariance_matrices()
@@ -168,13 +167,12 @@ class TestComputeSignalMatrix:
         assert signal_matrix.shape == picslike.NCov1.shape
 
 
-@pytest.mark.slow
 class TestPrepareCovariance:
     """Test suite for covariance preparation (requires full pipeline)."""
 
-    def test_prepare_covariance_creates_inverse(self, config_path):
+    def test_prepare_covariance_creates_inverse(self, fast_config_path):
         """Test that prepare_covariance creates inverse covariance."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
         picslike.setup_fields()
         picslike.setup_geometry()
         picslike.setup_covariance_matrices()
@@ -301,17 +299,15 @@ class TestComputeMeanLikelihoodResult:
         )
 
 
-@pytest.mark.slow
 class TestIntegration:
     """Integration tests for full pipeline (requires test data).
 
-    These tests are memory-intensive and should be run with caution.
-    Use: pytest -m slow to run these tests explicitly.
+    These tests use fast_config with a 2x2 grid and 10 simulations for speed.
     """
 
-    def test_full_pipeline_setup(self, config_path):
-        """Test full pipeline setup without compute (resource-intensive)."""
-        picslike = PICSLike(params_file=config_path)
+    def test_full_pipeline_setup(self, fast_config_path):
+        """Test full pipeline setup without compute."""
+        picslike = PICSLike(params_file=fast_config_path)
 
         # Setup pipeline
         picslike.setup_parameter_grid()
@@ -328,9 +324,9 @@ class TestIntegration:
         assert picslike.NCov1 is not None
         assert picslike.collection is not None
 
-    def test_single_point_likelihood(self, config_path):
+    def test_single_point_likelihood(self, fast_config_path):
         """Test likelihood computation at a single parameter point."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
 
         # Setup pipeline
         picslike.setup_parameter_grid()
@@ -357,6 +353,87 @@ class TestIntegration:
 
         # Log-likelihood = -0.5 * chi2
         np.testing.assert_array_almost_equal(log_like, -0.5 * chi2)
+
+    def test_compute_and_getters(self, fast_config_path):
+        """Test full compute method and getter methods."""
+        picslike = PICSLike(params_file=fast_config_path)
+
+        # Setup pipeline
+        picslike.setup_parameter_grid()
+        picslike.setup_fields()
+        picslike.setup_geometry()
+        picslike.setup_covariance_matrices()
+        picslike.setup_cls()
+        picslike.setup_beams()
+        picslike.setup_maps()
+
+        # Run compute
+        picslike.compute()
+
+        # Test that likelihood_result is set
+        assert picslike.likelihood_result is not None
+
+        # Test getters after computation
+        chi2 = picslike.get_chi_squared()
+        assert chi2 is not None
+        assert len(chi2) == picslike.parameter_grid.get_total_points()
+
+        log_like = picslike.get_log_likelihood()
+        assert log_like is not None
+        assert len(log_like) == picslike.parameter_grid.get_total_points()
+
+        best_fit = picslike.get_best_fit()
+        assert isinstance(best_fit, dict)
+        assert len(best_fit) > 0
+
+        # Test simulation results getter
+        sim_results = picslike.get_simulation_results()
+        assert sim_results is not None
+        assert len(sim_results) == picslike.params.nsims
+
+        # Test mean likelihood result getter
+        mean_result = picslike.get_mean_likelihood_result()
+        assert mean_result is not None
+        assert mean_result == picslike.likelihood_result
+
+    def test_save_results(self, fast_config_path, temp_output_dir):
+        """Test saving likelihood results to file."""
+        picslike = PICSLike(params_file=fast_config_path)
+
+        # Setup and run pipeline
+        picslike.setup_parameter_grid()
+        picslike.setup_fields()
+        picslike.setup_geometry()
+        picslike.setup_covariance_matrices()
+        picslike.setup_cls()
+        picslike.setup_beams()
+        picslike.setup_maps()
+        picslike.compute()
+
+        # Save results
+        output_path = temp_output_dir / "test_results.npz"
+        picslike.save_results(str(output_path))
+
+        # Verify main file was created
+        assert output_path.exists()
+
+        # Verify simulation result files were created
+        n_sims = picslike.params.nsims
+        for i in range(n_sims):
+            sim_path = temp_output_dir / f"test_results_sim_{i:02d}.npz"
+            assert sim_path.exists()
+
+    def test_run_method(self, fast_config_path):
+        """Test the full run() pipeline method."""
+        picslike = PICSLike(params_file=fast_config_path)
+
+        # Run the full pipeline
+        picslike.run()
+
+        # Verify results are computed
+        assert picslike.likelihood_result is not None
+        assert picslike.simulation_results is not None
+        assert picslike.parameter_grid is not None
 
 
 class TestMPIDistribution:

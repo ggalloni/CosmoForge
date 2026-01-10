@@ -5,7 +5,11 @@ This module provides shared test fixtures and configuration for the
 PICSLike test suite.
 """
 
+# Disable JIT compilation for testing - MUST be set before any imports
 import os
+
+os.environ["NUMBA_DISABLE_JIT"] = "1"
+
 import tempfile
 from pathlib import Path
 
@@ -17,9 +21,6 @@ from cosmocore import InputParams
 # Import from submodules to avoid heavy PICSLike import during collection
 from picslike.likelihood_result import LikelihoodResult
 from picslike.parameter_grid import ParameterGrid
-
-# Disable JIT compilation for testing
-os.environ.setdefault("NUMBA_DISABLE_JIT", "1")
 
 
 @pytest.fixture
@@ -244,3 +245,9 @@ def temp_output_dir():
 def config_path(data_resolver):
     """Path to the test configuration file."""
     return data_resolver("tests/data/nside4/TQU/config.yaml")
+
+
+@pytest.fixture
+def fast_config_path(data_resolver):
+    """Path to the fast test configuration file (2x2 grid, 10 sims)."""
+    return data_resolver("tests/data/nside4/TQU/fast_config.yaml")

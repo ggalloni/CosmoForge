@@ -226,3 +226,68 @@ class TestParameterGrid:
         points_from_iter = list(grid)
         assert len(points_from_iter) == grid.get_total_points()
         assert set(points_from_iter) == set(grid.grid_points)
+
+    def test_parameter_dict_wrong_length(
+        self, minimal_params, sample_parameter_ranges, sample_theoretical_spectra
+    ):
+        """Test get_parameter_dict with wrong number of values."""
+        grid = ParameterGrid(
+            core_params=minimal_params,
+            parameter_ranges=sample_parameter_ranges,
+            theoretical_spectra=sample_theoretical_spectra,
+        )
+
+        # Too few parameters
+        with pytest.raises(ValueError, match="Parameter point has"):
+            grid.get_parameter_dict((0.022,))
+
+        # Too many parameters
+        with pytest.raises(ValueError, match="Parameter point has"):
+            grid.get_parameter_dict((0.022, 0.12, 0.5))
+
+    def test_get_parameter_index_not_found(
+        self, minimal_params, sample_parameter_ranges, sample_theoretical_spectra
+    ):
+        """Test get_parameter_index with non-existing point."""
+        grid = ParameterGrid(
+            core_params=minimal_params,
+            parameter_ranges=sample_parameter_ranges,
+            theoretical_spectra=sample_theoretical_spectra,
+        )
+
+        with pytest.raises(ValueError, match="not found in grid"):
+            grid.get_parameter_index((0.999, 0.999))
+
+    def test_add_spectrum(
+        self, minimal_params, sample_parameter_ranges, sample_theoretical_spectra
+    ):
+        """Test dynamic spectrum addition."""
+        import numpy as np
+
+        grid = ParameterGrid(
+            core_params=minimal_params,
+            parameter_ranges=sample_parameter_ranges,
+            theoretical_spectra=sample_theoretical_spectra,
+        )
+
+        # Add a new spectrum for an existing point (update)
+        new_spectrum = {"TT": np.ones(100)}
+        grid.add_spectrum((0.022, 0.12), new_spectrum)
+        retrieved = grid.get_spectrum((0.022, 0.12))
+        assert "TT" in retrieved
+        np.testing.assert_array_equal(retrieved["TT"], new_spectrum["TT"])
+
+    def test_equality_with_non_grid(
+        self, minimal_params, sample_parameter_ranges, sample_theoretical_spectra
+    ):
+        """Test __eq__ method with non-ParameterGrid objects."""
+        grid = ParameterGrid(
+            core_params=minimal_params,
+            parameter_ranges=sample_parameter_ranges,
+            theoretical_spectra=sample_theoretical_spectra,
+        )
+
+        # Different type should not be equal
+        assert grid != "not a grid"
+        assert grid != 42
+        assert grid != None
