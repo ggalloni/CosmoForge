@@ -18,9 +18,9 @@ from picslike import LikelihoodResult, PICSLike
 class TestPICSLikeInit:
     """Test suite for PICSLike initialization."""
 
-    def test_initialization_from_config(self, config_path):
+    def test_initialization_from_config(self, fast_config_path):
         """Test PICSLike initialization from config file."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
 
         assert picslike is not None
         assert picslike.rank == 0  # Single process
@@ -28,9 +28,9 @@ class TestPICSLikeInit:
         assert picslike.maps1 is None  # Not loaded yet
         assert picslike.parameter_grid is None  # Not set up yet
 
-    def test_initialization_attributes(self, config_path):
+    def test_initialization_attributes(self, fast_config_path):
         """Test that initialization sets expected attributes."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
 
         assert hasattr(picslike, "comm")
         assert hasattr(picslike, "rank")
@@ -41,18 +41,18 @@ class TestPICSLikeInit:
         assert hasattr(picslike, "likelihood_result")
         assert hasattr(picslike, "simulation_index")
 
-    def test_simulation_index_default(self, config_path):
+    def test_simulation_index_default(self, fast_config_path):
         """Test default simulation index is 0."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
         assert picslike.simulation_index == 0
 
 
 class TestSetSimulationIndex:
     """Test suite for set_simulation_index method."""
 
-    def test_set_valid_simulation_index(self, config_path):
+    def test_set_valid_simulation_index(self, fast_config_path):
         """Test setting a valid simulation index."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
         picslike.setup_fields()
         picslike.setup_geometry()
         picslike.setup_maps()
@@ -61,9 +61,9 @@ class TestSetSimulationIndex:
         picslike.set_simulation_index(5)
         assert picslike.simulation_index == 5
 
-    def test_set_simulation_index_out_of_range(self, config_path):
+    def test_set_simulation_index_out_of_range(self, fast_config_path):
         """Test error handling for out-of-range simulation index."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
         picslike.setup_fields()
         picslike.setup_geometry()
         picslike.setup_maps()
@@ -72,9 +72,9 @@ class TestSetSimulationIndex:
         with pytest.raises(ValueError, match="out of range"):
             picslike.set_simulation_index(9999)
 
-    def test_set_negative_simulation_index(self, config_path):
+    def test_set_negative_simulation_index(self, fast_config_path):
         """Test error handling for negative simulation index."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
         picslike.setup_fields()
         picslike.setup_geometry()
         picslike.setup_maps()
@@ -86,25 +86,25 @@ class TestSetSimulationIndex:
 class TestSetupParameterGrid:
     """Test suite for parameter grid setup."""
 
-    def test_setup_parameter_grid(self, config_path):
+    def test_setup_parameter_grid(self, fast_config_path):
         """Test parameter grid setup from config."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
         picslike.setup_parameter_grid()
 
         assert picslike.parameter_grid is not None
         assert picslike.parameter_grid.get_total_points() > 0
 
-    def test_parameter_names_set(self, config_path):
+    def test_parameter_names_set(self, fast_config_path):
         """Test that parameter names are extracted from config."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
         picslike.setup_parameter_grid()
 
         # Check that parameter names are available
         assert hasattr(picslike, "parameter_names")
 
-    def test_parameter_ranges_set(self, config_path):
+    def test_parameter_ranges_set(self, fast_config_path):
         """Test that parameter ranges are set from config."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
         picslike.setup_parameter_grid()
 
         assert hasattr(picslike, "parameter_ranges")
@@ -114,9 +114,9 @@ class TestSetupParameterGrid:
 class TestSetupMaps:
     """Test suite for map setup."""
 
-    def test_setup_maps_loads_data(self, config_path):
+    def test_setup_maps_loads_data(self, fast_config_path):
         """Test that setup_maps loads map data."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
         picslike.setup_fields()
         picslike.setup_geometry()
         picslike.setup_maps()
@@ -124,9 +124,9 @@ class TestSetupMaps:
         assert picslike.maps1 is not None
         assert picslike.maps1.shape[1] == picslike.params.nsims
 
-    def test_setup_maps_before_geometry_raises(self, config_path):
+    def test_setup_maps_before_geometry_raises(self, fast_config_path):
         """Test that setup_maps fails if geometry not set up."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
 
         with pytest.raises(ValueError, match="Pixel information not available"):
             picslike.setup_maps()
@@ -191,37 +191,37 @@ class TestPrepareCovariance:
 class TestGetters:
     """Test suite for getter methods before computation."""
 
-    def test_get_chi_squared_before_compute_raises(self, config_path):
+    def test_get_chi_squared_before_compute_raises(self, fast_config_path):
         """Test that get_chi_squared raises error if not computed."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
 
         with pytest.raises(RuntimeError, match="Likelihood not computed"):
             picslike.get_chi_squared()
 
-    def test_get_log_likelihood_before_compute_raises(self, config_path):
+    def test_get_log_likelihood_before_compute_raises(self, fast_config_path):
         """Test that get_log_likelihood raises error if not computed."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
 
         with pytest.raises(RuntimeError, match="Likelihood not computed"):
             picslike.get_log_likelihood()
 
-    def test_get_best_fit_before_compute_raises(self, config_path):
+    def test_get_best_fit_before_compute_raises(self, fast_config_path):
         """Test that get_best_fit raises error if not computed."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
 
         with pytest.raises(RuntimeError, match="Likelihood not computed"):
             picslike.get_best_fit()
 
-    def test_get_simulation_results_before_compute_raises(self, config_path):
+    def test_get_simulation_results_before_compute_raises(self, fast_config_path):
         """Test that get_simulation_results raises error if not computed."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
 
         with pytest.raises(RuntimeError, match="Simulation results not available"):
             picslike.get_simulation_results()
 
-    def test_get_mean_likelihood_result_before_compute_raises(self, config_path):
+    def test_get_mean_likelihood_result_before_compute_raises(self, fast_config_path):
         """Test that get_mean_likelihood_result raises error if not computed."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
 
         with pytest.raises(RuntimeError, match="Likelihood not computed"):
             picslike.get_mean_likelihood_result()
@@ -230,9 +230,9 @@ class TestGetters:
 class TestSaveResults:
     """Test suite for save_results method."""
 
-    def test_save_results_before_compute_raises(self, config_path, temp_output_dir):
+    def test_save_results_before_compute_raises(self, fast_config_path, temp_output_dir):
         """Test that save_results raises error if not computed."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
 
         with pytest.raises(RuntimeError, match="No results to save"):
             picslike.save_results(str(temp_output_dir / "results.pkl"))
@@ -241,20 +241,20 @@ class TestSaveResults:
 class TestComputeMeanLikelihoodResult:
     """Test suite for mean likelihood computation."""
 
-    def test_compute_mean_empty_list_raises(self, config_path):
+    def test_compute_mean_empty_list_raises(self, fast_config_path):
         """Test that empty results list raises error."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
 
         with pytest.raises(ValueError, match="No simulation results provided"):
             picslike._compute_mean_likelihood_result([])
 
     def test_compute_mean_single_result(
         self,
-        config_path,
+        fast_config_path,
         sample_likelihood_result,
     ):
         """Test mean computation with single result."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
 
         mean_result = picslike._compute_mean_likelihood_result([sample_likelihood_result])
 
@@ -266,11 +266,11 @@ class TestComputeMeanLikelihoodResult:
 
     def test_compute_mean_multiple_results(
         self,
-        config_path,
+        fast_config_path,
         sample_parameter_grid,
     ):
         """Test mean computation with multiple results."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
 
         n_points = sample_parameter_grid.get_total_points()
 
@@ -439,9 +439,9 @@ class TestIntegration:
 class TestMPIDistribution:
     """Test suite for MPI point distribution."""
 
-    def test_points_distribution_single_process(self, config_path):
+    def test_points_distribution_single_process(self, fast_config_path):
         """Test that single process gets all points."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
         picslike.setup_parameter_grid()
 
         # In single process mode, rank=0, size=1
@@ -449,9 +449,9 @@ class TestMPIDistribution:
 
         assert len(points) == picslike.parameter_grid.get_total_points()
 
-    def test_points_distribution_multiple_processes_simulation(self, config_path):
+    def test_points_distribution_multiple_processes_simulation(self, fast_config_path):
         """Test simulated multi-process distribution."""
-        picslike = PICSLike(params_file=config_path)
+        picslike = PICSLike(params_file=fast_config_path)
         picslike.setup_parameter_grid()
 
         # Simulate 4 processes

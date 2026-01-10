@@ -11,11 +11,15 @@ wheels/
 *inputs/
 *outputs/
 *logs/
-*maps/
 *slurms/
 *plots/
-*templates/
 .coverage
+
+# Ignore maps/templates except in test directories
+*maps/
+*templates/
+!**/tests/data/**/maps/
+!**/tests/data/**/templates/
 
 # Test intermediate artifacts (regenerated during test runs)
 **/tests/data/**/cov_matrix.dat
