@@ -1,0 +1,57 @@
+nside: 8
+spins: [0, 2]
+labels: ["T", "E", "B"]
+physical_labels: ["T", "Q", "U"]
+
+do_cross: false
+
+maskfile: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.picslike/tests/data/nside8/TQU/mask.fits'
+output_geometry_file: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.picslike/tests/data/nside8/TQU/geometry.dat'
+ordering: 2
+
+inputclfile: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.picslike/tests/data/nside8/TQU/dls.txt'
+covmatfile1: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.picslike/tests/data/nside8/TQU/NCVM1.bin'
+covmatfile2: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.picslike/tests/data/nside8/TQU/NCVM2.bin'
+
+lmax: 32
+
+load_inverted: false
+calibration: 1.0
+
+smoothing_type: 3
+fwhmarcmin: 440.0
+apply_pixwin: false
+beam_file: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.picslike/scripts/beam_440TP_pixwin16.fits'
+
+outnoisecovmat1: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.picslike/tests/data/nside8/TQU/reduced_NCVM1.bin'
+outnoisecovmat2: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.picslike/tests/data/nside8/TQU/reduced_NCVM2.bin'
+
+feedback: 4
+outinvcovmatfile1: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.picslike/tests/data/nside8/TQU/invCOV1.bin'
+outinvcovmatfile2: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.picslike/tests/data/nside8/TQU/invCOV2.bin'
+
+# Fisher matrix output
+outfilefisher: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.picslike/tests/data/nside8/TQU/fisher.dat'
+
+# QML-specific parameters
+nsims: 30
+inputmapfile1: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.picslike/tests/data/nside8/maps/all_sims_TQU.fits'
+inputmapfile2: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.picslike/tests/data/nside8/maps/all_sims_TQU.fits'
+
+# Output files for QML
+outcovmatfile: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.picslike/tests/data/nside8/TQU/cov_matrix.dat'
+outerrfile: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.picslike/tests/data/nside8/TQU/errors.dat'
+
+# Fisher matrix file (if precomputed)
+outfilefisher: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.picslike/tests/data/nside8/TQU/fisher.dat'
+
+parameters:
+  amplitude: [0.95, 1.05, 10]
+  tilt: [-0.2, 0.2, 10]
+
+root_dir: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.picslike/tests/data/nside8/templates'
+root_filename: 'dls'
+
+# QML options
+remove_nb: true
+nspectra: 6

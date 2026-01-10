@@ -36,8 +36,10 @@ jobs:
           source .venv/bin/activate
           # Install documentation dependencies
           uv pip install --group docs
-          # Install the cosmocore package and its dependencies
+          # Install all packages and their dependencies
           uv pip install -e ./src/cosmoforge.cosmocore[dev]
+          uv pip install -e ./src/cosmoforge.quelo[dev]
+          uv pip install -e ./src/cosmoforge.picslike[dev]
 
       - name: Build documentation
         run: |

@@ -5,7 +5,7 @@ from cosmocore import (
     idx2spec,
     spec2idx,
 )
-from cosmocore.basics import _project_and_norm
+from cosmocore.basics import _project_and_norm, matrix_slogdet, matrix_slogdet_symm
 
 
 def test_idx2spec():
@@ -74,3 +74,50 @@ def test_project_and_norm():
     norm = np.sqrt(px * px + py * py + pz * pz)
     assert abs(norm - 1.0) < 1e-10
     assert pz == 0.0  # z-component should be zero (projection onto xy-plane)
+
+
+def test_matrix_slogdet():
+    """Test matrix_slogdet for general matrices."""
+    # Test with positive definite matrix
+    M = np.array([[2.0, 1.0], [1.0, 2.0]])
+    sign, logdet = matrix_slogdet(M)
+    np_sign, np_logdet = np.linalg.slogdet(M)
+    assert sign == np_sign
+    np.testing.assert_almost_equal(logdet, np_logdet)
+
+    # Test with negative determinant matrix
+    M_neg = np.array([[1.0, 2.0], [3.0, 4.0]])  # det = -2
+    sign, logdet = matrix_slogdet(M_neg)
+    np_sign, np_logdet = np.linalg.slogdet(M_neg)
+    assert sign == np_sign
+    np.testing.assert_almost_equal(logdet, np_logdet)
+
+    # Test non-square matrix error
+    with pytest.raises(ValueError, match="Matrix must be square"):
+        matrix_slogdet(np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]))
+
+
+def test_matrix_slogdet_symm():
+    """Test matrix_slogdet_symm for symmetric positive definite matrices."""
+    # Test with positive definite matrix
+    M = np.array([[4.0, 2.0], [2.0, 3.0]])
+    sign, logdet = matrix_slogdet_symm(M)
+    assert sign == 1.0
+    np_sign, np_logdet = np.linalg.slogdet(M)
+    np.testing.assert_almost_equal(logdet, np_logdet)
+
+    # Test with larger positive definite matrix
+    M_large = np.array([[5.0, 1.0, 2.0], [1.0, 4.0, 1.0], [2.0, 1.0, 6.0]])
+    sign, logdet = matrix_slogdet_symm(M_large)
+    assert sign == 1.0
+    np_sign, np_logdet = np.linalg.slogdet(M_large)
+    np.testing.assert_almost_equal(logdet, np_logdet)
+
+    # Test non-square matrix error
+    with pytest.raises(ValueError, match="Matrix must be square"):
+        matrix_slogdet_symm(np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]))
+
+    # Test non-positive definite matrix (Cholesky fails)
+    M_not_pd = np.array([[1.0, 2.0], [2.0, 1.0]])  # eigenvalues: 3, -1
+    with pytest.raises(ValueError, match="dpotrf failed"):
+        matrix_slogdet_symm(M_not_pd)

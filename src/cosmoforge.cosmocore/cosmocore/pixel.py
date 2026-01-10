@@ -35,6 +35,20 @@ This module heavily uses Numba's @njit decorator for performance optimization.
 The signal matrix calculations implement the full pixel-space likelihood for
 CMB analysis with proper handling of spin-0 (temperature) and spin-2
 (polarization) fields.
+
+References
+----------
+.. [1] Gorski, K.M. et al. "HEALPix: A Framework for High-Resolution Discretization
+   and Fast Analysis of Data Distributed on the Sphere"
+   Astrophys. J. 622, 759-771 (2005)
+.. [2] Kamionkowski, M., Kosowsky, A. & Stebbins, A. "Statistics of cosmic microwave
+   background polarization" Phys. Rev. D 55, 7368 (1997)
+.. [3] Zaldarriaga, M. & Seljak, U. "All-sky analysis of polarization in the microwave
+   background" Phys. Rev. D 55, 1830 (1997)
+.. [4] Ng, K.-W. & Liu, G.-C. "Correlation Functions of CMB Anisotropy and Polarization"
+   Int. J. Mod. Phys. D 8, 61-83 (1999)
+.. [5] Challinor, A. et al. "All-sky convolution for polarimetry experiments"
+   Phys. Rev. D 62, 123002 (2000)
 """
 
 import healpy as hp
@@ -332,9 +346,13 @@ def compute_signal_matrix(
             lf_j = fields.fields[j]
             legendre = np.empty(lmax, dtype=np.float64)
             if spin_i == 0 and spin_j == 0:
-                remove_dipole = (
-                    True if lf_i.maps_label + lf_j.maps_label == "TT" else False
-                )
+                # FIXME: remove_dipole feature is broken - it uses cl[0] (ell=2)
+                # instead of the actual dipole (ell=1). Disabling for now.
+                # The original code was:
+                # remove_dipole = (
+                #     True if lf_i.maps_label + lf_j.maps_label == "TT" else False
+                # )
+                remove_dipole = False
                 if i == j:
                     compute_00_contribution(
                         fields.get_cls(i, j, 0),

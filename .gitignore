@@ -13,5 +13,21 @@ wheels/
 *logs/
 *slurms/
 *plots/
+.coverage
+
+# Ignore maps/templates except in test directories
+*maps/
+*templates/
+!**/tests/data/**/maps/
+!**/tests/data/**/templates/
+
+# Test intermediate artifacts (regenerated during test runs)
+**/tests/data/**/cov_matrix.dat
+**/tests/data/**/errors.dat
+**/tests/data/**/fisher.dat
+**/tests/data/**/geometry.dat
+**/tests/data/**/invCOV*.bin
+**/tests/data/**/reduced_NCVM*.bin
 
 run_*.py
+/src/*/.library

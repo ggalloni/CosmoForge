@@ -13,6 +13,30 @@ The main classes are:
 Key functions:
     - cl_to_vec, vec_to_cl: Convert between C_ℓ matrices and vectorized forms
     - coswinbeam: Generate cosine window beam functions
+
+References
+----------
+Power Spectrum Conventions:
+.. [1] Tegmark, M. "How to measure CMB power spectra without losing information"
+   Phys. Rev. D 55, 5895 (1997)
+.. [2] Hivon, E. et al. "MASTER of the Cosmic Microwave Background Anisotropy
+   Power Spectrum: A Fast Method for Statistical Analysis of Large and Complex
+   Cosmic Microwave Background Data Sets" Astrophys. J. 567, 2-17 (2002)
+
+Beam Window Functions:
+.. [3] Page, L. et al. "First-Year Wilkinson Microwave Anisotropy Probe (WMAP)
+   Observations: Beam Profiles and Window Functions"
+   Astrophys. J. Suppl. 148, 39-50 (2003)
+.. [4] Mitra, S., Rocha, G., Gorski, K.M. et al. "Fast and Efficient Template Fitting
+   of Deterministic Anisotropic Cosmological Models Applied to WMAP Data"
+   Astrophys. J. Suppl. 193, 5 (2011)
+
+Spherical Harmonic Transforms:
+.. [5] Reinecke, M. & Seljak, U. "Libsharp - spherical harmonic transforms revisited"
+   Astron. Astrophys. 554, A112 (2013)
+.. [6] Gorski, K.M. et al. "HEALPix: A Framework for High-Resolution Discretization
+   and Fast Analysis of Data Distributed on the Sphere"
+   Astrophys. J. 622, 759-771 (2005)
 """
 
 from __future__ import annotations

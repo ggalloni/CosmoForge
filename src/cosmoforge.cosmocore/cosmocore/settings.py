@@ -202,6 +202,10 @@ class InputParams:
         self.outerrfile = ""
         self.remove_nb = True
 
+        self.parameters = {}
+        self.root_dir = "inputs"
+        self.root_filename = "theory_spectra"
+
         self.compute_derived()
 
     def compute_derived(self):
