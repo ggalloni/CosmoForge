@@ -4,13 +4,13 @@ labels: ["B"]
 
 do_cross: false
 
-maskfile: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside8/B/mask.fits'
-output_geometry_file: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside8/B/geometry.dat'
+maskfile: 'tests/data/nside8/B/mask.fits'
+output_geometry_file: 'tests/data/nside8/B/geometry.dat'
 ordering: 2
 
-inputclfile: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside8/B/dls.txt'
-covmatfile1: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside8/B/NCVM1.bin'
-covmatfile2: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside8/B/NCVM2.bin'
+inputclfile: 'tests/data/nside8/B/dls.txt'
+covmatfile1: 'tests/data/nside8/B/NCVM1.bin'
+covmatfile2: 'tests/data/nside8/B/NCVM2.bin'
 
 lmax: 32
 
@@ -20,31 +20,30 @@ calibration: 1.0
 smoothing_type: 1
 fwhmarcmin: 440.0
 apply_pixwin: false
-beam_file: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/scripts/beam_440TP_pixwin16.fits'
+beam_file: 'scripts/beam_440TP_pixwin16.fits'
 
-outnoisecovmat1: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside8/B/reduced_NCVM1.bin'
-outnoisecovmat2: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside8/B/reduced_NCVM2.bin'
+outnoisecovmat1: 'tests/data/nside8/B/reduced_NCVM1.bin'
+outnoisecovmat2: 'tests/data/nside8/B/reduced_NCVM2.bin'
 
 feedback: 1
-outinvcovmatfile1: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside8/B/invCOV1.bin'
-outinvcovmatfile2: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside8/B/invCOV2.bin'
+outinvcovmatfile1: 'tests/data/nside8/B/invCOV1.bin'
+outinvcovmatfile2: 'tests/data/nside8/B/invCOV2.bin'
 
 # Fisher matrix output
-outfilefisher: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside8/B/fisher.dat'
+outfilefisher: 'tests/data/nside8/B/fisher.dat'
 
 # QML-specific parameters
 nsims: 300
-inputmapfile1: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside8/maps/all_sims_TQU.fits'
-inputmapfile2: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside8/maps/all_sims_TQU.fits'
+inputmapfile1: 'tests/data/nside8/maps/all_sims_TQU.fits'
+inputmapfile2: 'tests/data/nside8/maps/all_sims_TQU.fits'
 
 # Output files for QML
-outcovmatfile: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside8/B/cov_matrix.dat'
-outerrfile: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside8/B/errors.dat'
+outcovmatfile: 'tests/data/nside8/B/cov_matrix.dat'
+outerrfile: 'tests/data/nside8/B/errors.dat'
 
 # Fisher matrix file (if precomputed)
-outfilefisher: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.quelo/tests/data/nside8/B/fisher.dat'
+outfilefisher: 'tests/data/nside8/B/fisher.dat'
 
 # QML options
 remove_nb: true
 nspectra: 1
-

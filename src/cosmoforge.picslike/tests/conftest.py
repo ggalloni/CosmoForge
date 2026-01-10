@@ -15,6 +15,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import yaml
 
 from cosmocore import InputParams
 
@@ -235,6 +236,68 @@ def data_resolver(local_path):
 
 
 @pytest.fixture
+def config_resolver(local_path):
+    """
+    Fixture that provides a function to resolve config files with correct paths.
+
+    This function reads a config file and resolves paths to work from both
+    the project root and the package directory.
+    """
+
+    def resolve_config(config_path):
+        """
+        Read a config file and resolve all paths to work from current location.
+
+        Parameters
+        ----------
+        config_path : str
+            Path to the config file relative to local_path
+
+        Returns
+        -------
+        str
+            Path to a temporary config file with resolved paths
+        """
+        # Read the original config
+        full_config_path = os.path.join(local_path, config_path)
+        with open(full_config_path) as f:
+            config = yaml.safe_load(f)
+
+        # Find the project root by looking for src directory
+        current_dir = os.getcwd()
+        path_parts = current_dir.split(os.sep)
+
+        # Determine if we need to add package prefix for relative paths
+        package_prefix = ""
+        try:
+            path_parts.index("src")
+            if not current_dir.endswith("cosmoforge.picslike"):
+                package_prefix = "src/cosmoforge.picslike/"
+        except ValueError:
+            if not current_dir.endswith("cosmoforge.picslike"):
+                package_prefix = "src/cosmoforge.picslike/"
+
+        # Update relative paths in config
+        for key, value in config.items():
+            if isinstance(value, str):
+                if (
+                    value.startswith("tests/")
+                    or value.startswith("inputs/")
+                    or value.startswith("scripts/")
+                ):
+                    config[key] = package_prefix + value
+
+        # Create a temporary config file with resolved paths
+        temp_config = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
+        yaml.dump(config, temp_config, default_flow_style=False)
+        temp_config.close()
+
+        return temp_config.name
+
+    return resolve_config
+
+
+@pytest.fixture
 def temp_output_dir():
     """Create a temporary directory for test output files."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -242,12 +305,12 @@ def temp_output_dir():
 
 
 @pytest.fixture
-def config_path(data_resolver):
+def config_path(config_resolver):
     """Path to the test configuration file."""
-    return data_resolver("tests/data/nside4/TQU/config.yaml")
+    return config_resolver("tests/data/nside4/TQU/config.yaml")
 
 
 @pytest.fixture
-def fast_config_path(data_resolver):
+def fast_config_path(config_resolver):
     """Path to the fast test configuration file (2x2 grid, 10 sims)."""
-    return data_resolver("tests/data/nside4/TQU/fast_config.yaml")
+    return config_resolver("tests/data/nside4/TQU/fast_config.yaml")

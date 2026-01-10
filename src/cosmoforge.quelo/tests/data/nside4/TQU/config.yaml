@@ -13,7 +13,7 @@ inputclfile: 'tests/data/nside4/TQU/dls.txt'
 covmatfile1: 'tests/data/nside4/TQU/NCVM1.bin'
 covmatfile2: 'tests/data/nside4/TQU/NCVM2.bin'
 
-lmax: 16
+lmax: 8
 
 load_inverted: false
 calibration: 1.0
@@ -34,7 +34,7 @@ outinvcovmatfile2: 'tests/data/nside4/TQU/invCOV2.bin'
 outfilefisher: 'tests/data/nside4/TQU/fisher.dat'
 
 # QML-specific parameters
-nsims: 300
+nsims: 50
 inputmapfile1: 'tests/data/nside4/maps/all_sims_TQU.fits'
 inputmapfile2: 'tests/data/nside4/maps/all_sims_TQU.fits'
 

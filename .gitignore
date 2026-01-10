@@ -17,5 +17,13 @@ wheels/
 *templates/
 .coverage
 
+# Test intermediate artifacts (regenerated during test runs)
+**/tests/data/**/cov_matrix.dat
+**/tests/data/**/errors.dat
+**/tests/data/**/fisher.dat
+**/tests/data/**/geometry.dat
+**/tests/data/**/invCOV*.bin
+**/tests/data/**/reduced_NCVM*.bin
+
 run_*.py
 /src/*/.library

@@ -36,44 +36,6 @@ References:
        Astrophys. J. 622, 759 (2005)
 """
 
-"""
-Mock input data generation for CosmoForge QML analysis.
-
-This script generates synthetic CMB observations including maps, masks, noise
-covariance matrices, and power spectra for testing and validation of the
-CosmoForge QML analysis pipeline. It produces realistic mock data that mimics
-real CMB observations while maintaining full control over the input parameters.
-
-The script generates:
-1. Sky masks with optional Galactic cut
-2. Noise covariance matrices for different field configurations
-3. Fiducial power spectra in the required format
-4. Monte Carlo CMB map simulations with beam convolution and noise
-
-Usage:
-    python produce_mock_inputs.py <compute_case> <output_path> <config_file> [--mask]
-
-Arguments:
-    compute_case : str
-        Analysis type - one of "T" (temperature only), "QU" (polarization),
-        "TQU" (temperature + polarization), or "TEB" (temperature + E/B modes)
-    output_path : str
-        Base directory where mock data will be written
-    config_file : str
-        Path to YAML parameter file containing analysis configuration
-    --mask : optional
-        If present, applies a Galactic plane cut to the sky mask
-
-Examples:
-    python produce_mock_inputs.py T /data/mocks config.yaml
-    python produce_mock_inputs.py TQU /data/mocks config.yaml --mask
-
-References:
-    .. [1] Gorski, K.M. et al. "HEALPix: A Framework for High-Resolution
-       Discretization and Fast Analysis of Data Distributed on the Sphere"
-       Astrophys. J. 622, 759 (2005)
-"""
-
 import os
 import sys
 from copy import deepcopy

@@ -16,7 +16,7 @@ from cosmocore import (
 
 
 def get_signal_covmat(fields, config_resolver, local_path):
-    config_file = config_resolver(f"tests/data/nside8/{fields}/config.yaml")
+    config_file = config_resolver(f"tests/data/nside4/{fields}/config.yaml")
     Par = InputParams.read_parameter_file(config_file)
 
     npix = hp.nside2npix(Par.nside)
@@ -106,10 +106,10 @@ def get_signal_covmat(fields, config_resolver, local_path):
 
 @pytest.mark.parametrize("fields", ["T", "QU", "TQU", "TEB"])
 def test_signal_covmat(local_path, fields, config_resolver):
-    config_file = config_resolver(f"tests/data/nside8/{fields}/config.yaml")
+    config_file = config_resolver(f"tests/data/nside4/{fields}/config.yaml")
     Par = InputParams.read_parameter_file(config_file)
 
-    file = local_path + f"/tests/data/nside8/{fields}/ref_signal.bin"
+    file = local_path + f"/tests/data/nside4/{fields}/ref_signal.bin"
     ref = np.fromfile(file, dtype=np.float64).reshape(
         (Par.npix * Par.nfields, Par.npix * Par.nfields)
     )
