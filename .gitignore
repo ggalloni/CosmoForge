@@ -15,6 +15,7 @@ wheels/
 *slurms/
 *plots/
 *templates/
+.coverage
 
 run_*.py
 /src/*/.library
