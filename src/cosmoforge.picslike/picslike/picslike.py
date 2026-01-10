@@ -459,7 +459,7 @@ class PICSLike(Core):
         theoretical power spectrum for signal covariance computation.
         """
         if self.rank == 0:
-            print("Setting up parameter grid...")
+            self.log("Setting up parameter grid...", level=2)
 
         self.parameter_names = self.params.parameters.keys()
 
@@ -477,7 +477,7 @@ class PICSLike(Core):
 
         if self.rank == 0:
             total_points = self.parameter_grid.get_total_points()
-            print(f"Parameter grid contains {total_points} points")
+            self.log(f"Parameter grid contains {total_points} points", level=2)
 
     def _broadcast_variables(self):
         """
@@ -604,38 +604,30 @@ class PICSLike(Core):
         all_chi2 = self.comm.gather(local_chi2_values, root=0)
         all_log_like = self.comm.gather(local_log_likelihood, root=0)
 
-        # if self.rank == 0:
-        # Combine results from all processes for this simulation
-        combined_chi2 = np.concatenate(all_chi2)
-        combined_log_like = np.concatenate(all_log_like)
+        if self.rank == 0:
+            # Combine results from all processes for this simulation
+            combined_chi2 = np.concatenate(all_chi2)
+            combined_log_like = np.concatenate(all_log_like)
 
-        # Create LikelihoodResult for this simulation
-        for i in range(n_sims):
-            sim_result = LikelihoodResult(
-                parameter_grid=self.parameter_grid,
-                chi_squared_values=combined_chi2[:, i],
-                log_likelihood_values=combined_log_like[:, i],
+            # Create LikelihoodResult for this simulation
+            for i in range(n_sims):
+                sim_result = LikelihoodResult(
+                    parameter_grid=self.parameter_grid,
+                    chi_squared_values=combined_chi2[:, i],
+                    log_likelihood_values=combined_log_like[:, i],
+                )
+                simulation_results.append(sim_result)
+
+            # Store the collection of results
+            self.simulation_results = simulation_results
+
+            # Compute mean likelihood result for plotting
+            self.likelihood_result = self._compute_mean_likelihood_result(
+                simulation_results
             )
-            simulation_results.append(sim_result)
 
-        # if self.rank == 0:
-        # Store the collection of results
-        self.simulation_results = simulation_results
-
-        print(self.simulation_results)
-
-        # Compute mean likelihood result for plotting
-        self.likelihood_result = self._compute_mean_likelihood_result(simulation_results)
-
-        print(f"Likelihood computation completed for {n_sims} simulations")
-        print("Mean likelihood result computed for analysis")
-
-        # # Broadcast results to all processes if needed
-        # self.likelihood_result = self.comm.bcast(self.likelihood_result, root=0)
-        # if hasattr(self, "simulation_results"):
-        #     self.simulation_results = self.comm.bcast(
-        #         self.simulation_results if self.rank == 0 else None, root=0
-        #     )
+            self.log(f"Likelihood computation completed for {n_sims} simulations")
+            self.log("Mean likelihood result computed for analysis", level=2)
 
     def _compute_mean_likelihood_result(
         self, simulation_results: list[LikelihoodResult]
@@ -887,7 +879,7 @@ class PICSLike(Core):
         if self.rank == 0:
             # Save mean likelihood result
             self.likelihood_result.save(output_path)
-            print(f"Mean likelihood results saved to {output_path}")
+            self.log(f"Mean likelihood results saved to {output_path}")
 
             # Save individual simulation results if available
             if (
@@ -906,8 +898,11 @@ class PICSLike(Core):
                     sim_result.save(str(sim_path))
 
                 n_files = len(self.simulation_results)
-                print(f"Individual simulation results saved ({n_files} files)")
-                print("Use get_simulation_results() to access individual results")
+                self.log(f"Individual simulation results saved ({n_files} files)")
+                self.log(
+                    "Use get_simulation_results() to access individual results",
+                    level=2,
+                )
 
     def run(self):
         """
@@ -935,28 +930,21 @@ class PICSLike(Core):
         """
 
         self.setup_parameter_grid()
-        self.log("Starting PICSLike analysis pipeline", level=1)
-        self.setup_fields()
-        self.setup_geometry()
-        self.setup_covariance_matrices()
-        self.setup_cls()
-        self.setup_beams()
-        self.setup_maps()
 
-        # if self.rank == 0:
-        #     self.log("Starting PICSLike analysis pipeline", level=1)
-        #     self.setup_fields()
-        #     self.setup_geometry()
-        #     self.setup_covariance_matrices()
-        #     self.setup_cls()
-        #     self.setup_beams()
+        if self.rank == 0:
+            self.log("Starting PICSLike analysis pipeline", level=1)
+            self.setup_fields()
+            self.setup_geometry()
+            self.setup_covariance_matrices()
+            self.setup_cls()
+            self.setup_beams()
 
-        #     if self.maps1 is None:
-        #         self.setup_maps()
-        #     if self.params.do_cross:
-        #         assert self.maps2 is not None, (
-        #             "Maps2 should be loaded for cross-correlation."
-        #         )
+            if self.maps1 is None:
+                self.setup_maps()
+            if self.params.do_cross:
+                assert self.maps2 is not None, (
+                    "Maps2 should be loaded for cross-correlation."
+                )
 
         self.comm.Barrier()
 
