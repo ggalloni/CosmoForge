@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.abspath("../../src"))
 # Add specific package paths
 sys.path.insert(0, os.path.abspath("../../src/cosmoforge.cosmocore"))
 sys.path.insert(0, os.path.abspath("../../src/cosmoforge.quelo"))
+sys.path.insert(0, os.path.abspath("../../src/cosmoforge.picslike"))
 sys.path.insert(0, os.path.abspath("../../src/cosmoforge.meta"))
 
 # -- Project information -----------------------------------------------------

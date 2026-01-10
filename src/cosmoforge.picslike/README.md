@@ -40,16 +40,23 @@ where:
 ## Usage
 
 ```python
-from cosmoforge.picslike import PICSLike
+from picslike import PICSLike
 
 # Initialize with parameter file
-picslike = PICSLike("config/pixel_analysis.yaml")
+picslike = PICSLike(params_file="config/pixel_analysis.yaml")
 
-# Set up parameter grid and theoretical spectra
-picslike.setup_parameter_grid(param_ranges, theoretical_spectra)
+# Run full pipeline (setup + compute)
+picslike.run()
 
-# Compute likelihood across parameter space
-picslike.compute_likelihood_grid()
+# Or step-by-step:
+picslike.setup_parameter_grid()
+picslike.setup_fields()
+picslike.setup_geometry()
+picslike.setup_covariance_matrices()
+picslike.setup_cls()
+picslike.setup_beams()
+picslike.setup_maps()
+picslike.compute()
 
 # Extract results
 chi_squared_values = picslike.get_chi_squared()

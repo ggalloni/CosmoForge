@@ -23,12 +23,14 @@ CosmoForge consists of several interconnected packages designed for efficient an
 
 - **cosmocore**: Core functionality for cosmological analysis including field management, matrix operations, and I/O utilities
 - **quelo**: QML and Fisher matrix implementations for power spectrum estimation
+- **picslike**: Pixel-based likelihood analysis for parameter estimation
 - **meta**: Metadata and utilities package
 
 ## Features
 
 - **Fisher Matrix Analysis**: Fast Fisher matrix computation for cosmological parameter forecasting
 - **QML Power Spectrum Estimation**: Quadratic Maximum Likelihood estimation for optimal power spectrum recovery
+- **Pixel-Based Likelihood**: Direct likelihood evaluation in map pixel space for parameter estimation
 - **MPI Parallelization**: Efficient parallel computation support for large-scale analyses
 - **HEALPix Integration**: Full support for HEALPix pixelization scheme
 - **Flexible Field Management**: Support for scalar (temperature) and tensor (polarization) fields
@@ -87,6 +89,20 @@ power_spectra = qml.get_power_spectra()
 noise_bias = qml.get_noise_bias()
 ```
 
+### Pixel-Based Likelihood Analysis
+
+```python
+from picslike import PICSLike
+
+# Initialize pixel-based likelihood
+picslike = PICSLike(params_file="config/picslike_config.yaml")
+picslike.run()
+
+# Get results
+chi_squared = picslike.get_chi_squared()
+best_fit = picslike.get_best_fit()
+```
+
 ### Using with Precomputed Fisher
 
 ```python
@@ -108,6 +124,7 @@ CosmoForge/
 ├── src/
 │   ├── cosmoforge.cosmocore/    # Core functionality
 │   ├── cosmoforge.quelo/        # QML and Fisher analysis
+│   ├── cosmoforge.picslike/     # Pixel-based likelihood
 │   └── cosmoforge.meta/         # Metadata package
 ├── tests/                       # Test suite
 ├── docs/                        # Documentation
@@ -133,8 +150,13 @@ inputclfile: "data/fiducial_cls.txt"
 Run the test suite:
 
 ```bash
-cd src/cosmoforge.quelo
-python -m pytest tests/
+# Run all tests
+uv run pytest
+
+# Run specific package tests
+uv run --package cosmocore pytest src/cosmoforge.cosmocore/tests/
+uv run --package quelo pytest src/cosmoforge.quelo/tests/
+uv run --package picslike pytest src/cosmoforge.picslike/tests/
 ```
 
 ## Performance

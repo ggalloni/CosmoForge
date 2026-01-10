@@ -78,20 +78,23 @@ Container for analysis results:
 
 ### Basic Analysis
 ```python
-from cosmoforge.picslike import PICSLike
+from picslike import PICSLike
 
 # Initialize analysis
-picslike = PICSLike("config/pixel_analysis.yaml")
+picslike = PICSLike(params_file="config/pixel_analysis.yaml")
 
-# Set up parameter grid
-param_ranges = {
-    'omega_b': np.linspace(0.020, 0.025, 10),
-    'omega_c': np.linspace(0.10, 0.14, 10),
-}
-picslike.setup_parameter_grid(param_ranges, theoretical_spectra)
+# Run full pipeline
+picslike.run()
 
-# Compute likelihood
-picslike.compute_likelihood_grid()
+# Or step-by-step setup:
+picslike.setup_parameter_grid()
+picslike.setup_fields()
+picslike.setup_geometry()
+picslike.setup_covariance_matrices()
+picslike.setup_cls()
+picslike.setup_beams()
+picslike.setup_maps()
+picslike.compute()
 
 # Extract results
 best_fit = picslike.get_best_fit()
@@ -105,8 +108,10 @@ mpirun -n 4 python pixel_analysis.py config.yaml
 
 ### Result Analysis
 ```python
+from picslike import LikelihoodResult
+
 # Load saved results
-result = LikelihoodResult.load("results.pkl")
+result = LikelihoodResult.load("results.npz")
 
 # Get confidence intervals
 intervals_68 = result.get_confidence_intervals(0.68)
@@ -176,14 +181,14 @@ PICSLike seamlessly integrates with other CosmoForge packages:
 The package includes comprehensive unit tests:
 
 ```bash
-# Run all tests
-pytest tests/
+# Run all tests (from package directory)
+uv run --package picslike pytest tests/
 
 # Run with coverage
-pytest --cov=picslike tests/
+uv run --package picslike pytest --cov=picslike tests/
 
 # Run specific test modules
-pytest tests/test_parameter_grid.py
+uv run --package picslike pytest tests/test_picslike.py
 ```
 
 ## Future Enhancements
