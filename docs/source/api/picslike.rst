@@ -1,6 +1,13 @@
 CosmoForge.PICSLike Package
 ============================
 
+.. image:: /_static/logo_picslike.png
+   :alt: PICSLike Logo
+   :align: center
+   :width: 40%
+
+|
+
 PICSLike is a pixel-based likelihood analysis package for cosmological parameter estimation.
 It provides tools for computing the likelihood of CMB observations given theoretical predictions
 directly in pixel space, offering an alternative to harmonic-space methods.
