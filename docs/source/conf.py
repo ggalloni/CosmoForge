@@ -97,7 +97,7 @@ language = "en"
 html_theme = "sphinx_rtd_theme"  # Use Read the Docs theme
 html_static_path = ["_static"]
 
-html_logo = "_static/logo_cosmoforge_white.png"
+html_logo = "_static/logo_cosmoforge.png"
 
 # Copy .nojekyll file to output directory for GitHub Pages
 html_extra_path = [".nojekyll"]
