@@ -31,3 +31,4 @@ wheels/
 
 run_*.py
 /src/*/.library
+/.claude
