@@ -187,9 +187,31 @@ class PICSLike(Core):
         self.parameter_grid: ParameterGrid | None = None
         self.likelihood_result: LikelihoodResult | None = None
         self.simulation_index: int = 0  # Which simulation to use for likelihood
+        self._lmax_signal = None
+        self.fiducial_spectrum: dict | None = None
+        self._legendre_cache: np.ndarray | None = (
+            None  # Pre-computed Legendre polynomials
+        )
 
         if self.rank == 0:
             self.log("PICSLike initialized!")
+
+    @property
+    def lmax_signal(self) -> int:
+        """
+        Maximum multipole for signal matrix computation.
+
+        This defaults to 4 * nside, which is the standard HEALPix limit for
+        signal covariance computation. Can be overridden if needed.
+        """
+        if self._lmax_signal is not None:
+            return self._lmax_signal
+        return 4 * self.params.nside
+
+    @lmax_signal.setter
+    def lmax_signal(self, value: int) -> None:
+        """Set custom lmax_signal value."""
+        self._lmax_signal = value
 
     def compute_signal_matrix(self, param_point: tuple) -> np.ndarray:
         """
@@ -243,12 +265,12 @@ class PICSLike(Core):
 
         spectra_dict = self.parameter_grid.get_spectrum(param_point)
 
-        self.collection.set_cls(spectra_dict)
-        self.collection.set_beams()
+        self.collection.set_cls(spectra_dict, lmax=self.lmax_signal)
+        self.collection.set_beams(lmax=self.lmax_signal)
 
         compute_signal_matrix(
             S=self.Sig,
-            lmax=self.params.lmax,
+            lmax=self.lmax_signal,
             fields=self.collection,
         )
 
@@ -297,13 +319,15 @@ class PICSLike(Core):
         >>> fisher.prepare_covariance_matrices()
         # Inverse covariance matrices are now ready for Fisher computation
         """
-        # Add signal to noise covariance
-        self.NCov1 = self.NCov1 + self.Sig
-        self.NCov1 = np.asfortranarray(self.NCov1)
-        self.log(f"Combined covariance matrix shape: {self.NCov1.shape}", level=4)
+        # Compute total covariance (signal + noise) without modifying NCov1
+        # NCov1 must remain as the original noise covariance for
+        # subsequent parameter points
+        self.total_cov = self.NCov1 + self.Sig
+        self.total_cov = np.asfortranarray(self.total_cov)
+        self.log(f"Combined covariance matrix shape: {self.total_cov.shape}", level=4)
 
         # Compute inverse covariance matrices
-        self.invCov = matrix_inverse_symm(self.NCov1)
+        self.invCov = matrix_inverse_symm(self.total_cov)
         self.log("Computed inverse of primary covariance matrix", level=4)
 
     def setup_maps(self):
@@ -722,21 +746,17 @@ class PICSLike(Core):
         self.prepare_covariance_matrix()
         self.log("Total covariance matrix prepared and inverted", level=3)
 
-        # Compute chi-squared: d^T * C^-1 * d
-        logdet = np.linalg.slogdet(self.NCov1)[1]
-        self.log(f"Log-determinant of covariance: {logdet:.2f}", level=3)
-
+        # Compute chi-squared: d^T * C^-1 * d (without logdet)
         if self.params.do_cross:
-            chi_squared = (
-                np.einsum("in,ij,jn->n", self.maps1, self.invCov, self.maps2) + logdet
-            )
+            chi_squared = np.einsum("in,ij,jn->n", self.maps1, self.invCov, self.maps2)
         else:
-            chi_squared = (
-                np.einsum("in,ij,jn->n", self.maps1, self.invCov, self.maps1) + logdet
-            )
+            chi_squared = np.einsum("in,ij,jn->n", self.maps1, self.invCov, self.maps1)
 
-        # Log-likelihood (excluding normalization constants)
-        log_likelihood = -0.5 * chi_squared
+        # Log-likelihood: 0.5 * (logdet - chi2) = -0.5 * (chi2 - logdet)
+        # This convention matches the Fortran reference implementation
+        logdet = np.linalg.slogdet(self.total_cov)[1]
+        self.log(f"Log-determinant of covariance: {logdet:.2f}", level=3)
+        log_likelihood = 0.5 * (logdet - chi_squared)
 
         return chi_squared, log_likelihood
 
