@@ -31,3 +31,12 @@ wheels/
 
 run_*.py
 /src/*/.library
+/.claude
+
+# Fortran reference/build directories
+.fortran/
+
+# Generated output files in test data
+**/tests/data/**/output_*.bin
+**/tests/data/**/output_*.dat
+**/tests/data/**/*.png
