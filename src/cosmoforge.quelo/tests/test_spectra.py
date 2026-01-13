@@ -459,6 +459,130 @@ def test_inv_fisher_sqrt_computation(local_path, config_resolver):
     )
 
 
+@pytest.mark.parametrize("fields", ["T"])
+def test_write_power_spectra_deconvolved(fields, local_path, config_resolver, tmp_path):
+    """Test write_power_spectra for deconvolved mode."""
+    fisher = test_spectra.get_fisher_instance(fields)
+    qml_analyzer = test_spectra.get_qml_analyzer(fields, fisher=fisher)
+
+    # Test with custom filename
+    output_file = tmp_path / "test_deconvolved.dat"
+    qml_analyzer.write_power_spectra(mode="deconvolved", filename=str(output_file))
+
+    assert output_file.exists(), "Deconvolved spectra file should be created"
+
+    # Check error file was also created
+    error_file = tmp_path / "test_deconvolved_errors.dat"
+    assert error_file.exists(), "Error bars file should be created"
+
+    # Verify file contents are valid
+    spectra_data = np.loadtxt(output_file)
+    assert spectra_data.size > 0, "Spectra file should contain data"
+
+    error_data = np.loadtxt(error_file)
+    assert error_data.size > 0, "Error file should contain data"
+
+
+@pytest.mark.parametrize("fields", ["T"])
+def test_write_power_spectra_no_errors(fields, local_path, config_resolver, tmp_path):
+    """Test write_power_spectra with include_errors=False."""
+    fisher = test_spectra.get_fisher_instance(fields)
+    qml_analyzer = test_spectra.get_qml_analyzer(fields, fisher=fisher)
+
+    output_file = tmp_path / "test_no_errors.dat"
+    qml_analyzer.write_power_spectra(
+        mode="deconvolved", filename=str(output_file), include_errors=False
+    )
+
+    assert output_file.exists(), "Spectra file should be created"
+
+    # Error file should NOT be created
+    error_file = tmp_path / "test_no_errors_errors.dat"
+    assert not error_file.exists(), "Error file should not be created when disabled"
+
+
+@pytest.mark.parametrize("fields", ["T"])
+def test_write_power_spectra_decorrelated(fields, local_path, config_resolver, tmp_path):
+    """Test write_power_spectra for decorrelated mode."""
+    fisher = test_spectra.get_fisher_instance(fields)
+    qml_analyzer = test_spectra.get_qml_analyzer(fields, fisher=fisher)
+
+    output_file = tmp_path / "test_decorrelated.dat"
+    qml_analyzer.write_power_spectra(mode="decorrelated", filename=str(output_file))
+
+    assert output_file.exists(), "Decorrelated spectra file should be created"
+
+    spectra_data = np.loadtxt(output_file)
+    assert spectra_data.size > 0, "Spectra file should contain data"
+
+
+@pytest.mark.parametrize("fields", ["T"])
+def test_write_power_spectra_convolved(fields, local_path, config_resolver, tmp_path):
+    """Test write_power_spectra for convolved mode."""
+    fisher = test_spectra.get_fisher_instance(fields)
+    qml_analyzer = test_spectra.get_qml_analyzer(fields, fisher=fisher)
+
+    output_file = tmp_path / "test_convolved.dat"
+    qml_analyzer.write_power_spectra(mode="convolved", filename=str(output_file))
+
+    # Check y vector file
+    assert output_file.exists(), "Convolved y vector file should be created"
+    y_data = np.loadtxt(output_file)
+    assert y_data.size > 0, "Y vector file should contain data"
+
+    # Check window matrix file
+    window_file = tmp_path / "test_convolved_window.dat"
+    assert window_file.exists(), "Window matrix file should be created"
+    W_data = np.loadtxt(window_file)
+    assert W_data.ndim == 2, "Window matrix should be 2D"
+    assert W_data.shape[0] == W_data.shape[1], "Window matrix should be square"
+
+
+@pytest.mark.parametrize("fields", ["T"])
+def test_write_power_spectra_auto_filename(fields, local_path, config_resolver, tmp_path):
+    """Test write_power_spectra auto-generates filename based on mode."""
+    fisher = test_spectra.get_fisher_instance(fields)
+    qml_analyzer = test_spectra.get_qml_analyzer(fields, fisher=fisher)
+
+    # Set outclfile to use tmp_path (not a default param, so we add it)
+    qml_analyzer.params.outclfile = str(tmp_path / "output_spectra.dat")
+
+    qml_analyzer.write_power_spectra(mode="deconvolved")
+    expected_file = tmp_path / "output_spectra_deconvolved.dat"
+    assert expected_file.exists(), "Auto-generated filename should work"
+
+
+@pytest.mark.parametrize("fields", ["T"])
+def test_write_power_spectra_fallback_filename(
+    fields, local_path, config_resolver, tmp_path, monkeypatch
+):
+    """Test write_power_spectra falls back to default filename when outclfile not set."""
+    fisher = test_spectra.get_fisher_instance(fields)
+    qml_analyzer = test_spectra.get_qml_analyzer(fields, fisher=fisher)
+
+    # Ensure outclfile is not set (use delattr if it exists)
+    if hasattr(qml_analyzer.params, "outclfile"):
+        delattr(qml_analyzer.params, "outclfile")
+
+    # Change to tmp_path so file is created there
+    monkeypatch.chdir(tmp_path)
+
+    qml_analyzer.write_power_spectra(mode="deconvolved")
+    expected_file = tmp_path / "spectra_deconvolved.dat"
+    assert expected_file.exists(), "Fallback filename should be spectra_{mode}.dat"
+
+
+@pytest.mark.parametrize("fields", ["T"])
+def test_write_power_spectra_invalid_mode(fields, local_path, config_resolver, tmp_path):
+    """Test write_power_spectra raises error for invalid mode."""
+    fisher = test_spectra.get_fisher_instance(fields)
+    qml_analyzer = test_spectra.get_qml_analyzer(fields, fisher=fisher)
+
+    output_file = tmp_path / "test_invalid.dat"
+    with pytest.raises(ValueError, match="mode must be one of"):
+        qml_analyzer.write_power_spectra(mode="invalid_mode", filename=str(output_file))
+
+
 # Backward compatibility functions for direct usage
 def get_fisher_instance(
     fields: str = "TEB", config_resolver=None, local_path: str = None
