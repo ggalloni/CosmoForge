@@ -1665,10 +1665,8 @@ class Spectra(Core):
                 "ensure setup_fisher_inversion() was called."
             )
 
-        decorrelated = np.zeros_like(self.qml_results)
-        for i in range(self.qml_results.shape[0]):
-            y_normalized = self.qml_results[i, :] * self.normalization
-            decorrelated[i, :] = y_normalized @ self.inv_fisher_sqrt
+        # Vectorized: broadcast normalization and apply matrix multiplication
+        decorrelated = (self.qml_results * self.normalization) @ self.inv_fisher_sqrt
 
         return decorrelated
 

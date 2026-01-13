@@ -8,7 +8,10 @@ estimates and their covariances:
 - convolved: y with window matrix W (for theory comparison)
 
 Run from the repository root:
-    uv run python examples/normalization_modes_demo.py
+    uv run python src/cosmoforge.quelo/scripts/normalization_modes_demo.py
+
+Note: This demo requires the test data located in tests/data/nside8/B/fortran_reference/.
+The test data is included in the repository for development and demonstration purposes.
 """
 
 import os
@@ -17,17 +20,30 @@ import sys
 import matplotlib.pyplot as plt
 import numpy as np
 
-# Add quelo to path if needed
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../src/cosmoforge.quelo"))
+# Try to import from installed package first. If that fails, fall back to
+# adding the package root to sys.path. This allows running the script both
+# from an installed environment and directly from a repository checkout.
+try:
+    from quelo import Spectra
+except ImportError:
+    _package_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+    if _package_root not in sys.path:
+        sys.path.insert(0, _package_root)
+    from quelo import Spectra
 
-from quelo import Spectra
-
-# Path to test data
+# Path to test data (relative to this script's location)
+# This data is included in the repository for demonstration purposes.
+_script_dir = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(
-    os.path.dirname(__file__),
-    "../src/cosmoforge.quelo/tests/data/nside8/B/fortran_reference",
+    _script_dir, "..", "tests", "data", "nside8", "B", "fortran_reference"
 )
 CONFIG_FILE = os.path.join(DATA_DIR, "config.yaml")
+
+if not os.path.exists(CONFIG_FILE):
+    raise FileNotFoundError(
+        f"Test data not found at {CONFIG_FILE}. "
+        "Please run this script from the CosmoForge repository with test data available."
+    )
 
 
 def main():
