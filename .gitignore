@@ -32,3 +32,4 @@ wheels/
 run_*.py
 /src/*/.library
 /.claude
+/src/*/.fortran
