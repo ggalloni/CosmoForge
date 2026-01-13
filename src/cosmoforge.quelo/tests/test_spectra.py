@@ -297,6 +297,168 @@ def test_fisher_cache_efficiency():
         )
 
 
+@pytest.mark.parametrize("fields", ["T", "QU"])
+def test_normalization_modes(fields, local_path, config_resolver):
+    """Test the three normalization modes for QML power spectra."""
+    # Get cached Fisher instance
+    fisher = test_spectra.get_fisher_instance(fields)
+
+    # Create QML analyzer
+    qml_analyzer = test_spectra.get_qml_analyzer(fields, fisher=fisher)
+
+    # Test deconvolved mode (default, backwards compatible)
+    cl_deconv = qml_analyzer.get_power_spectra(mode="deconvolved")
+    cl_default = qml_analyzer.get_power_spectra()  # Should be same as deconvolved
+
+    assert cl_deconv is not None, "Deconvolved mode should return results"
+    assert cl_default is not None, "Default mode should return results"
+    np.testing.assert_array_equal(
+        cl_deconv, cl_default, err_msg="Default mode should equal deconvolved mode"
+    )
+
+    # Test decorrelated mode
+    cl_decorr = qml_analyzer.get_power_spectra(mode="decorrelated")
+    assert cl_decorr is not None, "Decorrelated mode should return results"
+    assert cl_decorr.shape == cl_deconv.shape, "Decorrelated shape should match"
+
+    # Test convolved mode
+    result = qml_analyzer.get_power_spectra(mode="convolved")
+    assert result is not None, "Convolved mode should return results"
+    assert isinstance(result, tuple), "Convolved mode should return tuple"
+    assert len(result) == 3, "Convolved tuple should have 3 elements"
+
+    y, W, convolve_func = result
+    assert y is not None, "Convolved y should not be None"
+    assert W is not None, "Window matrix should not be None"
+    assert callable(convolve_func), "convolve_func should be callable"
+
+    # Test that window matrix is square
+    nell = cl_deconv.shape[1]
+    assert W.shape == (nell, nell), f"Window matrix should be ({nell}, {nell})"
+
+    # Test invalid mode
+    with pytest.raises(ValueError, match="mode must be one of"):
+        qml_analyzer.get_power_spectra(mode="invalid_mode")
+
+
+@pytest.mark.parametrize("fields", ["T", "QU"])
+def test_covariance_methods(fields, local_path, config_resolver):
+    """Test get_covariance and get_error_bars methods."""
+    # Get cached Fisher instance
+    fisher = test_spectra.get_fisher_instance(fields)
+
+    # Create QML analyzer
+    qml_analyzer = test_spectra.get_qml_analyzer(fields, fisher=fisher)
+
+    # Get nell from power spectra shape
+    cl = qml_analyzer.get_power_spectra()
+    nell = cl.shape[1]
+
+    # Test deconvolved covariance (should be F^-1)
+    cov_deconv = qml_analyzer.get_covariance(mode="deconvolved")
+    assert cov_deconv is not None, "Deconvolved covariance should not be None"
+    assert cov_deconv.shape == (nell, nell), "Covariance should be (nell, nell)"
+
+    # Test decorrelated covariance (should be identity)
+    cov_decorr = qml_analyzer.get_covariance(mode="decorrelated")
+    assert cov_decorr is not None, "Decorrelated covariance should not be None"
+    np.testing.assert_allclose(
+        cov_decorr,
+        np.eye(nell),
+        atol=1e-10,
+        err_msg="Decorrelated covariance should be identity",
+    )
+
+    # Test convolved covariance (should be Fisher)
+    cov_conv = qml_analyzer.get_covariance(mode="convolved")
+    assert cov_conv is not None, "Convolved covariance should not be None"
+    assert cov_conv.shape == (nell, nell), "Convolved covariance should be (nell, nell)"
+
+    # Test error bars
+    errors_deconv = qml_analyzer.get_error_bars(mode="deconvolved")
+    assert errors_deconv is not None, "Deconvolved errors should not be None"
+    assert errors_deconv.shape == (nell,), "Errors should be 1D array"
+    np.testing.assert_array_equal(
+        errors_deconv,
+        np.sqrt(np.diag(cov_deconv)),
+        err_msg="Errors should be sqrt of diagonal",
+    )
+
+    # Decorrelated errors should all be 1.0
+    errors_decorr = qml_analyzer.get_error_bars(mode="decorrelated")
+    np.testing.assert_allclose(
+        errors_decorr,
+        np.ones(nell),
+        atol=1e-10,
+        err_msg="Decorrelated errors should all be 1.0",
+    )
+
+    # Test invalid mode
+    with pytest.raises(ValueError, match="mode must be one of"):
+        qml_analyzer.get_covariance(mode="invalid_mode")
+
+
+def test_convolve_theory(local_path, config_resolver):
+    """Test the convolve_theory helper method."""
+    fields = "T"
+
+    # Get cached Fisher instance
+    fisher = test_spectra.get_fisher_instance(fields)
+
+    # Create QML analyzer
+    qml_analyzer = test_spectra.get_qml_analyzer(fields, fisher=fisher)
+
+    # Create a mock theory spectrum
+    cl = qml_analyzer.get_power_spectra()
+    nell = cl.shape[1]
+    theory = np.ones(nell)  # Simple test theory
+
+    # Test convolve_theory
+    convolved = qml_analyzer.convolve_theory(theory)
+    assert convolved is not None, "convolve_theory should return result"
+    assert convolved.shape == (nell,), "Convolved theory should have shape (nell,)"
+
+    # Compare with convolved mode's helper
+    _, W, convolve_func = qml_analyzer.get_power_spectra(mode="convolved")
+    convolved_via_func = convolve_func(theory)
+
+    np.testing.assert_allclose(
+        convolved,
+        convolved_via_func,
+        atol=1e-10,
+        err_msg="convolve_theory should match convolved mode's helper",
+    )
+
+
+def test_inv_fisher_sqrt_computation(local_path, config_resolver):
+    """Test that F^(-1/2) is computed correctly."""
+    fields = "T"
+
+    # Get cached Fisher instance
+    fisher = test_spectra.get_fisher_instance(fields)
+
+    # Create QML analyzer
+    qml_analyzer = test_spectra.get_qml_analyzer(fields, fisher=fisher)
+
+    # Check that inv_fisher_sqrt exists
+    assert qml_analyzer.inv_fisher_sqrt is not None, "inv_fisher_sqrt should be computed"
+
+    # F^(-1/2) @ F^(-1/2) should equal F^(-1)
+    # Note: This is only approximate due to eigenvalue truncation
+    F_inv_sqrt = qml_analyzer.inv_fisher_sqrt
+    F_inv_reconstructed = F_inv_sqrt @ F_inv_sqrt
+    F_inv_actual = qml_analyzer.invfisher
+
+    # Check that they're close (allowing for numerical precision)
+    np.testing.assert_allclose(
+        F_inv_reconstructed,
+        F_inv_actual,
+        rtol=1e-5,
+        atol=1e-10,
+        err_msg="F^(-1/2) @ F^(-1/2) should approximate F^(-1)",
+    )
+
+
 # Backward compatibility functions for direct usage
 def get_fisher_instance(
     fields: str = "TEB", config_resolver=None, local_path: str = None
