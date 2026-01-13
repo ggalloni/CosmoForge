@@ -310,7 +310,9 @@ class SpectraManager:
         """
         return self._spectra_map.get((field_i, field_j, mode))
 
-    def set_cls(self, cls_data: dict[str, np.ndarray] | np.ndarray) -> None:
+    def set_cls(
+        self, cls_data: dict[str, np.ndarray] | np.ndarray, lmax: int | None = None
+    ) -> None:
         """
         Set power spectra from dictionary or matrix.
 
@@ -324,6 +326,9 @@ class SpectraManager:
             (e.g., 'TT', 'EE', 'TE') and values should be 1D arrays of length
             (lmax-1). If array, should have shape (lmax-1, n_spectra) with
             columns corresponding to the spectrum labels in order.
+        lmax : int, optional
+            Maximum multipole to use. If None, uses the field's lmax.
+            This allows setting Cls up to a different lmax than the field's lmax.
 
         Raises
         ------
@@ -341,23 +346,22 @@ class SpectraManager:
         >>> cls_matrix = np.column_stack([tt_spectrum, ee_spectrum, te_spectrum])
         >>> spectra_mgr.set_cls(cls_matrix)
         """
+        effective_lmax = lmax if lmax is not None else self.fields[0].lmax
         if isinstance(cls_data, dict):
             self._cls_dict = cls_data.copy()
             # Build matrix from dictionary
-            lmax = self.fields[0].lmax
-            self._cls_matrix = np.zeros((lmax - 1, self.n_spectra))
+            self._cls_matrix = np.zeros((effective_lmax - 1, self.n_spectra))
             for idx, label in enumerate(self._spectra_labels):
                 if label not in cls_data:
                     raise ValueError(f"Missing power spectrum for {label}")
-                self._cls_matrix[:, idx] = cls_data[label][: lmax - 1]
+                self._cls_matrix[:, idx] = cls_data[label][: effective_lmax - 1]
 
         elif isinstance(cls_data, np.ndarray):
             if cls_data.shape[1] != self.n_spectra:
                 raise ValueError(
                     f"Expected {self.n_spectra} spectra columns, got {cls_data.shape[1]}"
                 )
-            lmax = self.fields[0].lmax
-            self._cls_matrix = cls_data[: lmax - 1].copy()
+            self._cls_matrix = cls_data[: effective_lmax - 1].copy()
             # Build dictionary from matrix
             self._cls_dict = {
                 label: self._cls_matrix[:, idx]
@@ -400,7 +404,7 @@ class SpectraManager:
             raise ValueError(f"No power spectrum found for {label}")
         return self._cls_dict[label]
 
-    def apply_normalization(self) -> None:
+    def apply_normalization(self, lmax: int | None = None) -> None:
         """
         Apply normalization factors based on spin combinations.
 
@@ -414,6 +418,12 @@ class SpectraManager:
         - Scalar-tensor (spin 0-2): (2ℓ+1)/(4π) × √[1/((ℓ+2)(ℓ+1)ℓ(ℓ-1))]
         - Tensor-tensor (spin 2-2): (2ℓ+1)/(4π) × 1/((ℓ+2)(ℓ+1)ℓ(ℓ-1))
 
+        Parameters
+        ----------
+        lmax : int, optional
+            Maximum multipole to use. If None, uses the field's lmax.
+            This allows applying normalization up to a different lmax.
+
         Notes
         -----
         This method modifies the power spectra in-place. Both the internal
@@ -425,7 +435,7 @@ class SpectraManager:
         >>> spectra_mgr.apply_normalization()  # Apply physics normalization
         """
         # Use precomputed normalization factors
-        normalization_factors = self.compute_normalization_factors()
+        normalization_factors = self.compute_normalization_factors(lmax=lmax)
 
         for idx, label in enumerate(self._spectra_labels):
             if label in normalization_factors:
@@ -434,17 +444,24 @@ class SpectraManager:
                 # Update dictionary
                 self._cls_dict[label] = self._cls_matrix[:, idx]
 
-    def compute_normalization_factors(self) -> dict[str, np.ndarray]:
+    def compute_normalization_factors(
+        self, lmax: int | None = None
+    ) -> dict[str, np.ndarray]:
         """
         Compute normalization factors for all spectrum labels.
+
+        Parameters
+        ----------
+        lmax : int, optional
+            Maximum multipole to use. If None, uses the field's lmax.
 
         Returns:
         --------
         dict[str, np.ndarray]
             Dictionary mapping spectrum labels to normalization factor arrays
         """
-        lmax = self.fields[0].lmax
-        ell = np.arange(2, lmax + 1, dtype=np.float64)
+        effective_lmax = lmax if lmax is not None else self.fields[0].lmax
+        ell = np.arange(2, effective_lmax + 1, dtype=np.float64)
 
         # Base factors for different spin combinations
         factor2 = 1 / ((ell + 2) * (ell + 1) * ell * (ell - 1))
@@ -474,7 +491,7 @@ class SpectraManager:
         return normalization_factors
 
     def compute_smoothing_factors(
-        self, beam_manager: BeamManager
+        self, beam_manager: BeamManager, lmax: int | None = None
     ) -> dict[str, np.ndarray]:
         """
         Compute smoothing factors for all spectrum labels.
@@ -483,19 +500,23 @@ class SpectraManager:
         -----------
         beam_manager : BeamManager
             BeamManager instance for smoothing factors
+        lmax : int, optional
+            Maximum multipole to use. If None, uses the field's lmax.
 
         Returns:
         --------
         dict[str, np.ndarray]
             Dictionary mapping spectrum labels to smoothing factor arrays
         """
-        lmax = self.fields[0].lmax
-        ell = np.arange(2, lmax + 1, dtype=np.float64)
+        effective_lmax = lmax if lmax is not None else self.fields[0].lmax
+        ell = np.arange(2, effective_lmax + 1, dtype=np.float64)
         chngconv_smooth = 2 * np.pi / (ell * (ell + 1.0))
 
         # Get beam dictionary
         beam_dict = beam_manager.get_beam_dict()
         smoothing_factors = {}
+
+        n_ell = len(chngconv_smooth)  # Number of ell values for output
 
         for label in self._spectra_labels:
             # Compute smoothing factor (beam + conversion)
@@ -505,7 +526,32 @@ class SpectraManager:
             # (e.g., "TE" -> "T", "E")
             label1, label2 = label[0], label[1]
             if label1 in beam_dict and label2 in beam_dict:
-                beam_factor = beam_dict[label1] * beam_dict[label2]
+                # Truncate beams to match output lmax if they were computed
+                # with a larger lmax_signal (e.g., 4*nside for signal matrix).
+                # Validate beam lengths before truncation to catch config errors.
+                beam1_full = beam_dict[label1]
+                beam2_full = beam_dict[label2]
+
+                if beam1_full.shape[0] < n_ell:
+                    raise ValueError(
+                        f"Beam for field '{label1}' in spectrum '{label}' is too short: "
+                        f"expected at least {n_ell} multipoles "
+                        f"(up to ell={effective_lmax}), "
+                        f"got {beam1_full.shape[0]}. "
+                        "Check lmax_signal vs beam computation."
+                    )
+                if beam2_full.shape[0] < n_ell:
+                    raise ValueError(
+                        f"Beam for field '{label2}' in spectrum '{label}' is too short: "
+                        f"expected at least {n_ell} multipoles "
+                        f"(up to ell={effective_lmax}), "
+                        f"got {beam2_full.shape[0]}. "
+                        "Check lmax_signal vs beam computation."
+                    )
+
+                beam1 = beam1_full[:n_ell]
+                beam2 = beam2_full[:n_ell]
+                beam_factor = beam1 * beam2
                 smooth_factor *= beam_factor
 
             smoothing_factors[label] = smooth_factor
@@ -601,10 +647,16 @@ class BeamManager:
             b = coswinbeam(nside)[2 : lmax + 1]
             beam = np.column_stack([b] * 3).T
         elif smoothtype == 3:
-            # assume beam_file contains three columns of ell-window
-            # healpy.read_cl returns a tuple of arrays when multiple fields
+            # Beam file must contain at least 3 columns: T, E, B window functions.
+            # Additional columns (e.g., cross-terms like T-E, T-B) are ignored
+            # as they are not needed for power spectrum smoothing.
             bls = hp.read_cl(beam_file.strip()).astype(np.float64)
-            beam = np.column_stack([bls[i][2 : lmax + 1] for i in range(bls.shape[0])]).T
+            if bls.shape[0] < 3:
+                raise ValueError(
+                    f"Beam file must have at least 3 columns (T, E, B), "
+                    f"got {bls.shape[0]}"
+                )
+            beam = np.column_stack([bls[i][2 : lmax + 1] for i in range(3)]).T
         else:
             raise ValueError(f"Unknown smoothtype={smoothtype}")
 
@@ -619,7 +671,7 @@ class BeamManager:
             "B": beam[2, :],
         }
 
-    def set_beams_from_params(self, params: InputParams) -> None:
+    def set_beams_from_params(self, params: InputParams, lmax: int | None = None) -> None:
         """
         Set beams for all fields using parameter configuration.
 
@@ -637,6 +689,9 @@ class BeamManager:
             - smoothing_type: Type of beam (0=none, 1=Gaussian, 2=cosine, 3=file)
             - fwhmarcmin: FWHM in arcminutes (for Gaussian beams)
             - beam_file: Path to beam file (for custom beams)
+        lmax : int, optional
+            Maximum multipole to use. If None, uses params.lmax.
+            This allows computing beams up to a different lmax than params.lmax.
 
         Notes
         -----
@@ -649,24 +704,28 @@ class BeamManager:
         >>> params = InputParams(lmax=100, smoothing_type=1, fwhmarcmin=5.0)
         >>> beam_mgr.set_beams_from_params(params)
         """
+        effective_lmax = lmax if lmax is not None else params.lmax
         beam_dict = self.compute_beams(
-            lmax=params.lmax,
+            lmax=effective_lmax,
             nside=params.nside,
             smoothtype=params.smoothing_type,
             fwhmarcmin=params.fwhmarcmin,
             beam_file=params.beam_file,
         )
 
-        # Set beams for each field
+        # Build internal beam dictionary with field labels
+        self._beam_dict = {}
         for field in self.fields:
             if field.spin == 0:
                 # Scalar field - single beam
                 beam_label = field.labels[0]
                 if beam_label in beam_dict:
-                    field.set_beam(beam_dict[beam_label])
+                    self._beam_dict[beam_label] = beam_dict[beam_label]
                 else:
                     # Fallback to generic beam if label not found
-                    field.set_beam(beam_dict.get("T", list(beam_dict.values())[0]))
+                    self._beam_dict[beam_label] = beam_dict.get(
+                        "T", list(beam_dict.values())[0]
+                    )
             elif field.spin == 2:
                 # Polarization field - E and B beams
                 e_beam = beam_dict.get(
@@ -675,8 +734,23 @@ class BeamManager:
                 b_beam = beam_dict.get(
                     "B", beam_dict.get("P", list(beam_dict.values())[0])
                 )
-                beam_array = np.column_stack([e_beam, b_beam])
-                field.set_beam(beam_array)
+                self._beam_dict[field.labels[0]] = e_beam
+                self._beam_dict[field.labels[1]] = b_beam
+
+        # Only set beams on fields if lmax matches field.lmax
+        # (otherwise the validation would fail)
+        if lmax is None or lmax == self.fields[0].lmax:
+            for field in self.fields:
+                if field.spin == 0:
+                    field.set_beam(self._beam_dict[field.labels[0]])
+                elif field.spin == 2:
+                    beam_array = np.column_stack(
+                        [
+                            self._beam_dict[field.labels[0]],
+                            self._beam_dict[field.labels[1]],
+                        ]
+                    )
+                    field.set_beam(beam_array)
 
     def get_beam_dict(self) -> dict[str, np.ndarray]:
         """
@@ -692,7 +766,7 @@ class BeamManager:
         Raises
         ------
         ValueError
-            If any field doesn't have a beam function set.
+            If beams have not been set.
 
         Notes
         -----
@@ -706,21 +780,14 @@ class BeamManager:
         >>> print(beam_dict.keys())  # ['T', 'E', 'B']
         >>> t_beam = beam_dict['T']  # Temperature beam function
         """
-        beam_dict = {}
-        for field in self.fields:
-            if field.beam is None:
-                raise ValueError(f"Beam not set for field with labels {field.labels}")
+        # Return internally stored beams (set by set_beams_from_params)
+        if not self._beam_dict:
+            raise ValueError("Beams have not been set. Call set_beams_from_params first.")
+        return self._beam_dict.copy()
 
-            if field.spin == 0:
-                beam_dict[field.labels[0]] = field.beam
-            elif field.spin == 2:
-                # Polarization fields have beam shape (lmax-1, 2)
-                beam_dict[field.labels[0]] = field.beam[:, 0]
-                beam_dict[field.labels[1]] = field.beam[:, 1]
-
-        return beam_dict
-
-    def apply_smoothing(self, spectra_manager: SpectraManager) -> None:
+    def apply_smoothing(
+        self, spectra_manager: SpectraManager, lmax: int | None = None
+    ) -> None:
         """
         Apply beam smoothing to power spectra.
 
@@ -733,6 +800,9 @@ class BeamManager:
         spectra_manager : SpectraManager
             The SpectraManager instance containing the power spectra to smooth.
             The spectra are modified in-place.
+        lmax : int, optional
+            Maximum multipole to use. If None, uses the field's lmax.
+            This allows applying smoothing up to a different lmax.
 
         Notes
         -----
@@ -750,7 +820,7 @@ class BeamManager:
         >>> beam_mgr.apply_smoothing(spectra_mgr)  # Apply instrumental effects
         """
         # Use precomputed smoothing factors
-        smoothing_factors = spectra_manager.compute_smoothing_factors(self)
+        smoothing_factors = spectra_manager.compute_smoothing_factors(self, lmax=lmax)
 
         for label in spectra_manager.labels:
             if label not in spectra_manager._cls_dict:

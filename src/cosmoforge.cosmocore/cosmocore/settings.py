@@ -183,6 +183,7 @@ class InputParams:
         self.covmatfile2 = "inputs/NCVM2.bin"
         self.outinvcovmatfile2 = "outputs/invCOV2.bin"
         self.outnoisecovmat1 = "outputs/reducedNCVM1.bin"
+        self.outnoisecovmat2 = "outputs/reducedNCVM2.bin"
         self.calibration = 1.0
         self.load_inverted = False
         self.output_geometry_file = "outputs/geometry.dat"
@@ -205,6 +206,13 @@ class InputParams:
         self.parameters = {}
         self.root_dir = "inputs"
         self.root_filename = "theory_spectra"
+
+        # Switch parameters for likelihood computation
+        # Only multipoles in [lswitch_low, lswitch_high] vary with parameters
+        # Outside this range, the fiducial spectrum is used
+        self.lswitch_low = None  # None means no switching (all multipoles vary)
+        self.lswitch_high = None
+        self.fiducialfile = None
 
         self.compute_derived()
 

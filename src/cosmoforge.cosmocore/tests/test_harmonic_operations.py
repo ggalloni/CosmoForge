@@ -194,7 +194,7 @@ def test_beam_manager_initialization():
         assert isinstance(beam_dict, dict)
     except ValueError as e:
         # This is expected - beams not set initially
-        assert "Beam not set" in str(e)
+        assert "Beams have not been set" in str(e)
 
 
 def test_beam_manager_beam_computation():

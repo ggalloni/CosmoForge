@@ -28,7 +28,17 @@ wheels/
 **/tests/data/**/geometry.dat
 **/tests/data/**/invCOV*.bin
 **/tests/data/**/reduced_NCVM*.bin
+# Exception: keep Fortran reference files for validation tests
+!**/tests/data/**/fortran_reference/**
 
 run_*.py
 /src/*/.library
 /.claude
+
+# Fortran reference/build directories
+/src/*/.fortran
+
+# Generated output files in test data
+**/tests/data/**/output_*.bin
+**/tests/data/**/output_*.dat
+**/tests/data/**/*.png

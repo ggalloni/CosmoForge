@@ -84,7 +84,7 @@ def count_nonzero_mask(mask):
     This function is optimized with Numba for performance in tight loops.
     Uses threshold of 0.5 to determine active pixels.
     """
-    npix = mask.shape
+    npix = mask.shape[0]
     npixs = 0
     ntemp = 0
     for j in range(npix):

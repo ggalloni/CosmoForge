@@ -315,9 +315,15 @@ class Core(ABC):
 
         return self.NCov1, self.NCov2
 
-    def setup_cls(self):
+    def setup_cls(self, lmax: int | None = None):
         """
         Set up power spectra using the new field design.
+
+        Parameters
+        ----------
+        lmax : int, optional
+            Maximum multipole to use. If None, uses core_params.lmax.
+            This allows loading Cls up to a different lmax than the analysis lmax.
 
         Notes
         -----
@@ -331,11 +337,17 @@ class Core(ABC):
         """
         if self.collection is None:
             raise ValueError("Fields must be set up before Cls and beams")
-        self.collection.set_cls()
+        self.collection.set_cls(lmax=lmax)
 
-    def setup_beams(self):
+    def setup_beams(self, lmax: int | None = None):
         """
         Set up beam functions for each field using the new design.
+
+        Parameters
+        ----------
+        lmax : int, optional
+            Maximum multipole to use. If None, uses core_params.lmax.
+            This allows computing beams up to a different lmax than the analysis lmax.
 
         Notes
         -----
@@ -349,7 +361,7 @@ class Core(ABC):
         """
         if self.collection is None:
             raise ValueError("Fields must be set up before Cls and beams")
-        self.collection.set_beams()
+        self.collection.set_beams(lmax=lmax)
 
     def log(self, message: str, level: int = 1):
         """

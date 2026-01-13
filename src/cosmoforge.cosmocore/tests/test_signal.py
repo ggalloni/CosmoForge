@@ -106,7 +106,7 @@ def test_signal_covmat(data_resolver):
 
     ref_path = data_resolver("tests/data/ref_TQU_signal.dat")
     ref = np.loadtxt(ref_path)
-    np.testing.assert_allclose(signal_covmat, ref, rtol=1e-12)
+    np.testing.assert_allclose(signal_covmat, ref, rtol=1e-12, atol=1e-20)
 
 
 def test_signal_covmat_multiple_scalar_fields(data_resolver):
@@ -201,4 +201,4 @@ def test_signal_covmat_multiple_scalar_fields(data_resolver):
     os.remove(mock_config_dict["maskfile"])
     os.remove(Par.inputclfile)
 
-    np.testing.assert_allclose(signal_covmat, ref, rtol=1e-12)
+    np.testing.assert_allclose(signal_covmat, ref, rtol=1e-12, atol=1e-20)

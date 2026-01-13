@@ -153,14 +153,35 @@ class ParameterGrid:
 
     def read_theoretical_spectra(self) -> None:
         """
-        Placeholder for reading theoretical spectra.
+        Read theoretical spectra from files, applying switch behavior if configured.
 
         Notes
         -----
-        This method should be implemented to load theoretical spectra from
-        files or other sources. Currently, it initializes an empty dictionary.
+        Loads theoretical spectra for each parameter point. If lswitch_low and
+        lswitch_high are set in core_params, only multipoles within [lswitch_low,
+        lswitch_high] are taken from the parameter files. Outside this range,
+        the fiducial spectrum is used.
+
+        The switch behavior allows efficient likelihood computation where only
+        a subset of multipoles varies with cosmological parameters.
         """
         self.theoretical_spectra = {}
+
+        # Check for switch parameters
+        lswitch_low = getattr(self.core_params, "lswitch_low", None)
+        lswitch_high = getattr(self.core_params, "lswitch_high", None)
+        fiducialfile = getattr(self.core_params, "fiducialfile", None)
+
+        # Load fiducial spectrum if switch behavior is active
+        fiducial_spectrum = None
+        if lswitch_low is not None and lswitch_high is not None:
+            if fiducialfile is None:
+                raise ValueError(
+                    "fiducialfile must be specified when using lswitch_low/lswitch_high"
+                )
+            fiducial_spectrum = readcl(
+                inputclfile=fiducialfile.strip(), Params=self.core_params
+            )
 
         root = self.root_dir + "/" + self.root_filename
 
@@ -174,9 +195,82 @@ class ParameterGrid:
                 + ".txt"
             )
 
-            self.theoretical_spectra[point] = readcl(
-                inputclfile=filename, Params=self.core_params
-            )
+            param_spectrum = readcl(inputclfile=filename, Params=self.core_params)
+
+            # Apply switch behavior if configured
+            if fiducial_spectrum is not None:
+                blended_spectrum = self._blend_spectra(
+                    param_spectrum, fiducial_spectrum, lswitch_low, lswitch_high
+                )
+                self.theoretical_spectra[point] = blended_spectrum
+            else:
+                self.theoretical_spectra[point] = param_spectrum
+
+    def _blend_spectra(
+        self,
+        param_spectrum: dict,
+        fiducial_spectrum: dict,
+        lswitch_low: int,
+        lswitch_high: int,
+    ) -> dict:
+        """
+        Blend parameter-dependent and fiducial spectra based on multipole range.
+
+        Parameters
+        ----------
+        param_spectrum : dict
+            Spectrum from parameter file (varies with cosmological parameters).
+        fiducial_spectrum : dict
+            Fiducial spectrum (fixed, used outside switch range).
+        lswitch_low : int
+            Minimum multipole where parameter spectrum is used.
+        lswitch_high : int
+            Maximum multipole where parameter spectrum is used.
+
+        Returns
+        -------
+        blended : dict
+            Blended spectrum using fiducial outside [lswitch_low, lswitch_high]
+            and parameter spectrum inside this range.
+
+        Notes
+        -----
+        The arrays are indexed from l=2 (index 0 corresponds to l=2).
+        For l < lswitch_low or l > lswitch_high, the fiducial is used.
+        For lswitch_low <= l <= lswitch_high, the parameter spectrum is used.
+        """
+        blended = {}
+        for key in param_spectrum:
+            if key not in fiducial_spectrum:
+                # If key not in fiducial, use param spectrum as-is
+                blended[key] = param_spectrum[key].copy()
+                continue
+
+            param_arr = param_spectrum[key]
+            fid_arr = fiducial_spectrum[key]
+
+            # Ensure arrays have same length (use shorter)
+            min_len = min(len(param_arr), len(fid_arr))
+
+            # Start with fiducial
+            result = fid_arr[:min_len].copy()
+
+            # Index conversion: array index i corresponds to l = i + 2
+            # lswitch_low=2 means index 0, lswitch_high=16 means index 14
+            idx_low = lswitch_low - 2
+            idx_high = lswitch_high - 2
+
+            # Clamp indices to valid range
+            idx_low = max(0, idx_low)
+            idx_high = min(min_len - 1, idx_high)
+
+            # Replace with parameter spectrum in switch range
+            if idx_low <= idx_high:
+                result[idx_low : idx_high + 1] = param_arr[idx_low : idx_high + 1]
+
+            blended[key] = result
+
+        return blended
 
     def _validate_spectra(self) -> None:
         """

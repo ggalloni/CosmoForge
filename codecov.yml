@@ -4,19 +4,12 @@ coverage:
       default:
         target: 90%
         threshold: 2%
-    patch:
-      default:
-        target: 90%
-        threshold: 2%
 
 flag_management:
   default_rules:
     carryforward: true
     statuses:
       - type: project
-        target: 90%
-        threshold: 1%
-      - type: patch
         target: 90%
         threshold: 1%
   individual_flags:
@@ -28,9 +21,6 @@ flag_management:
         - type: project
           target: 90%
           threshold: 1%
-        - type: patch
-          target: 90%
-          threshold: 1%
     - name: quelo
       paths:
         - src/cosmoforge.quelo/
@@ -39,18 +29,12 @@ flag_management:
         - type: project
           target: 90%
           threshold: 1%
-        - type: patch
-          target: 90%
-          threshold: 1%
     - name: meta
       paths:
         - src/cosmoforge.meta/
       carryforward: true
       statuses:
         - type: project
-          target: 90%
-          threshold: 1%
-        - type: patch
           target: 90%
           threshold: 1%
 

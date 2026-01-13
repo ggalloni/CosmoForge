@@ -48,18 +48,22 @@ def test_count_nonzero_mask():
     """Test count_nonzero_mask function."""
     from cosmocore.pixel import count_nonzero_mask
 
-    # The function has a bug - it uses mask.shape instead of mask.shape[0]
-    # But we test it as written to achieve coverage
-
-    # This will fail due to the bug, but covers the lines
+    # Test counting non-zero pixels in mask
     nside = 4
     npix = 12 * nside**2
     mask = np.ones(npix, dtype=np.float64)
 
-    try:
-        count_nonzero_mask(mask)
-        assert False, "Should have failed due to bug in function"
-    except TypeError:
-        # Expected to fail due to bug in the function
-        # mask.shape returns tuple, not int
-        pass
+    # All pixels are 1 (active), should count all
+    count = count_nonzero_mask(mask)
+    assert count == npix
+
+    # Test with half pixels masked
+    mask_half = np.zeros(npix, dtype=np.float64)
+    mask_half[: npix // 2] = 1.0
+    count_half = count_nonzero_mask(mask_half)
+    assert count_half == npix // 2
+
+    # Test with all zeros
+    mask_zeros = np.zeros(npix, dtype=np.float64)
+    count_zeros = count_nonzero_mask(mask_zeros)
+    assert count_zeros == 0

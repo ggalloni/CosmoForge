@@ -17,7 +17,7 @@ from cosmocore import (
 
 def get_signal_covmat(fields, local_path):
     Par = InputParams.read_parameter_file(
-        local_path + f"/tests/data/nside8/{fields}_nside8.yaml"
+        local_path + f"/tests/data/nside8/{fields}/config.yaml"
     )
 
     npix = hp.nside2npix(Par.nside)
@@ -100,13 +100,13 @@ def get_signal_covmat(fields, local_path):
     return Sig
 
 
-def plot_signal_covmat_TQU(local_path, show_fig=False):
+def plot_signal_covmat_TQU(local_path, show_fig=False, save_fig=False):
     Par = InputParams.read_parameter_file(
         local_path + "/tests/data/nside8/TQU/config.yaml"
     )
     npix = hp.nside2npix(Par.nside)
 
-    file = local_path + "/tests/data/nside8/TQU_ref_signal.bin"
+    file = local_path + "/tests/data/nside8/TQU/ref_signal.bin"
     ref = np.fromfile(file, dtype=np.float64).reshape((npix * 3, npix * 3))
 
     ref = np.asfortranarray(ref, dtype=np.float64)
@@ -129,6 +129,8 @@ def plot_signal_covmat_TQU(local_path, show_fig=False):
     plt.imshow(diff[:npix, :npix], origin="lower")
     plt.colorbar()
     plt.title("Difference between Signal Matrices T")
+    if save_fig:
+        plt.savefig("T_covmat_comparison.png")
     if show_fig:
         plt.show()
 
@@ -146,6 +148,8 @@ def plot_signal_covmat_TQU(local_path, show_fig=False):
     plt.imshow(diff[npix:, npix:], origin="lower")
     plt.colorbar()
     plt.title("Difference between Signal Matrices QU")
+    if save_fig:
+        plt.savefig("QU_covmat_comparison.png")
     if show_fig:
         plt.show()
 
@@ -163,6 +167,8 @@ def plot_signal_covmat_TQU(local_path, show_fig=False):
     plt.imshow(diff[:npix, npix:], origin="lower")
     plt.colorbar()
     plt.title("Difference between Signal Matrices T-QU")
+    if save_fig:
+        plt.savefig("T_QU_covmat_comparison.png")
     if show_fig:
         plt.show()
 
@@ -180,17 +186,19 @@ def plot_signal_covmat_TQU(local_path, show_fig=False):
     plt.imshow(diff[npix:, :npix], origin="lower")
     plt.colorbar()
     plt.title("Difference between Signal Matrices QU-T")
+    if save_fig:
+        plt.savefig("QU_T_covmat_comparison.png")
     if show_fig:
         plt.show()
 
 
-def plot_signal_covmat_TEB(local_path, show_fig=False):
+def plot_signal_covmat_TEB(local_path, show_fig=False, save_fig=False):
     Par = InputParams.read_parameter_file(
-        local_path + "/tests/data/nside8/TEB_nside8.yaml"
+        local_path + "/tests/data/nside8/TEB/config.yaml"
     )
     npix = hp.nside2npix(Par.nside)
 
-    file = local_path + "/tests/data/nside8/TEB_ref_signal.bin"
+    file = local_path + "/tests/data/nside8/TEB/ref_signal.bin"
     ref = np.fromfile(file, dtype=np.float64).reshape((npix * 3, npix * 3))
 
     ref = np.asfortranarray(ref, dtype=np.float64)
@@ -213,6 +221,8 @@ def plot_signal_covmat_TEB(local_path, show_fig=False):
     plt.imshow(diff[:npix, :npix], origin="lower")
     plt.colorbar()
     plt.title("Difference between Signal Matrices T")
+    if save_fig:
+        plt.savefig("T_covmat_comparison_TEB.png")
     if show_fig:
         plt.show()
 
@@ -230,6 +240,8 @@ def plot_signal_covmat_TEB(local_path, show_fig=False):
     plt.imshow(diff[npix : 2 * npix, npix : 2 * npix], origin="lower")
     plt.colorbar()
     plt.title("Difference between Signal Matrices E")
+    if save_fig:
+        plt.savefig("E_covmat_comparison_TEB.png")
     if show_fig:
         plt.show()
 
@@ -247,6 +259,8 @@ def plot_signal_covmat_TEB(local_path, show_fig=False):
     plt.imshow(diff[-npix:, -npix:], origin="lower")
     plt.colorbar()
     plt.title("Difference between Signal Matrices B")
+    if save_fig:
+        plt.savefig("B_covmat_comparison_TEB.png")
     if show_fig:
         plt.show()
 
@@ -264,14 +278,16 @@ def plot_signal_covmat_TEB(local_path, show_fig=False):
     plt.imshow(diff[npix:, :npix], origin="lower")
     plt.colorbar()
     plt.title("Difference between Signal Matrices EB-T")
+    if save_fig:
+        plt.savefig("EB_T_covmat_comparison_TEB.png")
     if show_fig:
         plt.show()
 
 
 if __name__ == "__main__":
-    path = os.path.abspath(__file__.split("/tests/test_signal_covmat.py")[0])
+    path = os.path.abspath(__file__.split("/scripts/plot_signal_covmat.py")[0])
 
-    plot_signal_covmat_TQU(path, show_fig=True)
-    plot_signal_covmat_TEB(path, show_fig=True)
+    plot_signal_covmat_TQU(path, show_fig=True, save_fig=False)
+    plot_signal_covmat_TEB(path, show_fig=True, save_fig=False)
 
     print("All plots done.")

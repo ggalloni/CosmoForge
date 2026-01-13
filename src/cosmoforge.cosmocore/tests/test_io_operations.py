@@ -169,6 +169,44 @@ def test_read_maps(tmp_path):
             )
 
 
+def test_read_maps_simple_healpix_format():
+    """Test reading maps from simple HEALPix format (single simulation)."""
+    import os
+
+    # Use the fortran reference map which is a standard HEALPix file
+    mapfile = "src/cosmoforge.quelo/tests/data/nside8/B/fortran_reference/map.fits"
+    if not os.path.exists(mapfile):
+        import pytest
+
+        pytest.skip("Fortran reference map not found")
+
+    # Read the map directly with healpy for reference
+    reference = hp.read_map(mapfile, field=None)  # shape: (3, 768)
+    npix = reference.shape[1]
+
+    # Test reading T field via read_maps (simple HEALPix format, nsims=1)
+    n_active = npix // 2
+    pixact = [np.arange(n_active)]
+    maps_output = np.empty((n_active, 1))
+
+    read_maps(maps_output, mapfile, pixact, ["T"], calibration=1.0)
+
+    np.testing.assert_allclose(maps_output[:, 0], reference[0, :n_active], rtol=1e-12)
+
+    # Test reading Q and U fields
+    pixact_qu = [np.arange(n_active), np.arange(n_active)]
+    maps_output_qu = np.empty((2 * n_active, 1))
+
+    read_maps(maps_output_qu, mapfile, pixact_qu, ["Q", "U"], calibration=1.0)
+
+    np.testing.assert_allclose(
+        maps_output_qu[:n_active, 0], reference[1, :n_active], rtol=1e-12
+    )
+    np.testing.assert_allclose(
+        maps_output_qu[n_active:, 0], reference[2, :n_active], rtol=1e-12
+    )
+
+
 def test_io_operations_signatures():
     """Test that all I/O functions have correct signatures and can be imported."""
     # Test that functions exist and have correct signatures

@@ -886,6 +886,7 @@ class FieldCollection:
     def set_cls(
         self,
         cls_data: dict[str, np.ndarray] | np.ndarray | None = None,
+        lmax: int | None = None,
     ) -> None:
         """
         Set power spectra and apply normalization.
@@ -897,6 +898,9 @@ class FieldCollection:
             - dict: Spectrum name -> array mapping
             - array: Pre-formatted spectrum array
             - None: Load from core_params.inputclfile
+        lmax : int, optional
+            Maximum multipole to use. If None, uses core_params.lmax.
+            This allows loading Cls up to a different lmax than the analysis lmax.
 
         Notes
         -----
@@ -904,10 +908,12 @@ class FieldCollection:
         and applies any necessary normalization based on the analysis parameters.
         """
         if cls_data is None:
-            cls_data = readcl(self.core_params.inputclfile, self.core_params, self.logger)
+            cls_data = readcl(
+                self.core_params.inputclfile, self.core_params, self.logger, lmax=lmax
+            )
 
-        self.spectra_manager.set_cls(cls_data)
-        self.spectra_manager.apply_normalization()
+        self.spectra_manager.set_cls(cls_data, lmax=lmax)
+        self.spectra_manager.apply_normalization(lmax=lmax)
 
     def get_cls(self, field_i: int, field_j: int, mode: int = 0) -> np.ndarray:
         """
@@ -935,11 +941,18 @@ class FieldCollection:
         """
         return self.spectra_manager.get_cls(field_i, field_j, mode)
 
-    def set_beams(self) -> None:
-        """Set beam functions for all fields."""
+    def set_beams(self, lmax: int | None = None) -> None:
+        """
+        Set beam functions for all fields.
 
-        self.beam_manager.set_beams_from_params(self.core_params)
-        self.beam_manager.apply_smoothing(self.spectra_manager)
+        Parameters
+        ----------
+        lmax : int, optional
+            Maximum multipole to use. If None, uses core_params.lmax.
+            This allows computing beams up to a different lmax than the analysis lmax.
+        """
+        self.beam_manager.set_beams_from_params(self.core_params, lmax=lmax)
+        self.beam_manager.apply_smoothing(self.spectra_manager, lmax=lmax)
 
     @property
     def fields(self) -> list[BaseField]:
