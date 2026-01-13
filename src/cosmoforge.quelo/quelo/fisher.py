@@ -839,3 +839,48 @@ class Fisher(Core):
             errors = np.sqrt(np.diag(cov_matrix))
             return errors
         return None
+
+    def get_window_matrix(self) -> np.ndarray | None:
+        """
+        Retrieve the window matrix for QML power spectrum estimation.
+
+        The window matrix W relates the expected QML estimates to the true
+        power spectrum: <y> = W @ C_true. It encodes the mode coupling induced
+        by partial sky coverage and pixel window effects.
+
+        Returns
+        -------
+        numpy.ndarray or None
+            Window matrix of shape (nell, nell) where nell = n_spectra * (lmax-1).
+            Returns None for worker processes (rank != 0) or if computation
+            hasn't completed.
+
+        Notes
+        -----
+        The window matrix elements are computed as:
+        W_αβ = (1/2) Tr[C⁻¹ P_α C⁻¹ P_β]
+
+        where P_α = ∂C/∂C_α is the derivative of the covariance matrix with
+        respect to power spectrum amplitude at multipole α.
+
+        This is mathematically equivalent to the Fisher matrix before
+        normalization factors (vecmul) are applied. The window matrix is
+        essential for the "convolved" normalization mode in QML estimation,
+        where instead of deconvolving the window function, the theory is
+        convolved with the window for comparison.
+
+        Examples
+        --------
+        >>> fisher = Fisher("config.yaml")
+        >>> fisher.run()
+        >>> if fisher.rank == 0:
+        ...     W = fisher.get_window_matrix()
+        ...     # Convolve theory spectrum with window
+        ...     cl_theory_convolved = W @ cl_theory
+
+        See Also
+        --------
+        get_fisher_matrix : Returns the same matrix (Fisher = Window before normalization)
+        Spectra.get_power_spectra : Uses window matrix for 'convolved' mode
+        """
+        return self.get_fisher_matrix()
