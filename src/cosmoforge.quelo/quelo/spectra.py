@@ -264,6 +264,32 @@ class Spectra(Core):
         self.qml_noise_bias = None
         self.invfisher = None
 
+        # lmax for signal matrix computation (matches Fortran convention of 4*nside)
+        self._lmax_signal = None
+
+    @property
+    def lmax_signal(self) -> int:
+        """
+        Maximum multipole for signal/derivative matrix computation.
+
+        This defaults to 4*nside to match the Fortran reference implementation.
+        The derivative matrices are computed up to this lmax, while the output
+        power spectra use params.lmax.
+
+        Returns
+        -------
+        int
+            Maximum multipole for signal covariance and derivative computation.
+        """
+        if self._lmax_signal is not None:
+            return self._lmax_signal
+        return 4 * self.params.nside
+
+    @lmax_signal.setter
+    def lmax_signal(self, value: int) -> None:
+        """Set custom lmax_signal value."""
+        self._lmax_signal = value
+
     def _reuse_fisher_components(self):
         """
         Reuse computational components from a pre-computed Fisher instance.
@@ -391,10 +417,9 @@ class Spectra(Core):
         if self.params.do_cross:
             self.invCov2 = np.fromfile(self.params.outinvcovmatfile2).reshape(ntot, ntot)
 
-        # Load noise covariance matrices
-        self.NCov1 = np.fromfile(self.params.covmatfile1).reshape(ntot, ntot)
+        self.NCov1 = np.fromfile(self.params.outnoisecovmat1).reshape(ntot, ntot)
         if self.params.do_cross:
-            self.NCov2 = np.fromfile(self.params.covmatfile2).reshape(ntot, ntot)
+            self.NCov2 = np.fromfile(self.params.outnoisecovmat2).reshape(ntot, ntot)
 
     def _get_fisher(self) -> Fisher:
         """
@@ -1158,8 +1183,13 @@ class Spectra(Core):
                 self.setup_fields()
                 self.setup_geometry()
                 self.setup_covariance_matrices()
-                self.setup_cls()
-                self.setup_beams()
+                # Setup Cls and beams with lmax_signal (defaults to 4*nside)
+                # This matches the Fortran convention for derivative computation
+                self.log(
+                    f"Using lmax_signal = {self.lmax_signal} for Cls and beams", level=3
+                )
+                self.setup_cls(lmax=self.lmax_signal)
+                self.setup_beams(lmax=self.lmax_signal)
                 # Load covariance matrices for the case when not reusing Fisher instance
                 self._load_covariance_matrices()
 

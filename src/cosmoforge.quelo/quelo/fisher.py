@@ -178,6 +178,33 @@ class Fisher(Core):
         # Initialize signal matrix to None
         self.Sig = None
 
+        # lmax for signal matrix computation (matches Fortran convention of 4*nside)
+        # This can be overridden if needed for different analyses
+        self._lmax_signal = None
+
+    @property
+    def lmax_signal(self) -> int:
+        """
+        Maximum multipole for signal matrix computation.
+
+        This defaults to 4*nside to match the Fortran reference implementation.
+        The signal matrix is computed up to this lmax, while the Fisher matrix
+        output uses params.lmax.
+
+        Returns
+        -------
+        int
+            Maximum multipole for signal covariance matrix computation.
+        """
+        if self._lmax_signal is not None:
+            return self._lmax_signal
+        return 4 * self.params.nside
+
+    @lmax_signal.setter
+    def lmax_signal(self, value: int) -> None:
+        """Set custom lmax_signal value."""
+        self._lmax_signal = value
+
     def setup_signal_matrix(self) -> np.ndarray:
         """
         Compute the theoretical signal covariance matrix from power spectra.
@@ -230,7 +257,7 @@ class Fisher(Core):
 
         compute_signal_matrix(
             S=self.Sig,
-            lmax=self.params.lmax,
+            lmax=self.lmax_signal,
             fields=self.collection,
         )
 
@@ -282,14 +309,15 @@ class Fisher(Core):
         if self.Sig is None:
             self.setup_signal_matrix()
 
+        # Save original noise covariance BEFORE adding signal (for noise bias computation)
+        if not self.params.do_cross:
+            write_covmat_reduced(self.params.outnoisecovmat1, self.NCov1)
+            self.log("Saved original noise covariance matrix", level=4)
+
         # Add signal to noise covariance
         self.NCov1 = self.NCov1 + self.Sig
         self.NCov1 = np.asfortranarray(self.NCov1)
         self.log(f"Combined covariance matrix shape: {self.NCov1.shape}", level=4)
-
-        # Save combined covariance if not doing cross-correlation
-        if not self.params.do_cross:
-            write_covmat_reduced(self.params.outnoisecovmat1, self.NCov1)
 
         # Compute inverse covariance matrices
         self.NCov1 = matrix_inverse_symm(self.NCov1)
@@ -671,10 +699,13 @@ class Fisher(Core):
             self.setup_covariance_matrices()
             self.log("Covariance matrices setup completed", level=3)
 
-            self.setup_cls()
+            # Setup Cls and beams with lmax_signal (defaults to 4*nside)
+            # This matches the Fortran convention for signal matrix computation
+            self.log(f"Using lmax_signal = {self.lmax_signal} for Cls and beams", level=3)
+            self.setup_cls(lmax=self.lmax_signal)
             self.log("Power spectra setup completed", level=3)
 
-            self.setup_beams()
+            self.setup_beams(lmax=self.lmax_signal)
             self.log("Beam functions setup completed", level=3)
 
             self.prepare_covariance_matrices()
