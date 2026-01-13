@@ -206,6 +206,13 @@ class InputParams:
         self.root_dir = "inputs"
         self.root_filename = "theory_spectra"
 
+        # Switch parameters for likelihood computation
+        # Only multipoles in [lswitch_low, lswitch_high] vary with parameters
+        # Outside this range, the fiducial spectrum is used
+        self.lswitch_low = None  # None means no switching (all multipoles vary)
+        self.lswitch_high = None
+        self.fiducialfile = None
+
         self.compute_derived()
 
     def compute_derived(self):
