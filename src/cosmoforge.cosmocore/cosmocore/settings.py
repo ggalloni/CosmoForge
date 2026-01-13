@@ -183,6 +183,7 @@ class InputParams:
         self.covmatfile2 = "inputs/NCVM2.bin"
         self.outinvcovmatfile2 = "outputs/invCOV2.bin"
         self.outnoisecovmat1 = "outputs/reducedNCVM1.bin"
+        self.outnoisecovmat2 = "outputs/reducedNCVM2.bin"
         self.calibration = 1.0
         self.load_inverted = False
         self.output_geometry_file = "outputs/geometry.dat"

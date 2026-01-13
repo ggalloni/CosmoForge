@@ -310,9 +310,11 @@ class Fisher(Core):
             self.setup_signal_matrix()
 
         # Save original noise covariance BEFORE adding signal (for noise bias computation)
-        if not self.params.do_cross:
-            write_covmat_reduced(self.params.outnoisecovmat1, self.NCov1)
-            self.log("Saved original noise covariance matrix", level=4)
+        write_covmat_reduced(self.params.outnoisecovmat1, self.NCov1)
+        self.log("Saved original noise covariance matrix 1", level=4)
+        if self.params.do_cross:
+            write_covmat_reduced(self.params.outnoisecovmat2, self.NCov2)
+            self.log("Saved original noise covariance matrix 2", level=4)
 
         # Add signal to noise covariance
         self.NCov1 = self.NCov1 + self.Sig
