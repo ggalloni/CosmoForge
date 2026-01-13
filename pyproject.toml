@@ -85,6 +85,7 @@ exclude_lines = [
     "raise AssertionError",
     "raise NotImplementedError",
     "raise ValueError",
+    "raise FileNotFoundError",
     "raise TypeError",
     "if __name__ == .__main__.:",
     "if TYPE_CHECKING:",
