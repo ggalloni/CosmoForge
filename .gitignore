@@ -34,7 +34,7 @@ run_*.py
 /.claude
 
 # Fortran reference/build directories
-.fortran/
+/src/*/.fortran
 
 # Generated output files in test data
 **/tests/data/**/output_*.bin
