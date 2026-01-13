@@ -28,6 +28,8 @@ wheels/
 **/tests/data/**/geometry.dat
 **/tests/data/**/invCOV*.bin
 **/tests/data/**/reduced_NCVM*.bin
+# Exception: keep Fortran reference files for validation tests
+!**/tests/data/**/fortran_reference/**
 
 run_*.py
 /src/*/.library
