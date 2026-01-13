@@ -186,7 +186,7 @@ def output_geometry(filegeometry, npixs, point_vectors, active):
                 f.write(f"{idx:6d}{vec[0]:24.16e}{vec[1]:24.16e}{vec[2]:24.16e}\n")
 
 
-def readcl(inputclfile, Params: InputParams, logger=None):
+def readcl(inputclfile, Params: InputParams, logger=None, lmax: int | None = None):
     """
     Read power spectra from text file with header.
 
@@ -198,6 +198,9 @@ def readcl(inputclfile, Params: InputParams, logger=None):
         Analysis parameters containing lmax and feedback level.
     logger : CosmoLogger, optional
         CosmoLogger instance for output. If None, uses print for backward compatibility.
+    lmax : int, optional
+        Maximum multipole to read. If None, uses Params.lmax.
+        This allows loading Cls up to a different lmax than the analysis lmax.
 
     Returns
     -------
@@ -218,6 +221,7 @@ def readcl(inputclfile, Params: InputParams, logger=None):
     - 'ell' column is automatically skipped if present
     - Power spectra are truncated to the specified lmax
     """
+    effective_lmax = lmax if lmax is not None else Params.lmax
     with open(inputclfile.strip()) as f:
         header = f.readline()
         if not header.lstrip().startswith("#"):
@@ -230,7 +234,7 @@ def readcl(inputclfile, Params: InputParams, logger=None):
         for i, label in enumerate(labels):
             if label.lower() == "ell":
                 continue  # skip the ell column
-            cls_dict[label] = arr[: Params.lmax - 1, i]
+            cls_dict[label] = arr[: effective_lmax - 1, i]
     return cls_dict
 
 
