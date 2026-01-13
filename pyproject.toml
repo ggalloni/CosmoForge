@@ -58,6 +58,10 @@ line-ending = "auto"
 exclude = ["build", ".eggs"]
 line-length = 90
 
+[tool.pytest.ini_options]
+pythonpath = ["."]
+addopts = ["--import-mode=importlib"]
+
 [tool.coverage.run]
 source = ["src/"]
 omit = [

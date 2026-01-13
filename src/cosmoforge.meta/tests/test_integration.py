@@ -24,18 +24,32 @@ def test_import_quelo():
         pytest.fail(f"Failed to import quelo: {e}")
 
 
+def test_import_picslike():
+    """Test that picslike can be imported successfully."""
+    try:
+        import picslike
+
+        # Check for main classes
+        assert hasattr(picslike, "PICSLike")
+    except ImportError as e:
+        pytest.fail(f"Failed to import picslike: {e}")
+
+
 def test_workspace_integration():
     """Test that all workspace packages can be imported together."""
     try:
         import cosmocore
+        import picslike
         import quelo
 
         # Test that packages are properly installed
         assert cosmocore is not None
         assert quelo is not None
+        assert picslike is not None
 
         # Test that we can access main functionality
         assert hasattr(quelo, "Fisher")
+        assert hasattr(picslike, "PICSLike")
 
     except Exception as e:
         pytest.fail(f"Workspace integration test failed: {e}")
