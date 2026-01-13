@@ -306,6 +306,10 @@ class PICSLike(Core):
         Matrix inversion uses symmetric positive definite properties for
         numerical stability via cosmocore.matrix_inverse_symm().
 
+        Memory optimization: The signal matrix (self.Sig) is modified in-place
+        to become the total covariance, avoiding an extra matrix allocation.
+        This is safe because self.Sig is recreated fresh for each parameter point.
+
         Raises
         ------
         LinAlgError
@@ -319,14 +323,18 @@ class PICSLike(Core):
         >>> fisher.prepare_covariance_matrices()
         # Inverse covariance matrices are now ready for Fisher computation
         """
-        # Compute total covariance (signal + noise) without modifying NCov1
-        # NCov1 must remain as the original noise covariance for
-        # subsequent parameter points
-        self.total_cov = self.NCov1 + self.Sig
-        self.total_cov = np.asfortranarray(self.total_cov)
+        # Add noise to signal IN-PLACE to form total covariance.
+        # This avoids allocating a separate array (saves n_pix^2 memory).
+        # Safe because self.Sig is recreated fresh for each parameter point.
+        self.Sig += self.NCov1
+        self.Sig = np.asfortranarray(self.Sig)
+
+        # Alias for clarity in downstream code (e.g., slogdet).
+        # This is just a reference, no memory copy.
+        self.total_cov = self.Sig
         self.log(f"Combined covariance matrix shape: {self.total_cov.shape}", level=4)
 
-        # Compute inverse covariance matrices
+        # Compute inverse covariance matrix
         self.invCov = matrix_inverse_symm(self.total_cov)
         self.log("Computed inverse of primary covariance matrix", level=4)
 
