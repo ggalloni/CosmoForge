@@ -626,10 +626,16 @@ class BeamManager:
             b = coswinbeam(nside)[2 : lmax + 1]
             beam = np.column_stack([b] * 3).T
         elif smoothtype == 3:
-            # assume beam_file contains three columns of ell-window
+            # assume beam_file contains at least three columns of ell-window (T, E, B)
             # healpy.read_cl returns a tuple of arrays when multiple fields
+            # Extra columns (e.g., G-T cross-term) are ignored
             bls = hp.read_cl(beam_file.strip()).astype(np.float64)
-            beam = np.column_stack([bls[i][2 : lmax + 1] for i in range(bls.shape[0])]).T
+            if bls.shape[0] < 3:
+                raise ValueError(
+                    f"Beam file must have at least 3 columns (T, E, B), "
+                    f"got {bls.shape[0]}"
+                )
+            beam = np.column_stack([bls[i][2 : lmax + 1] for i in range(3)]).T
         else:
             raise ValueError(f"Unknown smoothtype={smoothtype}")
 
@@ -686,16 +692,19 @@ class BeamManager:
             beam_file=params.beam_file,
         )
 
-        # Set beams for each field
+        # Build internal beam dictionary with field labels
+        self._beam_dict = {}
         for field in self.fields:
             if field.spin == 0:
                 # Scalar field - single beam
                 beam_label = field.labels[0]
                 if beam_label in beam_dict:
-                    field.set_beam(beam_dict[beam_label])
+                    self._beam_dict[beam_label] = beam_dict[beam_label]
                 else:
                     # Fallback to generic beam if label not found
-                    field.set_beam(beam_dict.get("T", list(beam_dict.values())[0]))
+                    self._beam_dict[beam_label] = beam_dict.get(
+                        "T", list(beam_dict.values())[0]
+                    )
             elif field.spin == 2:
                 # Polarization field - E and B beams
                 e_beam = beam_dict.get(
@@ -704,8 +713,23 @@ class BeamManager:
                 b_beam = beam_dict.get(
                     "B", beam_dict.get("P", list(beam_dict.values())[0])
                 )
-                beam_array = np.column_stack([e_beam, b_beam])
-                field.set_beam(beam_array)
+                self._beam_dict[field.labels[0]] = e_beam
+                self._beam_dict[field.labels[1]] = b_beam
+
+        # Only set beams on fields if lmax matches field.lmax
+        # (otherwise the validation would fail)
+        if lmax is None or lmax == self.fields[0].lmax:
+            for field in self.fields:
+                if field.spin == 0:
+                    field.set_beam(self._beam_dict[field.labels[0]])
+                elif field.spin == 2:
+                    beam_array = np.column_stack(
+                        [
+                            self._beam_dict[field.labels[0]],
+                            self._beam_dict[field.labels[1]],
+                        ]
+                    )
+                    field.set_beam(beam_array)
 
     def get_beam_dict(self) -> dict[str, np.ndarray]:
         """
@@ -721,7 +745,7 @@ class BeamManager:
         Raises
         ------
         ValueError
-            If any field doesn't have a beam function set.
+            If beams have not been set.
 
         Notes
         -----
@@ -735,19 +759,10 @@ class BeamManager:
         >>> print(beam_dict.keys())  # ['T', 'E', 'B']
         >>> t_beam = beam_dict['T']  # Temperature beam function
         """
-        beam_dict = {}
-        for field in self.fields:
-            if field.beam is None:
-                raise ValueError(f"Beam not set for field with labels {field.labels}")
-
-            if field.spin == 0:
-                beam_dict[field.labels[0]] = field.beam
-            elif field.spin == 2:
-                # Polarization fields have beam shape (lmax-1, 2)
-                beam_dict[field.labels[0]] = field.beam[:, 0]
-                beam_dict[field.labels[1]] = field.beam[:, 1]
-
-        return beam_dict
+        # Return internally stored beams (set by set_beams_from_params)
+        if not self._beam_dict:
+            raise ValueError("Beams have not been set. Call set_beams_from_params first.")
+        return self._beam_dict.copy()
 
     def apply_smoothing(
         self, spectra_manager: SpectraManager, lmax: int | None = None
