@@ -42,3 +42,4 @@ run_*.py
 **/tests/data/**/output_*.bin
 **/tests/data/**/output_*.dat
 **/tests/data/**/*.png
+*.png
