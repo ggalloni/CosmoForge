@@ -379,8 +379,6 @@ def read_maps(maps, filename, pixact, field_labels, calibration: float = 1.0):
             field_index_map = {"T": 0, "Q": 1, "U": 2, "E": 1, "B": 2}
 
             # Read all fields from HEALPix file
-            import healpy as hp
-
             all_maps = hp.read_map(filename, field=None)
             if all_maps.ndim == 1:
                 all_maps = all_maps.reshape(1, -1)

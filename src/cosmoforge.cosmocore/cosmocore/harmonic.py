@@ -527,9 +527,30 @@ class SpectraManager:
             label1, label2 = label[0], label[1]
             if label1 in beam_dict and label2 in beam_dict:
                 # Truncate beams to match output lmax if they were computed
-                # with a larger lmax_signal (e.g., 4*nside for signal matrix)
-                beam1 = beam_dict[label1][:n_ell]
-                beam2 = beam_dict[label2][:n_ell]
+                # with a larger lmax_signal (e.g., 4*nside for signal matrix).
+                # Validate beam lengths before truncation to catch config errors.
+                beam1_full = beam_dict[label1]
+                beam2_full = beam_dict[label2]
+
+                if beam1_full.shape[0] < n_ell:
+                    raise ValueError(
+                        f"Beam for field '{label1}' in spectrum '{label}' is too short: "
+                        f"expected at least {n_ell} multipoles "
+                        f"(up to ell={effective_lmax}), "
+                        f"got {beam1_full.shape[0]}. "
+                        "Check lmax_signal vs beam computation."
+                    )
+                if beam2_full.shape[0] < n_ell:
+                    raise ValueError(
+                        f"Beam for field '{label2}' in spectrum '{label}' is too short: "
+                        f"expected at least {n_ell} multipoles "
+                        f"(up to ell={effective_lmax}), "
+                        f"got {beam2_full.shape[0]}. "
+                        "Check lmax_signal vs beam computation."
+                    )
+
+                beam1 = beam1_full[:n_ell]
+                beam2 = beam2_full[:n_ell]
                 beam_factor = beam1 * beam2
                 smooth_factor *= beam_factor
 
@@ -626,9 +647,9 @@ class BeamManager:
             b = coswinbeam(nside)[2 : lmax + 1]
             beam = np.column_stack([b] * 3).T
         elif smoothtype == 3:
-            # assume beam_file contains at least three columns of ell-window (T, E, B)
-            # healpy.read_cl returns a tuple of arrays when multiple fields
-            # Extra columns (e.g., G-T cross-term) are ignored
+            # Beam file must contain at least 3 columns: T, E, B window functions.
+            # Additional columns (e.g., cross-terms like T-E, T-B) are ignored
+            # as they are not needed for power spectrum smoothing.
             bls = hp.read_cl(beam_file.strip()).astype(np.float64)
             if bls.shape[0] < 3:
                 raise ValueError(

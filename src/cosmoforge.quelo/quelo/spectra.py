@@ -394,7 +394,8 @@ class Spectra(Core):
         File paths are specified in the parameter configuration:
 
         - outinvcovmatfile1, outinvcovmatfile2: Inverted covariance files
-        - covmatfile1, covmatfile2: Original noise covariance files
+        - outnoisecovmat1, outnoisecovmat2: Original noise covariance files
+          (created by Fisher.run())
 
         Raises
         ------
@@ -410,6 +411,8 @@ class Spectra(Core):
         >>> spectra = Spectra("config.yaml")
         >>> spectra._load_covariance_matrices()  # Called internally
         """
+        import os
+
         ntot = self.collection.total_active_pixels
 
         # Load inverted covariance matrices
@@ -417,8 +420,19 @@ class Spectra(Core):
         if self.params.do_cross:
             self.invCov2 = np.fromfile(self.params.outinvcovmatfile2).reshape(ntot, ntot)
 
+        # Load noise covariance matrices (created by Fisher.run())
+        if not os.path.exists(self.params.outnoisecovmat1):
+            raise FileNotFoundError(
+                f"Noise covariance file not found: {self.params.outnoisecovmat1}. "
+                f"Run Fisher analysis first to generate this file."
+            )
         self.NCov1 = np.fromfile(self.params.outnoisecovmat1).reshape(ntot, ntot)
         if self.params.do_cross:
+            if not os.path.exists(self.params.outnoisecovmat2):
+                raise FileNotFoundError(
+                    f"Noise covariance file not found: {self.params.outnoisecovmat2}. "
+                    f"Run Fisher analysis first to generate this file."
+                )
             self.NCov2 = np.fromfile(self.params.outnoisecovmat2).reshape(ntot, ntot)
 
     def _get_fisher(self) -> Fisher:
