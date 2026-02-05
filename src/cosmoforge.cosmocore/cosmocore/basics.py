@@ -462,6 +462,42 @@ def matrix_mult(A, B):
 
 
 @njit(cache=True)
+def add_diagonal(M, d, out=None):
+    """
+    Add diagonal vector to matrix: result = M + diag(d).
+
+    Parameters
+    ----------
+    M : numpy.ndarray
+        2D square matrix.
+    d : numpy.ndarray
+        1D vector to add to diagonal.
+    out : numpy.ndarray, optional
+        Output array. If None, a new array is created.
+        If provided, must have same shape as M.
+
+    Returns
+    -------
+    numpy.ndarray
+        M + diag(d), computed without creating full diagonal matrix.
+
+    Notes
+    -----
+    More efficient than M + np.diag(d) as it avoids creating an
+    intermediate n×n diagonal matrix.
+    """
+    if out is None:
+        out = M.copy()
+    elif out is not M:
+        out[:] = M
+    n = M.shape[0]
+    # Explicit loop works with both C and F ordered arrays in numba
+    for i in range(n):
+        out[i, i] += d[i]
+    return out
+
+
+@njit(cache=True)
 def matrix_trace(A, B):
     """
     Compute trace of matrix product A @ B.
@@ -519,7 +555,7 @@ def _copy_lower_to_upper(M):
     return M
 
 
-def matrix_inverse_symm(M):
+def matrix_inverse_symm(M, overwrite=False):
     """
     Compute inverse of symmetric positive definite matrix.
 
@@ -527,6 +563,10 @@ def matrix_inverse_symm(M):
     ----------
     M : numpy.ndarray
         2D square symmetric positive definite matrix to invert.
+    overwrite : bool, optional
+        If True, the input matrix M may be overwritten with intermediate
+        results for better performance. If False (default), a copy is made
+        to preserve the input.
 
     Returns
     -------
@@ -547,6 +587,9 @@ def matrix_inverse_symm(M):
     if M.shape[0] != M.shape[1]:
         raise ValueError("Matrix must be square")
 
+    if not overwrite:
+        M = np.asfortranarray(M.copy())
+
     L, info = lapack.dpotrf(M, lower=True, overwrite_a=True, clean=True)
     if info != 0:
         raise ValueError(f"dpotrf failed with info={info}")
@@ -556,6 +599,181 @@ def matrix_inverse_symm(M):
         raise ValueError(f"dpotri failed with info={info}")
 
     return _copy_lower_to_upper(inv_L)
+
+
+def smw_inverse(N_inv, V_N_inv, V_Ninv_VT, Lambda_diag, threshold=1e-30):
+    """
+    Sherman-Morrison-Woodbury inverse: (N + V^T Λ V)^{-1}.
+
+    Computes the inverse efficiently when the matrix has the form
+    N + V^T Λ V, where N is n×n (with known inverse), V is k×n,
+    and Λ is k×k diagonal.
+
+    Parameters
+    ----------
+    N_inv : numpy.ndarray
+        Precomputed inverse of N, shape (n, n).
+    V_N_inv : numpy.ndarray
+        Precomputed V @ N^{-1}, shape (k, n).
+    V_Ninv_VT : numpy.ndarray
+        Precomputed V @ N^{-1} @ V^T, shape (k, k).
+    Lambda_diag : numpy.ndarray
+        Diagonal of Λ, shape (k,). This is the only quantity that
+        typically varies between calls.
+    threshold : float, optional
+        Minimum value for Lambda diagonal elements. Values below this
+        are treated as threshold to avoid division by zero. Default is 1e-30.
+
+    Returns
+    -------
+    numpy.ndarray
+        The inverse (N + V^T Λ V)^{-1}, shape (n, n).
+
+    Notes
+    -----
+    The SMW formula:
+        (N + V^T Λ V)^{-1} = N^{-1} - (V N^{-1})^T @ K^{-1} @ (V N^{-1})
+
+    where K = Λ^{-1} + V N^{-1} V^T is a k×k matrix.
+
+    Precompute V_N_inv and V_Ninv_VT once, then call this function
+    repeatedly with different Lambda_diag values.
+
+    Computational cost: O(nk² + k³) instead of O(n³).
+    """
+    Lambda_inv_diag = np.where(
+        Lambda_diag > threshold, 1.0 / Lambda_diag, 1.0 / threshold
+    )
+    K = np.asfortranarray(V_Ninv_VT.copy())
+    n = K.shape[0]
+    K.flat[:: n + 1] += Lambda_inv_diag
+    K_inv = matrix_inverse_symm(K, overwrite=True)
+    return N_inv - V_N_inv.T @ K_inv @ V_N_inv
+
+
+def smw_logdet(log_det_N, V_Ninv_VT, Lambda_diag, threshold=1e-30):
+    """
+    Sherman-Morrison-Woodbury log determinant: log|N + V^T Λ V|.
+
+    Computes the log determinant efficiently using the identity:
+        log|N + V^T Λ V| = log|N| + log|Λ| + log|Λ^{-1} + V N^{-1} V^T|
+
+    Parameters
+    ----------
+    log_det_N : float
+        Precomputed log|N|.
+    V_Ninv_VT : numpy.ndarray
+        Precomputed V @ N^{-1} @ V^T, shape (k, k).
+    Lambda_diag : numpy.ndarray
+        Diagonal of Λ, shape (k,).
+    threshold : float, optional
+        Minimum value for Lambda diagonal elements. Default is 1e-30.
+
+    Returns
+    -------
+    float
+        The log determinant log|N + V^T Λ V|.
+
+    Notes
+    -----
+    Precompute log_det_N and V_Ninv_VT once, then call this function
+    repeatedly with different Lambda_diag values.
+
+    Computational cost: O(k³) instead of O(n³).
+    """
+    log_det_Lambda = np.sum(np.log(np.maximum(Lambda_diag, threshold)))
+    Lambda_inv_diag = np.where(
+        Lambda_diag > threshold, 1.0 / Lambda_diag, 1.0 / threshold
+    )
+    K = np.asfortranarray(V_Ninv_VT.copy())
+    n = K.shape[0]
+    K.flat[:: n + 1] += Lambda_inv_diag
+    _, log_det_K = matrix_slogdet_symm(K)
+    return log_det_N + log_det_Lambda + log_det_K
+
+
+def smw_kernel(V_Ninv_VT, Lambda_diag, threshold=1e-30):
+    """
+    Build the SMW kernel matrix K = Λ^{-1} + V N^{-1} V^T.
+
+    This is the central matrix that appears in all SMW formulas.
+    Building it separately allows reuse across different SMW operations.
+
+    Parameters
+    ----------
+    V_Ninv_VT : numpy.ndarray
+        Precomputed V @ N^{-1} @ V^T, shape (k, k).
+    Lambda_diag : numpy.ndarray
+        Diagonal of Λ, shape (k,).
+    threshold : float, optional
+        Minimum value for Lambda diagonal elements. Default is 1e-30.
+
+    Returns
+    -------
+    numpy.ndarray
+        The kernel matrix K = Λ^{-1} + V N^{-1} V^T, shape (k, k).
+        Returned in Fortran order for efficient LAPACK operations.
+    """
+    Lambda_inv_diag = np.where(
+        Lambda_diag > threshold, 1.0 / Lambda_diag, 1.0 / threshold
+    )
+    K = np.asfortranarray(V_Ninv_VT.copy())
+    n = K.shape[0]
+    K.flat[:: n + 1] += Lambda_inv_diag
+    return K
+
+
+def smw_quadratic_form(data, N_inv, V_N_inv, V_Ninv_VT, Lambda_diag, threshold=1e-30):
+    """
+    SMW quadratic form: d^T (N + V^T Λ V)^{-1} d.
+
+    Computes the quadratic form efficiently for likelihood evaluation:
+        χ² = d^T C^{-1} d = d^T N^{-1} d - y^T K^{-1} y
+
+    where y = V N^{-1} d and K = Λ^{-1} + V N^{-1} V^T.
+
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Data vector d, shape (n,).
+    N_inv : numpy.ndarray
+        Precomputed inverse of N, shape (n, n).
+    V_N_inv : numpy.ndarray
+        Precomputed V @ N^{-1}, shape (k, n).
+    V_Ninv_VT : numpy.ndarray
+        Precomputed V @ N^{-1} @ V^T, shape (k, k).
+    Lambda_diag : numpy.ndarray
+        Diagonal of Λ, shape (k,).
+    threshold : float, optional
+        Minimum value for Lambda diagonal elements. Default is 1e-30.
+
+    Returns
+    -------
+    float
+        The quadratic form d^T C^{-1} d.
+
+    Notes
+    -----
+    Computational cost: O(nk + k³) instead of O(n³).
+
+    This is particularly useful for Gaussian likelihood computation where
+    log L = -0.5 * (d^T C^{-1} d + log|C| + n*log(2π))
+    """
+    # Term 1: d^T @ N^{-1} @ d
+    term1 = float(matrix_mult(data.T, matrix_mult(N_inv, data)))
+
+    # y = V @ N^{-1} @ d
+    y = matrix_mult(V_N_inv, data)
+
+    # Build and solve with K
+    K = smw_kernel(V_Ninv_VT, Lambda_diag, threshold)
+    L = cholesky_decomposition(K)
+    K_inv_y = lapack.dpotrs(L, y, lower=True)[0]
+
+    # Term 2: y^T @ K^{-1} @ y
+    term2 = float(matrix_mult(y.T, K_inv_y))
+
+    return term1 - term2
 
 
 def matrix_slogdet(M):
@@ -623,6 +841,40 @@ def matrix_slogdet(M):
     return sign, logdet
 
 
+def cholesky_decomposition(M):
+    """
+    Perform Cholesky decomposition of a symmetric positive definite matrix.
+
+    Parameters
+    ----------
+    M : numpy.ndarray
+        2D square symmetric positive definite matrix to decompose.
+
+    Returns
+    -------
+    numpy.ndarray
+        Lower triangular matrix L such that M = L @ L.T.
+
+    Raises
+    ------
+    ValueError
+        If matrix is not square or if Cholesky decomposition fails.
+
+    Notes
+    -----
+    Uses LAPACK's dpotrf for efficient Cholesky decomposition.
+    The input matrix must be symmetric positive definite.
+    """
+    if M.shape[0] != M.shape[1]:
+        raise ValueError("Matrix must be square")
+
+    L, info = lapack.dpotrf(M, lower=True, overwrite_a=False, clean=True)
+    if info != 0:
+        raise ValueError(f"dpotrf failed with info={info}")
+
+    return L
+
+
 def matrix_slogdet_symm(M):
     """
     Compute sign and logarithm of determinant for symmetric positive definite matrix.
@@ -664,11 +916,7 @@ def matrix_slogdet_symm(M):
         raise ValueError("Matrix must be square")
 
     # Cholesky decomposition
-    L, info = lapack.dpotrf(M, lower=True, overwrite_a=False, clean=True)
-    if info != 0:
-        raise ValueError(
-            f"dpotrf failed with info={info} - matrix may not be positive definite"
-        )
+    L = cholesky_decomposition(M)
 
     # For Cholesky L @ L.T, det(M) = det(L)^2 = (∏ L_ii)^2
     # So log(det(M)) = 2 * log(∏ L_ii) = 2 * Σ log(L_ii)
