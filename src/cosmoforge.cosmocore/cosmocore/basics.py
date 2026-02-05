@@ -14,6 +14,8 @@ legendre_22
     In-place computation of spin-2 associated Legendre polynomials.
 legendre_02
     In-place computation of spin-0 to spin-2 associated Legendre polynomials.
+legendre_plm
+    In-place computation of normalized associated Legendre polynomials P_ℓ^m.
 spec2idx
     Convert field indices to spectrum index for compressed storage.
 idx2spec
@@ -181,6 +183,80 @@ def legendre_02(scalar_prod, legendre):
             scalar_prod * (2 * ell - 1) * legendre[ell - 2]
             - (ell + 1) * legendre[ell - 3]
         ) / (ell - 2)
+
+
+@njit(cache=True)
+def legendre_plm(cos_theta, sin_theta, plm):
+    """
+    In-place computation of normalized associated Legendre polynomials.
+
+    Computes N_ℓ^m(x) = sqrt((ℓ-m)!/(ℓ+m)!) × P_ℓ^m(x) for all ℓ = 0..lmax
+    and m = 0..ℓ, where x = cos(θ). This normalization is used in real
+    spherical harmonics for CMB analysis.
+
+    Parameters
+    ----------
+    cos_theta : float
+        Cosine of colatitude angle.
+    sin_theta : float
+        Sine of colatitude angle (must be non-negative).
+    plm : numpy.ndarray
+        Pre-allocated array of shape (lmax+1, lmax+1) to fill with values.
+        On output, plm[ell, m] contains N_ℓ^m for m <= ℓ.
+        Values for m > ℓ are set to zero.
+
+    Notes
+    -----
+    Uses stable recurrence relations to avoid factorial overflow:
+
+    - Sectoral (m = ℓ): N_m^m = -sin(θ) × sqrt((2m-1)/(2m)) × N_{m-1}^{m-1}
+    - Semi-sectoral (ℓ = m+1): N_{m+1}^m = cos(θ) × sqrt(2m+1) × N_m^m
+    - General ℓ-recurrence: N_ℓ^m = a × cos(θ) × N_{ℓ-1}^m - b × N_{ℓ-2}^m
+      where a = (2ℓ-1)/sqrt(ℓ²-m²), b = sqrt((ℓ-1)²-m²)/sqrt(ℓ²-m²)
+
+    The m = 0 column uses the standard Legendre recurrence (same as legendre_00).
+
+    References
+    ----------
+    .. [1] Press, W.H. et al. "Numerical Recipes" Cambridge University Press
+       - Section on associated Legendre functions
+    .. [2] Holmes, S.A. & Featherstone, W.E. "A unified approach to the Clenshaw
+       summation and the recursive computation of very high degree and order
+       normalised associated Legendre functions" J. Geodesy 76, 279-299 (2002)
+    """
+    lmax = plm.shape[0] - 1
+    x = cos_theta
+    s = sin_theta
+
+    # Initialize to zero
+    plm[:, :] = 0.0
+
+    # m = 0 column: standard Legendre polynomials P_ℓ(x)
+    # (normalization factor is 1 for m = 0)
+    plm[0, 0] = 1.0
+    if lmax >= 1:
+        plm[1, 0] = x
+    for ell in range(2, lmax + 1):
+        plm[ell, 0] = (
+            (2 * ell - 1) * x * plm[ell - 1, 0] - (ell - 1) * plm[ell - 2, 0]
+        ) / ell
+
+    # m > 0: use sectoral and ℓ-recurrence
+    for m in range(1, lmax + 1):
+        # Sectoral: N_m^m = -sin(θ) × sqrt((2m-1)/(2m)) × N_{m-1}^{m-1}
+        plm[m, m] = -s * np.sqrt((2 * m - 1) / (2 * m)) * plm[m - 1, m - 1]
+
+        # Semi-sectoral: N_{m+1}^m = cos(θ) × sqrt(2m+1) × N_m^m
+        if m < lmax:
+            plm[m + 1, m] = x * np.sqrt(2 * m + 1) * plm[m, m]
+
+        # ℓ-recurrence for ℓ > m + 1
+        for ell in range(m + 2, lmax + 1):
+            ell2_m2 = ell * ell - m * m
+            ell1_2_m2 = (ell - 1) ** 2 - m * m
+            a = (2 * ell - 1) / np.sqrt(ell2_m2)
+            b = np.sqrt(ell1_2_m2 / ell2_m2)
+            plm[ell, m] = a * x * plm[ell - 1, m] - b * plm[ell - 2, m]
 
 
 @lru_cache
