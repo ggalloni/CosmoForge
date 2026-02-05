@@ -223,17 +223,7 @@ class Fisher(Core):
     # =========================================================================
 
     def _compute_single_spectrum(self):
-        """
-        Compute Fisher matrix for single-spectrum analysis.
-
-        This method adapts its algorithm based on whether compression is enabled:
-        - With compression: Uses optimized compute_fisher_matrix() which precomputes
-          V C^{-1} V^T once for O(ℓ²) speedup
-        - Without compression: Uses precomputed C^{-1} and builds derivatives
-
-        The Fisher matrix element is computed as:
-            F_ij = (1/2) Tr[C^{-1} dC_i C^{-1} dC_j]
-        """
+        """Compute Fisher matrix for single-spectrum analysis (compression agnostic)."""
         use_compression = (
             hasattr(self, "compression_manager") and self.compression_manager is not None
         )
@@ -426,11 +416,7 @@ class Fisher(Core):
         return il
 
     def _compute_multi_spectrum(self):
-        """
-        Compute Fisher matrix for multi-spectrum analysis (traditional method).
-
-        This uses direct pixel-space operations and does not support compression.
-        """
+        """Compute Fisher matrix for multi-spectrum analysis (no compression support)."""
         if self.rank == 0:
             self.log("Starting multi-spectrum Fisher computation (traditional)", level=2)
 
