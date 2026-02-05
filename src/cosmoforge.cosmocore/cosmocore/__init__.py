@@ -50,11 +50,18 @@ from .basics import (
     legendre_00,
     legendre_02,
     legendre_22,
+    legendre_plm,
     matrix_inverse_symm,
     matrix_mult,
     matrix_slogdet_symm,
     matrix_trace,
     spec2idx,
+)
+from .compression import (
+    BaseCompression,
+    CompressionManager,
+    HarmonicCompression,
+    PixelProjectedCompression,
 )
 from .core import Core
 from .fields import (
@@ -131,6 +138,11 @@ __all__ = [
     "vec_to_cl",
     # core
     "Core",
+    # compression
+    "BaseCompression",
+    "CompressionManager",
+    "HarmonicCompression",
+    "PixelProjectedCompression",
     # fields
     "BaseField",
     "FieldCollection",
@@ -144,6 +156,7 @@ __all__ = [
     "legendre_00",
     "legendre_02",
     "legendre_22",
+    "legendre_plm",
     "matrix_inverse_symm",
     "matrix_mult",
     "matrix_slogdet_symm",
