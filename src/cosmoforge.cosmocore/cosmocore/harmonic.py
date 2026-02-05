@@ -785,6 +785,30 @@ class BeamManager:
             raise ValueError("Beams have not been set. Call set_beams_from_params first.")
         return self._beam_dict.copy()
 
+    def get_beam(self, label: str) -> np.ndarray:
+        """
+        Get beam window function for a specific field label.
+
+        Parameters
+        ----------
+        label : str
+            Field label (e.g., 'T', 'E', 'B').
+
+        Returns
+        -------
+        np.ndarray
+            Beam window function B(ℓ) for ℓ = 2 to ℓ = lmax.
+
+        Raises
+        ------
+        ValueError
+            If beams have not been set or if label is not found.
+        """
+        beam_dict = self.get_beam_dict()
+        if label not in beam_dict:
+            raise ValueError(f"No beam found for label '{label}'")
+        return beam_dict[label]
+
     def apply_smoothing(
         self, spectra_manager: SpectraManager, lmax: int | None = None
     ) -> None:
