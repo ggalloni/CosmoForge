@@ -9,6 +9,8 @@ Note: Many PICSLike operations require MPI. These tests are designed to
 run in single-process mode (mpirun -n 1) or with MPI mocked where necessary.
 """
 
+import os
+
 import numpy as np
 import pytest
 
@@ -474,3 +476,135 @@ class TestMPIDistribution:
         total_points = picslike.parameter_grid.get_total_points()
         assert len(all_points) == total_points
         assert len(set(all_points)) == total_points  # No duplicates
+
+
+class TestCompressedLikelihood:
+    """Test suite for compressed likelihood computation using unified API."""
+
+    def test_compressed_likelihood_rejects_multi_field(self, fast_config_path):
+        """Test that compression raises error for multi-field (TQU) configs.
+
+        Compression currently only supports single-field analysis.
+        Multi-field configs (like TQU with spins [0, 2]) should raise ValueError.
+        """
+        picslike = PICSLike(
+            params_file=fast_config_path,
+            compression={"method": "harmonic"},
+        )
+
+        # Setup pipeline
+        picslike.setup_parameter_grid()
+        picslike.setup_fields()
+        picslike.setup_geometry()
+        picslike.setup_covariance_matrices()
+        picslike.setup_cls()
+        picslike.setup_beams()
+        picslike.setup_maps()
+
+        # Verify compression is configured
+        assert picslike._compression_config is not None
+
+        # run() should raise ValueError because multi-field compression not supported
+        with pytest.raises(ValueError, match="single-field analysis"):
+            picslike.run()
+
+    def test_compressed_likelihood_consistency_single_field(self, local_path):
+        """Test compressed vs traditional for B-only (single-field) analysis.
+
+        This tests the lswitch optimization which computes S_fixed for multipoles
+        above lswitch_high and uses SMW formula for the varying multipoles.
+        Results should match at machine precision.
+        """
+        import tempfile
+
+        import yaml
+
+        # Load original config
+        config_path = os.path.join(
+            local_path, "tests/data/nside8/B/fortran_reference/config.yaml"
+        )
+        with open(config_path) as f:
+            config = yaml.safe_load(f)
+
+        # Resolve all relative paths to absolute
+        for key, value in config.items():
+            if isinstance(value, str) and value.startswith("../tests/"):
+                config[key] = os.path.join(local_path, value.replace("../", ""))
+
+        # Write temporary config with resolved paths
+        temp_config = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
+        yaml.dump(config, temp_config, default_flow_style=False)
+        temp_config.close()
+        b_config = temp_config.name
+
+        # Run without compression
+        picslike_standard = PICSLike(params_file=b_config)
+        picslike_standard.setup_parameter_grid()
+        picslike_standard.setup_fields()
+        picslike_standard.setup_geometry()
+        picslike_standard.setup_covariance_matrices()
+        picslike_standard.setup_cls(lmax=picslike_standard.lmax_signal)
+        picslike_standard.setup_beams(lmax=picslike_standard.lmax_signal)
+        picslike_standard.setup_maps()
+
+        # Run with compression
+        picslike_compressed = PICSLike(
+            params_file=b_config,
+            compression={"method": "harmonic"},
+        )
+        picslike_compressed.setup_parameter_grid()
+        picslike_compressed.setup_fields()
+        picslike_compressed.setup_geometry()
+        picslike_compressed.setup_covariance_matrices()
+        picslike_compressed.setup_cls(lmax=picslike_compressed.lmax_signal)
+        picslike_compressed.setup_beams(lmax=picslike_compressed.lmax_signal)
+        picslike_compressed.setup_compression(method="harmonic")
+        picslike_compressed.setup_maps()
+
+        # Verify compression was set up
+        assert picslike_compressed.compression_manager is not None
+        assert picslike_compressed.compression_manager._impl._use_switch_optimization
+
+        # Compute likelihood at a single point for comparison
+        param_point = list(picslike_standard.parameter_grid.grid_points)[
+            1
+        ]  # Middle point
+
+        chi2_standard, log_like_standard = picslike_standard._compute_likelihood_point(
+            param_point
+        )
+        chi2_compressed, log_like_compressed = (
+            picslike_compressed._compute_likelihood_point(param_point)
+        )
+
+        # Extract first simulation's values (methods return arrays)
+        chi2_std = (
+            chi2_standard[0] if hasattr(chi2_standard, "__len__") else chi2_standard
+        )
+        chi2_comp = (
+            chi2_compressed[0] if hasattr(chi2_compressed, "__len__") else chi2_compressed
+        )
+        log_std = (
+            log_like_standard[0]
+            if hasattr(log_like_standard, "__len__")
+            else log_like_standard
+        )
+        log_comp = (
+            log_like_compressed[0]
+            if hasattr(log_like_compressed, "__len__")
+            else log_like_compressed
+        )
+
+        # Chi-squared values should match at machine precision
+        rel_diff_chi2 = abs(chi2_comp - chi2_std) / abs(chi2_std)
+        assert rel_diff_chi2 < 1e-10, (
+            f"Chi-squared relative difference too large: {rel_diff_chi2:.2e}. "
+            f"Standard={chi2_std:.6f}, Compressed={chi2_comp:.6f}"
+        )
+
+        # Log-likelihood should also match at machine precision
+        rel_diff_log = abs(log_comp - log_std) / abs(log_std)
+        assert rel_diff_log < 1e-10, (
+            f"Log-likelihood relative difference too large: {rel_diff_log:.2e}. "
+            f"Standard={log_std:.6f}, Compressed={log_comp:.6f}"
+        )

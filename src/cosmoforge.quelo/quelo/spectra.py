@@ -53,6 +53,7 @@ import numpy as np
 from mpi4py import MPI
 
 from cosmocore import (
+    CompressionManager,
     Core,
     FieldCollection,
     do_derivative_step,
@@ -169,7 +170,11 @@ class Spectra(Core):
     """
 
     def __init__(
-        self, params_file: str | None = None, fisher: Fisher | None = None, **kwargs
+        self,
+        params_file: str | None = None,
+        fisher: Fisher | None = None,
+        compression: dict | None = None,
+        **kwargs,
     ):
         """
         Initialize QML power spectrum estimation class.
@@ -184,6 +189,22 @@ class Spectra(Core):
             will reuse already computed components (covariance matrices, geometry,
             field collections) for computational efficiency. The Fisher instance
             must have completed its computation (run() method called).
+        compression : dict, optional
+            Compression configuration dictionary. If provided, enables SMW
+            compression for more efficient computation. This is passed to the
+            Fisher instance when created internally. Options:
+
+            - method : str
+                Compression method: "harmonic" or "pixel_projected".
+                Default is "harmonic".
+            - epsilon : float
+                Eigenvalue threshold for mode compression.
+            - basis : str
+                Compression basis for pixel_projected method. Options:
+                "harmonic", "noise_weighted", "total_covariance", "snr".
+            - mode_fraction : float
+                Alternative to epsilon: fraction of modes to keep.
+
         **kwargs : dict
             Additional keyword arguments passed to the Core parent class.
             Common options include 'params' for direct parameter object,
@@ -231,6 +252,13 @@ class Spectra(Core):
         >>> fisher.run()
         >>> spectra = Spectra("config/qml_config.yaml", fisher=fisher)
 
+        Initialize with compression for faster computation:
+
+        >>> spectra = Spectra("config/qml_analysis.yaml", compression={
+        ...     "method": "harmonic",
+        ...     "epsilon": 1e-4,
+        ... })
+
         Initialize with direct parameters:
 
         >>> from cosmocore.settings import InputParams
@@ -245,6 +273,9 @@ class Spectra(Core):
         self.rank = self.comm.Get_rank()
         self.size = self.comm.Get_size()
 
+        # Store compression config for Fisher creation
+        self._compression_config = compression
+
         # Initialize Fisher matrix or compute it
         if fisher is not None:
             if not isinstance(fisher, Fisher):
@@ -256,6 +287,8 @@ class Spectra(Core):
             self._reuse_fisher_components()
         else:
             self.fisher_instance = self._get_fisher()
+            # Also reuse components from the internally created Fisher
+            self._reuse_fisher_components()
 
         # Initialize QML-specific variables
         self.maps1 = None
@@ -362,6 +395,17 @@ class Spectra(Core):
             self.NCov2 = self.fisher_instance.NCov2
         if hasattr(self.fisher_instance, "Sig") and self.fisher_instance.Sig is not None:
             self.Sig = self.fisher_instance.Sig
+
+        # Copy compression manager if available
+        if (
+            hasattr(self.fisher_instance, "compression_manager")
+            and self.fisher_instance.compression_manager is not None
+        ):
+            self.compression_manager: CompressionManager = (
+                self.fisher_instance.compression_manager
+            )
+        else:
+            self.compression_manager = None
 
         # Load covariance matrices
         self._load_covariance_matrices()
@@ -490,7 +534,7 @@ class Spectra(Core):
 
         start_time = time.time()
 
-        fisher = Fisher(self.params)
+        fisher = Fisher(self.params, compression=self._compression_config)
         fisher.run()
 
         if self.rank == 0:
@@ -894,54 +938,157 @@ class Spectra(Core):
         _reduce_qml_results : MPI reduction of results from all processes
         cosmocore.do_derivative_step : Signal matrix derivative computation
         """
+        # Check if we should use compressed computation
+        use_compression = (
+            hasattr(self, "compression_manager") and self.compression_manager is not None
+        )
+
+        if use_compression:
+            self._compute_qml_spectra_compressed()
+        else:
+            self._compute_qml_spectra_traditional()
+
+    def _compute_qml_spectra_compressed(self):
+        """
+        Compute QML spectra using compressed representation.
+
+        This method performs QML estimation entirely in compressed space,
+        ensuring consistency with the compressed Fisher matrix computation.
+
+        The compressed QML estimator is:
+            q_l = (1/2) * w^T @ E_l @ w
+
+        where:
+            w = V @ C^{-1} @ d  (weighted compressed data via SMW)
+            E_l = get_derivative_matrix(ell) (diagonal with (2ℓ+1)/(4π) at modes for ℓ)
+
+        This is mathematically equivalent to the traditional estimator:
+            q_l = (1/2) * d^T @ C^{-1} @ dC_l @ C^{-1} @ d
+
+        The key insight is that dC_l = V^T @ E_l @ V in harmonic space, so:
+            q_l = (1/2) * d^T @ C^{-1} @ V^T @ E_l @ V @ C^{-1} @ d
+                = (1/2) * (V C^{-1} d)^T @ E_l @ (V C^{-1} d)
+                = (1/2) * w^T @ E_l @ w
+        """
         if self.rank == 0:
-            self.log("Starting QML computation", level=2)
+            self.log("Starting QML computation (compressed)", level=2)
 
         start_time = time.time()
 
         nell = self.params.nspectra * (self.params.lmax - 1)
-        ntot = sum(self.collection.n_active)
+        cm = self.compression_manager
 
-        # Allocate derivative matrix
-        der_s = np.zeros((ntot, ntot), dtype=np.float64)
-        E = np.zeros((ntot, ntot), dtype=np.float64)
+        # Get C_ell for covariance computation
+        C_ell = self.collection.spectra_manager.get_cls(0, 0, 0)
+
+        # Compute weighted compressed data for all simulations
+        # w = V @ C^{-1} @ d (using SMW formula internally)
+        n_sims = self.params.nsims
+        n_compressed = cm.n_kept  # n_kept is the output dimension for both methods
+
+        # For both harmonic and pixel_projected, use get_weighted_compressed_data:
+        # - Harmonic: w = V @ C^{-1} @ d (using SMW formula)
+        # - Pixel_projected: w = C_c^{-1} @ U^T @ d
+        #
+        # For pixel_projected, precompute C_c_inv once to avoid redundant computation
+        C_c_inv = None
+        if cm.method == "pixel_projected":
+            C_c_inv = cm.get_compressed_inverse(C_ell)
+
+        maps1_weighted = np.zeros((n_compressed, n_sims), dtype=np.float64)
+        for isim in range(n_sims):
+            maps1_weighted[:, isim] = cm.get_weighted_compressed_data(
+                self.maps1[:, isim], C_ell, C_c_inv=C_c_inv
+            )
+
+        if self.params.do_cross:
+            maps2_weighted = np.zeros((n_compressed, n_sims), dtype=np.float64)
+            for isim in range(n_sims):
+                maps2_weighted[:, isim] = cm.get_weighted_compressed_data(
+                    self.maps2[:, isim], C_ell, C_c_inv=C_c_inv
+                )
+
+        # For noise bias, we need to compute E[q_l|noise only]
+        # E[q_l | noise] = 0.5 * Tr[E_l @ Cov(w|noise)]
+        #
+        # For harmonic compression, Cov(w|noise) = V @ C^{-1} @ N @ C^{-1} @ V^T
+        # We compute this efficiently using SMW components:
+        # V_Cinv = (I - M K^{-1}) @ V_Ninv, then Cov(w|noise) = V_Cinv @ N @ V_Cinv^T
+        #
+        # For diagonal N and diagonal E_l, we can compute the trace very efficiently:
+        # Tr[E_l @ (V_Cinv @ N @ V_Cinv^T)] =
+        # sum_a E_l[a,a] * sum_i (V_Cinv[a,i])^2 * N[i,i]
+        if not self.params.do_cross:
+            if cm.method == "harmonic":
+                # Efficiently compute V @ C^{-1} using SMW components
+                from scipy.linalg import cho_solve, cholesky
+
+                impl = cm._impl
+                Lambda_diag = impl._build_lambda_diagonal(C_ell)
+                Lambda_inv_diag = np.where(Lambda_diag > 1e-30, 1.0 / Lambda_diag, 1e30)
+                M = impl._V_Ninv_VT
+                K = np.diag(Lambda_inv_diag) + M
+
+                try:
+                    L = cholesky(K, lower=True)
+                    K_inv = cho_solve((L, True), np.eye(K.shape[0]))
+                except np.linalg.LinAlgError:
+                    K_inv = np.linalg.inv(K)
+
+                # V_Cinv = (I - M @ K^{-1}) @ V_Ninv  [n_modes x n_pix]
+                I_minus_MKinv = np.eye(cm.n_modes) - M @ K_inv
+                V_Cinv = I_minus_MKinv @ impl._V_N_inv
+
+                # For diagonal N, compute W = V_Cinv * sqrt(noise_var)
+                # noise_var = 1 / diag(N_inv)
+                # IMPORTANT: When SMW optimization is enabled, impl.N_inv is N_eff_inv
+                # (includes S_fixed), but for noise bias we need the actual noise N
+                if hasattr(impl, "_N_inv_original"):
+                    noise_var = 1.0 / np.diag(impl._N_inv_original)
+                else:
+                    noise_var = 1.0 / np.diag(impl.N_inv)
+                sqrt_noise = np.sqrt(noise_var)
+                W = V_Cinv * sqrt_noise[np.newaxis, :]  # (n_modes, n_pix)
+
+                # Diagonal of Cov(w|noise) = sum over columns of W^2
+                noise_cov_w_diag = np.sum(W**2, axis=1)  # O(n_modes * n_pix)
+            else:
+                # For pixel_projected: use compressed quantities
+                # Cov(w|noise) = C_c^{-1} @ (U^T @ N @ U) @ C_c^{-1}
+                C_bar_inv = cm.get_compressed_inverse(C_ell)
+                N_bar = cm.get_compressed_covariance(np.zeros_like(C_ell))
+                noise_cov_w = C_bar_inv @ N_bar @ C_bar_inv
 
         # Main computation loop - distribute multipoles across processes
         for il in range(nell):
             if self.rank == il % self.size:
-                # Compute derivative of signal matrix for this multipole
-                spectrum_idx = il // (self.params.lmax - 1)
+                _ = il // (self.params.lmax - 1)
                 ell = (il % (self.params.lmax - 1)) + 2
 
-                # Compute derivative step
-                do_derivative_step(
-                    der_s,
-                    spectrum_idx,
-                    self.npixs,
-                    self.params.spins,
-                    ell,
-                    self.collection,
-                )
-
-                # Compute E operator
-                E = self.compute_e_operator(il, der_s)
+                # Get compressed derivative matrix E_l
+                E_l = cm.get_derivative_matrix(ell)
 
                 if self.params.do_cross:
                     # Cross-correlation case
-                    for isim in range(self.params.nsims):
-                        self.qml_results[isim, il] = matrix_mult(
-                            self.maps2[:, isim].T, matrix_mult(E, self.maps1[:, isim])
-                        )
+                    for isim in range(n_sims):
+                        w1 = maps1_weighted[:, isim]
+                        w2 = maps2_weighted[:, isim]
+                        self.qml_results[isim, il] = 0.5 * w2 @ E_l @ w1
                 else:
                     # Auto-correlation case
-                    # Compute noise bias
-                    tr_ne = matrix_trace(self.NCov1, E)
+                    # Compute noise bias: E[q_l|noise] = 0.5 * Tr[E_l @ Cov(w|noise)]
+                    if cm.method == "harmonic":
+                        # For harmonic, E_l is diagonal - use fast diagonal trace
+                        E_l_diag = np.diag(E_l)
+                        tr_ne = 0.5 * np.sum(E_l_diag * noise_cov_w_diag)
+                    else:
+                        # For pixel_projected, E_l is full matrix - use matrix_trace
+                        tr_ne = 0.5 * matrix_trace(E_l, noise_cov_w)
                     self.qml_noise_bias[il] = tr_ne
 
-                    for isim in range(self.params.nsims):
-                        qml_value = matrix_mult(
-                            self.maps1[:, isim].T, matrix_mult(E, self.maps1[:, isim])
-                        )
+                    for isim in range(n_sims):
+                        w = maps1_weighted[:, isim]
+                        qml_value = 0.5 * w @ E_l @ w
 
                         if hasattr(self.params, "remove_nb") and self.params.remove_nb:
                             qml_value -= tr_ne
@@ -952,7 +1099,98 @@ class Spectra(Core):
         self.comm.Barrier()
 
         if self.rank == 0:
-            self.log("QML computation done", level=2)
+            self.log("QML computation done (compressed)", level=2)
+            self.log(
+                f"QML computation time: {time.time() - start_time:.2f} seconds", level=3
+            )
+
+        # Reduce results from all processes
+        self._reduce_qml_results(nell)
+
+    def _compute_qml_spectra_traditional(self):
+        """
+        Compute QML spectra using traditional pixel-space computation.
+
+        Optimized: Precomputes y = C^{-1} @ d to avoid building full E matrix.
+
+        The QML estimator is:
+            q_l = (1/2) * d^T @ C^{-1} @ dC_l @ C^{-1} @ d
+                = (1/2) * y^T @ dC_l @ y   where y = C^{-1} @ d
+
+        This reduces complexity from 2 × O(n³) to 1 × O(n³) per multipole,
+        as we only need C^{-1} @ dC for noise bias (not the full E matrix).
+        """
+        if self.rank == 0:
+            self.log("Starting QML computation (traditional, optimized)", level=2)
+
+        start_time = time.time()
+
+        nell = self.params.nspectra * (self.params.lmax - 1)
+        ntot = sum(self.collection.n_active)
+
+        # Precompute weighted data: y = C^{-1} @ d for all simulations
+        # This is O(n² × nsims) and avoids rebuilding for each ℓ
+        y1 = matrix_mult(self.invCov1, self.maps1)  # (ntot, nsims)
+
+        if self.params.do_cross:
+            y2 = matrix_mult(self.invCov2, self.maps2)  # (ntot, nsims)
+
+        # For noise bias: Tr[N @ E] = 0.5 * Tr[N @ C^{-1} @ dC @ C^{-1}]
+        # Using cyclic trace property: = 0.5 * Tr[C^{-1} @ N @ C^{-1} @ dC]
+        # Precompute C^{-1} @ N @ C^{-1} once (O(n³)), then Tr(... @ dC) per ℓ
+        if not self.params.do_cross:
+            Cinv_N_Cinv = matrix_mult(self.invCov1, matrix_mult(self.NCov1, self.invCov1))
+
+        # Allocate derivative matrix
+        der_s = np.zeros((ntot, ntot), dtype=np.float64)
+
+        # Main computation loop - distribute multipoles across processes
+        for il in range(nell):
+            if self.rank == il % self.size:
+                spectrum_idx = il // (self.params.lmax - 1)
+                ell = (il % (self.params.lmax - 1)) + 2
+
+                # Compute derivative matrix dC_l
+                der_s.fill(0.0)
+                do_derivative_step(
+                    der_s,
+                    spectrum_idx,
+                    self.npixs,
+                    self.params.spins,
+                    ell,
+                    self.collection,
+                )
+
+                # Compute dC @ y for all sims at once: O(n² × nsims)
+                dC_y1 = matrix_mult(der_s, y1)
+
+                if self.params.do_cross:
+                    # Cross-correlation: q_l = 0.5 * y2^T @ dC @ y1
+                    for isim in range(self.params.nsims):
+                        self.qml_results[isim, il] = 0.5 * np.dot(
+                            y2[:, isim], dC_y1[:, isim]
+                        )
+                else:
+                    # Auto-correlation case
+                    # Noise bias: Tr[N @ E] = 0.5 * Tr[C^{-1} @ N @ C^{-1} @ dC]
+                    # Using precomputed Cinv_N_Cinv: Tr(Cinv_N_Cinv @ dC)
+                    tr_ne = 0.5 * matrix_trace(Cinv_N_Cinv, der_s)
+                    self.qml_noise_bias[il] = tr_ne
+
+                    # QML values: q_l = 0.5 * y^T @ dC @ y
+                    for isim in range(self.params.nsims):
+                        qml_value = 0.5 * np.dot(y1[:, isim], dC_y1[:, isim])
+
+                        if hasattr(self.params, "remove_nb") and self.params.remove_nb:
+                            qml_value -= tr_ne
+
+                        self.qml_results[isim, il] = qml_value
+
+        # Synchronize all processes
+        self.comm.Barrier()
+
+        if self.rank == 0:
+            self.log("QML computation done (traditional, optimized)", level=2)
             self.log(
                 f"QML computation time: {time.time() - start_time:.2f} seconds", level=3
             )
