@@ -377,8 +377,8 @@ class Core(ABC):
     def setup_compression(
         self,
         method: str = "harmonic",
-        epsilon: float | None = 1e-6,
-        mode_fraction: float | None = None,
+        epsilon: float | list[float | tuple[float, float]] | None = 1e-6,
+        mode_fraction: float | list[float | tuple[float, float]] | None = None,
         beam: np.ndarray | None = None,
         basis: str = "noise_weighted",
         C_ell: np.ndarray | None = None,
@@ -478,18 +478,14 @@ class Core(ABC):
         if beam is not None and len(beam) > expected_beam_len:
             beam = beam[:expected_beam_len]
 
-        # Extract theta/phi for first field
-        theta_arr = self.theta[0] if isinstance(self.theta, tuple) else self.theta
-        phi_arr = self.phi[0] if isinstance(self.phi, tuple) else self.phi
+        # Pass theta/phi as tuples (BaseCompression handles normalization)
+        theta_arr = self.theta
+        phi_arr = self.phi
 
-        # Compression only supports single-field
-        n_fields = len(self.collection.fields) if hasattr(self, "collection") else 1
-        if n_fields > 1:
-            raise ValueError(
-                f"Compression currently only supports single-field analysis, "
-                f"but {n_fields} fields were found. "
-                f"Use traditional method for multi-field cases."
-            )
+        # Extract spin information from field collection for compression
+        spins = None
+        if hasattr(self, "collection") and self.collection is not None:
+            spins = [field.spin for field in self.collection.fields]
 
         # SMW optimization: absorb high-ℓ signal into effective noise
         lswitch_low = None
@@ -567,6 +563,7 @@ class Core(ABC):
             lmax=compression_lmax,
             method=method,
             beam=beam,
+            spins=spins,
             basis=basis,
             C_ell=C_ell,
             epsilon=epsilon,
@@ -701,6 +698,61 @@ class Core(ABC):
         else:
             C_inv = self.get_covariance_inverse(C_ell)
             return float(data.T @ C_inv @ data)
+
+    def compute_quadratic_form_with_spins(
+        self, data: np.ndarray, C_ell_dict: dict[tuple, np.ndarray]
+    ) -> float:
+        """
+        Compute d^T C^{-1} d with spin-2 support.
+
+        Uses compression manager's SMW-based computation when available.
+
+        Parameters
+        ----------
+        data : numpy.ndarray
+            Data vector in pixel space.
+        C_ell_dict : dict
+            Dictionary with 3-tuple keys (comp_i, comp_j, mode).
+
+        Returns
+        -------
+        float
+            Quadratic form value d^T C^{-1} d.
+        """
+        if hasattr(self, "compression_manager") and self.compression_manager is not None:
+            return self.compression_manager.compute_quadratic_form_with_spins(
+                data, C_ell_dict
+            )
+        else:
+            C_inv = self.get_covariance_inverse(
+                C_ell_dict.get((0, 0, 0), next(iter(C_ell_dict.values())))
+            )
+            return float(data.T @ C_inv @ data)
+
+    def get_covariance_logdet_with_spins(
+        self, C_ell_dict: dict[tuple, np.ndarray]
+    ) -> float:
+        """
+        Get log|C| with spin-2 support.
+
+        Uses compression manager's SMW formula when available.
+
+        Parameters
+        ----------
+        C_ell_dict : dict
+            Dictionary with 3-tuple keys (comp_i, comp_j, mode).
+
+        Returns
+        -------
+        float
+            Log determinant of covariance matrix.
+        """
+        if hasattr(self, "compression_manager") and self.compression_manager is not None:
+            return self.compression_manager.get_full_logdet_with_spins(C_ell_dict)
+        else:
+            C_ell = C_ell_dict.get((0, 0, 0), next(iter(C_ell_dict.values())))
+            _, logdet = matrix_slogdet_symm(self.get_total_covariance(C_ell))
+            return logdet
 
     def _build_signal_matrix(self, C_ell: np.ndarray) -> np.ndarray:
         """Build signal covariance matrix. Subclasses must override."""

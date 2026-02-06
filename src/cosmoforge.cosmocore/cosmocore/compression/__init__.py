@@ -97,10 +97,11 @@ class CompressionManager:
         lmax: int,
         method: str = "harmonic",
         beam: np.ndarray | None = None,
+        spins: list[int] | None = None,
         basis: str = "noise_weighted",
         C_ell: np.ndarray | None = None,
-        epsilon: float | None = None,
-        mode_fraction: float | None = None,
+        epsilon: float | list[float | tuple[float, float]] | None = None,
+        mode_fraction: float | list[float | tuple[float, float]] | None = None,
         lswitch_low: int | None = None,
         lswitch_high: int | None = None,
         fiducial_C_ell: np.ndarray | None = None,
@@ -120,6 +121,7 @@ class CompressionManager:
                 phi,
                 lmax,
                 beam,
+                spins=spins,
                 lswitch_low=lswitch_low,
                 lswitch_high=lswitch_high,
                 fiducial_C_ell=fiducial_C_ell,
@@ -127,7 +129,17 @@ class CompressionManager:
             )
         elif method == "pixel_projected":
             self._impl = PixelProjectedCompression(
-                N, N_inv, theta, phi, lmax, beam, basis, C_ell, epsilon, mode_fraction
+                N,
+                N_inv,
+                theta,
+                phi,
+                lmax,
+                beam,
+                spins=spins,
+                basis=basis,
+                C_ell=C_ell,
+                epsilon=epsilon,
+                mode_fraction=mode_fraction,
             )
         else:
             raise ValueError(
@@ -295,6 +307,36 @@ class CompressionManager:
         """
         return self._impl.compute_fisher_matrix(C_ell, ell_min, ell_max)
 
+    def compute_fisher_matrix_multi(
+        self,
+        C_ell_dict: dict[tuple[int, int], np.ndarray],
+        spectra_list: list[tuple[int, int]],
+        ell_min: int = 2,
+        ell_max: int | None = None,
+    ) -> np.ndarray:
+        """
+        Compute multi-field Fisher matrix for multiple auto and cross-spectra.
+
+        Parameters
+        ----------
+        C_ell_dict : dict
+            Dictionary mapping (comp_i, comp_j) to C_ell array for each spectrum.
+        spectra_list : list
+            List of (comp_i, comp_j) tuples specifying which spectra to include.
+        ell_min : int, default 2
+            Minimum multipole to include in Fisher matrix.
+        ell_max : int or None, optional
+            Maximum multipole. If None, uses compression lmax.
+
+        Returns
+        -------
+        numpy.ndarray
+            Fisher matrix of shape (n_spectra * n_ell, n_spectra * n_ell).
+        """
+        return self._impl.compute_fisher_matrix_multi(
+            C_ell_dict, spectra_list, ell_min, ell_max
+        )
+
     def get_weighted_compressed_data(
         self, data: np.ndarray, C_ell: np.ndarray, C_c_inv: np.ndarray | None = None
     ) -> np.ndarray:
@@ -325,6 +367,28 @@ class CompressionManager:
         """
         return self._impl.get_weighted_compressed_data(data, C_ell, C_c_inv=C_c_inv)
 
+    def get_weighted_compressed_data_multi(
+        self, data: np.ndarray, C_ell_dict: dict[tuple[int, int], np.ndarray]
+    ) -> np.ndarray:
+        """
+        Compute weighted compressed data for multi-field QML estimation.
+
+        For harmonic: w = V @ C^{-1} @ d (uses SMW formula with full Lambda)
+
+        Parameters
+        ----------
+        data : numpy.ndarray
+            Pixel-space data vector.
+        C_ell_dict : dict
+            Dictionary mapping (comp_i, comp_j) to C_ell array for cross-spectra.
+
+        Returns
+        -------
+        numpy.ndarray
+            Weighted compressed data vector.
+        """
+        return self._impl.get_weighted_compressed_data_multi(data, C_ell_dict)
+
     def compute_quadratic_form(self, data: np.ndarray, C_ell: np.ndarray) -> float:
         """
         Compute quadratic form d^T C^{-1} d efficiently.
@@ -346,6 +410,92 @@ class CompressionManager:
         """
         return self._impl.compute_quadratic_form(data, C_ell)
 
+    # === Spin-2 aware operations ===
+
+    def compute_fisher_matrix_with_spins(
+        self,
+        C_ell_dict: dict[tuple, np.ndarray],
+        spectra_list: list[tuple[int, int, int]],
+        ell_min: int = 2,
+        ell_max: int | None = None,
+    ) -> np.ndarray:
+        """
+        Compute Fisher matrix with spin-2 support using 3-tuple spectra.
+
+        Parameters
+        ----------
+        C_ell_dict : dict
+            Dictionary with 3-tuple keys (comp_i, comp_j, mode).
+        spectra_list : list of 3-tuple
+            List of (comp_i, comp_j, mode) specifying which spectra to include.
+        ell_min : int, default 2
+            Minimum multipole.
+        ell_max : int or None, optional
+            Maximum multipole.
+
+        Returns
+        -------
+        numpy.ndarray
+            Fisher matrix of shape (n_spectra * n_ell, n_spectra * n_ell).
+        """
+        return self._impl.compute_fisher_matrix_with_spins(
+            C_ell_dict, spectra_list, ell_min, ell_max
+        )
+
+    def get_compressed_covariance_with_spins(
+        self, C_ell_dict: dict[tuple, np.ndarray]
+    ) -> np.ndarray:
+        """Get compressed covariance with spin-2 support."""
+        return self._impl.get_compressed_covariance_with_spins(C_ell_dict)
+
+    def get_compressed_inverse_with_spins(
+        self, C_ell_dict: dict[tuple, np.ndarray]
+    ) -> np.ndarray:
+        """Get inverse compressed covariance with spin-2 support."""
+        return self._impl.get_compressed_inverse_with_spins(C_ell_dict)
+
+    def get_compressed_covariance_multi(
+        self, C_ell_dict: dict[tuple[int, int], np.ndarray]
+    ) -> np.ndarray:
+        """Get compressed covariance for multi-field (2-tuple keys)."""
+        return self._impl.get_compressed_covariance_multi(C_ell_dict)
+
+    def get_compressed_inverse_multi(
+        self, C_ell_dict: dict[tuple[int, int], np.ndarray]
+    ) -> np.ndarray:
+        """Get inverse compressed covariance for multi-field (2-tuple keys)."""
+        from ..basics import matrix_inverse_symm
+
+        return matrix_inverse_symm(self.get_compressed_covariance_multi(C_ell_dict))
+
+    def get_weighted_compressed_data_with_spins(
+        self, data: np.ndarray, C_ell_dict: dict[tuple, np.ndarray]
+    ) -> np.ndarray:
+        """Get weighted compressed data with spin-2 support."""
+        return self._impl.get_weighted_compressed_data_with_spins(data, C_ell_dict)
+
+    def compute_quadratic_form_with_spins(
+        self, data: np.ndarray, C_ell_dict: dict[tuple, np.ndarray]
+    ) -> float:
+        """Compute d^T C^{-1} d with spin-2 support using SMW formula."""
+        return self._impl.compute_quadratic_form_with_spins(data, C_ell_dict)
+
+    def prepare_smw_with_spins(self, C_ell_dict: dict[tuple, np.ndarray]):
+        """Precompute K Cholesky and logdet for reuse across sims."""
+        return self._impl.prepare_smw_with_spins(C_ell_dict)
+
+    def quadratic_form_from_prepared(self, data: np.ndarray, K_chol):
+        """Compute d^T C^{-1} d using precomputed K Cholesky factor."""
+        return self._impl.quadratic_form_from_prepared(data, K_chol)
+
+    def get_full_logdet_with_spins(self, C_ell_dict: dict[tuple, np.ndarray]) -> float:
+        """Get log|C| with spin-2 support.
+
+        For harmonic method, uses exact SMW formula.
+        For pixel_projected, uses compressed logdet approximation.
+        """
+        return self._impl.get_logdet_with_spins(C_ell_dict)
+
     # === Properties ===
 
     @property
@@ -362,6 +512,11 @@ class CompressionManager:
     def compression_ratio(self) -> float:
         """Ratio of kept modes to original size."""
         return self._impl.compression_ratio
+
+    @property
+    def n_components(self) -> int:
+        """Number of field components (multi-field support)."""
+        return self._impl.n_components
 
 
 __all__ = [
