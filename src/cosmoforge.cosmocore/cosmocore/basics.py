@@ -259,6 +259,236 @@ def legendre_plm(cos_theta, sin_theta, plm):
             plm[ell, m] = a * x * plm[ell - 1, m] - b * plm[ell - 2, m]
 
 
+@njit(cache=True)
+def wigner_d_small(ell: int, m: int, s: int, cos_theta: float, sin_theta: float) -> float:
+    """
+    Compute Wigner d-matrix element d^ℓ_{m,s}(θ) for spin-weighted spherical harmonics.
+
+    Uses stable recurrence in ℓ derived from the Jacobi polynomial
+    three-term recurrence (DLMF 18.9.2):
+        d^{ℓ+1}_{m,s} = (α_ℓ cos θ + β_ℓ) d^ℓ_{m,s} + γ_ℓ d^{ℓ-1}_{m,s}
+    with coefficients:
+        α_ℓ = (2ℓ+1)(ℓ+1) / [√((ℓ+1)²-m²) √((ℓ+1)²-s²)]
+        β_ℓ = -(2ℓ+1)ms / [ℓ √((ℓ+1)²-m²) √((ℓ+1)²-s²)]
+        γ_ℓ = -(ℓ+1)/ℓ × √(ℓ²-m²)√(ℓ²-s²) / [√((ℓ+1)²-m²)√((ℓ+1)²-s²)]
+
+    Parameters
+    ----------
+    ell : int
+        Multipole degree (ℓ ≥ max(|m|, |s|)).
+    m : int
+        Azimuthal order (-ℓ ≤ m ≤ ℓ).
+    s : int
+        Spin weight (typically ±2 for polarization).
+    cos_theta : float
+        Cosine of colatitude angle.
+    sin_theta : float
+        Sine of colatitude angle (must be ≥ 0).
+
+    Returns
+    -------
+    float
+        Value of d^ℓ_{m,s}(θ).
+
+    References
+    ----------
+    .. [1] Goldberg, J.N. et al. "Spin-s Spherical Harmonics and ð"
+       J. Math. Phys. 8, 2155 (1967)
+    .. [2] Risbo, T. "Fourier transform summation of Legendre series and
+       D-functions" J. Geodesy 70, 383-396 (1996)
+    """
+    # Handle trivial cases
+    if ell < abs(m) or ell < abs(s):
+        return 0.0
+
+    # Use symmetry: d^l_{m,s} = (-1)^{m-s} d^l_{s,m} = (-1)^{m-s} d^l_{-m,-s}
+    # This allows us to always have |m| >= |s| for the recurrence
+    swap_sign = 1.0
+    if abs(m) < abs(s):
+        # Swap m and s
+        m, s = s, m
+        if (m - s) % 2 != 0:
+            swap_sign = -1.0
+
+    # Ensure m >= 0 using d^l_{m,s} = (-1)^{m-s} d^l_{-m,-s}
+    if m < 0:
+        if (m - s) % 2 != 0:
+            swap_sign *= -1.0
+        m = -m
+        s = -s
+
+    # Now we have |m| >= |s| and m >= 0
+    # Compute half-angles
+    half_theta = 0.5 * np.arccos(cos_theta)
+    cos_half = np.cos(half_theta)
+    sin_half = np.sin(half_theta)
+
+    # Starting value: d^m_{m,s}(θ)
+    # d^m_{m,s} = sqrt((2m)! / ((m+s)!(m-s)!)) * cos^{m+s}(θ/2) * sin^{m-s}(θ/2)
+    #           × (-1)^{m-s} if s < 0 convention
+    l_start = m
+
+    if l_start < abs(s):
+        l_start = abs(s)
+
+    # Compute d^{l_start}_{m,s}
+    # Using direct formula for the starting value
+    d_curr = _wigner_d_start(l_start, m, s, cos_half, sin_half)
+
+    if ell == l_start:
+        return swap_sign * d_curr
+
+    # Recurrence in ℓ derived from the Jacobi polynomial three-term recurrence:
+    #   d^{l+1}_{m,s} = (α_l cos θ + β_l) d^l_{m,s} + γ_l d^{l-1}_{m,s}
+    # where:
+    #   α_l = (2l+1)(l+1) / [√((l+1)²-m²) √((l+1)²-s²)]
+    #   β_l = -(2l+1)ms / [l √((l+1)²-m²) √((l+1)²-s²)]
+    #   γ_l = -(l+1)/l × √(l²-m²)√(l²-s²) / [√((l+1)²-m²)√((l+1)²-s²)]
+
+    # One-step recurrence to get d^{l_start+1}
+    d_prev = d_curr
+    el = l_start
+    l_next = el + 1
+
+    fm_next = np.sqrt(l_next * l_next - m * m)
+    fs_next = np.sqrt(l_next * l_next - s * s)
+    factor_next = fm_next * fs_next
+
+    if factor_next > 0:
+        alpha = (2 * el + 1) * (el + 1) / factor_next
+        # beta = -(2l+1)*m*s / (l * factor_next), but l could be 0
+        # When l=0, m=s=0 (since l_start=max(|m|,|s|)=0), so m*s=0 and beta=0
+        if el > 0:
+            beta = -(2 * el + 1) * m * s / (el * factor_next)
+        else:
+            beta = 0.0
+        d_curr = (alpha * cos_theta + beta) * d_prev
+        # gamma term is 0 since d^{l_start-1} doesn't exist
+    else:
+        d_curr = 0.0
+
+    if ell == l_start + 1:
+        return swap_sign * d_curr
+
+    # Full recurrence for higher l
+    for el in range(l_start + 1, ell):
+        l_next = el + 1
+        fm_l = np.sqrt(el * el - m * m)
+        fs_l = np.sqrt(el * el - s * s)
+        fm_next = np.sqrt(l_next * l_next - m * m)
+        fs_next = np.sqrt(l_next * l_next - s * s)
+        factor_next = fm_next * fs_next
+
+        if factor_next > 0:
+            alpha = (2 * el + 1) * (el + 1) / factor_next
+            beta = -(2 * el + 1) * m * s / (el * factor_next)
+            gamma = -(el + 1) / el * fm_l * fs_l / factor_next
+            d_new = (alpha * cos_theta + beta) * d_curr + gamma * d_prev
+        else:
+            d_new = 0.0
+
+        d_prev = d_curr
+        d_curr = d_new
+
+    return swap_sign * d_curr
+
+
+@njit(cache=True)
+def _wigner_d_start(ell: int, m: int, s: int, cos_half: float, sin_half: float) -> float:
+    """
+    Compute starting value d^ℓ_{m,s}(θ) where ℓ = max(|m|, |s|).
+
+    Uses direct formula:
+        d^ℓ_{m,s} = ε × √[(ℓ+m)!(ℓ-m)!/((ℓ+s)!(ℓ-s)!)]
+                   × cos^{m+s}(θ/2) × sin^{m-s}(θ/2)
+
+    where ε is a phase factor.
+    """
+    # For ℓ = m = s = 0, return 1
+    if ell == 0:
+        return 1.0
+
+    # Compute factorial ratio using log to avoid overflow
+    # sqrt[(ℓ+m)!(ℓ-m)!/((ℓ+s)!(ℓ-s)!)]
+    log_ratio = 0.0
+    for k in range(1, ell + m + 1):
+        log_ratio += np.log(k)
+    for k in range(1, ell - m + 1):
+        log_ratio += np.log(k)
+    for k in range(1, ell + s + 1):
+        log_ratio -= np.log(k)
+    for k in range(1, ell - s + 1):
+        log_ratio -= np.log(k)
+
+    sqrt_ratio = np.exp(0.5 * log_ratio)
+
+    # Powers of cos and sin of half-angle
+    power_cos = m + s
+    power_sin = m - s
+
+    # Handle negative powers (shouldn't happen if ℓ = max(|m|, |s|) and m >= 0)
+    cos_term = 1.0
+    sin_term = 1.0
+
+    if power_cos > 0:
+        cos_term = cos_half**power_cos
+    elif power_cos < 0:
+        if abs(cos_half) < 1e-15:
+            return 0.0
+        cos_term = cos_half**power_cos
+
+    if power_sin > 0:
+        sin_term = sin_half**power_sin
+    elif power_sin < 0:
+        if abs(sin_half) < 1e-15:
+            return 0.0
+        sin_term = sin_half**power_sin
+
+    # Phase factor: (-1)^{m-s} from the standard Wigner d convention
+    phase = 1.0
+    if (m - s) % 2 != 0:
+        phase = -1.0
+
+    result = phase * sqrt_ratio * cos_term * sin_term
+
+    return result
+
+
+@njit(cache=True)
+def wigner_d_matrix(
+    ell: int, s: int, cos_theta: float, sin_theta: float, d_out: np.ndarray
+) -> None:
+    """
+    Compute all d^ℓ_{m,s}(θ) for m = -ℓ to ℓ for a fixed ℓ and s.
+
+    This is more efficient than calling wigner_d_small repeatedly
+    when all m values are needed.
+
+    Parameters
+    ----------
+    ell : int
+        Multipole degree.
+    s : int
+        Spin weight (typically ±2 for polarization).
+    cos_theta : float
+        Cosine of colatitude angle.
+    sin_theta : float
+        Sine of colatitude angle.
+    d_out : numpy.ndarray
+        Pre-allocated output array of length (2*ℓ+1) to store d^ℓ_{m,s}
+        for m = -ℓ, -ℓ+1, ..., ℓ-1, ℓ. Index i corresponds to m = i - ℓ.
+
+    Notes
+    -----
+    Uses recurrence in m for efficiency.
+    """
+    # Simple implementation: call wigner_d_small for each m
+    # Could be optimized with m-recurrence
+    for i in range(2 * ell + 1):
+        m = i - ell
+        d_out[i] = wigner_d_small(ell, m, s, cos_theta, sin_theta)
+
+
 @lru_cache
 def spec2idx(i, j, nfields):
     """

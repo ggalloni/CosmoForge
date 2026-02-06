@@ -11,7 +11,13 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
-from ..basics import legendre_plm, matrix_mult, matrix_slogdet_symm, matrix_trace
+from ..basics import (
+    legendre_plm,
+    matrix_mult,
+    matrix_slogdet_symm,
+    matrix_trace,
+    wigner_d_small,
+)
 
 
 class BaseCompression(ABC):
@@ -22,39 +28,54 @@ class BaseCompression(ABC):
     shared implementations for spherical harmonic evaluation and ell-to-mode
     mapping.
 
+    Supports both single-field and multi-field configurations. For multi-field,
+    theta and phi are passed as tuples of arrays (one per component), and the
+    harmonic operator V is built as a block-diagonal matrix.
+
     Parameters
     ----------
     N_inv : numpy.ndarray
-        Precomputed noise inverse matrix of shape (n_pix, n_pix).
-    theta : numpy.ndarray
-        Colatitude angles for active pixels in radians.
-    phi : numpy.ndarray
-        Longitude angles for active pixels in radians.
+        Precomputed noise inverse matrix of shape (n_pix_total, n_pix_total).
+    theta : numpy.ndarray or tuple of numpy.ndarray
+        Colatitude angles for active pixels in radians. Single array for
+        single-field, tuple of arrays for multi-field.
+    phi : numpy.ndarray or tuple of numpy.ndarray
+        Longitude angles for active pixels in radians. Single array for
+        single-field, tuple of arrays for multi-field.
     lmax : int
         Maximum multipole for harmonic expansion.
     beam : numpy.ndarray or None, optional
         Beam window function B_ℓ for ℓ=2 to lmax. Shape should be (lmax-1,).
         If provided, the harmonic operator V is multiplied by beam factors
         so that V_ℓm = B_ℓ × Y_ℓm. If None, no beam correction is applied.
+    spins : list of int or None, optional
+        Spin weight for each component. Default is [0, 0, ...] (all spin-0).
+        Use spin=2 for polarization (Q/U) fields, which doubles pixel count
+        and uses spin-weighted spherical harmonics for E/B decomposition.
 
     Attributes
     ----------
     n_pix : int
-        Number of active pixels.
+        Total number of active pixels across all components.
     n_modes : int
-        Number of harmonic modes (for ℓ=2 to lmax).
+        Number of harmonic modes per component (for ℓ=2 to lmax).
+    n_modes_total : int
+        Total harmonic modes across all components (n_components × n_modes).
     n_kept : int
         Number of modes kept after compression (if applicable).
+    n_components : int
+        Number of field components (1 for single-field, N for multi-field).
     """
 
     def __init__(
         self,
         N: np.ndarray,
         N_inv: np.ndarray,
-        theta: np.ndarray,
-        phi: np.ndarray,
+        theta: np.ndarray | tuple[np.ndarray, ...],
+        phi: np.ndarray | tuple[np.ndarray, ...],
         lmax: int,
         beam: np.ndarray | None = None,
+        spins: list[int] | None = None,
         lswitch_low: int | None = None,
         lswitch_high: int | None = None,
         fiducial_C_ell: np.ndarray | None = None,
@@ -66,17 +87,24 @@ class BaseCompression(ABC):
         Parameters
         ----------
         N : numpy.ndarray
-            Noise covariance matrix (n_pix, n_pix).
+            Noise covariance matrix (n_pix_total, n_pix_total).
         N_inv : numpy.ndarray
-            Precomputed noise inverse matrix (n_pix, n_pix).
-        theta : numpy.ndarray
-            Colatitude angles for active pixels in radians.
-        phi : numpy.ndarray
-            Longitude angles for active pixels in radians.
+            Precomputed noise inverse matrix (n_pix_total, n_pix_total).
+        theta : numpy.ndarray or tuple of numpy.ndarray
+            Colatitude angles for active pixels in radians. Single array for
+            single-field, tuple of arrays for multi-field (one per component).
+        phi : numpy.ndarray or tuple of numpy.ndarray
+            Longitude angles for active pixels in radians. Single array for
+            single-field, tuple of arrays for multi-field (one per component).
         lmax : int
             Maximum multipole for harmonic expansion.
         beam : numpy.ndarray or None, optional
             Beam window function B_ℓ for ℓ=2 to lmax.
+        spins : list of int or None, optional
+            Spin weight for each component (0 for scalar, 2 for polarization).
+            Default is [0, ...] for all components. For spin-2 components,
+            theta/phi represent physical pixel locations but V is built for
+            (Q, U) → (E, B) transformation with doubled dimensions.
         lswitch_low : int or None, optional
             Minimum multipole where signal varies with parameters.
             If provided with lswitch_high, enables switch optimization.
@@ -89,13 +117,60 @@ class BaseCompression(ABC):
         S_fixed : numpy.ndarray or None, optional
             Precomputed signal matrix for fixed multipoles (ℓ > lswitch_high).
             This is the recommended way to pass the fixed signal contribution.
-            Shape should be (n_pix, n_pix).
+            Shape should be (n_pix_total, n_pix_total).
         """
         self._N = np.asfortranarray(N, dtype=np.float64)
         self.N_inv = np.asfortranarray(N_inv, dtype=np.float64)
-        self.theta = np.asarray(theta, dtype=np.float64)
-        self.phi = np.asarray(phi, dtype=np.float64)
         self.lmax = lmax
+
+        # Normalize theta/phi to tuple format for consistent handling
+        # Single-field: 1D array → wrap as single-element tuple
+        # Multi-field: already tuple
+        if isinstance(theta, np.ndarray) and theta.ndim == 1:
+            self._theta_tuple = (np.asarray(theta, dtype=np.float64),)
+            self._phi_tuple = (np.asarray(phi, dtype=np.float64),)
+        else:
+            self._theta_tuple = tuple(np.asarray(t, dtype=np.float64) for t in theta)
+            self._phi_tuple = tuple(np.asarray(p, dtype=np.float64) for p in phi)
+
+        # Multi-field tracking
+        self.n_components = len(self._theta_tuple)
+
+        # Store spins for each component (0 for scalar, 2 for polarization)
+        if spins is None:
+            self._spins = [0] * self.n_components
+        else:
+            if len(spins) != self.n_components:
+                raise ValueError(
+                    f"spins list length ({len(spins)}) must match "
+                    f"number of components ({self.n_components})"
+                )
+            for spin in spins:
+                if spin not in (0, 2):
+                    raise ValueError(
+                        f"Spin must be 0 (scalar) or 2 (polarization), got {spin}"
+                    )
+            self._spins = list(spins)
+
+        # Pixel count per component: spin-2 has 2x pixels (Q, U)
+        self._n_physical_pix = [len(t) for t in self._theta_tuple]
+        self._n_pix_per_component = [
+            2 * n if self._spins[i] == 2 else n
+            for i, n in enumerate(self._n_physical_pix)
+        ]
+
+        # Compute pixel offsets for block structure
+        self._pix_offsets = [0]
+        for n in self._n_pix_per_component:
+            self._pix_offsets.append(self._pix_offsets[-1] + n)
+
+        # For backward compatibility: theta/phi as concatenated arrays
+        if self.n_components == 1:
+            self.theta = self._theta_tuple[0]
+            self.phi = self._phi_tuple[0]
+        else:
+            self.theta = np.concatenate(self._theta_tuple)
+            self.phi = np.concatenate(self._phi_tuple)
 
         # Store lswitch parameters for reduced-dimension SMW
         self.lswitch_low = lswitch_low if lswitch_low is not None else 2
@@ -118,24 +193,46 @@ class BaseCompression(ABC):
             self._beam = None
 
         # Derived quantities
-        self.n_pix = len(theta)
+        self.n_pix = sum(self._n_pix_per_component)
 
-        # n_modes depends on whether switch optimization is used
+        # n_modes per component depends on whether switch optimization is used
         if self._use_switch_optimization:
             # Only modes for ℓ in [lswitch_low, lswitch_high]
-            self.n_modes = (self.lswitch_high + 1) ** 2 - (self.lswitch_low) ** 2
+            self._n_modes_base = (self.lswitch_high + 1) ** 2 - (self.lswitch_low) ** 2
             self._lmin_smw = self.lswitch_low
             self._lmax_smw = self.lswitch_high
         else:
             # All modes from ℓ=2 to lmax
-            self.n_modes = (lmax + 1) ** 2 - 4
+            self._n_modes_base = (lmax + 1) ** 2 - 4
             self._lmin_smw = 2
             self._lmax_smw = lmax
 
+        # Mode count per component: spin-2 has 2x modes (E, B)
+        self._n_modes_per_component_list = [
+            2 * self._n_modes_base if self._spins[i] == 2 else self._n_modes_base
+            for i in range(self.n_components)
+        ]
+
+        # For backward compatibility (single-field case)
+        self._n_modes_per_component = self._n_modes_base
+
+        # Total modes across all components
+        self.n_modes_total = sum(self._n_modes_per_component_list)
+
+        # For backward compatibility: n_modes is per-component for single-field,
+        # total for multi-field Fisher computation
+        self.n_modes = self._n_modes_base
+
+        # Compute mode offsets for block structure
+        self._mode_offsets = [0]
+        for n in self._n_modes_per_component_list:
+            self._mode_offsets.append(self._mode_offsets[-1] + n)
+
         # To be set by subclasses
         self._V = None
+        self._V_blocks = None  # List of V_i for each component
         self._ell_to_modes = None
-        self.n_kept = self.n_modes
+        self.n_kept = self.n_modes_total if self.n_components > 1 else self.n_modes
 
     @abstractmethod
     def setup(self) -> None:
@@ -306,47 +403,102 @@ class BaseCompression(ABC):
         """
         Build the harmonic projection operator V using real spherical harmonics.
 
+        For single-field: V is (n_modes × n_pix)
+        For multi-field: V is block-diagonal (n_components × n_modes, n_pix_total)
+
         V projects from pixel space to harmonic space. Each row of V
         corresponds to a (ell, m) mode, and each column to a pixel.
 
-        The operator is built WITHOUT beam effects:
-            V[mode, pix] = Y_lm(theta[pix], phi[pix])
+        For spin-0 (scalar) components:
+            V[mode, pix] = Y_ℓm(theta[pix], phi[pix])
+
+        For spin-2 (polarization) components:
+            V maps (Q, U) pixel data to (E, B) harmonic modes using
+            spin-weighted spherical harmonics _±2Y_ℓm.
 
         Beam effects are expected to be incorporated in the C_ell power spectrum
         passed to methods like get_compressed_covariance(). This is consistent
         with how spectra_manager stores beam-convolved power spectra.
-
-        Note: The _beam attribute is stored for reference but NOT applied to V.
 
         When switch optimization is enabled (lswitch_high < lmax), V is built
         only for multipoles in [lswitch_low, lswitch_high], significantly
         reducing the dimension of the SMW operations.
 
         This implementation uses JIT-compiled recurrence relations for associated
-        Legendre polynomials, which is significantly faster than scipy.special.lpmv.
+        Legendre polynomials (spin-0) and Wigner d-matrices (spin-2).
         """
-        cos_theta = np.cos(self.theta)
-        sin_theta = np.sin(self.theta)
+        # Build V block for each component, dispatching based on spin
+        self._V_blocks = []
+        for comp_idx in range(self.n_components):
+            spin = self._spins[comp_idx]
+            if spin == 0:
+                V_comp = self._build_harmonic_operator_single(
+                    self._theta_tuple[comp_idx],
+                    self._phi_tuple[comp_idx],
+                )
+            else:  # spin == 2
+                V_comp = self._build_harmonic_operator_spin2(
+                    self._theta_tuple[comp_idx],
+                    self._phi_tuple[comp_idx],
+                )
+            self._V_blocks.append(V_comp)
 
-        V = np.zeros((self.n_modes, self.n_pix), dtype=np.float64)
+        # Assemble into full block-diagonal V
+        if self.n_components == 1:
+            # Single-field: V is just the single block
+            self._V = np.asfortranarray(self._V_blocks[0])
+        else:
+            # Multi-field: block-diagonal V
+            V_full = np.zeros((self.n_modes_total, self.n_pix), dtype=np.float64)
+            for comp_idx in range(self.n_components):
+                row_start = self._mode_offsets[comp_idx]
+                row_end = self._mode_offsets[comp_idx + 1]
+                col_start = self._pix_offsets[comp_idx]
+                col_end = self._pix_offsets[comp_idx + 1]
+                V_full[row_start:row_end, col_start:col_end] = self._V_blocks[comp_idx]
+            self._V = np.asfortranarray(V_full)
+
+    def _build_harmonic_operator_single(
+        self, theta: np.ndarray, phi: np.ndarray
+    ) -> np.ndarray:
+        """
+        Build harmonic operator V for a single component.
+
+        Parameters
+        ----------
+        theta : numpy.ndarray
+            Colatitude angles for this component's pixels.
+        phi : numpy.ndarray
+            Longitude angles for this component's pixels.
+
+        Returns
+        -------
+        numpy.ndarray
+            Harmonic operator V of shape (n_modes_per_component, n_pix_component).
+        """
+        n_pix_comp = len(theta)
+        cos_theta = np.cos(theta)
+        sin_theta = np.sin(theta)
+
+        V = np.zeros((self._n_modes_per_component, n_pix_comp), dtype=np.float64)
 
         # Determine ell range for V (may be reduced if switch optimization is used)
         lmin_v = self._lmin_smw
         lmax_v = self._lmax_smw
 
         # Precompute cos(m*phi) and sin(m*phi) for all m and pixels
-        cos_mphi = np.zeros((lmax_v + 1, self.n_pix), dtype=np.float64)
-        sin_mphi = np.zeros((lmax_v + 1, self.n_pix), dtype=np.float64)
+        cos_mphi = np.zeros((lmax_v + 1, n_pix_comp), dtype=np.float64)
+        sin_mphi = np.zeros((lmax_v + 1, n_pix_comp), dtype=np.float64)
         for m in range(lmax_v + 1):
-            for ipix in range(self.n_pix):
-                cos_mphi[m, ipix] = np.cos(m * self.phi[ipix])
-                sin_mphi[m, ipix] = np.sin(m * self.phi[ipix])
+            for ipix in range(n_pix_comp):
+                cos_mphi[m, ipix] = np.cos(m * phi[ipix])
+                sin_mphi[m, ipix] = np.sin(m * phi[ipix])
 
         # Buffer for P_ℓ^m values for one pixel (need full lmax for Legendre)
         plm = np.zeros((self.lmax + 1, self.lmax + 1), dtype=np.float64)
 
         # Process each pixel
-        for ipix in range(self.n_pix):
+        for ipix in range(n_pix_comp):
             # Compute all normalized P_ℓ^m for this pixel
             legendre_plm(cos_theta[ipix], sin_theta[ipix], plm)
 
@@ -366,7 +518,141 @@ class BaseCompression(ABC):
 
                 mode_idx += 2 * ell + 1
 
-        self._V = np.asfortranarray(V)
+        return V
+
+    def _build_harmonic_operator_spin2(
+        self, theta: np.ndarray, phi: np.ndarray
+    ) -> np.ndarray:
+        """
+        Build harmonic operator V for a spin-2 (polarization) component.
+
+        For spin-2, V maps (Q, U) pixel data to (E, B) mode coefficients
+        using spin-weighted spherical harmonics _±2Y_ℓm.
+
+        The transformation uses:
+            E_ℓm = -1/2 (_{+2}a_ℓm + _{-2}a_ℓm)
+            B_ℓm = i/2 (_{+2}a_ℓm - _{-2}a_ℓm)
+
+        where _±2a_ℓm are the spin-2 harmonic coefficients of (Q ± iU).
+
+        Parameters
+        ----------
+        theta : numpy.ndarray
+            Colatitude angles for physical pixel locations.
+        phi : numpy.ndarray
+            Longitude angles for physical pixel locations.
+
+        Returns
+        -------
+        numpy.ndarray
+            Harmonic operator V of shape (2 * n_modes, 2 * n_pix), where:
+            - Rows 0:n_modes are E modes
+            - Rows n_modes:2*n_modes are B modes
+            - Cols 0:n_pix are Q pixels
+            - Cols n_pix:2*n_pix are U pixels
+
+        References
+        ----------
+        .. [1] Zaldarriaga, M. & Seljak, U. "All-sky analysis of polarization
+           in the microwave background" Phys. Rev. D 55, 1830 (1997)
+        """
+        n_pix = len(theta)
+        n_modes = self._n_modes_base  # E modes or B modes count
+
+        # V has shape (2*n_modes, 2*n_pix): [E,B] modes × [Q,U] pixels
+        V = np.zeros((2 * n_modes, 2 * n_pix), dtype=np.float64)
+
+        cos_theta = np.cos(theta)
+        sin_theta = np.sin(theta)
+
+        # Determine ell range
+        lmin_v = self._lmin_smw
+        lmax_v = self._lmax_smw
+
+        # Precompute cos(mφ) and sin(mφ) for all m and pixels
+        cos_mphi = np.zeros((lmax_v + 1, n_pix), dtype=np.float64)
+        sin_mphi = np.zeros((lmax_v + 1, n_pix), dtype=np.float64)
+        for m in range(lmax_v + 1):
+            for ipix in range(n_pix):
+                cos_mphi[m, ipix] = np.cos(m * phi[ipix])
+                sin_mphi[m, ipix] = np.sin(m * phi[ipix])
+
+        # Process each pixel
+        for ipix in range(n_pix):
+            cos_th = cos_theta[ipix]
+            sin_th = sin_theta[ipix]
+
+            mode_idx = 0
+            for ell in range(lmin_v, lmax_v + 1):
+                # Per-ℓ normalization: sqrt((ℓ+2)(ℓ+1)ℓ(ℓ-1)) ensures that
+                # V^T Λ V reproduces the traditional pixel-space signal matrix
+                # when Λ contains C_ℓ × (2ℓ+1)/(4π) / ((ℓ+2)(ℓ+1)ℓ(ℓ-1)).
+                norm_ell = np.sqrt((ell + 2) * (ell + 1) * ell * (ell - 1))
+
+                for m in range(-ell, ell + 1):
+                    abs_m = abs(m)
+
+                    # Compute Wigner d-matrix elements for spin ±2 at |m|
+                    # Using |m| ensures correct real spin-2 harmonic basis:
+                    # the m<0 real modes use the same d-functions as m>0.
+                    d_plus2 = wigner_d_small(ell, abs_m, 2, cos_th, sin_th)
+                    d_minus2 = wigner_d_small(ell, abs_m, -2, cos_th, sin_th)
+
+                    # Combination for E and B modes
+                    # D^+ = d_{|m|,-2} + d_{|m|,2} (E-mode pattern on Q)
+                    # D^- = d_{|m|,-2} - d_{|m|,2} (B-mode pattern / E on U)
+                    D_plus = d_minus2 + d_plus2
+                    D_minus = d_minus2 - d_plus2
+
+                    # V entries from real spin-2 harmonics derivation:
+                    #
+                    # From Q + iU = -Σ_m (E_lm - iB_lm) × _2Y_lm, using real
+                    # mode expansion E_lm = (e_m - ie_{-m})/√2 for m>0:
+                    #
+                    # m>0: V_{E,Q} = D⁺ cos(mφ),    V_{E,U} = D⁻ sin(mφ)
+                    # m=0: V_{E,Q} = D⁺,             V_{E,U} = 0
+                    # m<0: V_{E,Q} = D⁺ sin(|m|φ),  V_{E,U} = -D⁻ cos(|m|φ)
+                    #
+                    # B modes follow by swapping D⁺ ↔ -D⁻ in the E pattern.
+
+                    if m == 0:
+                        scale = norm_ell * 0.5
+
+                        # E mode: Q = D⁺, U = 0
+                        V[mode_idx, ipix] = scale * D_plus
+                        V[mode_idx, n_pix + ipix] = 0.0
+
+                        # B mode: Q = 0, U = D⁺
+                        V[n_modes + mode_idx, ipix] = 0.0
+                        V[n_modes + mode_idx, n_pix + ipix] = scale * D_plus
+                    elif m > 0:
+                        scale = norm_ell * np.sqrt(2.0) * 0.5
+                        cm = cos_mphi[m, ipix]
+                        sm = sin_mphi[m, ipix]
+
+                        # E mode
+                        V[mode_idx, ipix] = scale * D_plus * cm
+                        V[mode_idx, n_pix + ipix] = scale * D_minus * sm
+
+                        # B mode
+                        V[n_modes + mode_idx, ipix] = -scale * D_minus * sm
+                        V[n_modes + mode_idx, n_pix + ipix] = scale * D_plus * cm
+                    else:  # m < 0
+                        scale = norm_ell * np.sqrt(2.0) * 0.5
+                        cm = cos_mphi[abs_m, ipix]
+                        sm = sin_mphi[abs_m, ipix]
+
+                        # E mode (sin/cos swapped vs m>0, sign flip on U)
+                        V[mode_idx, ipix] = scale * D_plus * sm
+                        V[mode_idx, n_pix + ipix] = -scale * D_minus * cm
+
+                        # B mode
+                        V[n_modes + mode_idx, ipix] = scale * D_minus * cm
+                        V[n_modes + mode_idx, n_pix + ipix] = scale * D_plus * sm
+
+                    mode_idx += 1
+
+        return V
 
     def _build_ell_mode_mapping(self) -> None:
         """
@@ -377,13 +663,23 @@ class BaseCompression(ABC):
 
         When switch optimization is enabled, mapping is built only for
         multipoles in [lswitch_low, lswitch_high].
+
+        For multi-field: also builds per-component local mode indices.
         """
-        self._ell_to_modes = {}
+        # Local mode indices within a single component
+        self._ell_to_modes_local = {}
         mode_idx = 0
         for ell in range(self._lmin_smw, self._lmax_smw + 1):
             n_m = 2 * ell + 1
-            self._ell_to_modes[ell] = list(range(mode_idx, mode_idx + n_m))
+            self._ell_to_modes_local[ell] = list(range(mode_idx, mode_idx + n_m))
             mode_idx += n_m
+
+        # For backward compatibility: single-field uses local = global
+        if self.n_components == 1:
+            self._ell_to_modes = self._ell_to_modes_local
+        else:
+            # For multi-field, we keep local mapping and compute global on demand
+            self._ell_to_modes = self._ell_to_modes_local
 
     def _precompute_derivative_diagonals(self) -> None:
         """
@@ -396,6 +692,9 @@ class BaseCompression(ABC):
         When switch optimization is enabled, only computes for ℓ in
         [lswitch_low, lswitch_high].
 
+        For multi-field: precomputes diagonals for both single-component (local)
+        and full block-diagonal structure.
+
         This is called during setup and the diagonals are reused in
         compute_fisher_matrix() and get_derivative_matrix().
 
@@ -404,14 +703,83 @@ class BaseCompression(ABC):
         .. [1] Tegmark, M. "How to measure CMB power spectra without losing
            information" Phys. Rev. D 55, 5895 (1997) - Equation 16
         """
-        self._derivative_diagonals = {}
+        # Precompute local (per-component) derivative diagonals
+        self._derivative_diagonals_local = {}
         for ell in range(self._lmin_smw, self._lmax_smw + 1):
-            E_diag = np.zeros(self.n_modes, dtype=np.float64)
-            if ell in self._ell_to_modes:
+            E_diag = np.zeros(self._n_modes_per_component, dtype=np.float64)
+            if ell in self._ell_to_modes_local:
                 chngconv = (2 * ell + 1) / (4 * np.pi)
-                for mode_idx in self._ell_to_modes[ell]:
+                for mode_idx in self._ell_to_modes_local[ell]:
                     E_diag[mode_idx] = chngconv
-            self._derivative_diagonals[ell] = E_diag
+            self._derivative_diagonals_local[ell] = E_diag
+
+        # For backward compatibility: single-field uses local = global
+        if self.n_components == 1:
+            self._derivative_diagonals = self._derivative_diagonals_local
+        else:
+            # For multi-field, we need block-diagonal derivatives
+            # These are computed on-demand in get_derivative_matrix_multi()
+            self._derivative_diagonals = self._derivative_diagonals_local
+
+    def _build_lambda_blocks(
+        self, C_ell_dict: dict[tuple[int, int], np.ndarray]
+    ) -> dict[tuple[int, int], np.ndarray]:
+        """
+        Build Lambda blocks from cross-power spectra dictionary.
+
+        For multi-field compression, Lambda is a block matrix where
+        Lambda^{ij} is diagonal with C_ℓ^{ij} entries.
+
+        Parameters
+        ----------
+        C_ell_dict : dict
+            Dictionary mapping (comp_i, comp_j) to C_ell array.
+            Keys are component index pairs, values are power spectra
+            with C_ell[0] = C_2, C_ell[1] = C_3, etc.
+
+        Returns
+        -------
+        dict
+            Dictionary mapping (comp_i, comp_j) to Lambda diagonal arrays.
+        """
+        Lambda_blocks = {}
+        for (comp_i, comp_j), C_ell in C_ell_dict.items():
+            Lambda_diag = self._build_lambda_diagonal(C_ell)
+            Lambda_blocks[(comp_i, comp_j)] = Lambda_diag
+            # Symmetric: Lambda^{ji} = Lambda^{ij}
+            if comp_i != comp_j:
+                Lambda_blocks[(comp_j, comp_i)] = Lambda_diag
+        return Lambda_blocks
+
+    def _build_lambda_full(
+        self, C_ell_dict: dict[tuple[int, int], np.ndarray]
+    ) -> np.ndarray:
+        """
+        Build full Lambda matrix from cross-power spectra dictionary.
+
+        For multi-field compression, assembles the full block Lambda matrix.
+
+        Parameters
+        ----------
+        C_ell_dict : dict
+            Dictionary mapping (comp_i, comp_j) to C_ell array.
+
+        Returns
+        -------
+        numpy.ndarray
+            Full Lambda matrix of shape (n_modes_total, n_modes_total).
+        """
+        Lambda_blocks = self._build_lambda_blocks(C_ell_dict)
+
+        # Assemble full block matrix
+        Lambda_full = np.zeros((self.n_modes_total, self.n_modes_total), dtype=np.float64)
+        for (comp_i, comp_j), Lambda_diag in Lambda_blocks.items():
+            row_start = self._mode_offsets[comp_i]
+            col_start = self._mode_offsets[comp_j]
+            for k, val in enumerate(Lambda_diag):
+                Lambda_full[row_start + k, col_start + k] = val
+
+        return Lambda_full
 
     def _build_lambda_diagonal(self, C_ell: np.ndarray) -> np.ndarray:
         """
@@ -459,6 +827,135 @@ class BaseCompression(ABC):
             Lambda_diag[idx : idx + n_m] = c_ell_value
             idx += n_m
         return Lambda_diag
+
+    def _build_lambda_block_spin2(
+        self,
+        C_ell_EE: np.ndarray,
+        C_ell_BB: np.ndarray,
+        C_ell_EB: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """
+        Build Lambda block for a spin-2 auto-correlation (EE, BB, EB).
+
+        For polarization, Lambda has 2x2 block structure at each (ℓ,m):
+            Λ_{ℓm} = | C_ℓ^{EE}   C_ℓ^{EB} |
+                      | C_ℓ^{EB}   C_ℓ^{BB} |
+
+        Parameters
+        ----------
+        C_ell_EE : numpy.ndarray
+            EE power spectrum, C_ell[0] = C_2.
+        C_ell_BB : numpy.ndarray
+            BB power spectrum.
+        C_ell_EB : numpy.ndarray or None
+            EB cross-spectrum. If None, assumed zero.
+
+        Returns
+        -------
+        numpy.ndarray
+            Lambda block of shape (2 * n_modes_base, 2 * n_modes_base).
+        """
+        n = self._n_modes_base
+        Lambda = np.zeros((2 * n, 2 * n), dtype=np.float64)
+
+        idx = 0
+        for ell in range(self._lmin_smw, self._lmax_smw + 1):
+            n_m = 2 * ell + 1
+            c_ee = C_ell_EE[ell - 2] if ell - 2 < len(C_ell_EE) else 0.0
+            c_bb = C_ell_BB[ell - 2] if ell - 2 < len(C_ell_BB) else 0.0
+            c_eb = 0.0
+            if C_ell_EB is not None and ell - 2 < len(C_ell_EB):
+                c_eb = C_ell_EB[ell - 2]
+
+            for _ in range(n_m):
+                Lambda[idx, idx] = c_ee  # E-E block
+                Lambda[n + idx, n + idx] = c_bb  # B-B block
+                Lambda[idx, n + idx] = c_eb  # E-B block
+                Lambda[n + idx, idx] = c_eb  # B-E block
+                idx += 1
+
+        return Lambda
+
+    def _build_lambda_full_with_spins(
+        self, C_ell_dict: dict[tuple, np.ndarray]
+    ) -> np.ndarray:
+        """
+        Build full Lambda matrix handling mixed spin-0/spin-2 components.
+
+        Accepts 3-tuple keys (comp_i, comp_j, mode) matching the
+        get_cls(field_i, field_j, mode) API:
+        - spin-0 x spin-0: mode 0 only
+        - spin-2 x spin-2: mode 0=EE, 1=BB, 2=EB
+        - spin-0 x spin-2: mode 0=TE, 1=TB
+
+        Parameters
+        ----------
+        C_ell_dict : dict
+            Dictionary with 3-tuple keys (comp_i, comp_j, mode).
+
+        Returns
+        -------
+        numpy.ndarray
+            Full Lambda matrix of shape (n_modes_total, n_modes_total).
+        """
+        Lambda_full = np.zeros((self.n_modes_total, self.n_modes_total), dtype=np.float64)
+
+        # Group entries by component pair
+        pair_entries: dict[tuple[int, int], dict[int, np.ndarray]] = {}
+        for (ci, cj, mode), C_ell in C_ell_dict.items():
+            pair_entries.setdefault((ci, cj), {})[mode] = C_ell
+
+        for (ci, cj), mode_dict in pair_entries.items():
+            spin_i = self._spins[ci]
+            spin_j = self._spins[cj]
+            row_start = self._mode_offsets[ci]
+            col_start = self._mode_offsets[cj]
+
+            if spin_i == 0 and spin_j == 0:
+                # Scalar x Scalar: single diagonal
+                diag = self._build_lambda_diagonal(mode_dict[0])
+                for k, val in enumerate(diag):
+                    Lambda_full[row_start + k, col_start + k] = val
+
+            elif spin_i == 2 and spin_j == 2:
+                # Spin-2 x Spin-2: EE, BB, EB sub-blocks
+                C_EE = mode_dict.get(0, np.zeros(self.lmax - 1))
+                C_BB = mode_dict.get(1, np.zeros(self.lmax - 1))
+                C_EB = mode_dict.get(2, None)
+                block = self._build_lambda_block_spin2(C_EE, C_BB, C_EB)
+                n_block = 2 * self._n_modes_base
+                Lambda_full[
+                    row_start : row_start + n_block,
+                    col_start : col_start + n_block,
+                ] = block
+
+            elif spin_i == 0 and spin_j == 2:
+                # Scalar x Spin-2: TE and TB sub-blocks
+                # Sign convention: E = -(_2Y + _{-2}Y)/2 introduces a minus
+                # sign in the spin-0 x spin-2 cross signal (see compute_02_contribution
+                # in pixel.py). We negate here so V^T Lambda V matches the
+                # traditional pixel-space signal matrix.
+                n_base = self._n_modes_base
+                for mode, C_ell in mode_dict.items():
+                    diag = self._build_lambda_diagonal(C_ell)
+                    # mode 0 = TE → E sub-block, mode 1 = TB → B sub-block
+                    col_sub = col_start + mode * n_base
+                    for k, val in enumerate(diag):
+                        Lambda_full[row_start + k, col_sub + k] = -val
+                        # Symmetric
+                        Lambda_full[col_sub + k, row_start + k] = -val
+
+            elif spin_i == 2 and spin_j == 0:
+                # Spin-2 x Scalar: transpose of above (already handled by symmetry)
+                n_base = self._n_modes_base
+                for mode, C_ell in mode_dict.items():
+                    diag = self._build_lambda_diagonal(C_ell)
+                    row_sub = row_start + mode * n_base
+                    for k, val in enumerate(diag):
+                        Lambda_full[row_sub + k, col_start + k] = -val
+                        Lambda_full[col_start + k, row_sub + k] = -val
+
+        return Lambda_full
 
     def compute_fisher_matrix(
         self,
