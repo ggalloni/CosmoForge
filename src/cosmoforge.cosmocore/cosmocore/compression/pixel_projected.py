@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.linalg import eigh
 
-from ..basics import matrix_inverse_symm, matrix_mult
+from ..basics import matrix_inverse_symm, matrix_mult, matrix_trace
 from .base import BaseCompression
 
 if TYPE_CHECKING:
@@ -121,12 +121,13 @@ class PixelProjectedCompression(BaseCompression):
         phi: np.ndarray,
         lmax: int,
         beam: np.ndarray | None = None,
+        spins: list[int] | None = None,
         basis: str = "noise_weighted",
         C_ell: np.ndarray | None = None,
-        epsilon: float | None = None,
-        mode_fraction: float | None = None,
+        epsilon: float | list[float | tuple[float, float]] | None = None,
+        mode_fraction: float | list[float | tuple[float, float]] | None = None,
     ):
-        super().__init__(N, N_inv, theta, phi, lmax, beam)
+        super().__init__(N, N_inv, theta, phi, lmax, beam, spins=spins)
         # Before compression, n_kept = n_pix
         self.n_kept = self.n_pix
         # Compression quantities
@@ -135,6 +136,346 @@ class PixelProjectedCompression(BaseCompression):
         self._epsilon = epsilon
         self._mode_fraction = mode_fraction
         self._eigenvectors = None
+
+        # Parse per-field thresholds
+        self._epsilon_per_field = self._parse_per_field_thresholds(epsilon, "epsilon")
+        self._mode_fraction_per_field = self._parse_per_field_thresholds(
+            mode_fraction, "mode_fraction"
+        )
+
+    def _parse_per_field_thresholds(
+        self,
+        value: float | list[float | tuple[float, float]] | None,
+        name: str,
+    ) -> list[float | tuple[float, float]] | None:
+        """
+        Normalize threshold parameter to per-field list.
+
+        Parameters
+        ----------
+        value : float, list, or None
+            Threshold value(s). float broadcasts to all fields; list must match
+            n_components; tuples in list are only valid for spin-2 fields.
+        name : str
+            Parameter name for error messages.
+
+        Returns
+        -------
+        list or None
+            Per-field threshold list, or None if value is None.
+        """
+        if value is None:
+            return None
+
+        if isinstance(value, (int, float)):
+            return [float(value)] * self.n_components
+
+        if isinstance(value, list):
+            if len(value) != self.n_components:
+                raise ValueError(
+                    f"{name} list length ({len(value)}) must match "
+                    f"number of components ({self.n_components})"
+                )
+            for i, v in enumerate(value):
+                if isinstance(v, tuple):
+                    if self._spins[i] != 2:
+                        raise ValueError(
+                            f"{name}[{i}] is a tuple (E/B split) but component "
+                            f"{i} has spin {self._spins[i]}, not 2"
+                        )
+                    if len(v) != 2:
+                        raise ValueError(
+                            f"{name}[{i}] tuple must have exactly 2 elements "
+                            f"(E_threshold, B_threshold), got {len(v)}"
+                        )
+            return value
+
+        raise TypeError(
+            f"{name} must be float, list, or None, got {type(value).__name__}"
+        )
+
+    def _eigendecompose_single(
+        self,
+        comp_matrix: np.ndarray,
+        epsilon: float | None,
+        mode_fraction: float | None,
+    ) -> tuple[np.ndarray, np.ndarray | None]:
+        """
+        Eigendecompose a compression matrix and apply threshold.
+
+        Parameters
+        ----------
+        comp_matrix : numpy.ndarray
+            Symmetric compression matrix.
+        epsilon : float or None
+            Eigenvalue threshold relative to maximum.
+        mode_fraction : float or None
+            Fraction of modes to keep.
+
+        Returns
+        -------
+        U : numpy.ndarray
+            Kept eigenvectors, shape (n, n_kept).
+        eigenvalues : numpy.ndarray or None
+            Kept eigenvalues (descending), or None.
+        """
+        eigenvalues, eigenvectors = eigh(comp_matrix)
+
+        # Sort descending
+        sort_idx = np.argsort(eigenvalues)[::-1]
+        eigenvalues = eigenvalues[sort_idx]
+        eigenvectors = eigenvectors[:, sort_idx]
+
+        if mode_fraction is not None:
+            n_significant = np.sum(eigenvalues > 1e-10 * np.max(np.abs(eigenvalues)))
+            n_to_keep = max(1, int(np.ceil(mode_fraction * n_significant)))
+            mask = np.zeros(len(eigenvalues), dtype=bool)
+            mask[:n_to_keep] = True
+        elif epsilon is not None:
+            max_eigenvalue = np.max(np.abs(eigenvalues))
+            threshold = epsilon * max_eigenvalue
+            mask = np.abs(eigenvalues) > threshold
+        else:
+            # Default: keep everything above numerical noise
+            max_eigenvalue = np.max(np.abs(eigenvalues))
+            mask = np.abs(eigenvalues) > 1e-10 * max_eigenvalue
+
+        return eigenvectors[:, mask], eigenvalues[mask]
+
+    def _build_compression_matrix_for_subfield(
+        self,
+        V_sub: np.ndarray,
+        N_field: np.ndarray,
+        N_field_inv: np.ndarray,
+        basis: str,
+        C_ell_sub: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """
+        Build compression matrix for a sub-field (E or B rows of spin-2, or full spin-0).
+
+        Parameters
+        ----------
+        V_sub : numpy.ndarray
+            V sub-block, shape (n_sub_modes, n_field_pix).
+        N_field : numpy.ndarray
+            Noise covariance for this field, shape (n_field_pix, n_field_pix).
+        N_field_inv : numpy.ndarray
+            Noise inverse for this field.
+        basis : str
+            Compression basis.
+        C_ell_sub : numpy.ndarray or None
+            Auto-spectrum diagonal for this sub-field (EE for E, BB for B).
+
+        Returns
+        -------
+        numpy.ndarray
+            Compression matrix, shape (n_field_pix, n_field_pix).
+        """
+        P_sub = matrix_mult(V_sub.T, V_sub)
+
+        if basis == "harmonic":
+            return P_sub
+        elif basis == "noise_weighted":
+            return matrix_mult(matrix_mult(P_sub, N_field_inv), P_sub)
+        elif basis == "total_covariance":
+            if C_ell_sub is None:
+                raise ValueError("C_ell required for 'total_covariance' basis")
+            V_scaled = V_sub * C_ell_sub[:, np.newaxis]
+            S_sub = matrix_mult(V_sub.T, V_scaled)
+            C_sub = N_field + S_sub
+            C_sub_inv = matrix_inverse_symm(C_sub, overwrite=True)
+            return matrix_mult(matrix_mult(P_sub, C_sub_inv), P_sub)
+        elif basis == "snr":
+            if C_ell_sub is None:
+                raise ValueError("C_ell required for 'snr' basis")
+            V_scaled = V_sub * C_ell_sub[:, np.newaxis]
+            S_sub = matrix_mult(V_sub.T, V_scaled)
+            eigvals_S, eigvecs_S = eigh(S_sub)
+            sqrt_eigvals = np.sqrt(np.maximum(eigvals_S, 1e-30))
+            Q_scaled = eigvecs_S * sqrt_eigvals
+            S_sqrt = matrix_mult(Q_scaled, eigvecs_S.T)
+            return matrix_mult(matrix_mult(S_sqrt, N_field_inv), S_sqrt)
+        else:
+            raise ValueError(f"Unknown compression basis '{basis}'")
+
+    def _eigendecompose_spin2_split(
+        self,
+        V_comp: np.ndarray,
+        N_field: np.ndarray,
+        N_field_inv: np.ndarray,
+        basis: str,
+        epsilon: tuple[float, float] | None,
+        mode_fraction: tuple[float, float] | None,
+        C_ell: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """
+        Eigendecompose a spin-2 field with separate E/B thresholds.
+
+        Parameters
+        ----------
+        V_comp : numpy.ndarray
+            Full V block for this spin-2 component, shape (2*n_base, 2*n_phys).
+        N_field : numpy.ndarray
+            Noise covariance for this field.
+        N_field_inv : numpy.ndarray
+            Noise inverse for this field.
+        basis : str
+            Compression basis.
+        epsilon : tuple of float or None
+            (E_epsilon, B_epsilon) thresholds.
+        mode_fraction : tuple of float or None
+            (E_fraction, B_fraction) mode fractions.
+        C_ell : numpy.ndarray or None
+            C_ell for basis that needs it. For spin-2, this should be a dict-like
+            or we extract EE/BB diagonals.
+
+        Returns
+        -------
+        U_combined : numpy.ndarray
+            Orthogonalized eigenvectors, shape (n_field_pix, n_kept).
+        """
+        n_base = self._n_modes_base
+
+        # Split V into E and B rows
+        V_E = V_comp[:n_base, :]  # E modes, all QU pixels
+        V_B = V_comp[n_base:, :]  # B modes, all QU pixels
+
+        # Build per-sub-field C_ell diagonals if needed
+        C_ell_E = None
+        C_ell_B = None
+        if C_ell is not None and isinstance(C_ell, dict):
+            # Extract EE and BB diagonals
+            C_ell_EE = C_ell.get("EE", None)
+            C_ell_BB = C_ell.get("BB", None)
+            if C_ell_EE is not None:
+                C_ell_E = self._build_lambda_diagonal(C_ell_EE)
+            if C_ell_BB is not None:
+                C_ell_B = self._build_lambda_diagonal(C_ell_BB)
+
+        # Build compression matrices for E and B separately
+        comp_E = self._build_compression_matrix_for_subfield(
+            V_E, N_field, N_field_inv, basis, C_ell_E
+        )
+        comp_B = self._build_compression_matrix_for_subfield(
+            V_B, N_field, N_field_inv, basis, C_ell_B
+        )
+
+        # Eigendecompose each with separate thresholds
+        eps_E = epsilon[0] if epsilon is not None else None
+        eps_B = epsilon[1] if epsilon is not None else None
+        mf_E = mode_fraction[0] if mode_fraction is not None else None
+        mf_B = mode_fraction[1] if mode_fraction is not None else None
+
+        U_E, _ = self._eigendecompose_single(comp_E, eps_E, mf_E)
+        U_B, _ = self._eigendecompose_single(comp_B, eps_B, mf_B)
+
+        # Combine and SVD-orthogonalize (E and B pixel patterns overlap on cut sky)
+        U_combined = np.hstack([U_E, U_B])
+        Q, S, _ = np.linalg.svd(U_combined, full_matrices=False)
+        # Keep columns where singular values are significant
+        keep = S > 1e-10 * S[0]
+        return Q[:, keep]
+
+    def _eigendecompose_field(
+        self,
+        comp_idx: int,
+        basis: str,
+        epsilon: float | tuple[float, float] | None,
+        mode_fraction: float | tuple[float, float] | None,
+        C_ell: np.ndarray | dict | None = None,
+    ) -> tuple[np.ndarray, np.ndarray | None]:
+        """
+        Eigendecompose a single field component.
+
+        Routes to E/B split for spin-2 with tuple thresholds, or standard
+        eigendecomposition otherwise.
+
+        Parameters
+        ----------
+        comp_idx : int
+            Component index.
+        basis : str
+            Compression basis.
+        epsilon : float, tuple, or None
+            Threshold(s).
+        mode_fraction : float, tuple, or None
+            Mode fraction(s).
+        C_ell : array or dict or None
+            Power spectrum for basis that needs it.
+
+        Returns
+        -------
+        U : numpy.ndarray
+            Eigenvectors for this field, shape (n_field_pix, n_kept).
+        eigenvalues : numpy.ndarray or None
+            Eigenvalues if available (None for E/B split).
+        """
+        spin = self._spins[comp_idx]
+        pix_start = self._pix_offsets[comp_idx]
+        pix_end = self._pix_offsets[comp_idx + 1]
+
+        # Extract field noise blocks
+        N_field = self._N[pix_start:pix_end, pix_start:pix_end]
+        N_field_inv = self.N_inv[pix_start:pix_end, pix_start:pix_end]
+
+        V_comp = self._V_blocks[comp_idx]
+
+        use_eb_split = spin == 2 and (
+            isinstance(epsilon, tuple) or isinstance(mode_fraction, tuple)
+        )
+
+        if use_eb_split:
+            U = self._eigendecompose_spin2_split(
+                V_comp,
+                N_field,
+                N_field_inv,
+                basis,
+                epsilon if isinstance(epsilon, tuple) else None,
+                mode_fraction if isinstance(mode_fraction, tuple) else None,
+                C_ell,
+            )
+            return U, None
+        else:
+            # Standard: build compression matrix for full field
+            eps_scalar = epsilon if not isinstance(epsilon, tuple) else epsilon[0]
+            mf_scalar = mode_fraction if not isinstance(mode_fraction, tuple) else None
+
+            # Build P_h for this field
+            P_sub = matrix_mult(V_comp.T, V_comp)
+
+            if basis == "harmonic":
+                comp_matrix = P_sub
+            elif basis == "noise_weighted":
+                comp_matrix = matrix_mult(matrix_mult(P_sub, N_field_inv), P_sub)
+            elif basis == "total_covariance":
+                if C_ell is None:
+                    raise ValueError("C_ell required for 'total_covariance' basis")
+                Lambda_diag = self._build_lambda_diagonal(
+                    C_ell if not isinstance(C_ell, dict) else next(iter(C_ell.values()))
+                )
+                V_scaled = V_comp * Lambda_diag[: V_comp.shape[0], np.newaxis]
+                S = matrix_mult(V_comp.T, V_scaled)
+                C_total = N_field + S
+                C_inv = matrix_inverse_symm(C_total, overwrite=True)
+                comp_matrix = matrix_mult(matrix_mult(P_sub, C_inv), P_sub)
+            elif basis == "snr":
+                if C_ell is None:
+                    raise ValueError("C_ell required for 'snr' basis")
+                Lambda_diag = self._build_lambda_diagonal(
+                    C_ell if not isinstance(C_ell, dict) else next(iter(C_ell.values()))
+                )
+                V_scaled = V_comp * Lambda_diag[: V_comp.shape[0], np.newaxis]
+                S = matrix_mult(V_comp.T, V_scaled)
+                eigvals_S, eigvecs_S = eigh(S)
+                sqrt_eigvals = np.sqrt(np.maximum(eigvals_S, 1e-30))
+                Q_scaled = eigvecs_S * sqrt_eigvals
+                S_sqrt = matrix_mult(Q_scaled, eigvecs_S.T)
+                comp_matrix = matrix_mult(matrix_mult(S_sqrt, N_field_inv), S_sqrt)
+            else:
+                raise ValueError(f"Unknown compression basis '{basis}'")
+
+            U, eigvals = self._eigendecompose_single(comp_matrix, eps_scalar, mf_scalar)
+            return U, eigvals
 
     @property
     def projector(self) -> np.ndarray:
@@ -172,7 +513,7 @@ class PixelProjectedCompression(BaseCompression):
         # P_h = V^T V (harmonic projector, n_pix × n_pix but rank n_modes)
         self._P_h = matrix_mult(self._V.T, self._V)
 
-        if self._epsilon or self._mode_fraction:
+        if self._epsilon is not None or self._mode_fraction is not None:
             self.apply_compression(
                 epsilon=self._epsilon,
                 mode_fraction=self._mode_fraction,
@@ -475,8 +816,8 @@ class PixelProjectedCompression(BaseCompression):
 
     def apply_compression(
         self,
-        epsilon: float | None = None,
-        mode_fraction: float | None = None,
+        epsilon: float | list[float | tuple[float, float]] | None = None,
+        mode_fraction: float | list[float | tuple[float, float]] | None = None,
         basis: str = "noise_weighted",
         C_ell: np.ndarray | None = None,
     ) -> None:
@@ -487,22 +828,21 @@ class PixelProjectedCompression(BaseCompression):
         the basis) and selects modes to keep based on either an eigenvalue
         threshold or a fraction of total modes.
 
+        Supports per-field thresholds and separate E/B thresholds for spin-2:
+        - float: broadcast to all fields
+        - list[float]: per-field threshold
+        - list[float | tuple[float, float]]: tuples give (E, B) split for spin-2
+
         Parameters
         ----------
-        epsilon : float, optional
+        epsilon : float, list, or None
             Eigenvalue threshold. Modes with eigenvalue > epsilon * max_eigenvalue
             are kept. Mutually exclusive with mode_fraction.
-        mode_fraction : float, optional
+        mode_fraction : float, list, or None
             Fraction of modes to keep (between 0 and 1). Keeps the top modes
             ordered by eigenvalue. Mutually exclusive with epsilon.
         basis : str, default "noise_weighted"
-            Compression basis determining which matrix to eigendecompose:
-
-            - "harmonic": P_h = V^T V (pure harmonic projector)
-            - "noise_weighted": P_h N^{-1} P_h (inverse noise weighting)
-            - "total_covariance": P_h C^{-1} P_h where C = N + S
-            - "snr": S^{1/2} N^{-1} S^{1/2} (signal-to-noise ratio)
-
+            Compression basis determining which matrix to eigendecompose.
         C_ell : numpy.ndarray, optional
             Power spectrum values for ell = 2 to lmax. Required for
             "total_covariance" and "snr" bases.
@@ -513,58 +853,86 @@ class PixelProjectedCompression(BaseCompression):
             If both epsilon and mode_fraction are provided.
             If mode_fraction is not in (0, 1].
             If C_ell is required but not provided.
-
-        Examples
-        --------
-        >>> ppc = PixelProjectedCompression(N, N_inv, theta, phi, lmax=100)
-        >>> ppc.setup()
-        >>> # Use eigenvalue spectrum plot to choose threshold
-        >>> fig, ax = ppc.plot_eigenvalue_spectrum(basis="snr", C_ell=C_ell)
-        >>> # Apply compression with chosen parameters
-        >>> ppc.apply_compression(epsilon=1e-4, basis="snr", C_ell=C_ell)
         """
-        # Validate mutual exclusivity
-        if epsilon is not None and mode_fraction is not None:
+        # Parse per-field thresholds
+        eps_list = self._parse_per_field_thresholds(epsilon, "epsilon")
+        mf_list = self._parse_per_field_thresholds(mode_fraction, "mode_fraction")
+
+        # Validate mutual exclusivity (check scalar level)
+        if eps_list is not None and mf_list is not None:
             raise ValueError(
                 "epsilon and mode_fraction are mutually exclusive. "
                 "Provide only one compression criterion."
             )
 
-        if mode_fraction is not None:
-            if not (0 < mode_fraction <= 1):
-                raise ValueError(f"mode_fraction must be in (0, 1], got {mode_fraction}")
+        if mf_list is not None:
+            # Use original error message format for scalar inputs
+            scalar_input = isinstance(mode_fraction, (int, float))
+            for i, mf in enumerate(mf_list):
+                if isinstance(mf, tuple):
+                    for v in mf:
+                        if not (0 < v <= 1):
+                            raise ValueError(
+                                f"mode_fraction[{i}] values must be in (0, 1], got {mf}"
+                            )
+                else:
+                    if not (0 < mf <= 1):
+                        if scalar_input:
+                            raise ValueError(f"mode_fraction must be in (0, 1], got {mf}")
+                        raise ValueError(
+                            f"mode_fraction[{i}] must be in (0, 1], got {mf}"
+                        )
 
         # Default epsilon if neither specified
-        if epsilon is None and mode_fraction is None:
-            epsilon = 1e-6
+        if eps_list is None and mf_list is None:
+            eps_list = [1e-6] * self.n_components
 
-        # Build compression matrix based on chosen basis
-        compression_matrix = self._build_compression_matrix(basis, C_ell)
+        # Determine if we need per-field decomposition
+        has_any_tuple = (
+            eps_list is not None and any(isinstance(e, tuple) for e in eps_list)
+        ) or (mf_list is not None and any(isinstance(m, tuple) for m in mf_list))
+        need_per_field = (
+            has_any_tuple or self.n_components > 1 or any(s == 2 for s in self._spins)
+        )
 
-        # Eigendecompose compression matrix
-        eigenvalues, eigenvectors = eigh(compression_matrix)
+        if need_per_field:
+            # Per-field decomposition path
+            U_blocks = []
+            for comp_idx in range(self.n_components):
+                eps_i = eps_list[comp_idx] if eps_list is not None else None
+                mf_i = mf_list[comp_idx] if mf_list is not None else None
 
-        # Sort in descending order
-        sort_idx = np.argsort(eigenvalues)[::-1]
-        eigenvalues = eigenvalues[sort_idx]
-        eigenvectors = eigenvectors[:, sort_idx]
+                U_i, _ = self._eigendecompose_field(comp_idx, basis, eps_i, mf_i, C_ell)
+                U_blocks.append(U_i)
 
-        # Determine which modes to keep
-        if mode_fraction is not None:
-            # Keep top mode_fraction of modes
-            n_significant = np.sum(eigenvalues > 1e-10 * np.max(np.abs(eigenvalues)))
-            n_to_keep = max(1, int(np.ceil(mode_fraction * n_significant)))
-            mask = np.zeros(len(eigenvalues), dtype=bool)
-            mask[:n_to_keep] = True
+            # Assemble block-diagonal U
+            total_kept = sum(U_i.shape[1] for U_i in U_blocks)
+            U_full = np.zeros((self.n_pix, total_kept), dtype=np.float64)
+            col = 0
+            for comp_idx, U_i in enumerate(U_blocks):
+                pix_start = self._pix_offsets[comp_idx]
+                pix_end = self._pix_offsets[comp_idx + 1]
+                n_kept_i = U_i.shape[1]
+                U_full[pix_start:pix_end, col : col + n_kept_i] = U_i
+                col += n_kept_i
+
+            self._eigenvectors = U_full
+            self._eigenvalues = None  # Not meaningful for combined E/B
+            self.n_kept = total_kept
         else:
-            # Use epsilon threshold (relative to max eigenvalue)
-            max_eigenvalue = np.max(np.abs(eigenvalues))
-            threshold = epsilon * max_eigenvalue
-            mask = np.abs(eigenvalues) > threshold
+            # Single-field spin-0 path (backward compatible)
+            eps_scalar = eps_list[0] if eps_list is not None else None
+            mf_scalar = mf_list[0] if mf_list is not None else None
 
-        self._eigenvalues = eigenvalues[mask]
-        self._eigenvectors = eigenvectors[:, mask]  # U: (n_pix, n_kept)
-        self.n_kept = np.sum(mask)
+            compression_matrix = self._build_compression_matrix(basis, C_ell)
+            eigenvectors, eigenvalues = self._eigendecompose_single(
+                compression_matrix, eps_scalar, mf_scalar
+            )
+
+            self._eigenvalues = eigenvalues
+            self._eigenvectors = eigenvectors
+            self.n_kept = eigenvectors.shape[1]
+
         self._compression_basis = basis
 
         # Precompute compression-dependent quantities that don't depend on C_ell
@@ -811,6 +1179,393 @@ class PixelProjectedCompression(BaseCompression):
         C_compressed_inv = self.get_projected_inverse(C_ell)
 
         return float(d_compressed.T @ C_compressed_inv @ d_compressed)
+
+    # === Spin-2 aware operations ===
+
+    def get_compressed_covariance_with_spins(
+        self, C_ell_dict: dict[tuple, np.ndarray]
+    ) -> np.ndarray:
+        """
+        Compute compressed covariance U^T C U with spin-2 support.
+
+        Uses full Lambda matrix (not diagonal) to handle E/B cross-correlations.
+
+        Parameters
+        ----------
+        C_ell_dict : dict
+            Dictionary with 3-tuple keys (comp_i, comp_j, mode).
+
+        Returns
+        -------
+        numpy.ndarray
+            Compressed covariance of shape (n_kept, n_kept).
+        """
+        if self._eigenvectors is None:
+            raise RuntimeError("Compression not applied. Call apply_compression() first.")
+
+        Lambda_full = self._build_lambda_full_with_spins(C_ell_dict)
+        # U^T V^T Λ V U = (VU)^T Λ (VU) — full matrix multiply (not diagonal)
+        VU_Lambda = matrix_mult(Lambda_full, self._VU)
+        U_S_U = matrix_mult(self._VU.T, VU_Lambda)
+        return self._U_N_U + U_S_U
+
+    def get_compressed_inverse_with_spins(
+        self, C_ell_dict: dict[tuple, np.ndarray]
+    ) -> np.ndarray:
+        """
+        Compute inverse of compressed covariance with spin-2 support.
+
+        Parameters
+        ----------
+        C_ell_dict : dict
+            Dictionary with 3-tuple keys (comp_i, comp_j, mode).
+
+        Returns
+        -------
+        numpy.ndarray
+            Inverse compressed covariance of shape (n_kept, n_kept).
+        """
+        C_compressed = self.get_compressed_covariance_with_spins(C_ell_dict)
+        return matrix_inverse_symm(C_compressed)
+
+    def get_compressed_covariance_multi(
+        self, C_ell_dict: dict[tuple[int, int], np.ndarray]
+    ) -> np.ndarray:
+        """
+        Compute compressed covariance U^T C U for multi-field (2-tuple keys).
+
+        Parameters
+        ----------
+        C_ell_dict : dict
+            Dictionary with 2-tuple keys (comp_i, comp_j).
+
+        Returns
+        -------
+        numpy.ndarray
+            Compressed covariance of shape (n_kept, n_kept).
+        """
+        if self._eigenvectors is None:
+            raise RuntimeError("Compression not applied. Call apply_compression() first.")
+
+        Lambda_full = self._build_lambda_full(C_ell_dict)
+        VU_Lambda = matrix_mult(Lambda_full, self._VU)
+        U_S_U = matrix_mult(self._VU.T, VU_Lambda)
+        return self._U_N_U + U_S_U
+
+    def get_compressed_inverse_multi(
+        self, C_ell_dict: dict[tuple[int, int], np.ndarray]
+    ) -> np.ndarray:
+        """
+        Compute inverse of compressed covariance for multi-field (2-tuple keys).
+
+        Parameters
+        ----------
+        C_ell_dict : dict
+            Dictionary with 2-tuple keys (comp_i, comp_j).
+
+        Returns
+        -------
+        numpy.ndarray
+            Inverse compressed covariance of shape (n_kept, n_kept).
+        """
+        C_compressed = self.get_compressed_covariance_multi(C_ell_dict)
+        return matrix_inverse_symm(C_compressed)
+
+    def get_derivative_matrix_with_spins(
+        self, ell: int, comp_i: int, comp_j: int, mode: int = 0
+    ) -> np.ndarray:
+        """
+        Get compressed derivative matrix for spectrum (comp_i, comp_j, mode).
+
+        Computes (VU)^T E_ell (VU) where E_ell is the full derivative matrix
+        in harmonic space with spin-2 E/B sub-block structure.
+
+        Parameters
+        ----------
+        ell : int
+            Multipole for which to compute the derivative.
+        comp_i : int
+            First component index.
+        comp_j : int
+            Second component index.
+        mode : int, default 0
+            Sub-spectrum mode index.
+
+        Returns
+        -------
+        numpy.ndarray
+            Derivative matrix of shape (n_kept, n_kept).
+        """
+        if self._eigenvectors is None:
+            raise RuntimeError("Compression not applied. Call apply_compression() first.")
+
+        spin_i = self._spins[comp_i]
+        spin_j = self._spins[comp_j]
+
+        # For pure spin-0, use efficient diagonal path
+        if spin_i == 0 and spin_j == 0 and self.n_components == 1:
+            return self.get_derivative_matrix(ell)
+
+        # Build full E matrix in harmonic space
+        E = np.zeros((self.n_modes_total, self.n_modes_total), dtype=np.float64)
+        chngconv = (2 * ell + 1) / (4 * np.pi)
+        local_mode_indices = self._ell_to_modes_local[ell]
+        n_base = self._n_modes_base
+
+        # Spin-dependent normalization factors matching pixel.py convention
+        factor2 = 1.0 / ((ell + 2) * (ell + 1) * ell * (ell - 1))
+        factor = np.sqrt(factor2)
+
+        if spin_i == 0 and spin_j == 0:
+            # Scalar x Scalar auto/cross
+            row_offset = self._mode_offsets[comp_i]
+            col_offset = self._mode_offsets[comp_j]
+            for idx in local_mode_indices:
+                E[row_offset + idx, col_offset + idx] = chngconv
+            if comp_i != comp_j:
+                for idx in local_mode_indices:
+                    E[col_offset + idx, row_offset + idx] = chngconv
+
+        elif spin_i == 2 and spin_j == 2:
+            deriv_val = chngconv * factor2
+            row_start = self._mode_offsets[comp_i]
+            col_start = self._mode_offsets[comp_j]
+
+            if mode == 0:  # EE
+                for idx in local_mode_indices:
+                    E[row_start + idx, col_start + idx] = deriv_val
+            elif mode == 1:  # BB
+                for idx in local_mode_indices:
+                    E[row_start + n_base + idx, col_start + n_base + idx] = deriv_val
+            elif mode == 2:  # EB
+                for idx in local_mode_indices:
+                    E[row_start + idx, col_start + n_base + idx] = deriv_val
+                    E[col_start + n_base + idx, row_start + idx] = deriv_val
+
+            if comp_i != comp_j:
+                if mode == 0:
+                    for idx in local_mode_indices:
+                        E[col_start + idx, row_start + idx] = deriv_val
+                elif mode == 1:
+                    for idx in local_mode_indices:
+                        E[col_start + n_base + idx, row_start + n_base + idx] = deriv_val
+                elif mode == 2:
+                    for idx in local_mode_indices:
+                        E[col_start + idx, row_start + n_base + idx] = deriv_val
+                        E[row_start + n_base + idx, col_start + idx] = deriv_val
+
+        elif spin_i == 0 and spin_j == 2:
+            # Negative sign from spin-2 convention: E = -(_2Y + _{-2}Y)/2
+            deriv_val = -chngconv * factor
+            row_start = self._mode_offsets[comp_i]
+            col_start = self._mode_offsets[comp_j]
+            col_sub = col_start + mode * n_base
+            for idx in local_mode_indices:
+                E[row_start + idx, col_sub + idx] = deriv_val
+                E[col_sub + idx, row_start + idx] = deriv_val
+
+        elif spin_i == 2 and spin_j == 0:
+            # Negative sign from spin-2 convention: E = -(_2Y + _{-2}Y)/2
+            deriv_val = -chngconv * factor
+            row_start = self._mode_offsets[comp_i]
+            col_start = self._mode_offsets[comp_j]
+            row_sub = row_start + mode * n_base
+            for idx in local_mode_indices:
+                E[row_sub + idx, col_start + idx] = deriv_val
+                E[col_start + idx, row_sub + idx] = deriv_val
+
+        # Project to compressed space: (VU)^T @ E @ (VU)
+        E_VU = matrix_mult(E, self._VU)
+        return matrix_mult(self._VU.T, E_VU)
+
+    def compute_fisher_matrix_with_spins(
+        self,
+        C_ell_dict: dict[tuple, np.ndarray],
+        spectra_list: list[tuple[int, int, int]],
+        ell_min: int = 2,
+        ell_max: int | None = None,
+    ) -> np.ndarray:
+        """
+        Compute Fisher matrix for multiple spectra with spin-2 support.
+
+        Parameters
+        ----------
+        C_ell_dict : dict
+            Dictionary with 3-tuple keys (comp_i, comp_j, mode).
+        spectra_list : list of 3-tuple
+            List of (comp_i, comp_j, mode) specifying which spectra to include.
+        ell_min : int, default 2
+            Minimum multipole.
+        ell_max : int or None, optional
+            Maximum multipole. If None, uses self.lmax.
+
+        Returns
+        -------
+        numpy.ndarray
+            Fisher matrix of shape (n_spectra * n_ell, n_spectra * n_ell).
+        """
+        if ell_max is None:
+            ell_max = self.lmax
+
+        n_ell = ell_max - ell_min + 1
+        n_spec = len(spectra_list)
+        fisher = np.zeros((n_spec * n_ell, n_spec * n_ell))
+
+        # Precompute C_c^{-1} ONCE
+        C_c_inv = self.get_compressed_inverse_with_spins(C_ell_dict)
+
+        # Precompute C_c^{-1} @ dC for all (spectrum, ell) pairs
+        Cinv_dC = {}
+        for spec_idx, (comp_i, comp_j, mode) in enumerate(spectra_list):
+            for ell in range(ell_min, ell_max + 1):
+                dC = self.get_derivative_matrix_with_spins(ell, comp_i, comp_j, mode)
+                Cinv_dC[(spec_idx, ell)] = matrix_mult(C_c_inv, dC)
+
+        # Compute Fisher elements
+        for spec_a in range(n_spec):
+            for ell_a in range(ell_min, ell_max + 1):
+                idx_a = spec_a * n_ell + (ell_a - ell_min)
+
+                for spec_b in range(spec_a, n_spec):
+                    ell_b_start = ell_a if spec_a == spec_b else ell_min
+                    for ell_b in range(ell_b_start, ell_max + 1):
+                        idx_b = spec_b * n_ell + (ell_b - ell_min)
+
+                        fisher_val = 0.5 * matrix_trace(
+                            Cinv_dC[(spec_a, ell_a)],
+                            Cinv_dC[(spec_b, ell_b)],
+                        )
+
+                        fisher[idx_a, idx_b] = fisher_val
+                        if idx_a != idx_b:
+                            fisher[idx_b, idx_a] = fisher_val
+
+        return fisher
+
+    def get_weighted_compressed_data_with_spins(
+        self, data: np.ndarray, C_ell_dict: dict[tuple, np.ndarray]
+    ) -> np.ndarray:
+        """
+        Compute C_c^{-1} @ U^T @ d with spin-2 support.
+
+        Parameters
+        ----------
+        data : numpy.ndarray
+            Pixel-space data vector of shape (n_pix_total,) or (n_pix_total, n_sims).
+        C_ell_dict : dict
+            Dictionary with 3-tuple keys (comp_i, comp_j, mode).
+
+        Returns
+        -------
+        numpy.ndarray
+            Weighted compressed data of shape (n_kept,) or (n_kept, n_sims).
+        """
+        if self._eigenvectors is None:
+            raise RuntimeError("Compression not applied. Call apply_compression() first.")
+
+        d_compressed = self._eigenvectors.T @ data
+        C_c_inv = self.get_compressed_inverse_with_spins(C_ell_dict)
+        return matrix_mult(C_c_inv, d_compressed)
+
+    def prepare_smw_with_spins(
+        self, C_ell_dict: dict[tuple, np.ndarray]
+    ) -> tuple[np.ndarray, None, float]:
+        """
+        Precompute compressed inverse and logdet for reuse across simulations.
+
+        For pixel_projected compression, this returns (C_c_inv, None, logdet)
+        as the compressed-space equivalent of HarmonicCompression's SMW
+        preparation.
+
+        Parameters
+        ----------
+        C_ell_dict : dict
+            Dictionary with 3-tuple keys (comp_i, comp_j, mode).
+
+        Returns
+        -------
+        C_c_inv : numpy.ndarray
+            Inverse of compressed covariance.
+        None
+            Reserved (unused, kept for API symmetry with HarmonicCompression).
+        logdet : float
+            Log determinant of compressed covariance.
+        """
+        if self._eigenvectors is None:
+            raise RuntimeError("Compression not applied. Call apply_compression() first.")
+
+        from ..basics import matrix_slogdet_symm
+
+        C_c = self.get_compressed_covariance_with_spins(C_ell_dict)
+        C_c_inv = matrix_inverse_symm(C_c)
+        _, logdet = matrix_slogdet_symm(C_c)
+        return C_c_inv, None, logdet
+
+    def quadratic_form_from_prepared(
+        self, data: np.ndarray, C_c_inv: np.ndarray
+    ) -> float:
+        """
+        Compute d^T C^{-1} d using precomputed compressed inverse.
+
+        For pixel_projected, C_c_inv is the inverse of compressed covariance
+        (from prepare_smw_with_spins). For harmonic, the same argument position
+        receives K_chol. Polymorphism handles both cases.
+
+        Parameters
+        ----------
+        data : numpy.ndarray
+            Pixel-space data vector of length n_pix_total.
+        C_c_inv : numpy.ndarray
+            Inverse of compressed covariance from prepare_smw_with_spins.
+
+        Returns
+        -------
+        float
+            Approximate quadratic form value.
+        """
+        if self._eigenvectors is None:
+            raise RuntimeError("Compression not applied. Call apply_compression() first.")
+
+        d_c = self._eigenvectors.T @ data
+        return float(d_c.T @ C_c_inv @ d_c)
+
+    def compute_quadratic_form_with_spins(
+        self, data: np.ndarray, C_ell_dict: dict[tuple, np.ndarray]
+    ) -> float:
+        """
+        Compute d^T C^{-1} d with spin-2 support in compressed space.
+
+        Parameters
+        ----------
+        data : numpy.ndarray
+            Pixel-space data vector of length n_pix_total.
+        C_ell_dict : dict
+            Dictionary with 3-tuple keys (comp_i, comp_j, mode).
+
+        Returns
+        -------
+        float
+            Approximate quadratic form value.
+        """
+        C_c_inv, _, _ = self.prepare_smw_with_spins(C_ell_dict)
+        return self.quadratic_form_from_prepared(data, C_c_inv)
+
+    def get_logdet_with_spins(self, C_ell_dict: dict[tuple, np.ndarray]) -> float:
+        """
+        Compute log determinant of compressed covariance with spin-2 support.
+
+        Parameters
+        ----------
+        C_ell_dict : dict
+            Dictionary with 3-tuple keys (comp_i, comp_j, mode).
+
+        Returns
+        -------
+        float
+            Log determinant of compressed covariance.
+        """
+        _, _, logdet = self.prepare_smw_with_spins(C_ell_dict)
+        return logdet
 
     @property
     def compression_ratio(self) -> float:
