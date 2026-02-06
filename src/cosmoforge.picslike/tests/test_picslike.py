@@ -59,7 +59,6 @@ class TestSetSimulationIndex:
         picslike.setup_geometry()
         picslike.setup_maps()
 
-        # Should work for valid index
         picslike.set_simulation_index(5)
         assert picslike.simulation_index == 5
 
@@ -70,7 +69,6 @@ class TestSetSimulationIndex:
         picslike.setup_geometry()
         picslike.setup_maps()
 
-        # Should raise ValueError for invalid index
         with pytest.raises(ValueError, match="out of range"):
             picslike.set_simulation_index(9999)
 
@@ -101,7 +99,6 @@ class TestSetupParameterGrid:
         picslike = PICSLike(params_file=fast_config_path)
         picslike.setup_parameter_grid()
 
-        # Check that parameter names are available
         assert hasattr(picslike, "parameter_names")
 
     def test_parameter_ranges_set(self, fast_config_path):
@@ -144,7 +141,6 @@ class TestComputeSignalMatrix:
         picslike.setup_geometry()
         picslike.setup_parameter_grid()
 
-        # Without covariance matrices, should raise AttributeError or ValueError
         param_point = list(picslike.parameter_grid.grid_points)[0]
         with pytest.raises((ValueError, AttributeError)):
             picslike.compute_signal_matrix(param_point)
@@ -162,10 +158,7 @@ class TestComputeSignalMatrix:
         param_point = list(picslike.parameter_grid.grid_points)[0]
         signal_matrix = picslike.compute_signal_matrix(param_point)
 
-        # Signal matrix should be square
         assert signal_matrix.shape[0] == signal_matrix.shape[1]
-
-        # Should match noise covariance shape
         assert signal_matrix.shape == picslike.NCov1.shape
 
 
@@ -260,7 +253,6 @@ class TestComputeMeanLikelihoodResult:
 
         mean_result = picslike._compute_mean_likelihood_result([sample_likelihood_result])
 
-        # Mean of single result should equal the result
         np.testing.assert_array_equal(
             mean_result.chi_squared_values,
             sample_likelihood_result.chi_squared_values,
@@ -276,7 +268,6 @@ class TestComputeMeanLikelihoodResult:
 
         n_points = sample_parameter_grid.get_total_points()
 
-        # Create two results with different chi-squared
         chi2_1 = np.ones(n_points) * 100
         chi2_2 = np.ones(n_points) * 200
 
@@ -293,7 +284,6 @@ class TestComputeMeanLikelihoodResult:
 
         mean_result = picslike._compute_mean_likelihood_result([result1, result2])
 
-        # Mean should be 150
         expected_mean = np.ones(n_points) * 150
         np.testing.assert_array_almost_equal(
             mean_result.chi_squared_values,
@@ -302,13 +292,16 @@ class TestComputeMeanLikelihoodResult:
 
 
 class TestIntegration:
-    """Integration tests for full pipeline (requires test data).
+    """Integration tests for full pipeline.
 
     These tests use fast_config with a 2x2 grid and 10 simulations for speed.
+    Tests are ordered to build on each other:
+    - test_full_pipeline covers setup + single-point + full compute + getters + save
+    - test_run_method tests the all-in-one run() method
     """
 
-    def test_full_pipeline_setup(self, fast_config_path):
-        """Test full pipeline setup without compute."""
+    def test_full_pipeline(self, fast_config_path, temp_output_dir):
+        """Test full pipeline: setup, single-point, compute, getters, save."""
         picslike = PICSLike(params_file=fast_config_path)
 
         # Setup pipeline
@@ -326,121 +319,61 @@ class TestIntegration:
         assert picslike.NCov1 is not None
         assert picslike.collection is not None
 
-    def test_single_point_likelihood(self, fast_config_path):
-        """Test likelihood computation at a single parameter point."""
-        picslike = PICSLike(params_file=fast_config_path)
-
-        # Setup pipeline
-        picslike.setup_parameter_grid()
-        picslike.setup_fields()
-        picslike.setup_geometry()
-        picslike.setup_covariance_matrices()
-        picslike.setup_cls()
-        picslike.setup_beams()
-        picslike.setup_maps()
-
-        # Compute likelihood at first point
+        # Single-point likelihood
         param_point = list(picslike.parameter_grid.grid_points)[0]
         chi2, log_like = picslike._compute_likelihood_point(param_point)
 
-        # Should return arrays (one per simulation)
         assert len(chi2) == picslike.params.nsims
         assert len(log_like) == picslike.params.nsims
-
-        # Chi-squared should be positive
         assert np.all(chi2 > 0)
-
-        # Log-likelihood formula: log_like = 0.5 * (logdet - chi2)
-        # The sign depends on logdet, so we just verify the formula relationship
-        # by checking that higher chi2 gives lower log_likelihood (monotonic relationship)
-        # and that the values are finite
         assert np.all(np.isfinite(log_like))
 
-        # Verify the relationship: differences in log_like should
-        # be -0.5 * differences in chi2
-        # (since logdet is the same for all simulations at the same parameter point)
+        # Verify log-likelihood formula consistency across simulations
         if len(chi2) > 1:
             delta_chi2 = chi2[1:] - chi2[:-1]
             delta_log_like = log_like[1:] - log_like[:-1]
             np.testing.assert_array_almost_equal(delta_log_like, -0.5 * delta_chi2)
 
-    def test_compute_and_getters(self, fast_config_path):
-        """Test full compute method and getter methods."""
-        picslike = PICSLike(params_file=fast_config_path)
-
-        # Setup pipeline
-        picslike.setup_parameter_grid()
-        picslike.setup_fields()
-        picslike.setup_geometry()
-        picslike.setup_covariance_matrices()
-        picslike.setup_cls()
-        picslike.setup_beams()
-        picslike.setup_maps()
-
-        # Run compute
+        # Full compute
         picslike.compute()
 
-        # Test that likelihood_result is set
         assert picslike.likelihood_result is not None
 
-        # Test getters after computation
-        chi2 = picslike.get_chi_squared()
-        assert chi2 is not None
-        assert len(chi2) == picslike.parameter_grid.get_total_points()
+        # Getters after computation
+        chi2_all = picslike.get_chi_squared()
+        assert chi2_all is not None
+        assert len(chi2_all) == picslike.parameter_grid.get_total_points()
 
-        log_like = picslike.get_log_likelihood()
-        assert log_like is not None
-        assert len(log_like) == picslike.parameter_grid.get_total_points()
+        log_like_all = picslike.get_log_likelihood()
+        assert log_like_all is not None
+        assert len(log_like_all) == picslike.parameter_grid.get_total_points()
 
         best_fit = picslike.get_best_fit()
         assert isinstance(best_fit, dict)
         assert len(best_fit) > 0
 
-        # Test simulation results getter
         sim_results = picslike.get_simulation_results()
         assert sim_results is not None
         assert len(sim_results) == picslike.params.nsims
 
-        # Test mean likelihood result getter
         mean_result = picslike.get_mean_likelihood_result()
         assert mean_result is not None
         assert mean_result == picslike.likelihood_result
-
-    def test_save_results(self, fast_config_path, temp_output_dir):
-        """Test saving likelihood results to file."""
-        picslike = PICSLike(params_file=fast_config_path)
-
-        # Setup and run pipeline
-        picslike.setup_parameter_grid()
-        picslike.setup_fields()
-        picslike.setup_geometry()
-        picslike.setup_covariance_matrices()
-        picslike.setup_cls()
-        picslike.setup_beams()
-        picslike.setup_maps()
-        picslike.compute()
 
         # Save results
         output_path = temp_output_dir / "test_results.npz"
         picslike.save_results(str(output_path))
 
-        # Verify main file was created
         assert output_path.exists()
-
-        # Verify simulation result files were created
-        n_sims = picslike.params.nsims
-        for i in range(n_sims):
+        for i in range(picslike.params.nsims):
             sim_path = temp_output_dir / f"test_results_sim_{i:02d}.npz"
             assert sim_path.exists()
 
     def test_run_method(self, fast_config_path):
         """Test the full run() pipeline method."""
         picslike = PICSLike(params_file=fast_config_path)
-
-        # Run the full pipeline
         picslike.run()
 
-        # Verify results are computed
         assert picslike.likelihood_result is not None
         assert picslike.simulation_results is not None
         assert picslike.parameter_grid is not None
@@ -454,9 +387,7 @@ class TestMPIDistribution:
         picslike = PICSLike(params_file=fast_config_path)
         picslike.setup_parameter_grid()
 
-        # In single process mode, rank=0, size=1
         points = picslike.parameter_grid.get_points_for_process(0, 1)
-
         assert len(points) == picslike.parameter_grid.get_total_points()
 
     def test_points_distribution_multiple_processes_simulation(self, fast_config_path):
@@ -464,7 +395,6 @@ class TestMPIDistribution:
         picslike = PICSLike(params_file=fast_config_path)
         picslike.setup_parameter_grid()
 
-        # Simulate 4 processes
         size = 4
         all_points = []
 
@@ -472,66 +402,110 @@ class TestMPIDistribution:
             points = picslike.parameter_grid.get_points_for_process(rank, size)
             all_points.extend(points)
 
-        # All points should be covered exactly once
         total_points = picslike.parameter_grid.get_total_points()
         assert len(all_points) == total_points
-        assert len(set(all_points)) == total_points  # No duplicates
+        assert len(set(all_points)) == total_points
 
 
 class TestCompressedLikelihood:
-    """Test suite for compressed likelihood computation using unified API."""
+    """Test suite for compressed likelihood computation."""
 
-    def test_compressed_likelihood_rejects_multi_field(self, fast_config_path):
-        """Test that compression raises error for multi-field (TQU) configs.
+    def test_compressed_likelihood_consistency_tqu(self, fast_config_path):
+        """Test compressed vs traditional for TQU (multi-field) analysis.
 
-        Compression currently only supports single-field analysis.
-        Multi-field configs (like TQU with spins [0, 2]) should raise ValueError.
+        Validates the spin-2 compressed path by comparing against
+        the full pixel-space computation. Also verifies that compressed
+        pipeline runs without errors for multi-field configs.
         """
-        picslike = PICSLike(
+        # Run without compression (traditional pixel-space)
+        picslike_standard = PICSLike(params_file=fast_config_path)
+        picslike_standard.setup_parameter_grid()
+        picslike_standard.setup_fields()
+        picslike_standard.setup_geometry()
+        picslike_standard.setup_covariance_matrices()
+        picslike_standard.setup_cls(lmax=picslike_standard.lmax_signal)
+        picslike_standard.setup_beams(lmax=picslike_standard.lmax_signal)
+        picslike_standard.setup_maps()
+
+        # Run with compression (spin-2 aware SMW path)
+        picslike_compressed = PICSLike(
             params_file=fast_config_path,
             compression={"method": "harmonic"},
         )
+        picslike_compressed.setup_parameter_grid()
+        picslike_compressed.setup_fields()
+        picslike_compressed.setup_geometry()
+        picslike_compressed.setup_covariance_matrices()
+        picslike_compressed.setup_cls(lmax=picslike_compressed.lmax_signal)
+        picslike_compressed.setup_beams(lmax=picslike_compressed.lmax_signal)
+        picslike_compressed.setup_compression(method="harmonic")
+        picslike_compressed.setup_maps()
 
-        # Setup pipeline
-        picslike.setup_parameter_grid()
-        picslike.setup_fields()
-        picslike.setup_geometry()
-        picslike.setup_covariance_matrices()
-        picslike.setup_cls()
-        picslike.setup_beams()
-        picslike.setup_maps()
+        # Verify compression was set up
+        assert picslike_compressed.compression_manager is not None
 
-        # Verify compression is configured
-        assert picslike._compression_config is not None
+        # Compute likelihood at a single point for comparison
+        param_point = list(picslike_standard.parameter_grid.grid_points)[0]
 
-        # run() should raise ValueError because multi-field compression not supported
-        with pytest.raises(ValueError, match="single-field analysis"):
-            picslike.run()
+        chi2_standard, log_like_standard = picslike_standard._compute_likelihood_point(
+            param_point
+        )
+        chi2_compressed, log_like_compressed = (
+            picslike_compressed._compute_likelihood_point(param_point)
+        )
 
+        # Extract first simulation's values
+        chi2_std = (
+            chi2_standard[0] if hasattr(chi2_standard, "__len__") else chi2_standard
+        )
+        chi2_comp = (
+            chi2_compressed[0] if hasattr(chi2_compressed, "__len__") else chi2_compressed
+        )
+        log_std = (
+            log_like_standard[0]
+            if hasattr(log_like_standard, "__len__")
+            else log_like_standard
+        )
+        log_comp = (
+            log_like_compressed[0]
+            if hasattr(log_like_compressed, "__len__")
+            else log_like_compressed
+        )
+
+        # Chi-squared and log-likelihood should match
+        rel_diff_chi2 = abs(chi2_comp - chi2_std) / abs(chi2_std)
+        assert rel_diff_chi2 < 1e-7, (
+            f"TQU chi-squared relative difference too large: {rel_diff_chi2:.2e}. "
+            f"Standard={chi2_std:.6f}, Compressed={chi2_comp:.6f}"
+        )
+
+        rel_diff_log = abs(log_comp - log_std) / abs(log_std)
+        assert rel_diff_log < 1e-7, (
+            f"TQU log-likelihood relative difference too large: {rel_diff_log:.2e}. "
+            f"Standard={log_std:.6f}, Compressed={log_comp:.6f}"
+        )
+
+    @pytest.mark.slow
     def test_compressed_likelihood_consistency_single_field(self, local_path):
-        """Test compressed vs traditional for B-only (single-field) analysis.
+        """Test compressed vs traditional for B-only (single-field, nside=8).
 
         This tests the lswitch optimization which computes S_fixed for multipoles
         above lswitch_high and uses SMW formula for the varying multipoles.
-        Results should match at machine precision.
         """
         import tempfile
 
         import yaml
 
-        # Load original config
         config_path = os.path.join(
             local_path, "tests/data/nside8/B/fortran_reference/config.yaml"
         )
         with open(config_path) as f:
             config = yaml.safe_load(f)
 
-        # Resolve all relative paths to absolute
         for key, value in config.items():
             if isinstance(value, str) and value.startswith("../tests/"):
                 config[key] = os.path.join(local_path, value.replace("../", ""))
 
-        # Write temporary config with resolved paths
         temp_config = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
         yaml.dump(config, temp_config, default_flow_style=False)
         temp_config.close()
@@ -561,14 +535,10 @@ class TestCompressedLikelihood:
         picslike_compressed.setup_compression(method="harmonic")
         picslike_compressed.setup_maps()
 
-        # Verify compression was set up
         assert picslike_compressed.compression_manager is not None
         assert picslike_compressed.compression_manager._impl._use_switch_optimization
 
-        # Compute likelihood at a single point for comparison
-        param_point = list(picslike_standard.parameter_grid.grid_points)[
-            1
-        ]  # Middle point
+        param_point = list(picslike_standard.parameter_grid.grid_points)[1]
 
         chi2_standard, log_like_standard = picslike_standard._compute_likelihood_point(
             param_point
@@ -577,7 +547,6 @@ class TestCompressedLikelihood:
             picslike_compressed._compute_likelihood_point(param_point)
         )
 
-        # Extract first simulation's values (methods return arrays)
         chi2_std = (
             chi2_standard[0] if hasattr(chi2_standard, "__len__") else chi2_standard
         )
@@ -595,14 +564,12 @@ class TestCompressedLikelihood:
             else log_like_compressed
         )
 
-        # Chi-squared values should match at machine precision
         rel_diff_chi2 = abs(chi2_comp - chi2_std) / abs(chi2_std)
         assert rel_diff_chi2 < 1e-10, (
             f"Chi-squared relative difference too large: {rel_diff_chi2:.2e}. "
             f"Standard={chi2_std:.6f}, Compressed={chi2_comp:.6f}"
         )
 
-        # Log-likelihood should also match at machine precision
         rel_diff_log = abs(log_comp - log_std) / abs(log_std)
         assert rel_diff_log < 1e-10, (
             f"Log-likelihood relative difference too large: {rel_diff_log:.2e}. "
