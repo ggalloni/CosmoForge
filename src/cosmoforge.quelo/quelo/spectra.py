@@ -582,6 +582,106 @@ class Spectra(Core):
         else:
             self._compute_qml_spectra_traditional()
 
+    def _build_multi_spectrum_inputs_spectra(
+        self,
+    ) -> tuple[dict[tuple, np.ndarray], list[tuple], bool]:
+        """
+        Build C_ell_dict and spectra_list for multi-spectrum compressed QML.
+
+        When spin-2 fields are present, uses 3-tuple keys (field_i, field_j, mode)
+        for the C_ell_dict and spectra_list. Otherwise uses 2-tuple keys for
+        backward compatibility.
+
+        Returns
+        -------
+        C_ell_dict : dict
+            Dictionary mapping field pairs to C_ell arrays.
+        spectra_list : list
+            List of tuples in same order as spectra_labels.
+        has_spin2 : bool
+            Whether any field has spin-2 (determines which API to call).
+        """
+        has_spin2 = any(f.spin == 2 for f in self.collection.fields)
+        sm = self.collection.spectra_manager
+
+        C_ell_dict = {}
+        spectra_list = []
+
+        for fi, fj, mode in sm._spectra_map:
+            cls = sm.get_cls(fi, fj, mode)
+            if has_spin2:
+                C_ell_dict[(fi, fj, mode)] = cls
+                spectra_list.append((fi, fj, mode))
+            else:
+                C_ell_dict[(fi, fj)] = cls
+                if fi != fj:
+                    C_ell_dict[(fj, fi)] = cls
+                spectra_list.append((fi, fj))
+
+        return C_ell_dict, spectra_list, has_spin2
+
+    def _compute_noise_cov_diag_compressed(
+        self, cm, C_ell, C_ell_dict, is_multi_field, has_spin2=False
+    ) -> np.ndarray:
+        """
+        Compute diagonal of noise covariance in compressed space.
+
+        For harmonic compression:
+            Cov(w|noise) = V @ C^{-1} @ N @ C^{-1} @ V^T
+
+        Returns the diagonal for efficient trace computation.
+        """
+        from scipy.linalg import cho_solve, cholesky
+
+        impl = cm._impl
+
+        if is_multi_field:
+            # Build full Lambda and its inverse
+            if has_spin2:
+                Lambda_full = impl._build_lambda_full_with_spins(C_ell_dict)
+            else:
+                Lambda_full = impl._build_lambda_full(C_ell_dict)
+            Lambda_reg = Lambda_full + np.eye(Lambda_full.shape[0]) * 1e-20
+            try:
+                Lambda_inv = np.linalg.inv(Lambda_reg)
+            except np.linalg.LinAlgError:
+                Lambda_inv = np.linalg.pinv(Lambda_full)
+
+            M = impl._V_Ninv_VT
+            K = Lambda_inv + M
+            K_inv = np.linalg.inv(K)
+
+            # V_Cinv = (I - M @ K^{-1}) @ V_Ninv
+            n_modes = impl.n_modes_total
+            I_minus_MKinv = np.eye(n_modes) - M @ K_inv
+            V_Cinv = I_minus_MKinv @ impl._V_N_inv
+        else:
+            Lambda_diag = impl._build_lambda_diagonal(C_ell)
+            Lambda_inv_diag = np.where(Lambda_diag > 1e-30, 1.0 / Lambda_diag, 1e30)
+            M = impl._V_Ninv_VT
+            K = np.diag(Lambda_inv_diag) + M
+
+            try:
+                L = cholesky(K, lower=True)
+                K_inv = cho_solve((L, True), np.eye(K.shape[0]))
+            except np.linalg.LinAlgError:
+                K_inv = np.linalg.inv(K)
+
+            # V_Cinv = (I - M @ K^{-1}) @ V_Ninv
+            I_minus_MKinv = np.eye(cm.n_modes) - M @ K_inv
+            V_Cinv = I_minus_MKinv @ impl._V_N_inv
+
+        # For diagonal N, compute noise_cov_w_diag
+        if hasattr(impl, "_N_inv_original"):
+            noise_var = 1.0 / np.diag(impl._N_inv_original)
+        else:
+            noise_var = 1.0 / np.diag(impl.N_inv)
+        sqrt_noise = np.sqrt(noise_var)
+        W = V_Cinv * sqrt_noise[np.newaxis, :]
+
+        # Diagonal of Cov(w|noise) = sum over columns of W^2
+        return np.sum(W**2, axis=1)
+
     def _compute_qml_spectra_compressed(self):
         """
         Compute QML spectra using compressed representation.
@@ -603,104 +703,134 @@ class Spectra(Core):
             q_l = (1/2) * d^T @ C^{-1} @ V^T @ E_l @ V @ C^{-1} @ d
                 = (1/2) * (V C^{-1} d)^T @ E_l @ (V C^{-1} d)
                 = (1/2) * w^T @ E_l @ w
+
+        Supports both single-field and multi-field compression.
         """
         if self.rank == 0:
             self.log("Starting QML computation (compressed)", level=2)
 
         start_time = time.time()
 
-        nell = self.params.nspectra * (self.params.lmax - 1)
+        n_ell = self.params.lmax - 1
+        nell = self.params.nspectra * n_ell
         cm = self.compression_manager
+        n_sims = self.params.nsims
+        n_compressed = cm.n_kept
 
-        # Get C_ell for covariance computation
-        C_ell = self.collection.spectra_manager.get_cls(0, 0, 0)
+        # Check if multi-field or spin-2 (spin-2 has multiple spectra EE/BB/EB
+        # even for a single field, requiring the multi-spectrum path)
+        has_spin2 = any(f.spin == 2 for f in self.collection.fields)
+        is_multi_field = cm.n_components > 1 or has_spin2
+
+        # Build C_ell or C_ell_dict depending on multi-field
+        if is_multi_field:
+            C_ell_dict, spectra_list, has_spin2 = (
+                self._build_multi_spectrum_inputs_spectra()
+            )
+            C_ell = None  # Not used for multi-field
+        else:
+            C_ell = self.collection.spectra_manager.get_cls(0, 0, 0)
+            C_ell_dict = None
+            spectra_list = [(0, 0)]
+            has_spin2 = False
 
         # Compute weighted compressed data for all simulations
         # w = V @ C^{-1} @ d (using SMW formula internally)
-        n_sims = self.params.nsims
-        n_compressed = cm.n_kept  # n_kept is the output dimension for both methods
-
-        # For both harmonic and pixel_projected, use get_weighted_compressed_data:
-        # - Harmonic: w = V @ C^{-1} @ d (using SMW formula)
-        # - Pixel_projected: w = C_c^{-1} @ U^T @ d
-        #
-        # For pixel_projected, precompute C_c_inv once to avoid redundant computation
-        C_c_inv = None
-        if cm.method == "pixel_projected":
-            C_c_inv = cm.get_compressed_inverse(C_ell)
-
+        # For multi-field, precompute K_inv once to avoid repeated matrix inversions
         maps1_weighted = np.zeros((n_compressed, n_sims), dtype=np.float64)
-        for isim in range(n_sims):
-            maps1_weighted[:, isim] = cm.get_weighted_compressed_data(
-                self.maps1[:, isim], C_ell, C_c_inv=C_c_inv
-            )
+        if is_multi_field:
+            if cm.method == "harmonic":
+                # Precompute SMW matrices once
+                impl = cm._impl
+                if has_spin2:
+                    Lambda_full = impl._build_lambda_full_with_spins(C_ell_dict)
+                else:
+                    Lambda_full = impl._build_lambda_full(C_ell_dict)
+                Lambda_reg = Lambda_full + np.eye(Lambda_full.shape[0]) * 1e-20
+                Lambda_inv = np.linalg.inv(Lambda_reg)
+                K = Lambda_inv + impl._V_Ninv_VT
+                K_inv = np.linalg.inv(K)
+                M_K_inv = impl._V_Ninv_VT @ K_inv
+
+                # Compute weighted data for all sims using precomputed matrices
+                # w = y - M @ K^{-1} @ y where y = V @ N^{-1} @ d
+                Y1 = impl._V_N_inv @ self.maps1  # (n_modes, n_sims)
+                maps1_weighted = Y1 - M_K_inv @ Y1
+            else:
+                # pixel_projected: use compressed-space weighted data
+                if has_spin2:
+                    C_c_inv = cm.get_compressed_inverse_with_spins(C_ell_dict)
+                else:
+                    C_c_inv = cm.get_compressed_inverse_multi(C_ell_dict)
+                d_c = cm.compress_data(self.maps1)
+                maps1_weighted = C_c_inv @ d_c
+        else:
+            C_c_inv = None
+            if cm.method == "pixel_projected":
+                C_c_inv = cm.get_compressed_inverse(C_ell)
+            for isim in range(n_sims):
+                maps1_weighted[:, isim] = cm.get_weighted_compressed_data(
+                    self.maps1[:, isim], C_ell, C_c_inv=C_c_inv
+                )
 
         if self.params.do_cross:
             maps2_weighted = np.zeros((n_compressed, n_sims), dtype=np.float64)
-            for isim in range(n_sims):
-                maps2_weighted[:, isim] = cm.get_weighted_compressed_data(
-                    self.maps2[:, isim], C_ell, C_c_inv=C_c_inv
-                )
+            if is_multi_field:
+                if cm.method == "harmonic":
+                    # Use precomputed matrices
+                    Y2 = impl._V_N_inv @ self.maps2
+                    maps2_weighted = Y2 - M_K_inv @ Y2
+                else:
+                    d_c2 = cm.compress_data(self.maps2)
+                    maps2_weighted = C_c_inv @ d_c2
+            else:
+                for isim in range(n_sims):
+                    maps2_weighted[:, isim] = cm.get_weighted_compressed_data(
+                        self.maps2[:, isim], C_ell, C_c_inv=C_c_inv
+                    )
 
-        # For noise bias, we need to compute E[q_l|noise only]
-        # E[q_l | noise] = 0.5 * Tr[E_l @ Cov(w|noise)]
-        #
-        # For harmonic compression, Cov(w|noise) = V @ C^{-1} @ N @ C^{-1} @ V^T
-        # We compute this efficiently using SMW components:
-        # V_Cinv = (I - M K^{-1}) @ V_Ninv, then Cov(w|noise) = V_Cinv @ N @ V_Cinv^T
-        #
-        # For diagonal N and diagonal E_l, we can compute the trace very efficiently:
-        # Tr[E_l @ (V_Cinv @ N @ V_Cinv^T)] =
-        # sum_a E_l[a,a] * sum_i (V_Cinv[a,i])^2 * N[i,i]
+        # For noise bias computation (only for non-cross)
+        noise_cov_w_diag = None
+        noise_cov_w = None
         if not self.params.do_cross:
             if cm.method == "harmonic":
-                # Efficiently compute V @ C^{-1} using SMW components
-                from scipy.linalg import cho_solve, cholesky
-
-                impl = cm._impl
-                Lambda_diag = impl._build_lambda_diagonal(C_ell)
-                Lambda_inv_diag = np.where(Lambda_diag > 1e-30, 1.0 / Lambda_diag, 1e30)
-                M = impl._V_Ninv_VT
-                K = np.diag(Lambda_inv_diag) + M
-
-                try:
-                    L = cholesky(K, lower=True)
-                    K_inv = cho_solve((L, True), np.eye(K.shape[0]))
-                except np.linalg.LinAlgError:
-                    K_inv = np.linalg.inv(K)
-
-                # V_Cinv = (I - M @ K^{-1}) @ V_Ninv  [n_modes x n_pix]
-                I_minus_MKinv = np.eye(cm.n_modes) - M @ K_inv
-                V_Cinv = I_minus_MKinv @ impl._V_N_inv
-
-                # For diagonal N, compute W = V_Cinv * sqrt(noise_var)
-                # noise_var = 1 / diag(N_inv)
-                # IMPORTANT: When SMW optimization is enabled, impl.N_inv is N_eff_inv
-                # (includes S_fixed), but for noise bias we need the actual noise N
-                if hasattr(impl, "_N_inv_original"):
-                    noise_var = 1.0 / np.diag(impl._N_inv_original)
-                else:
-                    noise_var = 1.0 / np.diag(impl.N_inv)
-                sqrt_noise = np.sqrt(noise_var)
-                W = V_Cinv * sqrt_noise[np.newaxis, :]  # (n_modes, n_pix)
-
-                # Diagonal of Cov(w|noise) = sum over columns of W^2
-                noise_cov_w_diag = np.sum(W**2, axis=1)  # O(n_modes * n_pix)
+                noise_cov_w_diag = self._compute_noise_cov_diag_compressed(
+                    cm, C_ell, C_ell_dict, is_multi_field, has_spin2=has_spin2
+                )
             else:
                 # For pixel_projected: use compressed quantities
-                # Cov(w|noise) = C_c^{-1} @ (U^T @ N @ U) @ C_c^{-1}
-                C_bar_inv = cm.get_compressed_inverse(C_ell)
-                N_bar = cm.get_compressed_covariance(np.zeros_like(C_ell))
+                if is_multi_field and has_spin2:
+                    C_bar_inv = cm.get_compressed_inverse_with_spins(C_ell_dict)
+                    zero_dict = {k: np.zeros_like(v) for k, v in C_ell_dict.items()}
+                    N_bar = cm.get_compressed_covariance_with_spins(zero_dict)
+                elif is_multi_field:
+                    C_bar_inv = cm.get_compressed_inverse_multi(C_ell_dict)
+                    zero_dict = {k: np.zeros_like(v) for k, v in C_ell_dict.items()}
+                    N_bar = cm.get_compressed_covariance_multi(zero_dict)
+                else:
+                    C_bar_inv = cm.get_compressed_inverse(C_ell)
+                    N_bar = cm.get_compressed_covariance(np.zeros_like(C_ell))
                 noise_cov_w = C_bar_inv @ N_bar @ C_bar_inv
 
         # Main computation loop - distribute multipoles across processes
         for il in range(nell):
             if self.rank == il % self.size:
-                _ = il // (self.params.lmax - 1)
-                ell = (il % (self.params.lmax - 1)) + 2
+                spectrum_idx = il // n_ell
+                ell = (il % n_ell) + 2
 
                 # Get compressed derivative matrix E_l
-                E_l = cm.get_derivative_matrix(ell)
+                if is_multi_field:
+                    spec_key = spectra_list[spectrum_idx]
+                    if has_spin2:
+                        comp_i, comp_j, mode = spec_key
+                        E_l = cm._impl.get_derivative_matrix_with_spins(
+                            ell, comp_i, comp_j, mode
+                        )
+                    else:
+                        comp_i, comp_j = spec_key
+                        E_l = cm._impl.get_derivative_matrix_multi(ell, comp_i, comp_j)
+                else:
+                    E_l = cm.get_derivative_matrix(ell)
 
                 if self.params.do_cross:
                     # Cross-correlation case

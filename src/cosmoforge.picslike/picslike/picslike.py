@@ -520,28 +520,63 @@ class PICSLike(Core):
                 self.collection.spectra_manager, lmax=self.lmax_signal
             )
 
-            # Get the properly normalized C_ell from spectra manager
-            C_ell = self.collection.spectra_manager.get_cls(0, 0, 0)
-            self.log(f"C_ell set for parameters: {param_point}", level=3)
+            # Detect if we need the multi-field/spin-2 path
+            has_spin2 = any(f.spin == 2 for f in self.collection.fields)
+            is_multi_field = len(self.collection.fields) > 1 or has_spin2
 
-            chi_squared = []
-            for sim_idx in range(self.params.nsims):
-                if self.params.do_cross:
-                    # Cross-correlation: d1^T C^{-1} d2
-                    # For cross-correlation, we need the full inverse (less common)
-                    d1 = self.maps1[:, sim_idx]
-                    d2 = self.maps2[:, sim_idx]
-                    d1_compressed = self.compression_manager.compress_data(d1)
-                    d2_compressed = self.compression_manager.compress_data(d2)
-                    C_inv = self.compression_manager.get_compressed_inverse(C_ell)
-                    chi_sq = float(d1_compressed.T @ C_inv @ d2_compressed)
-                else:
-                    # Auto-correlation: d^T C^{-1} d using SMW formula
-                    chi_sq = self.compute_quadratic_form(self.maps1[:, sim_idx], C_ell)
-                chi_squared.append(chi_sq)
+            if is_multi_field:
+                # Multi-field/spin-2 path: use full Lambda matrix
+                C_ell_dict = self._build_c_ell_dict()
+                self.log(f"C_ell_dict set for parameters: {param_point}", level=3)
 
-            chi_squared = np.array(chi_squared)
-            logdet = self.get_covariance_logdet(C_ell)
+                # Precompute K Cholesky and logdet ONCE for this parameter point
+                K_chol, _, logdet = self.compression_manager.prepare_smw_with_spins(
+                    C_ell_dict
+                )
+
+                chi_squared = []
+                for sim_idx in range(self.params.nsims):
+                    if self.params.do_cross:
+                        d1 = self.maps1[:, sim_idx]
+                        d2 = self.maps2[:, sim_idx]
+                        d1_compressed = self.compression_manager.compress_data(d1)
+                        d2_compressed = self.compression_manager.compress_data(d2)
+                        C_c_inv = np.linalg.inv(
+                            self.compression_manager.get_compressed_covariance_with_spins(
+                                C_ell_dict
+                            )
+                        )
+                        chi_sq = float(d1_compressed.T @ C_c_inv @ d2_compressed)
+                    else:
+                        chi_sq = self.compression_manager.quadratic_form_from_prepared(
+                            self.maps1[:, sim_idx], K_chol
+                        )
+                    chi_squared.append(chi_sq)
+
+                chi_squared = np.array(chi_squared)
+            else:
+                # Single-field path (existing code)
+                C_ell = self.collection.spectra_manager.get_cls(0, 0, 0)
+                self.log(f"C_ell set for parameters: {param_point}", level=3)
+
+                chi_squared = []
+                for sim_idx in range(self.params.nsims):
+                    if self.params.do_cross:
+                        d1 = self.maps1[:, sim_idx]
+                        d2 = self.maps2[:, sim_idx]
+                        d1_compressed = self.compression_manager.compress_data(d1)
+                        d2_compressed = self.compression_manager.compress_data(d2)
+                        C_inv = self.compression_manager.get_compressed_inverse(C_ell)
+                        chi_sq = float(d1_compressed.T @ C_inv @ d2_compressed)
+                    else:
+                        chi_sq = self.compute_quadratic_form(
+                            self.maps1[:, sim_idx], C_ell
+                        )
+                    chi_squared.append(chi_sq)
+
+                chi_squared = np.array(chi_squared)
+                logdet = self.get_covariance_logdet(C_ell)
+
             self.log(f"Log-determinant of covariance (compressed): {logdet:.2f}", level=3)
         else:
             # Non-compressed path: compute full signal matrix
@@ -570,6 +605,18 @@ class PICSLike(Core):
         log_likelihood = -0.5 * (chi_squared + logdet)
 
         return chi_squared, log_likelihood
+
+    def _build_c_ell_dict(self) -> dict[tuple, np.ndarray]:
+        """Build C_ell_dict from spectra_manager for compressed operations.
+
+        Iterates over the spectra_map to build a dictionary with 3-tuple keys
+        (comp_i, comp_j, mode) mapping to C_ell arrays.
+        """
+        sm = self.collection.spectra_manager
+        C_ell_dict = {}
+        for fi, fj, mode in sm._spectra_map:
+            C_ell_dict[(fi, fj, mode)] = sm.get_cls(fi, fj, mode)
+        return C_ell_dict
 
     def get_chi_squared(self) -> np.ndarray:
         """

@@ -70,7 +70,7 @@ class Fisher(Core):
     params_file : str, optional
         Path to YAML parameter file containing analysis configuration.
     compression : dict, optional
-        Compression configuration. Only supported for single-spectrum analyses.
+        Compression configuration. Supports multiple spin-0 fields (Phase 1).
     **kwargs : dict
         Additional keyword arguments passed to the Core parent class.
 
@@ -98,7 +98,7 @@ class Fisher(Core):
     >>> fisher.run()
     >>> F_matrix = fisher.get_fisher_matrix()
 
-    With compression (single-spectrum only):
+    With compression (spin-0 fields only):
 
     >>> fisher = Fisher("config.yaml", compression={"method": "harmonic"})
     >>> fisher.run()  # Uses compressed computation transparently
@@ -346,8 +346,50 @@ class Fisher(Core):
         cls = self.collection.spectra_manager.get_cls(0, 0, 0)
         return cls
 
+    def _build_multi_spectrum_inputs(
+        self,
+    ) -> tuple[dict[tuple, np.ndarray], list[tuple], bool]:
+        """
+        Build C_ell_dict and spectra_list for multi-spectrum compressed Fisher.
+
+        The spectra_list ordering MUST match spectra_labels to ensure the Fisher
+        matrix indices align with the traditional computation.
+
+        When spin-2 fields are present, uses 3-tuple keys (field_i, field_j, mode)
+        for the C_ell_dict and spectra_list. Otherwise uses 2-tuple keys for
+        backward compatibility.
+
+        Returns
+        -------
+        C_ell_dict : dict
+            Dictionary mapping field pairs to C_ell arrays.
+        spectra_list : list
+            List of tuples in same order as spectra_labels.
+        has_spin2 : bool
+            Whether any field has spin-2 (determines which API to call).
+        """
+        has_spin2 = any(f.spin == 2 for f in self.collection.fields)
+        sm = self.collection.spectra_manager
+
+        C_ell_dict = {}
+        spectra_list = []
+
+        # Iterate over the spectra_map which stores (field_i, field_j, mode) -> label
+        for fi, fj, mode in sm._spectra_map:
+            cls = sm.get_cls(fi, fj, mode)
+            if has_spin2:
+                C_ell_dict[(fi, fj, mode)] = cls
+                spectra_list.append((fi, fj, mode))
+            else:
+                C_ell_dict[(fi, fj)] = cls
+                if fi != fj:
+                    C_ell_dict[(fj, fi)] = cls
+                spectra_list.append((fi, fj))
+
+        return C_ell_dict, spectra_list, has_spin2
+
     # =========================================================================
-    # Multi-Spectrum Computation (Traditional - No Compression Support)
+    # Multi-Spectrum Computation
     # =========================================================================
 
     def compute_fisher_element(
@@ -416,64 +458,108 @@ class Fisher(Core):
         return il
 
     def _compute_multi_spectrum(self):
-        """Compute Fisher matrix for multi-spectrum analysis (no compression support)."""
+        """Compute Fisher matrix for multi-spectrum analysis (compression supported)."""
+        use_compression = (
+            hasattr(self, "compression_manager") and self.compression_manager is not None
+        )
+
         if self.rank == 0:
-            self.log("Starting multi-spectrum Fisher computation (traditional)", level=2)
+            mode = "compressed (optimized)" if use_compression else "traditional"
+            self.log(f"Starting multi-spectrum Fisher computation ({mode})", level=2)
 
         start_time = time.time() if self.rank == 0 else None
 
-        ellperproc = np.ceil((self.nell + 1.0) * self.nell / 2.0 / self.size)
-        self.log(f"Rank {self.rank} will compute {ellperproc} elements", level=2)
+        if use_compression:
+            # Optimized path: use compute_fisher_matrix_multi()
+            if self.rank == 0:
+                # Build C_ell_dict and spectra_list from field collection
+                C_ell_dict, spectra_list, has_spin2 = self._build_multi_spectrum_inputs()
 
-        counter = 0
-        appil = -1
-        count_computed = 0
+                if has_spin2:
+                    self.fisher = (
+                        self.compression_manager.compute_fisher_matrix_with_spins(
+                            C_ell_dict,
+                            spectra_list,
+                            ell_min=2,
+                            ell_max=self.params.lmax,
+                        )
+                    )
+                else:
+                    self.fisher = self.compression_manager.compute_fisher_matrix_multi(
+                        C_ell_dict,
+                        spectra_list,
+                        ell_min=2,
+                        ell_max=self.params.lmax,
+                    )
+                self.log("-" * 80, level=1)
+                self.log("Fisher matrix computation completed", level=1)
 
-        for il in range(self.nell):
-            spectrum_i = il // self.n_ell
-            curr_ell_i = (il % self.n_ell) + 2
+                if start_time is not None:
+                    elapsed = time.time() - start_time
+                    self.log(f"Total computation time: {elapsed:.2f} seconds", level=3)
 
-            for jl in range(il, self.nell):
-                spectrum_j = jl // self.n_ell
-                curr_ell_j = jl % self.n_ell + 2
+                if hasattr(self.params, "outfilefisher"):
+                    write_out_matrix(self.params.outfilefisher, self.fisher)
+            else:
+                self.fisher = np.zeros((self.nell, self.nell))
 
-                counter += 1
+            # Broadcast result to all ranks
+            self.comm.Barrier()
+            self.fisher = self.comm.bcast(self.fisher, root=0)
+        else:
+            # Traditional path with MPI distribution
+            ellperproc = np.ceil((self.nell + 1.0) * self.nell / 2.0 / self.size)
+            self.log(f"Rank {self.rank} will compute {ellperproc} elements", level=2)
 
-                if not (
-                    counter > self.rank * ellperproc
-                    and counter <= (self.rank + 1) * ellperproc
-                ):
-                    continue
+            counter = 0
+            appil = -1
+            count_computed = 0
 
-                count_computed += 1
-                if self.rank == 0:
-                    self.log(
-                        f"Computed {count_computed} of {int(ellperproc)} elements",
-                        level=2,
+            for il in range(self.nell):
+                spectrum_i = il // self.n_ell
+                curr_ell_i = (il % self.n_ell) + 2
+
+                for jl in range(il, self.nell):
+                    spectrum_j = jl // self.n_ell
+                    curr_ell_j = jl % self.n_ell + 2
+
+                    counter += 1
+
+                    if not (
+                        counter > self.rank * ellperproc
+                        and counter <= (self.rank + 1) * ellperproc
+                    ):
+                        continue
+
+                    count_computed += 1
+                    if self.rank == 0:
+                        self.log(
+                            f"Computed {count_computed} of {int(ellperproc)} elements",
+                            level=2,
+                        )
+
+                    appil = self.compute_fisher_element(
+                        il, jl, curr_ell_i, curr_ell_j, spectrum_i, spectrum_j, appil
                     )
 
-                appil = self.compute_fisher_element(
-                    il, jl, curr_ell_i, curr_ell_j, spectrum_i, spectrum_j, appil
-                )
+            self.comm.Barrier()
 
-        self.comm.Barrier()
+            redfisher = np.zeros_like(self.fisher)
+            self.comm.Reduce(self.fisher, redfisher, op=MPI.SUM, root=0)
 
-        redfisher = np.zeros_like(self.fisher)
-        self.comm.Reduce(self.fisher, redfisher, op=MPI.SUM, root=0)
+            if self.rank == 0:
+                self.fisher = redfisher
+                self.log("-" * 80, level=1)
+                self.log("Fisher matrix computation completed", level=1)
 
-        if self.rank == 0:
-            self.fisher = redfisher
-            self.log("-" * 80, level=1)
-            self.log("Fisher matrix computation completed", level=1)
+                if start_time is not None:
+                    elapsed = time.time() - start_time
+                    self.log(f"Total computation time: {elapsed:.2f} seconds", level=3)
 
-            if start_time is not None:
-                elapsed = time.time() - start_time
-                self.log(f"Total computation time: {elapsed:.2f} seconds", level=3)
+                if hasattr(self.params, "outfilefisher"):
+                    write_out_matrix(self.params.outfilefisher, self.fisher)
 
-            if hasattr(self.params, "outfilefisher"):
-                write_out_matrix(self.params.outfilefisher, self.fisher)
-
-        self.comm.Barrier()
+            self.comm.Barrier()
 
     # =========================================================================
     # Main Entry Points
@@ -496,16 +582,11 @@ class Fisher(Core):
         """
         Execute the complete Fisher matrix analysis pipeline.
 
-        For single-spectrum analyses, compression can be enabled via the
-        compression parameter. Multi-spectrum analyses do not support
-        compression and will raise an error if attempted.
+        Compression can be enabled via the compression parameter for
+        spin-0 field analyses. Spin-2 field compression is planned for Phase 2.
         """
-        # Validate compression config
-        if self._compression_config is not None and self.params.nspectra > 1:
-            raise ValueError(
-                "Compression is only supported for single-spectrum (temperature-only) "
-                "analyses. For multi-spectrum analyses, set compression=None."
-            )
+        # Note: Multi-field compression validation is done in Core.setup_compression()
+        # Phase 1 supports multiple spin-0 fields; spin-2 support is planned for Phase 2
 
         # Setup phase (rank 0 only)
         if self.rank == 0:
@@ -530,7 +611,7 @@ class Fisher(Core):
             self.setup_beams(lmax=self.lmax_signal)
             self.log("Beam functions setup completed", level=3)
 
-            # Setup compression if configured (single-spectrum only)
+            # Setup compression if configured (spin-0 fields only for Phase 1)
             if self._compression_config is not None:
                 config = self._compression_config
                 self.setup_compression(
