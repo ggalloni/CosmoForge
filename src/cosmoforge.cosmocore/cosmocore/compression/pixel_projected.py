@@ -1182,68 +1182,8 @@ class PixelProjectedCompression(BaseCompression):
 
     # === Spin-2 aware operations ===
 
-    def get_compressed_covariance_with_spins(
-        self, C_ell_dict: dict[tuple, np.ndarray]
-    ) -> np.ndarray:
-        """
-        Compute compressed covariance U^T C U with spin-2 support.
-
-        Uses full Lambda matrix (not diagonal) to handle E/B cross-correlations.
-
-        Parameters
-        ----------
-        C_ell_dict : dict
-            Dictionary with 3-tuple keys (comp_i, comp_j, mode).
-
-        Returns
-        -------
-        numpy.ndarray
-            Compressed covariance of shape (n_kept, n_kept).
-        """
-        if self._eigenvectors is None:
-            raise RuntimeError("Compression not applied. Call apply_compression() first.")
-
-        Lambda_full = self._build_lambda_full_3tuple(C_ell_dict)
-        # U^T V^T Λ V U = (VU)^T Λ (VU) — full matrix multiply (not diagonal)
-        VU_Lambda = matrix_mult(Lambda_full, self._VU)
-        U_S_U = matrix_mult(self._VU.T, VU_Lambda)
-        return self._U_N_U + U_S_U
-
-    def get_compressed_inverse_with_spins(
-        self, C_ell_dict: dict[tuple, np.ndarray]
-    ) -> np.ndarray:
-        """
-        Compute inverse of compressed covariance with spin-2 support.
-
-        Parameters
-        ----------
-        C_ell_dict : dict
-            Dictionary with 3-tuple keys (comp_i, comp_j, mode).
-
-        Returns
-        -------
-        numpy.ndarray
-            Inverse compressed covariance of shape (n_kept, n_kept).
-        """
-        C_compressed = self.get_compressed_covariance_with_spins(C_ell_dict)
-        return matrix_inverse_symm(C_compressed)
-
-    def get_compressed_covariance_multi(
-        self, C_ell_dict: dict[tuple[int, int], np.ndarray]
-    ) -> np.ndarray:
-        """
-        Compute compressed covariance U^T C U for multi-field (2-tuple keys).
-
-        Parameters
-        ----------
-        C_ell_dict : dict
-            Dictionary with 2-tuple keys (comp_i, comp_j).
-
-        Returns
-        -------
-        numpy.ndarray
-            Compressed covariance of shape (n_kept, n_kept).
-        """
+    def get_compressed_covariance_multi(self, C_ell_dict: dict) -> np.ndarray:
+        """Compute compressed covariance U^T C U. Accepts 2-tuple or 3-tuple keys."""
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
@@ -1252,54 +1192,17 @@ class PixelProjectedCompression(BaseCompression):
         U_S_U = matrix_mult(self._VU.T, VU_Lambda)
         return self._U_N_U + U_S_U
 
-    def get_compressed_inverse_multi(
-        self, C_ell_dict: dict[tuple[int, int], np.ndarray]
-    ) -> np.ndarray:
-        """
-        Compute inverse of compressed covariance for multi-field (2-tuple keys).
+    def get_compressed_inverse_multi(self, C_ell_dict: dict) -> np.ndarray:
+        """Compute inverse of compressed covariance. Accepts 2-tuple or 3-tuple keys."""
+        return matrix_inverse_symm(self.get_compressed_covariance_multi(C_ell_dict))
 
-        Parameters
-        ----------
-        C_ell_dict : dict
-            Dictionary with 2-tuple keys (comp_i, comp_j).
-
-        Returns
-        -------
-        numpy.ndarray
-            Inverse compressed covariance of shape (n_kept, n_kept).
-        """
-        C_compressed = self.get_compressed_covariance_multi(C_ell_dict)
-        return matrix_inverse_symm(C_compressed)
-
-    def get_derivative_matrix_with_spins(
+    def get_derivative_matrix_multi(
         self, ell: int, comp_i: int, comp_j: int, mode: int = 0
     ) -> np.ndarray:
-        """
-        Get compressed derivative matrix for spectrum (comp_i, comp_j, mode).
-
-        Computes (VU)^T E_ell (VU) where E_ell is the full derivative matrix
-        in harmonic space with spin-2 E/B sub-block structure.
-
-        Parameters
-        ----------
-        ell : int
-            Multipole for which to compute the derivative.
-        comp_i : int
-            First component index.
-        comp_j : int
-            Second component index.
-        mode : int, default 0
-            Sub-spectrum mode index.
-
-        Returns
-        -------
-        numpy.ndarray
-            Derivative matrix of shape (n_kept, n_kept).
-        """
+        """Get compressed derivative matrix for (comp_i, comp_j, mode) at ell."""
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
-        # For single-field spin-0, use efficient diagonal path
         if (
             self._spins[comp_i] == 0
             and self._spins[comp_j] == 0
@@ -1311,32 +1214,14 @@ class PixelProjectedCompression(BaseCompression):
         E_VU = matrix_mult(E, self._VU)
         return matrix_mult(self._VU.T, E_VU)
 
-    def compute_fisher_matrix_with_spins(
+    def compute_fisher_matrix_multi(
         self,
-        C_ell_dict: dict[tuple, np.ndarray],
-        spectra_list: list[tuple[int, int, int]],
+        C_ell_dict: dict,
+        spectra_list: list[tuple],
         ell_min: int = 2,
         ell_max: int | None = None,
     ) -> np.ndarray:
-        """
-        Compute Fisher matrix for multiple spectra with spin-2 support.
-
-        Parameters
-        ----------
-        C_ell_dict : dict
-            Dictionary with 3-tuple keys (comp_i, comp_j, mode).
-        spectra_list : list of 3-tuple
-            List of (comp_i, comp_j, mode) specifying which spectra to include.
-        ell_min : int, default 2
-            Minimum multipole.
-        ell_max : int or None, optional
-            Maximum multipole. If None, uses self.lmax.
-
-        Returns
-        -------
-        numpy.ndarray
-            Fisher matrix of shape (n_spectra * n_ell, n_spectra * n_ell).
-        """
+        """Compute Fisher matrix. Accepts 2-tuple or 3-tuple spectra_list entries."""
         if ell_max is None:
             ell_max = self.lmax
 
@@ -1344,17 +1229,16 @@ class PixelProjectedCompression(BaseCompression):
         n_spec = len(spectra_list)
         fisher = np.zeros((n_spec * n_ell, n_spec * n_ell))
 
-        # Precompute C_c^{-1} ONCE
-        C_c_inv = self.get_compressed_inverse_with_spins(C_ell_dict)
+        C_c_inv = self.get_compressed_inverse_multi(C_ell_dict)
 
-        # Precompute C_c^{-1} @ dC for all (spectrum, ell) pairs
         Cinv_dC = {}
-        for spec_idx, (comp_i, comp_j, mode) in enumerate(spectra_list):
+        for spec_idx, spec_entry in enumerate(spectra_list):
+            comp_i, comp_j = spec_entry[0], spec_entry[1]
+            mode = spec_entry[2] if len(spec_entry) == 3 else 0
             for ell in range(ell_min, ell_max + 1):
-                dC = self.get_derivative_matrix_with_spins(ell, comp_i, comp_j, mode)
+                dC = self.get_derivative_matrix_multi(ell, comp_i, comp_j, mode)
                 Cinv_dC[(spec_idx, ell)] = matrix_mult(C_c_inv, dC)
 
-        # Compute Fisher elements
         for spec_a in range(n_spec):
             for ell_a in range(ell_min, ell_max + 1):
                 idx_a = spec_a * n_ell + (ell_a - ell_min)
@@ -1375,61 +1259,25 @@ class PixelProjectedCompression(BaseCompression):
 
         return fisher
 
-    def get_weighted_compressed_data_with_spins(
-        self, data: np.ndarray, C_ell_dict: dict[tuple, np.ndarray]
+    def get_weighted_compressed_data_multi(
+        self, data: np.ndarray, C_ell_dict: dict
     ) -> np.ndarray:
-        """
-        Compute C_c^{-1} @ U^T @ d with spin-2 support.
-
-        Parameters
-        ----------
-        data : numpy.ndarray
-            Pixel-space data vector of shape (n_pix_total,) or (n_pix_total, n_sims).
-        C_ell_dict : dict
-            Dictionary with 3-tuple keys (comp_i, comp_j, mode).
-
-        Returns
-        -------
-        numpy.ndarray
-            Weighted compressed data of shape (n_kept,) or (n_kept, n_sims).
-        """
+        """Compute C_c^{-1} @ U^T @ d. Accepts 2-tuple or 3-tuple keys."""
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
         d_compressed = self._eigenvectors.T @ data
-        C_c_inv = self.get_compressed_inverse_with_spins(C_ell_dict)
+        C_c_inv = self.get_compressed_inverse_multi(C_ell_dict)
         return matrix_mult(C_c_inv, d_compressed)
 
-    def prepare_smw_with_spins(
-        self, C_ell_dict: dict[tuple, np.ndarray]
-    ) -> tuple[np.ndarray, None, float]:
-        """
-        Precompute compressed inverse and logdet for reuse across simulations.
-
-        For pixel_projected compression, this returns (C_c_inv, None, logdet)
-        as the compressed-space equivalent of HarmonicCompression's SMW
-        preparation.
-
-        Parameters
-        ----------
-        C_ell_dict : dict
-            Dictionary with 3-tuple keys (comp_i, comp_j, mode).
-
-        Returns
-        -------
-        C_c_inv : numpy.ndarray
-            Inverse of compressed covariance.
-        None
-            Reserved (unused, kept for API symmetry with HarmonicCompression).
-        logdet : float
-            Log determinant of compressed covariance.
-        """
+    def prepare_smw_multi(self, C_ell_dict: dict) -> SMWPrepared:
+        """Precompute compressed inverse and logdet for reuse across sims."""
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
         from ..basics import matrix_slogdet_symm
 
-        C_c = self.get_compressed_covariance_with_spins(C_ell_dict)
+        C_c = self.get_compressed_covariance_multi(C_ell_dict)
         C_c_inv = matrix_inverse_symm(C_c)
         _, logdet = matrix_slogdet_symm(C_c)
         return SMWPrepared(C_c_inv, None, logdet)
@@ -1437,68 +1285,70 @@ class PixelProjectedCompression(BaseCompression):
     def quadratic_form_from_prepared(
         self, data: np.ndarray, C_c_inv: np.ndarray
     ) -> float:
-        """
-        Compute d^T C^{-1} d using precomputed compressed inverse.
-
-        For pixel_projected, C_c_inv is the inverse of compressed covariance
-        (from prepare_smw_with_spins). For harmonic, the same argument position
-        receives K_chol. Polymorphism handles both cases.
-
-        Parameters
-        ----------
-        data : numpy.ndarray
-            Pixel-space data vector of length n_pix_total.
-        C_c_inv : numpy.ndarray
-            Inverse of compressed covariance from prepare_smw_with_spins.
-
-        Returns
-        -------
-        float
-            Approximate quadratic form value.
-        """
+        """Compute d^T C^{-1} d using precomputed compressed inverse."""
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
         d_c = self._eigenvectors.T @ data
         return float(d_c.T @ C_c_inv @ d_c)
 
-    def compute_quadratic_form_with_spins(
-        self, data: np.ndarray, C_ell_dict: dict[tuple, np.ndarray]
-    ) -> float:
-        """
-        Compute d^T C^{-1} d with spin-2 support in compressed space.
-
-        Parameters
-        ----------
-        data : numpy.ndarray
-            Pixel-space data vector of length n_pix_total.
-        C_ell_dict : dict
-            Dictionary with 3-tuple keys (comp_i, comp_j, mode).
-
-        Returns
-        -------
-        float
-            Approximate quadratic form value.
-        """
-        C_c_inv, _, _ = self.prepare_smw_with_spins(C_ell_dict)
+    def compute_quadratic_form_multi(self, data: np.ndarray, C_ell_dict: dict) -> float:
+        """Compute d^T C^{-1} d in compressed space."""
+        C_c_inv, _, _ = self.prepare_smw_multi(C_ell_dict)
         return self.quadratic_form_from_prepared(data, C_c_inv)
 
-    def get_logdet_with_spins(self, C_ell_dict: dict[tuple, np.ndarray]) -> float:
-        """
-        Compute log determinant of compressed covariance with spin-2 support.
-
-        Parameters
-        ----------
-        C_ell_dict : dict
-            Dictionary with 3-tuple keys (comp_i, comp_j, mode).
-
-        Returns
-        -------
-        float
-            Log determinant of compressed covariance.
-        """
-        _, _, logdet = self.prepare_smw_with_spins(C_ell_dict)
+    def get_logdet_multi(self, C_ell_dict: dict) -> float:
+        """Compute log determinant of compressed covariance."""
+        _, _, logdet = self.prepare_smw_multi(C_ell_dict)
         return logdet
+
+    # === Deprecated _with_spins aliases (delegate to _multi) ===
+
+    def get_compressed_covariance_with_spins(self, C_ell_dict: dict) -> np.ndarray:
+        """Deprecated: use get_compressed_covariance_multi."""
+        return self.get_compressed_covariance_multi(C_ell_dict)
+
+    def get_compressed_inverse_with_spins(self, C_ell_dict: dict) -> np.ndarray:
+        """Deprecated: use get_compressed_inverse_multi."""
+        return self.get_compressed_inverse_multi(C_ell_dict)
+
+    def get_derivative_matrix_with_spins(
+        self, ell: int, comp_i: int, comp_j: int, mode: int = 0
+    ) -> np.ndarray:
+        """Deprecated: use get_derivative_matrix_multi."""
+        return self.get_derivative_matrix_multi(ell, comp_i, comp_j, mode)
+
+    def compute_fisher_matrix_with_spins(
+        self,
+        C_ell_dict: dict,
+        spectra_list: list,
+        ell_min: int = 2,
+        ell_max: int | None = None,
+    ) -> np.ndarray:
+        """Deprecated: use compute_fisher_matrix_multi."""
+        return self.compute_fisher_matrix_multi(
+            C_ell_dict, spectra_list, ell_min, ell_max
+        )
+
+    def get_weighted_compressed_data_with_spins(
+        self, data: np.ndarray, C_ell_dict: dict
+    ) -> np.ndarray:
+        """Deprecated: use get_weighted_compressed_data_multi."""
+        return self.get_weighted_compressed_data_multi(data, C_ell_dict)
+
+    def prepare_smw_with_spins(self, C_ell_dict: dict) -> SMWPrepared:
+        """Deprecated: use prepare_smw_multi."""
+        return self.prepare_smw_multi(C_ell_dict)
+
+    def compute_quadratic_form_with_spins(
+        self, data: np.ndarray, C_ell_dict: dict
+    ) -> float:
+        """Deprecated: use compute_quadratic_form_multi."""
+        return self.compute_quadratic_form_multi(data, C_ell_dict)
+
+    def get_logdet_with_spins(self, C_ell_dict: dict) -> float:
+        """Deprecated: use get_logdet_multi."""
+        return self.get_logdet_multi(C_ell_dict)
 
     @property
     def compression_ratio(self) -> float:
