@@ -1203,7 +1203,7 @@ class PixelProjectedCompression(BaseCompression):
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
-        Lambda_full = self._build_lambda_full_with_spins(C_ell_dict)
+        Lambda_full = self._build_lambda_full_3tuple(C_ell_dict)
         # U^T V^T Λ V U = (VU)^T Λ (VU) — full matrix multiply (not diagonal)
         VU_Lambda = matrix_mult(Lambda_full, self._VU)
         U_S_U = matrix_mult(self._VU.T, VU_Lambda)

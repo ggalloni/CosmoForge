@@ -535,15 +535,8 @@ class HarmonicCompression(BaseCompression):
     # === Multi-field operations ===
 
     def _build_smw_kernel(self, C_ell_dict: dict) -> tuple[np.ndarray, np.ndarray]:
-        """Build K = Lambda_inv + V N^{-1} V^T and return (K, Lambda_full).
-
-        Auto-detects 2-tuple vs 3-tuple keys to choose the right Lambda builder.
-        """
-        first_key = next(iter(C_ell_dict))
-        if len(first_key) == 3:
-            Lambda_full = self._build_lambda_full_with_spins(C_ell_dict)
-        else:
-            Lambda_full = self._build_lambda_full(C_ell_dict)
+        """Build K = Lambda_inv + V N^{-1} V^T and return (K, Lambda_full)."""
+        Lambda_full = self._build_lambda_full(C_ell_dict)
         Lambda_reg = Lambda_full + np.eye(Lambda_full.shape[0]) * 1e-20
         Lambda_inv = matrix_inverse_symm(np.asfortranarray(Lambda_reg))
         K = Lambda_inv + self._V_Ninv_VT
@@ -798,7 +791,7 @@ class HarmonicCompression(BaseCompression):
         numpy.ndarray
             Compressed covariance of shape (n_modes_total, n_modes_total).
         """
-        Lambda_full = self._build_lambda_full_with_spins(C_ell_dict)
+        Lambda_full = self._build_lambda_full_3tuple(C_ell_dict)
         return self._V_N_VT + Lambda_full
 
     def get_compressed_inverse_with_spins(

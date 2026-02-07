@@ -2676,7 +2676,7 @@ class TestSpin2Lambda:
             (0, 1, 1): np.zeros(lmax - 1),  # TB
         }
 
-        Lambda = hc._build_lambda_full_with_spins(C_ell_dict)
+        Lambda = hc._build_lambda_full_3tuple(C_ell_dict)
 
         # Total size: n_base (T) + 2*n_base (E+B) = 3*n_base
         assert Lambda.shape == (3 * n_base, 3 * n_base)
@@ -3005,7 +3005,7 @@ class TestSpin2Benchmark:
 
         # --- Pixel-space Fisher ---
         V = hc._V
-        Lambda_full = hc._build_lambda_full_with_spins(C_ell_dict)
+        Lambda_full = hc._build_lambda_full_3tuple(C_ell_dict)
         S = V.T @ Lambda_full @ V
         C = N + S
         C_inv = matrix_inverse_symm(C.copy())
@@ -3116,7 +3116,7 @@ class TestSpin2Benchmark:
 
         # --- Pixel-space Fisher ---
         V = hc._V
-        Lambda_full = hc._build_lambda_full_with_spins(C_ell_dict)
+        Lambda_full = hc._build_lambda_full_3tuple(C_ell_dict)
         S = V.T @ Lambda_full @ V
         C = N + S
         C_inv = matrix_inverse_symm(C.copy())
@@ -3556,7 +3556,7 @@ class TestPixelProjectedSpin2Benchmark:
 
         # Pixel-space Fisher
         V = ppc._V
-        Lambda_full = ppc._build_lambda_full_with_spins(C_ell_dict)
+        Lambda_full = ppc._build_lambda_full_3tuple(C_ell_dict)
         S = V.T @ Lambda_full @ V
         C = N + S
         C_inv = matrix_inverse_symm(C.copy())
@@ -3656,7 +3656,7 @@ class TestPixelProjectedSpin2Benchmark:
 
         # Pixel-space Fisher
         V = ppc._V
-        Lambda_full = ppc._build_lambda_full_with_spins(C_ell_dict)
+        Lambda_full = ppc._build_lambda_full_3tuple(C_ell_dict)
         S = V.T @ Lambda_full @ V
         C = N + S
         C_inv = matrix_inverse_symm(C.copy())
@@ -4054,7 +4054,7 @@ class TestPixelProjectedPICSLikeMethods:
         qf_compressed = ppc.compute_quadratic_form_with_spins(data, C_ell_dict)
 
         # Brute-force in full pixel space
-        Lambda_full = ppc._build_lambda_full_with_spins(C_ell_dict)
+        Lambda_full = ppc._build_lambda_full_3tuple(C_ell_dict)
         S = ppc._V.T @ Lambda_full @ ppc._V
         C = N + S
         C_inv = matrix_inverse_symm(C.copy())

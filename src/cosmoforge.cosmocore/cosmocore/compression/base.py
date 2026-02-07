@@ -847,27 +847,19 @@ class BaseCompression(ABC):
                 Lambda_blocks[(comp_j, comp_i)] = Lambda_diag
         return Lambda_blocks
 
-    def _build_lambda_full(
+    def _build_lambda_full(self, C_ell_dict: dict) -> np.ndarray:
+        """Build full Lambda matrix, auto-detecting 2-tuple or 3-tuple keys."""
+        first_key = next(iter(C_ell_dict))
+        if len(first_key) == 3:
+            return self._build_lambda_full_3tuple(C_ell_dict)
+        return self._build_lambda_full_2tuple(C_ell_dict)
+
+    def _build_lambda_full_2tuple(
         self, C_ell_dict: dict[tuple[int, int], np.ndarray]
     ) -> np.ndarray:
-        """
-        Build full Lambda matrix from cross-power spectra dictionary.
-
-        For multi-field compression, assembles the full block Lambda matrix.
-
-        Parameters
-        ----------
-        C_ell_dict : dict
-            Dictionary mapping (comp_i, comp_j) to C_ell array.
-
-        Returns
-        -------
-        numpy.ndarray
-            Full Lambda matrix of shape (n_modes_total, n_modes_total).
-        """
+        """Build full Lambda matrix from 2-tuple (comp_i, comp_j) keys."""
         Lambda_blocks = self._build_lambda_blocks(C_ell_dict)
 
-        # Assemble full block matrix
         Lambda_full = np.zeros((self.n_modes_total, self.n_modes_total), dtype=np.float64)
         for (comp_i, comp_j), Lambda_diag in Lambda_blocks.items():
             row_start = self._mode_offsets[comp_i]
@@ -972,7 +964,7 @@ class BaseCompression(ABC):
 
         return Lambda
 
-    def _build_lambda_full_with_spins(
+    def _build_lambda_full_3tuple(
         self, C_ell_dict: dict[tuple, np.ndarray]
     ) -> np.ndarray:
         """
