@@ -551,8 +551,7 @@ class Core(ABC):
                     )
 
                     # Restore original spectra (already smoothed - don't re-apply beam)
-                    for key, value in original_spectra_smoothed.items():
-                        self.collection.spectra_manager._cls_dict[key] = value
+                    self.collection.spectra_manager._cls_dict = original_spectra_smoothed
 
         # Create compression manager
         self.compression_manager = CompressionManager(
