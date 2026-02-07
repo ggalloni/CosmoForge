@@ -520,7 +520,7 @@ class PICSLike(Core):
                 self.collection.spectra_manager, lmax=self.lmax_signal
             )
 
-            # Detect if we need the multi-field/spin-2 path
+            # Detect if we need the multi-field path (>1 components or spin-2)
             has_spin2 = any(f.spin == 2 for f in self.collection.fields)
             is_multi_field = len(self.collection.fields) > 1 or has_spin2
 
@@ -530,9 +530,7 @@ class PICSLike(Core):
                 self.log(f"C_ell_dict set for parameters: {param_point}", level=3)
 
                 # Precompute K Cholesky and logdet ONCE for this parameter point
-                K_chol, _, logdet = self.compression_manager.prepare_smw_with_spins(
-                    C_ell_dict
-                )
+                K_chol, _, logdet = self.compression_manager.prepare_smw_multi(C_ell_dict)
 
                 chi_squared = []
                 for sim_idx in range(self.params.nsims):
@@ -541,10 +539,8 @@ class PICSLike(Core):
                         d2 = self.maps2[:, sim_idx]
                         d1_compressed = self.compression_manager.compress_data(d1)
                         d2_compressed = self.compression_manager.compress_data(d2)
-                        C_c_inv = np.linalg.inv(
-                            self.compression_manager.get_compressed_covariance_with_spins(
-                                C_ell_dict
-                            )
+                        C_c_inv = self.compression_manager.get_compressed_inverse_multi(
+                            C_ell_dict
                         )
                         chi_sq = float(d1_compressed.T @ C_c_inv @ d2_compressed)
                     else:

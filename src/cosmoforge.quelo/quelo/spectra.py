@@ -584,44 +584,32 @@ class Spectra(Core):
 
     def _build_multi_spectrum_inputs_spectra(
         self,
-    ) -> tuple[dict[tuple, np.ndarray], list[tuple], bool]:
+    ) -> tuple[dict[tuple, np.ndarray], list[tuple]]:
         """
         Build C_ell_dict and spectra_list for multi-spectrum compressed QML.
 
-        When spin-2 fields are present, uses 3-tuple keys (field_i, field_j, mode)
-        for the C_ell_dict and spectra_list. Otherwise uses 2-tuple keys for
-        backward compatibility.
+        Always uses 3-tuple keys (field_i, field_j, mode).
 
         Returns
         -------
         C_ell_dict : dict
-            Dictionary mapping field pairs to C_ell arrays.
+            Dictionary mapping (field_i, field_j, mode) to C_ell arrays.
         spectra_list : list
-            List of tuples in same order as spectra_labels.
-        has_spin2 : bool
-            Whether any field has spin-2 (determines which API to call).
+            List of 3-tuples in same order as spectra_labels.
         """
-        has_spin2 = any(f.spin == 2 for f in self.collection.fields)
         sm = self.collection.spectra_manager
 
         C_ell_dict = {}
         spectra_list = []
 
         for fi, fj, mode in sm._spectra_map:
-            cls = sm.get_cls(fi, fj, mode)
-            if has_spin2:
-                C_ell_dict[(fi, fj, mode)] = cls
-                spectra_list.append((fi, fj, mode))
-            else:
-                C_ell_dict[(fi, fj)] = cls
-                if fi != fj:
-                    C_ell_dict[(fj, fi)] = cls
-                spectra_list.append((fi, fj))
+            C_ell_dict[(fi, fj, mode)] = sm.get_cls(fi, fj, mode)
+            spectra_list.append((fi, fj, mode))
 
-        return C_ell_dict, spectra_list, has_spin2
+        return C_ell_dict, spectra_list
 
     def _compute_noise_cov_diag_compressed(
-        self, cm, C_ell, C_ell_dict, is_multi_field, has_spin2=False
+        self, cm, C_ell, C_ell_dict, is_multi_field
     ) -> np.ndarray:
         """
         Compute diagonal of noise covariance in compressed space.
@@ -633,23 +621,19 @@ class Spectra(Core):
         """
         from scipy.linalg import cho_solve, cholesky
 
+        from cosmocore.basics import matrix_inverse_symm
+
         impl = cm._impl
 
         if is_multi_field:
-            # Build full Lambda and its inverse
-            if has_spin2:
-                Lambda_full = impl._build_lambda_full_with_spins(C_ell_dict)
-            else:
-                Lambda_full = impl._build_lambda_full(C_ell_dict)
+            # Build full Lambda and its inverse (auto-detects key format)
+            Lambda_full = impl._build_lambda_full(C_ell_dict)
             Lambda_reg = Lambda_full + np.eye(Lambda_full.shape[0]) * 1e-20
-            try:
-                Lambda_inv = np.linalg.inv(Lambda_reg)
-            except np.linalg.LinAlgError:
-                Lambda_inv = np.linalg.pinv(Lambda_full)
+            Lambda_inv = matrix_inverse_symm(np.asfortranarray(Lambda_reg))
 
             M = impl._V_Ninv_VT
             K = Lambda_inv + M
-            K_inv = np.linalg.inv(K)
+            K_inv = matrix_inverse_symm(np.asfortranarray(K))
 
             # V_Cinv = (I - M @ K^{-1}) @ V_Ninv
             n_modes = impl.n_modes_total
@@ -717,22 +701,19 @@ class Spectra(Core):
         n_sims = self.params.nsims
         n_compressed = cm.n_kept
 
-        # Check if multi-field or spin-2 (spin-2 has multiple spectra EE/BB/EB
-        # even for a single field, requiring the multi-spectrum path)
+        # Multi-field path is needed when >1 components or spin-2 (spin-2 has
+        # multiple spectra EE/BB/EB even for a single field)
         has_spin2 = any(f.spin == 2 for f in self.collection.fields)
         is_multi_field = cm.n_components > 1 or has_spin2
 
         # Build C_ell or C_ell_dict depending on multi-field
         if is_multi_field:
-            C_ell_dict, spectra_list, has_spin2 = (
-                self._build_multi_spectrum_inputs_spectra()
-            )
+            C_ell_dict, spectra_list = self._build_multi_spectrum_inputs_spectra()
             C_ell = None  # Not used for multi-field
         else:
             C_ell = self.collection.spectra_manager.get_cls(0, 0, 0)
             C_ell_dict = None
             spectra_list = [(0, 0)]
-            has_spin2 = False
 
         # Compute weighted compressed data for all simulations
         # w = V @ C^{-1} @ d (using SMW formula internally)
@@ -741,15 +722,14 @@ class Spectra(Core):
         if is_multi_field:
             if cm.method == "harmonic":
                 # Precompute SMW matrices once
+                from cosmocore.basics import matrix_inverse_symm
+
                 impl = cm._impl
-                if has_spin2:
-                    Lambda_full = impl._build_lambda_full_with_spins(C_ell_dict)
-                else:
-                    Lambda_full = impl._build_lambda_full(C_ell_dict)
+                Lambda_full = impl._build_lambda_full(C_ell_dict)
                 Lambda_reg = Lambda_full + np.eye(Lambda_full.shape[0]) * 1e-20
-                Lambda_inv = np.linalg.inv(Lambda_reg)
+                Lambda_inv = matrix_inverse_symm(np.asfortranarray(Lambda_reg))
                 K = Lambda_inv + impl._V_Ninv_VT
-                K_inv = np.linalg.inv(K)
+                K_inv = matrix_inverse_symm(np.asfortranarray(K))
                 M_K_inv = impl._V_Ninv_VT @ K_inv
 
                 # Compute weighted data for all sims using precomputed matrices
@@ -758,10 +738,7 @@ class Spectra(Core):
                 maps1_weighted = Y1 - M_K_inv @ Y1
             else:
                 # pixel_projected: use compressed-space weighted data
-                if has_spin2:
-                    C_c_inv = cm.get_compressed_inverse_with_spins(C_ell_dict)
-                else:
-                    C_c_inv = cm.get_compressed_inverse_multi(C_ell_dict)
+                C_c_inv = cm.get_compressed_inverse_multi(C_ell_dict)
                 d_c = cm.compress_data(self.maps1)
                 maps1_weighted = C_c_inv @ d_c
         else:
@@ -795,15 +772,11 @@ class Spectra(Core):
         if not self.params.do_cross:
             if cm.method == "harmonic":
                 noise_cov_w_diag = self._compute_noise_cov_diag_compressed(
-                    cm, C_ell, C_ell_dict, is_multi_field, has_spin2=has_spin2
+                    cm, C_ell, C_ell_dict, is_multi_field
                 )
             else:
                 # For pixel_projected: use compressed quantities
-                if is_multi_field and has_spin2:
-                    C_bar_inv = cm.get_compressed_inverse_with_spins(C_ell_dict)
-                    zero_dict = {k: np.zeros_like(v) for k, v in C_ell_dict.items()}
-                    N_bar = cm.get_compressed_covariance_with_spins(zero_dict)
-                elif is_multi_field:
+                if is_multi_field:
                     C_bar_inv = cm.get_compressed_inverse_multi(C_ell_dict)
                     zero_dict = {k: np.zeros_like(v) for k, v in C_ell_dict.items()}
                     N_bar = cm.get_compressed_covariance_multi(zero_dict)
@@ -820,15 +793,8 @@ class Spectra(Core):
 
                 # Get compressed derivative matrix E_l
                 if is_multi_field:
-                    spec_key = spectra_list[spectrum_idx]
-                    if has_spin2:
-                        comp_i, comp_j, mode = spec_key
-                        E_l = cm._impl.get_derivative_matrix_with_spins(
-                            ell, comp_i, comp_j, mode
-                        )
-                    else:
-                        comp_i, comp_j = spec_key
-                        E_l = cm._impl.get_derivative_matrix_multi(ell, comp_i, comp_j)
+                    comp_i, comp_j, mode = spectra_list[spectrum_idx]
+                    E_l = cm._impl.get_derivative_matrix_multi(ell, comp_i, comp_j, mode)
                 else:
                     E_l = cm.get_derivative_matrix(ell)
 

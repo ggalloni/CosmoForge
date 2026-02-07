@@ -1000,10 +1000,12 @@ class BaseCompression(ABC):
             col_start = self._mode_offsets[cj]
 
             if spin_i == 0 and spin_j == 0:
-                # Scalar x Scalar: single diagonal
+                # Scalar x Scalar: single diagonal (+ symmetric for cross-spectra)
                 diag = self._build_lambda_diagonal(mode_dict[0])
                 for k, val in enumerate(diag):
                     Lambda_full[row_start + k, col_start + k] = val
+                    if ci != cj:
+                        Lambda_full[col_start + k, row_start + k] = val
 
             elif spin_i == 2 and spin_j == 2:
                 # Spin-2 x Spin-2: EE, BB, EB sub-blocks

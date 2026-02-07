@@ -348,45 +348,32 @@ class Fisher(Core):
 
     def _build_multi_spectrum_inputs(
         self,
-    ) -> tuple[dict[tuple, np.ndarray], list[tuple], bool]:
+    ) -> tuple[dict[tuple, np.ndarray], list[tuple]]:
         """
         Build C_ell_dict and spectra_list for multi-spectrum compressed Fisher.
 
         The spectra_list ordering MUST match spectra_labels to ensure the Fisher
         matrix indices align with the traditional computation.
 
-        When spin-2 fields are present, uses 3-tuple keys (field_i, field_j, mode)
-        for the C_ell_dict and spectra_list. Otherwise uses 2-tuple keys for
-        backward compatibility.
+        Always uses 3-tuple keys (field_i, field_j, mode).
 
         Returns
         -------
         C_ell_dict : dict
-            Dictionary mapping field pairs to C_ell arrays.
+            Dictionary mapping (field_i, field_j, mode) to C_ell arrays.
         spectra_list : list
-            List of tuples in same order as spectra_labels.
-        has_spin2 : bool
-            Whether any field has spin-2 (determines which API to call).
+            List of 3-tuples in same order as spectra_labels.
         """
-        has_spin2 = any(f.spin == 2 for f in self.collection.fields)
         sm = self.collection.spectra_manager
 
         C_ell_dict = {}
         spectra_list = []
 
-        # Iterate over the spectra_map which stores (field_i, field_j, mode) -> label
         for fi, fj, mode in sm._spectra_map:
-            cls = sm.get_cls(fi, fj, mode)
-            if has_spin2:
-                C_ell_dict[(fi, fj, mode)] = cls
-                spectra_list.append((fi, fj, mode))
-            else:
-                C_ell_dict[(fi, fj)] = cls
-                if fi != fj:
-                    C_ell_dict[(fj, fi)] = cls
-                spectra_list.append((fi, fj))
+            C_ell_dict[(fi, fj, mode)] = sm.get_cls(fi, fj, mode)
+            spectra_list.append((fi, fj, mode))
 
-        return C_ell_dict, spectra_list, has_spin2
+        return C_ell_dict, spectra_list
 
     # =========================================================================
     # Multi-Spectrum Computation
@@ -473,24 +460,14 @@ class Fisher(Core):
             # Optimized path: use compute_fisher_matrix_multi()
             if self.rank == 0:
                 # Build C_ell_dict and spectra_list from field collection
-                C_ell_dict, spectra_list, has_spin2 = self._build_multi_spectrum_inputs()
+                C_ell_dict, spectra_list = self._build_multi_spectrum_inputs()
 
-                if has_spin2:
-                    self.fisher = (
-                        self.compression_manager.compute_fisher_matrix_with_spins(
-                            C_ell_dict,
-                            spectra_list,
-                            ell_min=2,
-                            ell_max=self.params.lmax,
-                        )
-                    )
-                else:
-                    self.fisher = self.compression_manager.compute_fisher_matrix_multi(
-                        C_ell_dict,
-                        spectra_list,
-                        ell_min=2,
-                        ell_max=self.params.lmax,
-                    )
+                self.fisher = self.compression_manager.compute_fisher_matrix_multi(
+                    C_ell_dict,
+                    spectra_list,
+                    ell_min=2,
+                    ell_max=self.params.lmax,
+                )
                 self.log("-" * 80, level=1)
                 self.log("Fisher matrix computation completed", level=1)
 
