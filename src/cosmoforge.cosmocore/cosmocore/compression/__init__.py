@@ -309,8 +309,8 @@ class CompressionManager:
 
     def compute_fisher_matrix_multi(
         self,
-        C_ell_dict: dict[tuple[int, int], np.ndarray],
-        spectra_list: list[tuple[int, int]],
+        C_ell_dict: dict[tuple, np.ndarray],
+        spectra_list: list[tuple],
         ell_min: int = 2,
         ell_max: int | None = None,
     ) -> np.ndarray:
@@ -320,9 +320,10 @@ class CompressionManager:
         Parameters
         ----------
         C_ell_dict : dict
-            Dictionary mapping (comp_i, comp_j) to C_ell array for each spectrum.
+            Dictionary mapping (comp_i, comp_j) or (comp_i, comp_j, mode)
+            to C_ell array for each spectrum.
         spectra_list : list
-            List of (comp_i, comp_j) tuples specifying which spectra to include.
+            List of 2-tuple or 3-tuple specifying which spectra to include.
         ell_min : int, default 2
             Minimum multipole to include in Fisher matrix.
         ell_max : int or None, optional
@@ -368,7 +369,7 @@ class CompressionManager:
         return self._impl.get_weighted_compressed_data(data, C_ell, C_c_inv=C_c_inv)
 
     def get_weighted_compressed_data_multi(
-        self, data: np.ndarray, C_ell_dict: dict[tuple[int, int], np.ndarray]
+        self, data: np.ndarray, C_ell_dict: dict[tuple, np.ndarray]
     ) -> np.ndarray:
         """
         Compute weighted compressed data for multi-field QML estimation.
@@ -380,7 +381,8 @@ class CompressionManager:
         data : numpy.ndarray
             Pixel-space data vector.
         C_ell_dict : dict
-            Dictionary mapping (comp_i, comp_j) to C_ell array for cross-spectra.
+            Dictionary mapping (comp_i, comp_j) or (comp_i, comp_j, mode)
+            to C_ell array for cross-spectra.
 
         Returns
         -------
@@ -410,91 +412,88 @@ class CompressionManager:
         """
         return self._impl.compute_quadratic_form(data, C_ell)
 
-    # === Spin-2 aware operations ===
-
-    def compute_fisher_matrix_with_spins(
-        self,
-        C_ell_dict: dict[tuple, np.ndarray],
-        spectra_list: list[tuple[int, int, int]],
-        ell_min: int = 2,
-        ell_max: int | None = None,
-    ) -> np.ndarray:
-        """
-        Compute Fisher matrix with spin-2 support using 3-tuple spectra.
-
-        Parameters
-        ----------
-        C_ell_dict : dict
-            Dictionary with 3-tuple keys (comp_i, comp_j, mode).
-        spectra_list : list of 3-tuple
-            List of (comp_i, comp_j, mode) specifying which spectra to include.
-        ell_min : int, default 2
-            Minimum multipole.
-        ell_max : int or None, optional
-            Maximum multipole.
-
-        Returns
-        -------
-        numpy.ndarray
-            Fisher matrix of shape (n_spectra * n_ell, n_spectra * n_ell).
-        """
-        return self._impl.compute_fisher_matrix_with_spins(
-            C_ell_dict, spectra_list, ell_min, ell_max
-        )
-
-    def get_compressed_covariance_with_spins(
-        self, C_ell_dict: dict[tuple, np.ndarray]
-    ) -> np.ndarray:
-        """Get compressed covariance with spin-2 support."""
-        return self._impl.get_compressed_covariance_with_spins(C_ell_dict)
-
-    def get_compressed_inverse_with_spins(
-        self, C_ell_dict: dict[tuple, np.ndarray]
-    ) -> np.ndarray:
-        """Get inverse compressed covariance with spin-2 support."""
-        return self._impl.get_compressed_inverse_with_spins(C_ell_dict)
+    # === Multi-field operations (unified, supports 2-tuple and 3-tuple keys) ===
 
     def get_compressed_covariance_multi(
-        self, C_ell_dict: dict[tuple[int, int], np.ndarray]
+        self, C_ell_dict: dict[tuple, np.ndarray]
     ) -> np.ndarray:
-        """Get compressed covariance for multi-field (2-tuple keys)."""
+        """Get compressed covariance for multi-field."""
         return self._impl.get_compressed_covariance_multi(C_ell_dict)
 
     def get_compressed_inverse_multi(
-        self, C_ell_dict: dict[tuple[int, int], np.ndarray]
+        self, C_ell_dict: dict[tuple, np.ndarray]
     ) -> np.ndarray:
-        """Get inverse compressed covariance for multi-field (2-tuple keys)."""
-        from ..basics import matrix_inverse_symm
+        """Get inverse compressed covariance for multi-field."""
+        return self._impl.get_compressed_inverse_multi(C_ell_dict)
 
-        return matrix_inverse_symm(self.get_compressed_covariance_multi(C_ell_dict))
-
-    def get_weighted_compressed_data_with_spins(
-        self, data: np.ndarray, C_ell_dict: dict[tuple, np.ndarray]
+    def get_derivative_matrix_multi(
+        self, ell: int, comp_i: int, comp_j: int, mode: int = 0
     ) -> np.ndarray:
-        """Get weighted compressed data with spin-2 support."""
-        return self._impl.get_weighted_compressed_data_with_spins(data, C_ell_dict)
+        """Get derivative matrix dC/dC_ell for multi-field."""
+        return self._impl.get_derivative_matrix_multi(ell, comp_i, comp_j, mode)
 
-    def compute_quadratic_form_with_spins(
+    def prepare_smw_multi(self, C_ell_dict: dict[tuple, np.ndarray]) -> SMWPrepared:
+        """Precompute K Cholesky and logdet for reuse across sims."""
+        return self._impl.prepare_smw_multi(C_ell_dict)
+
+    def compute_quadratic_form_multi(
         self, data: np.ndarray, C_ell_dict: dict[tuple, np.ndarray]
     ) -> float:
-        """Compute d^T C^{-1} d with spin-2 support using SMW formula."""
-        return self._impl.compute_quadratic_form_with_spins(data, C_ell_dict)
-
-    def prepare_smw_with_spins(self, C_ell_dict: dict[tuple, np.ndarray]):
-        """Precompute K Cholesky and logdet for reuse across sims."""
-        return self._impl.prepare_smw_with_spins(C_ell_dict)
+        """Compute d^T C^{-1} d using SMW formula."""
+        return self._impl.compute_quadratic_form_multi(data, C_ell_dict)
 
     def quadratic_form_from_prepared(self, data: np.ndarray, K_chol):
         """Compute d^T C^{-1} d using precomputed K Cholesky factor."""
         return self._impl.quadratic_form_from_prepared(data, K_chol)
 
-    def get_full_logdet_with_spins(self, C_ell_dict: dict[tuple, np.ndarray]) -> float:
-        """Get log|C| with spin-2 support.
+    def get_logdet_multi(self, C_ell_dict: dict[tuple, np.ndarray]) -> float:
+        """Get log|C| via SMW formula (harmonic only)."""
+        return self._impl.get_logdet_multi(C_ell_dict)
+
+    def get_full_logdet_multi(self, C_ell_dict: dict[tuple, np.ndarray]) -> float:
+        """Get log|C| for multi-field.
 
         For harmonic method, uses exact SMW formula.
         For pixel_projected, uses compressed logdet approximation.
         """
-        return self._impl.get_logdet_with_spins(C_ell_dict)
+        if self.method == "harmonic":
+            return self._impl.get_logdet_multi(C_ell_dict)
+        else:
+            return self._impl.get_compressed_logdet(C_ell_dict)
+
+    # === Deprecated _with_spins aliases ===
+
+    def compute_fisher_matrix_with_spins(
+        self, C_ell_dict, spectra_list, ell_min=2, ell_max=None
+    ):
+        """Deprecated: use compute_fisher_matrix_multi."""
+        return self.compute_fisher_matrix_multi(
+            C_ell_dict, spectra_list, ell_min, ell_max
+        )
+
+    def get_compressed_covariance_with_spins(self, C_ell_dict):
+        """Deprecated: use get_compressed_covariance_multi."""
+        return self.get_compressed_covariance_multi(C_ell_dict)
+
+    def get_compressed_inverse_with_spins(self, C_ell_dict):
+        """Deprecated: use get_compressed_inverse_multi."""
+        return self.get_compressed_inverse_multi(C_ell_dict)
+
+    def get_weighted_compressed_data_with_spins(self, data, C_ell_dict):
+        """Deprecated: use get_weighted_compressed_data_multi."""
+        return self.get_weighted_compressed_data_multi(data, C_ell_dict)
+
+    def compute_quadratic_form_with_spins(self, data, C_ell_dict):
+        """Deprecated: use compute_quadratic_form_multi."""
+        return self.compute_quadratic_form_multi(data, C_ell_dict)
+
+    def prepare_smw_with_spins(self, C_ell_dict):
+        """Deprecated: use prepare_smw_multi."""
+        return self.prepare_smw_multi(C_ell_dict)
+
+    def get_full_logdet_with_spins(self, C_ell_dict):
+        """Deprecated: use get_full_logdet_multi."""
+        return self.get_full_logdet_multi(C_ell_dict)
 
     # === Properties ===
 
