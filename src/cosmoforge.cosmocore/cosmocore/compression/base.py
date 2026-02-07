@@ -265,6 +265,12 @@ class BaseCompression(ABC):
 
     @property
     @abstractmethod
+    def method(self) -> str:
+        """Compression method name: "harmonic" or "pixel_projected"."""
+        pass
+
+    @property
+    @abstractmethod
     def projector(self) -> np.ndarray:
         """
         Get the projection matrix that maps pixel space to compressed space.
@@ -418,6 +424,28 @@ class BaseCompression(ABC):
         C_compressed = self.get_compressed_covariance(C_ell)
         _, logdet = matrix_slogdet_symm(np.asfortranarray(C_compressed))
         return logdet
+
+    def get_full_logdet(self, C_ell: np.ndarray) -> float:
+        """
+        Get best available log determinant of full covariance.
+
+        For harmonic compression, returns exact log|C| via SMW formula.
+        For pixel_projected, returns log|C_compressed| (approximation).
+
+        Subclasses may override to provide exact computation.
+        """
+        return self.get_compressed_logdet(C_ell)
+
+    def get_full_logdet_multi(self, C_ell_dict: dict) -> float:
+        """
+        Get best available log determinant for multi-field covariance.
+
+        For harmonic compression, returns exact log|C| via SMW formula.
+        For pixel_projected, returns log|C_compressed| (approximation).
+
+        Subclasses may override to provide exact computation.
+        """
+        return self.get_logdet_multi(C_ell_dict)
 
     def _build_harmonic_operator(self) -> None:
         """

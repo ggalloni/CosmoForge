@@ -53,7 +53,7 @@ import numpy as np
 from mpi4py import MPI
 
 from cosmocore import (
-    CompressionManager,
+    BaseCompression,
     Core,
     FieldCollection,
     do_derivative_step,
@@ -297,7 +297,7 @@ class Spectra(Core):
             hasattr(self.fisher_instance, "compression_manager")
             and self.fisher_instance.compression_manager is not None
         ):
-            self.compression_manager: CompressionManager = (
+            self.compression_manager: BaseCompression = (
                 self.fisher_instance.compression_manager
             )
         else:
@@ -601,26 +601,24 @@ class Spectra(Core):
 
         from cosmocore.basics import matrix_inverse_symm
 
-        impl = cm._impl
-
         if is_multi_field:
             # Build full Lambda and its inverse (auto-detects key format)
-            Lambda_full = impl._build_lambda_full(C_ell_dict)
+            Lambda_full = cm._build_lambda_full(C_ell_dict)
             Lambda_reg = Lambda_full + np.eye(Lambda_full.shape[0]) * 1e-20
             Lambda_inv = matrix_inverse_symm(np.asfortranarray(Lambda_reg))
 
-            M = impl._V_Ninv_VT
+            M = cm._V_Ninv_VT
             K = Lambda_inv + M
             K_inv = matrix_inverse_symm(np.asfortranarray(K))
 
             # V_Cinv = (I - M @ K^{-1}) @ V_Ninv
-            n_modes = impl.n_modes_total
+            n_modes = cm.n_modes_total
             I_minus_MKinv = np.eye(n_modes) - M @ K_inv
-            V_Cinv = I_minus_MKinv @ impl._V_N_inv
+            V_Cinv = I_minus_MKinv @ cm._V_N_inv
         else:
-            Lambda_diag = impl._build_lambda_diagonal(C_ell)
+            Lambda_diag = cm._build_lambda_diagonal(C_ell)
             Lambda_inv_diag = np.where(Lambda_diag > 1e-30, 1.0 / Lambda_diag, 1e30)
-            M = impl._V_Ninv_VT
+            M = cm._V_Ninv_VT
             K = np.diag(Lambda_inv_diag) + M
 
             try:
@@ -631,13 +629,13 @@ class Spectra(Core):
 
             # V_Cinv = (I - M @ K^{-1}) @ V_Ninv
             I_minus_MKinv = np.eye(cm.n_modes) - M @ K_inv
-            V_Cinv = I_minus_MKinv @ impl._V_N_inv
+            V_Cinv = I_minus_MKinv @ cm._V_N_inv
 
         # For diagonal N, compute noise_cov_w_diag
-        if hasattr(impl, "_N_inv_original"):
-            noise_var = 1.0 / np.diag(impl._N_inv_original)
+        if hasattr(cm, "_N_inv_original"):
+            noise_var = 1.0 / np.diag(cm._N_inv_original)
         else:
-            noise_var = 1.0 / np.diag(impl.N_inv)
+            noise_var = 1.0 / np.diag(cm.N_inv)
         sqrt_noise = np.sqrt(noise_var)
         W = V_Cinv * sqrt_noise[np.newaxis, :]
 
@@ -702,17 +700,16 @@ class Spectra(Core):
                 # Precompute SMW matrices once
                 from cosmocore.basics import matrix_inverse_symm
 
-                impl = cm._impl
-                Lambda_full = impl._build_lambda_full(C_ell_dict)
+                Lambda_full = cm._build_lambda_full(C_ell_dict)
                 Lambda_reg = Lambda_full + np.eye(Lambda_full.shape[0]) * 1e-20
                 Lambda_inv = matrix_inverse_symm(np.asfortranarray(Lambda_reg))
-                K = Lambda_inv + impl._V_Ninv_VT
+                K = Lambda_inv + cm._V_Ninv_VT
                 K_inv = matrix_inverse_symm(np.asfortranarray(K))
-                M_K_inv = impl._V_Ninv_VT @ K_inv
+                M_K_inv = cm._V_Ninv_VT @ K_inv
 
                 # Compute weighted data for all sims using precomputed matrices
                 # w = y - M @ K^{-1} @ y where y = V @ N^{-1} @ d
-                Y1 = impl._V_N_inv @ self.maps1  # (n_modes, n_sims)
+                Y1 = cm._V_N_inv @ self.maps1  # (n_modes, n_sims)
                 maps1_weighted = Y1 - M_K_inv @ Y1
             else:
                 # pixel_projected: use compressed-space weighted data
@@ -733,7 +730,7 @@ class Spectra(Core):
             if is_multi_field:
                 if cm.method == "harmonic":
                     # Use precomputed matrices
-                    Y2 = impl._V_N_inv @ self.maps2
+                    Y2 = cm._V_N_inv @ self.maps2
                     maps2_weighted = Y2 - M_K_inv @ Y2
                 else:
                     d_c2 = cm.compress_data(self.maps2)
@@ -772,7 +769,7 @@ class Spectra(Core):
                 # Get compressed derivative matrix E_l
                 if is_multi_field:
                     comp_i, comp_j, mode = spectra_list[spectrum_idx]
-                    E_l = cm._impl.get_derivative_matrix_multi(ell, comp_i, comp_j, mode)
+                    E_l = cm.get_derivative_matrix_multi(ell, comp_i, comp_j, mode)
                 else:
                     E_l = cm.get_derivative_matrix(ell)
 

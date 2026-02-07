@@ -62,6 +62,7 @@ from .compression import (
     CompressionManager,
     HarmonicCompression,
     PixelProjectedCompression,
+    create_compression,
 )
 from .core import Core
 from .fields import (
@@ -143,6 +144,7 @@ __all__ = [
     "CompressionManager",
     "HarmonicCompression",
     "PixelProjectedCompression",
+    "create_compression",
     # fields
     "BaseField",
     "FieldCollection",

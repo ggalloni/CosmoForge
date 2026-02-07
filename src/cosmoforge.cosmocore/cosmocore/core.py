@@ -27,7 +27,7 @@ import healpy as hp
 import numpy as np
 
 from .basics import matrix_inverse_symm, matrix_slogdet_symm
-from .compression import CompressionManager
+from .compression import create_compression
 from .fields import (
     BaseField,
     FieldCollection,
@@ -553,14 +553,14 @@ class Core(ABC):
                     # Restore original spectra (already smoothed - don't re-apply beam)
                     self.collection.spectra_manager._cls_dict = original_spectra_smoothed
 
-        # Create compression manager
-        self.compression_manager = CompressionManager(
+        # Create compression implementation
+        self.compression_manager = create_compression(
+            method=method,
             N=self.NCov1,
             N_inv=matrix_inverse_symm(self.NCov1),
             theta=theta_arr,
             phi=phi_arr,
             lmax=compression_lmax,
-            method=method,
             beam=beam,
             spins=spins,
             basis=basis,
@@ -719,9 +719,7 @@ class Core(ABC):
             Quadratic form value d^T C^{-1} d.
         """
         if hasattr(self, "compression_manager") and self.compression_manager is not None:
-            return self.compression_manager.compute_quadratic_form_with_spins(
-                data, C_ell_dict
-            )
+            return self.compression_manager.compute_quadratic_form_multi(data, C_ell_dict)
         else:
             C_inv = self.get_covariance_inverse(
                 C_ell_dict.get((0, 0, 0), next(iter(C_ell_dict.values())))
@@ -747,7 +745,7 @@ class Core(ABC):
             Log determinant of covariance matrix.
         """
         if hasattr(self, "compression_manager") and self.compression_manager is not None:
-            return self.compression_manager.get_full_logdet_with_spins(C_ell_dict)
+            return self.compression_manager.get_full_logdet_multi(C_ell_dict)
         else:
             C_ell = C_ell_dict.get((0, 0, 0), next(iter(C_ell_dict.values())))
             _, logdet = matrix_slogdet_symm(self.get_total_covariance(C_ell))

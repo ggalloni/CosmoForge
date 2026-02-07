@@ -478,6 +478,11 @@ class PixelProjectedCompression(BaseCompression):
             return U, eigvals
 
     @property
+    def method(self) -> str:
+        """Compression method name."""
+        return "pixel_projected"
+
+    @property
     def projector(self) -> np.ndarray:
         """
         Get the projection matrix U^T (n_kept × n_pix).

@@ -536,7 +536,7 @@ class TestCompressedLikelihood:
         picslike_compressed.setup_maps()
 
         assert picslike_compressed.compression_manager is not None
-        assert picslike_compressed.compression_manager._impl._use_switch_optimization
+        assert picslike_compressed.compression_manager._use_switch_optimization
 
         param_point = list(picslike_standard.parameter_grid.grid_points)[1]
 

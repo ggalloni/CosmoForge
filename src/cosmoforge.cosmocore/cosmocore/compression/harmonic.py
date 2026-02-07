@@ -68,6 +68,11 @@ class HarmonicCompression(BaseCompression):
     """
 
     @property
+    def method(self) -> str:
+        """Compression method name."""
+        return "harmonic"
+
+    @property
     def projector(self) -> np.ndarray:
         """
         Get the projection matrix V (n_modes × n_pix).
@@ -445,6 +450,14 @@ class HarmonicCompression(BaseCompression):
         """
         Lambda_diag = self._build_lambda_diagonal(C_ell)
         return smw_logdet(self._log_det_N, self._V_Ninv_VT, Lambda_diag)
+
+    def get_full_logdet(self, C_ell: np.ndarray) -> float:
+        """Get exact log|N + S| via SMW formula."""
+        return self.get_logdet(C_ell)
+
+    def get_full_logdet_multi(self, C_ell_dict: dict) -> float:
+        """Get exact log|N + S| via SMW formula for multi-field."""
+        return self.get_logdet_multi(C_ell_dict)
 
     def get_weighted_compressed_data(
         self, data: np.ndarray, C_ell: np.ndarray, C_c_inv: np.ndarray | None = None
