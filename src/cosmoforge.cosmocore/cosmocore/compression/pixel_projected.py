@@ -1299,82 +1299,15 @@ class PixelProjectedCompression(BaseCompression):
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
-        spin_i = self._spins[comp_i]
-        spin_j = self._spins[comp_j]
-
-        # For pure spin-0, use efficient diagonal path
-        if spin_i == 0 and spin_j == 0 and self.n_components == 1:
+        # For single-field spin-0, use efficient diagonal path
+        if (
+            self._spins[comp_i] == 0
+            and self._spins[comp_j] == 0
+            and self.n_components == 1
+        ):
             return self.get_derivative_matrix(ell)
 
-        # Build full E matrix in harmonic space
-        E = np.zeros((self.n_modes_total, self.n_modes_total), dtype=np.float64)
-        chngconv = (2 * ell + 1) / (4 * np.pi)
-        local_mode_indices = self._ell_to_modes_local[ell]
-        n_base = self._n_modes_base
-
-        # Spin-dependent normalization factors matching pixel.py convention
-        factor2 = 1.0 / ((ell + 2) * (ell + 1) * ell * (ell - 1))
-        factor = np.sqrt(factor2)
-
-        if spin_i == 0 and spin_j == 0:
-            # Scalar x Scalar auto/cross
-            row_offset = self._mode_offsets[comp_i]
-            col_offset = self._mode_offsets[comp_j]
-            for idx in local_mode_indices:
-                E[row_offset + idx, col_offset + idx] = chngconv
-            if comp_i != comp_j:
-                for idx in local_mode_indices:
-                    E[col_offset + idx, row_offset + idx] = chngconv
-
-        elif spin_i == 2 and spin_j == 2:
-            deriv_val = chngconv * factor2
-            row_start = self._mode_offsets[comp_i]
-            col_start = self._mode_offsets[comp_j]
-
-            if mode == 0:  # EE
-                for idx in local_mode_indices:
-                    E[row_start + idx, col_start + idx] = deriv_val
-            elif mode == 1:  # BB
-                for idx in local_mode_indices:
-                    E[row_start + n_base + idx, col_start + n_base + idx] = deriv_val
-            elif mode == 2:  # EB
-                for idx in local_mode_indices:
-                    E[row_start + idx, col_start + n_base + idx] = deriv_val
-                    E[col_start + n_base + idx, row_start + idx] = deriv_val
-
-            if comp_i != comp_j:
-                if mode == 0:
-                    for idx in local_mode_indices:
-                        E[col_start + idx, row_start + idx] = deriv_val
-                elif mode == 1:
-                    for idx in local_mode_indices:
-                        E[col_start + n_base + idx, row_start + n_base + idx] = deriv_val
-                elif mode == 2:
-                    for idx in local_mode_indices:
-                        E[col_start + idx, row_start + n_base + idx] = deriv_val
-                        E[row_start + n_base + idx, col_start + idx] = deriv_val
-
-        elif spin_i == 0 and spin_j == 2:
-            # Negative sign from spin-2 convention: E = -(_2Y + _{-2}Y)/2
-            deriv_val = -chngconv * factor
-            row_start = self._mode_offsets[comp_i]
-            col_start = self._mode_offsets[comp_j]
-            col_sub = col_start + mode * n_base
-            for idx in local_mode_indices:
-                E[row_start + idx, col_sub + idx] = deriv_val
-                E[col_sub + idx, row_start + idx] = deriv_val
-
-        elif spin_i == 2 and spin_j == 0:
-            # Negative sign from spin-2 convention: E = -(_2Y + _{-2}Y)/2
-            deriv_val = -chngconv * factor
-            row_start = self._mode_offsets[comp_i]
-            col_start = self._mode_offsets[comp_j]
-            row_sub = row_start + mode * n_base
-            for idx in local_mode_indices:
-                E[row_sub + idx, col_start + idx] = deriv_val
-                E[col_start + idx, row_sub + idx] = deriv_val
-
-        # Project to compressed space: (VU)^T @ E @ (VU)
+        E = self._build_derivative_matrix_with_spins(ell, comp_i, comp_j, mode)
         E_VU = matrix_mult(E, self._VU)
         return matrix_mult(self._VU.T, E_VU)
 

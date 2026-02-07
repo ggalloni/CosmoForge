@@ -741,6 +741,82 @@ class BaseCompression(ABC):
             # These are computed on-demand in get_derivative_matrix_multi()
             self._derivative_diagonals = self._derivative_diagonals_local
 
+    def _build_derivative_matrix_with_spins(
+        self, ell: int, comp_i: int, comp_j: int, mode: int = 0
+    ) -> np.ndarray:
+        """Build full harmonic-space derivative matrix for (comp_i, comp_j, mode).
+
+        Handles all spin combinations: 0x0, 2x2, 0x2, 2x0.
+        Returns the E matrix in n_modes_total x n_modes_total space.
+        """
+        E = np.zeros((self.n_modes_total, self.n_modes_total), dtype=np.float64)
+        chngconv = (2 * ell + 1) / (4 * np.pi)
+        local_mode_indices = self._ell_to_modes_local[ell]
+        n_base = self._n_modes_base
+
+        spin_i = self._spins[comp_i]
+        spin_j = self._spins[comp_j]
+
+        if spin_i == 0 and spin_j == 0:
+            row_offset = self._mode_offsets[comp_i]
+            col_offset = self._mode_offsets[comp_j]
+            for idx in local_mode_indices:
+                E[row_offset + idx, col_offset + idx] = chngconv
+            if comp_i != comp_j:
+                for idx in local_mode_indices:
+                    E[col_offset + idx, row_offset + idx] = chngconv
+
+        elif spin_i == 2 and spin_j == 2:
+            factor2 = 1.0 / ((ell + 2) * (ell + 1) * ell * (ell - 1))
+            deriv_val = chngconv * factor2
+            row_start = self._mode_offsets[comp_i]
+            col_start = self._mode_offsets[comp_j]
+
+            if mode == 0:  # EE
+                for idx in local_mode_indices:
+                    E[row_start + idx, col_start + idx] = deriv_val
+            elif mode == 1:  # BB
+                for idx in local_mode_indices:
+                    E[row_start + n_base + idx, col_start + n_base + idx] = deriv_val
+            elif mode == 2:  # EB
+                for idx in local_mode_indices:
+                    E[row_start + idx, col_start + n_base + idx] = deriv_val
+                    E[col_start + n_base + idx, row_start + idx] = deriv_val
+
+            if comp_i != comp_j:
+                if mode == 0:
+                    for idx in local_mode_indices:
+                        E[col_start + idx, row_start + idx] = deriv_val
+                elif mode == 1:
+                    for idx in local_mode_indices:
+                        E[col_start + n_base + idx, row_start + n_base + idx] = deriv_val
+                elif mode == 2:
+                    for idx in local_mode_indices:
+                        E[col_start + idx, row_start + n_base + idx] = deriv_val
+                        E[row_start + n_base + idx, col_start + idx] = deriv_val
+
+        elif spin_i == 0 and spin_j == 2:
+            factor = np.sqrt(1.0 / ((ell + 2) * (ell + 1) * ell * (ell - 1)))
+            deriv_val = -chngconv * factor
+            row_start = self._mode_offsets[comp_i]
+            col_start = self._mode_offsets[comp_j]
+            col_sub = col_start + mode * n_base
+            for idx in local_mode_indices:
+                E[row_start + idx, col_sub + idx] = deriv_val
+                E[col_sub + idx, row_start + idx] = deriv_val
+
+        elif spin_i == 2 and spin_j == 0:
+            factor = np.sqrt(1.0 / ((ell + 2) * (ell + 1) * ell * (ell - 1)))
+            deriv_val = -chngconv * factor
+            row_start = self._mode_offsets[comp_i]
+            col_start = self._mode_offsets[comp_j]
+            row_sub = row_start + mode * n_base
+            for idx in local_mode_indices:
+                E[row_sub + idx, col_start + idx] = deriv_val
+                E[col_start + idx, row_sub + idx] = deriv_val
+
+        return E
+
     def _build_lambda_blocks(
         self, C_ell_dict: dict[tuple[int, int], np.ndarray]
     ) -> dict[tuple[int, int], np.ndarray]:
