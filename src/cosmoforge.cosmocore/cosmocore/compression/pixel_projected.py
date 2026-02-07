@@ -19,7 +19,7 @@ import numpy as np
 from scipy.linalg import eigh
 
 from ..basics import matrix_inverse_symm, matrix_mult, matrix_trace
-from .base import BaseCompression
+from .base import BaseCompression, SMWPrepared
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
@@ -1499,7 +1499,7 @@ class PixelProjectedCompression(BaseCompression):
         C_c = self.get_compressed_covariance_with_spins(C_ell_dict)
         C_c_inv = matrix_inverse_symm(C_c)
         _, logdet = matrix_slogdet_symm(C_c)
-        return C_c_inv, None, logdet
+        return SMWPrepared(C_c_inv, None, logdet)
 
     def quadratic_form_from_prepared(
         self, data: np.ndarray, C_c_inv: np.ndarray

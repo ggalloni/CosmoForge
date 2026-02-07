@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .base import BaseCompression
+from .base import BaseCompression, SMWPrepared
 from .harmonic import HarmonicCompression
 from .pixel_projected import COMPRESSION_BASES, PixelProjectedCompression
 
@@ -525,4 +525,5 @@ __all__ = [
     "CompressionManager",
     "HarmonicCompression",
     "PixelProjectedCompression",
+    "SMWPrepared",
 ]

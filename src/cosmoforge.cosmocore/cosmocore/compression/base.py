@@ -8,8 +8,28 @@ for all compression methods used in CMB Fisher matrix computation.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import NamedTuple
 
 import numpy as np
+
+
+class SMWPrepared(NamedTuple):
+    """Pre-computed quantities for SMW-based likelihood evaluation.
+
+    Parameters
+    ----------
+    factor : numpy.ndarray
+        K Cholesky factor (harmonic) or C_c_inv (pixel_projected).
+    reserved : None
+        Unused, kept for API symmetry.
+    logdet : float
+        log|C| (full covariance log-determinant).
+    """
+
+    factor: np.ndarray
+    reserved: None
+    logdet: float
+
 
 from ..basics import (
     legendre_plm,

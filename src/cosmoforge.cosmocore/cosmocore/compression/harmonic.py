@@ -22,7 +22,7 @@ from ..basics import (
     smw_logdet,
     smw_quadratic_form,
 )
-from .base import BaseCompression
+from .base import BaseCompression, SMWPrepared
 
 
 class HarmonicCompression(BaseCompression):
@@ -987,7 +987,7 @@ class HarmonicCompression(BaseCompression):
 
         logdet = self._log_det_N + log_det_Lambda + log_det_K
 
-        return K_chol, None, logdet
+        return SMWPrepared(K_chol, None, logdet)
 
     def quadratic_form_from_prepared(self, data: np.ndarray, K_chol: np.ndarray) -> float:
         """
