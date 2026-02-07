@@ -559,20 +559,15 @@ class HarmonicCompression(BaseCompression):
         # (both (i,j) and (j,i) blocks are filled by _build_lambda_blocks)
         Lambda_full = self._build_lambda_full(C_ell_dict)
 
-        # Build Lambda^{-1} - use pseudo-inverse for robustness
-        # Small regularization to handle near-singular cases
+        # Build Lambda^{-1} (regularized SPD → Cholesky-based inverse)
         Lambda_reg = Lambda_full + np.eye(Lambda_full.shape[0]) * 1e-20
-        try:
-            Lambda_inv = np.linalg.inv(Lambda_reg)
-        except np.linalg.LinAlgError:
-            # Fall back to pseudo-inverse
-            Lambda_inv = np.linalg.pinv(Lambda_full)
+        Lambda_inv = matrix_inverse_symm(np.asfortranarray(Lambda_reg))
 
         # K = Λ^{-1} + M where M = V N^{-1} V^T
         K = Lambda_inv + self._V_Ninv_VT
 
-        # K^{-1} - use standard inverse for robustness
-        K_inv = np.linalg.inv(K)
+        # K^{-1} (SPD → Cholesky-based inverse)
+        K_inv = matrix_inverse_symm(np.asfortranarray(K), overwrite=True)
 
         # V C^{-1} V^T = M - M K^{-1} M
         return self._V_Ninv_VT - matrix_mult(
@@ -613,12 +608,9 @@ class HarmonicCompression(BaseCompression):
         # Build full Lambda from cross-spectra
         Lambda_full = self._build_lambda_full(C_ell_dict)
 
-        # Build Lambda^{-1}
+        # Build Lambda^{-1} (regularized SPD → Cholesky-based inverse)
         Lambda_reg = Lambda_full + np.eye(Lambda_full.shape[0]) * 1e-20
-        try:
-            Lambda_inv = np.linalg.inv(Lambda_reg)
-        except np.linalg.LinAlgError:
-            Lambda_inv = np.linalg.pinv(Lambda_full)
+        Lambda_inv = matrix_inverse_symm(np.asfortranarray(Lambda_reg))
 
         # K = Λ^{-1} + M where M = V N^{-1} V^T
         K = Lambda_inv + self._V_Ninv_VT
@@ -801,15 +793,12 @@ class HarmonicCompression(BaseCompression):
 
         # Build Lambda^{-1} with regularization
         Lambda_reg = Lambda_full + np.eye(Lambda_full.shape[0]) * 1e-20
-        try:
-            Lambda_inv = np.linalg.inv(Lambda_reg)
-        except np.linalg.LinAlgError:
-            Lambda_inv = np.linalg.pinv(Lambda_full)
+        Lambda_inv = matrix_inverse_symm(np.asfortranarray(Lambda_reg))
 
         # K = Λ^{-1} + M where M = V N^{-1} V^T
         K = Lambda_inv + self._V_Ninv_VT
 
-        K_inv = np.linalg.inv(K)
+        K_inv = matrix_inverse_symm(np.asfortranarray(K), overwrite=True)
 
         # V C^{-1} V^T = M - M K^{-1} M
         return self._V_Ninv_VT - matrix_mult(
@@ -946,10 +935,7 @@ class HarmonicCompression(BaseCompression):
         Lambda_full = self._build_lambda_full_with_spins(C_ell_dict)
 
         Lambda_reg = Lambda_full + np.eye(Lambda_full.shape[0]) * 1e-20
-        try:
-            Lambda_inv = np.linalg.inv(Lambda_reg)
-        except np.linalg.LinAlgError:
-            Lambda_inv = np.linalg.pinv(Lambda_full)
+        Lambda_inv = matrix_inverse_symm(np.asfortranarray(Lambda_reg))
 
         K = Lambda_inv + self._V_Ninv_VT
         K_inv_y = np.linalg.solve(K, y)
@@ -986,9 +972,9 @@ class HarmonicCompression(BaseCompression):
         # log|Lambda|
         _, log_det_Lambda = matrix_slogdet_symm(Lambda_full)
 
-        # Lambda^{-1}
+        # Lambda^{-1} (regularized SPD → Cholesky-based inverse)
         Lambda_reg = Lambda_full + np.eye(Lambda_full.shape[0]) * 1e-20
-        Lambda_inv = np.linalg.inv(Lambda_reg)
+        Lambda_inv = matrix_inverse_symm(np.asfortranarray(Lambda_reg))
 
         # K = Lambda^{-1} + V N^{-1} V^T
         K = Lambda_inv + self._V_Ninv_VT
