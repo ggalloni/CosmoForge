@@ -603,15 +603,8 @@ class PICSLike(Core):
         return chi_squared, log_likelihood
 
     def _build_c_ell_dict(self) -> dict[tuple, np.ndarray]:
-        """Build C_ell_dict from spectra_manager for compressed operations.
-
-        Iterates over the spectra_map to build a dictionary with 3-tuple keys
-        (comp_i, comp_j, mode) mapping to C_ell arrays.
-        """
-        sm = self.collection.spectra_manager
-        C_ell_dict = {}
-        for fi, fj, mode in sm._spectra_map:
-            C_ell_dict[(fi, fj, mode)] = sm.get_cls(fi, fj, mode)
+        """Build C_ell_dict from spectra_manager for compressed operations."""
+        C_ell_dict, _ = self.collection.spectra_manager.build_inputs()
         return C_ell_dict
 
     def get_chi_squared(self) -> np.ndarray:

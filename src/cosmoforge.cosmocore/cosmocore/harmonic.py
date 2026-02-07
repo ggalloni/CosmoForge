@@ -404,6 +404,29 @@ class SpectraManager:
             raise ValueError(f"No power spectrum found for {label}")
         return self._cls_dict[label]
 
+    def build_inputs(
+        self,
+    ) -> tuple[dict[tuple[int, int, int], np.ndarray], list[tuple[int, int, int]]]:
+        """
+        Build C_ell_dict and spectra_list for compressed multi-field operations.
+
+        Iterates over the spectra map to build a dictionary with 3-tuple keys
+        (comp_i, comp_j, mode) and an ordered list of spectra.
+
+        Returns
+        -------
+        C_ell_dict : dict
+            Dictionary mapping (comp_i, comp_j, mode) to C_ell arrays.
+        spectra_list : list
+            Ordered list of (comp_i, comp_j, mode) tuples.
+        """
+        C_ell_dict = {}
+        spectra_list = []
+        for fi, fj, mode in self._spectra_map:
+            C_ell_dict[(fi, fj, mode)] = self.get_cls(fi, fj, mode)
+            spectra_list.append((fi, fj, mode))
+        return C_ell_dict, spectra_list
+
     def apply_normalization(self, lmax: int | None = None) -> None:
         """
         Apply normalization factors based on spin combinations.

@@ -346,34 +346,9 @@ class Fisher(Core):
         cls = self.collection.spectra_manager.get_cls(0, 0, 0)
         return cls
 
-    def _build_multi_spectrum_inputs(
-        self,
-    ) -> tuple[dict[tuple, np.ndarray], list[tuple]]:
-        """
-        Build C_ell_dict and spectra_list for multi-spectrum compressed Fisher.
-
-        The spectra_list ordering MUST match spectra_labels to ensure the Fisher
-        matrix indices align with the traditional computation.
-
-        Always uses 3-tuple keys (field_i, field_j, mode).
-
-        Returns
-        -------
-        C_ell_dict : dict
-            Dictionary mapping (field_i, field_j, mode) to C_ell arrays.
-        spectra_list : list
-            List of 3-tuples in same order as spectra_labels.
-        """
-        sm = self.collection.spectra_manager
-
-        C_ell_dict = {}
-        spectra_list = []
-
-        for fi, fj, mode in sm._spectra_map:
-            C_ell_dict[(fi, fj, mode)] = sm.get_cls(fi, fj, mode)
-            spectra_list.append((fi, fj, mode))
-
-        return C_ell_dict, spectra_list
+    def _build_multi_spectrum_inputs(self):
+        """Build C_ell_dict and spectra_list for multi-spectrum compressed Fisher."""
+        return self.collection.spectra_manager.build_inputs()
 
     # =========================================================================
     # Multi-Spectrum Computation

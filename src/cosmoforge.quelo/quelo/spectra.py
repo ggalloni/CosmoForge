@@ -582,31 +582,9 @@ class Spectra(Core):
         else:
             self._compute_qml_spectra_traditional()
 
-    def _build_multi_spectrum_inputs_spectra(
-        self,
-    ) -> tuple[dict[tuple, np.ndarray], list[tuple]]:
-        """
-        Build C_ell_dict and spectra_list for multi-spectrum compressed QML.
-
-        Always uses 3-tuple keys (field_i, field_j, mode).
-
-        Returns
-        -------
-        C_ell_dict : dict
-            Dictionary mapping (field_i, field_j, mode) to C_ell arrays.
-        spectra_list : list
-            List of 3-tuples in same order as spectra_labels.
-        """
-        sm = self.collection.spectra_manager
-
-        C_ell_dict = {}
-        spectra_list = []
-
-        for fi, fj, mode in sm._spectra_map:
-            C_ell_dict[(fi, fj, mode)] = sm.get_cls(fi, fj, mode)
-            spectra_list.append((fi, fj, mode))
-
-        return C_ell_dict, spectra_list
+    def _build_multi_spectrum_inputs_spectra(self):
+        """Build C_ell_dict and spectra_list for multi-spectrum compressed QML."""
+        return self.collection.spectra_manager.build_inputs()
 
     def _compute_noise_cov_diag_compressed(
         self, cm, C_ell, C_ell_dict, is_multi_field
