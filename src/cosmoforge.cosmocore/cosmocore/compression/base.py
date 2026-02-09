@@ -325,14 +325,14 @@ class BaseCompression(ABC):
         pass
 
     @abstractmethod
-    def get_projected_inverse(self, C_ell: np.ndarray) -> np.ndarray:
+    def get_projected_inverse(self, C_ell) -> np.ndarray:
         """
         Get the projected inverse for Fisher computation.
 
         Parameters
         ----------
-        C_ell : numpy.ndarray
-            Power spectrum values for ell = 2 to lmax.
+        C_ell : numpy.ndarray or dict
+            Power spectrum (array for single-field, dict for multi-field).
 
         Returns
         -------
@@ -342,7 +342,13 @@ class BaseCompression(ABC):
         pass
 
     @abstractmethod
-    def get_derivative_matrix(self, ell: int) -> np.ndarray:
+    def get_derivative_matrix(
+        self,
+        ell: int,
+        comp_i: int | None = None,
+        comp_j: int | None = None,
+        mode: int = 0,
+    ) -> np.ndarray:
         """
         Get the derivative matrix ∂C/∂C_ℓ in the compressed basis.
 
@@ -350,6 +356,10 @@ class BaseCompression(ABC):
         ----------
         ell : int
             Multipole for which to compute the derivative.
+        comp_i, comp_j : int or None
+            Component indices for multi-field. None for single-field.
+        mode : int
+            Spin mode (0=EE/TE, 1=BB/TB, 2=EB). Only used with comp_i/comp_j.
 
         Returns
         -------
@@ -359,7 +369,7 @@ class BaseCompression(ABC):
         pass
 
     @abstractmethod
-    def get_compressed_covariance(self, C_ell: np.ndarray) -> np.ndarray:
+    def get_compressed_covariance(self, C_ell) -> np.ndarray:
         """
         Compute covariance matrix in the compressed space.
 
@@ -368,8 +378,8 @@ class BaseCompression(ABC):
 
         Parameters
         ----------
-        C_ell : numpy.ndarray
-            Power spectrum values for ell = 2 to lmax.
+        C_ell : numpy.ndarray or dict
+            Power spectrum (array for single-field, dict for multi-field).
 
         Returns
         -------
@@ -380,23 +390,19 @@ class BaseCompression(ABC):
 
     @abstractmethod
     def get_weighted_compressed_data(
-        self, data: np.ndarray, C_ell: np.ndarray
+        self, data: np.ndarray, C_ell, C_c_inv: np.ndarray | None = None
     ) -> np.ndarray:
         """
         Compute weighted compressed data for QML estimation.
-
-        Returns the vector w such that QML estimator is:
-            q_ℓ = (1/2) * w^T @ ∂C_c/∂C_ℓ @ w
-
-        - HarmonicCompression: w = V @ C^{-1} @ d (via SMW)
-        - PixelProjectedCompression: w = C_c^{-1} @ (U^T @ d)
 
         Parameters
         ----------
         data : numpy.ndarray
             Pixel-space data vector of shape (n_pix,) or (n_pix, n_sims).
-        C_ell : numpy.ndarray
-            Power spectrum values for ell = 2 to lmax.
+        C_ell : numpy.ndarray or dict
+            Power spectrum (array for single-field, dict for multi-field).
+        C_c_inv : numpy.ndarray, optional
+            Precomputed compressed inverse (pixel_projected only).
 
         Returns
         -------
@@ -407,17 +413,14 @@ class BaseCompression(ABC):
 
     # === Shared implementations ===
 
-    def get_compressed_inverse(self, C_ell: np.ndarray) -> np.ndarray:
+    def get_compressed_inverse(self, C_ell) -> np.ndarray:
         """
         Compute inverse of compressed covariance matrix.
 
-        This default implementation inverts get_compressed_covariance().
-        Subclasses may override for more efficient implementations.
-
         Parameters
         ----------
-        C_ell : numpy.ndarray
-            Power spectrum values for ell = 2 to lmax.
+        C_ell : numpy.ndarray or dict
+            Power spectrum (array for single-field, dict for multi-field).
 
         Returns
         -------
@@ -429,7 +432,7 @@ class BaseCompression(ABC):
         C_compressed = self.get_compressed_covariance(C_ell)
         return matrix_inverse_symm(C_compressed, overwrite=True)
 
-    def get_compressed_logdet(self, C_ell: np.ndarray) -> float:
+    def get_compressed_logdet(self, C_ell) -> float:
         """
         Compute log determinant of compressed covariance matrix.
 
@@ -447,7 +450,7 @@ class BaseCompression(ABC):
         _, logdet = matrix_slogdet_symm(np.asfortranarray(C_compressed))
         return logdet
 
-    def get_full_logdet(self, C_ell: np.ndarray) -> float:
+    def get_full_logdet(self, C_ell) -> float:
         """
         Get best available log determinant of full covariance.
 
@@ -455,19 +458,13 @@ class BaseCompression(ABC):
         For pixel_projected, returns log|C_compressed| (approximation).
 
         Subclasses may override to provide exact computation.
+
+        Parameters
+        ----------
+        C_ell : numpy.ndarray or dict
+            Power spectrum (array for single-field, dict for multi-field).
         """
         return self.get_compressed_logdet(C_ell)
-
-    def get_full_logdet_multi(self, C_ell_dict: dict) -> float:
-        """
-        Get best available log determinant for multi-field covariance.
-
-        For harmonic compression, returns exact log|C| via SMW formula.
-        For pixel_projected, returns log|C_compressed| (approximation).
-
-        Subclasses may override to provide exact computation.
-        """
-        return self.get_logdet_multi(C_ell_dict)
 
     # =========================================================================
     # Delegates to HarmonicBasis

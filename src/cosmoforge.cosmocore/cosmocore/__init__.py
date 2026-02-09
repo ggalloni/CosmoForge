@@ -59,7 +59,6 @@ from .basics import (
 )
 from .compression import (
     BaseCompression,
-    CompressionManager,
     HarmonicCompression,
     PixelProjectedCompression,
     create_compression,
@@ -141,7 +140,6 @@ __all__ = [
     "Core",
     # compression
     "BaseCompression",
-    "CompressionManager",
     "HarmonicCompression",
     "PixelProjectedCompression",
     "create_compression",

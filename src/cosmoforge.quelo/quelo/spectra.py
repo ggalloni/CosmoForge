@@ -713,7 +713,7 @@ class Spectra(Core):
                 maps1_weighted = Y1 - M_K_inv @ Y1
             else:
                 # pixel_projected: use compressed-space weighted data
-                C_c_inv = cm.get_compressed_inverse_multi(C_ell_dict)
+                C_c_inv = cm.get_compressed_inverse(C_ell_dict)
                 d_c = cm.compress_data(self.maps1)
                 maps1_weighted = C_c_inv @ d_c
         else:
@@ -752,9 +752,9 @@ class Spectra(Core):
             else:
                 # For pixel_projected: use compressed quantities
                 if is_multi_field:
-                    C_bar_inv = cm.get_compressed_inverse_multi(C_ell_dict)
+                    C_bar_inv = cm.get_compressed_inverse(C_ell_dict)
                     zero_dict = {k: np.zeros_like(v) for k, v in C_ell_dict.items()}
-                    N_bar = cm.get_compressed_covariance_multi(zero_dict)
+                    N_bar = cm.get_compressed_covariance(zero_dict)
                 else:
                     C_bar_inv = cm.get_compressed_inverse(C_ell)
                     N_bar = cm.get_compressed_covariance(np.zeros_like(C_ell))
@@ -769,7 +769,7 @@ class Spectra(Core):
                 # Get compressed derivative matrix E_l
                 if is_multi_field:
                     comp_i, comp_j, mode = spectra_list[spectrum_idx]
-                    E_l = cm.get_derivative_matrix_multi(ell, comp_i, comp_j, mode)
+                    E_l = cm.get_derivative_matrix(ell, comp_i, comp_j, mode)
                 else:
                     E_l = cm.get_derivative_matrix(ell)
 

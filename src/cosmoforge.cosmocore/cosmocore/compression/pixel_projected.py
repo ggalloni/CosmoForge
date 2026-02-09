@@ -1007,52 +1007,42 @@ class PixelProjectedCompression(BaseCompression):
             (self.n_kept, self.n_kept), dtype=np.float64, order="F"
         )
 
-    def get_projected_inverse(self, C_ell: np.ndarray) -> np.ndarray:
+    def get_projected_inverse(self, C_ell) -> np.ndarray:
         """
         Compute inverse of compressed covariance (U^T @ C @ U)^{-1}.
 
-        For pixel-projected compression, this returns the same as
-        get_compressed_inverse(), which is the correct quantity for
-        computing the compressed Fisher matrix:
-            F_ij = (1/2) Tr[C_c^{-1} @ dC_c_i @ C_c^{-1} @ dC_c_j]
-
-        where C_c = U^T @ C @ U is the compressed covariance.
-
-        Note: This differs from the "projected inverse" U^T @ C^{-1} @ U,
-        which is NOT equivalent for rectangular projection matrix U.
-        The compressed Fisher formula requires the inverse of the compressed
-        covariance, not the projected inverse.
-
         Parameters
         ----------
-        C_ell : numpy.ndarray
-            Power spectrum values for ell = 2 to lmax.
+        C_ell : numpy.ndarray or dict
+            Power spectrum (array for single-field, dict for multi-field).
 
         Returns
         -------
         numpy.ndarray
-            Inverse of compressed covariance (U^T @ C @ U)^{-1},
-            shape (n_kept, n_kept).
+            Inverse of compressed covariance, shape (n_kept, n_kept).
         """
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
-
-        # Return inverse of compressed covariance
         return self.get_compressed_inverse(C_ell)
 
-    def get_derivative_matrix(self, ell: int) -> np.ndarray:
+    def get_derivative_matrix(
+        self,
+        ell: int,
+        comp_i: int | None = None,
+        comp_j: int | None = None,
+        mode: int = 0,
+    ) -> np.ndarray:
         """
         Get ∂C_compressed/∂C_ℓ = (VU)^T E_ℓ (VU).
-
-        The derivative matrix E_ℓ includes the (2ℓ+1)/(4π) factor to match
-        the traditional pixel-space derivative, consistent with HarmonicCompression.
-
-        Uses precomputed VU and derivative diagonals for efficiency.
 
         Parameters
         ----------
         ell : int
             Multipole for which to compute the derivative.
+        comp_i, comp_j : int or None
+            Component indices for multi-field. None for single-field.
+        mode : int
+            Spin mode (0=EE/TE, 1=BB/TB, 2=EB). Only used with comp_i/comp_j.
 
         Returns
         -------
@@ -1062,25 +1052,30 @@ class PixelProjectedCompression(BaseCompression):
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
-        # Use precomputed VU and E_ℓ diagonal
-        E_diag = self._derivative_diagonals[ell]
+        if comp_i is None:
+            # Single-field: use precomputed diagonal
+            E_diag = self._derivative_diagonals[ell]
+            np.multiply(self._VU, E_diag[:, np.newaxis], out=self._VU_scaled_buffer)
+            return matrix_mult(self._VU_scaled_buffer.T, self._VU)
 
-        # (VU)^T @ diag(E_diag) @ VU = (VU * E_diag)^T @ VU
-        # Use buffer for intermediate VU_scaled to reduce allocations
-        np.multiply(self._VU, E_diag[:, np.newaxis], out=self._VU_scaled_buffer)
-        return matrix_mult(self._VU_scaled_buffer.T, self._VU)
+        # Multi-field
+        if self.n_components == 1 and self._spins[0] == 0:
+            E_diag = self._derivative_diagonals[ell]
+            np.multiply(self._VU, E_diag[:, np.newaxis], out=self._VU_scaled_buffer)
+            return matrix_mult(self._VU_scaled_buffer.T, self._VU)
 
-    def get_compressed_covariance(self, C_ell: np.ndarray) -> np.ndarray:
+        E = self._build_derivative_matrix_with_spins(ell, comp_i, comp_j, mode)
+        E_VU = matrix_mult(E, self._VU)
+        return matrix_mult(self._VU.T, E_VU)
+
+    def get_compressed_covariance(self, C_ell) -> np.ndarray:
         """
         Compute compressed covariance C_compressed = U^T C U.
 
-        Uses precomputed U^T N U and VU from _precompute_compression_products()
-        for efficiency.
-
         Parameters
         ----------
-        C_ell : numpy.ndarray
-            Power spectrum values for ell = 2 to lmax.
+        C_ell : numpy.ndarray or dict
+            Power spectrum (array for single-field, dict for multi-field).
 
         Returns
         -------
@@ -1090,83 +1085,56 @@ class PixelProjectedCompression(BaseCompression):
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
-        # Use precomputed U^T N U
-        U_N_U = self._U_N_U
+        if isinstance(C_ell, dict):
+            Lambda_full = self._build_lambda_full(C_ell)
+            VU_Lambda = matrix_mult(Lambda_full, self._VU)
+            U_S_U = matrix_mult(self._VU.T, VU_Lambda)
+            return self._U_N_U + U_S_U
 
-        # U^T V^T Λ V U = (VU)^T Λ (VU) using precomputed VU
-        # Use buffers to reduce allocations
+        # Single-field: use buffers for efficiency
         Lambda_diag = self._build_lambda_diagonal(C_ell)
         np.multiply(self._VU, Lambda_diag[:, np.newaxis], out=self._VU_scaled_buffer)
         np.matmul(self._VU.T, self._VU_scaled_buffer, out=self._U_S_U_buffer)
-
-        # Return copy since caller may modify result
-        return U_N_U + self._U_S_U_buffer
+        return self._U_N_U + self._U_S_U_buffer
 
     def get_weighted_compressed_data(
-        self, data: np.ndarray, C_ell: np.ndarray, C_c_inv: np.ndarray | None = None
+        self, data: np.ndarray, C_ell, C_c_inv: np.ndarray | None = None
     ) -> np.ndarray:
         """
         Compute C_c^{-1} @ U^T @ d for QML estimation in compressed space.
-
-        This implements the standard QML formula in compressed space, following
-        Gjerløw et al. (2015) equation 18. The weighted compressed data is:
-
-            w = C_c^{-1} @ d_c
-
-        where:
-            d_c = U^T @ d (compressed data)
-            C_c = U^T @ C @ U (compressed covariance)
-
-        The QML estimate is then: q_ℓ = (1/2) w^T @ E_ℓ @ w
 
         Parameters
         ----------
         data : numpy.ndarray
             Pixel-space data vector of shape (n_pix,) or (n_pix, n_sims).
-        C_ell : numpy.ndarray
-            Power spectrum values for ell = 2 to lmax.
+        C_ell : numpy.ndarray or dict
+            Power spectrum (array for single-field, dict for multi-field).
         C_c_inv : numpy.ndarray, optional
-            Precomputed compressed covariance inverse. If provided, C_ell is
-            ignored and this matrix is used directly. This is useful when
-            processing multiple simulations with the same C_ell.
+            Precomputed compressed covariance inverse.
 
         Returns
         -------
         numpy.ndarray
             Weighted compressed data of shape (n_kept,) or (n_kept, n_sims).
-
-        References
-        ----------
-        .. [1] Gjerløw, E., et al. (2015). Section 5, Equation 18.
         """
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
-        # d_c = U^T @ d (compressed data)
         d_compressed = self._eigenvectors.T @ data
-
-        # w = C_c^{-1} @ d_c
         if C_c_inv is None:
             C_c_inv = self.get_compressed_inverse(C_ell)
         return matrix_mult(C_c_inv, d_compressed)
 
-    def compute_quadratic_form(self, data: np.ndarray, C_ell: np.ndarray) -> float:
+    def compute_quadratic_form(self, data: np.ndarray, C_ell) -> float:
         """
         Compute d^T C^{-1} d approximately in compressed space.
-
-        For pixel_projected compression, we approximate:
-            d^T C^{-1} d ≈ d_c^T @ C_c^{-1} @ d_c
-
-        where d_c = U^T @ d and C_c = U^T @ C @ U.
-
-        Note: This is an approximation that becomes exact as more modes are kept.
 
         Parameters
         ----------
         data : numpy.ndarray
             Pixel-space data vector of length n_pix.
-        C_ell : numpy.ndarray
-            Power spectrum values for ell = 2 to lmax.
+        C_ell : numpy.ndarray or dict
+            Power spectrum (array for single-field, dict for multi-field).
 
         Returns
         -------
@@ -1176,71 +1144,84 @@ class PixelProjectedCompression(BaseCompression):
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
-        # d_compressed = U^T @ d
         d_compressed = self._eigenvectors.T @ data
-
-        # C_compressed^{-1}
-        C_compressed_inv = self.get_projected_inverse(C_ell)
-
+        C_compressed_inv = self.get_compressed_inverse(C_ell)
         return float(d_compressed.T @ C_compressed_inv @ d_compressed)
 
-    # === Spin-2 aware operations ===
-
-    def get_compressed_covariance_multi(self, C_ell_dict: dict) -> np.ndarray:
-        """Compute compressed covariance U^T C U. Accepts 2-tuple or 3-tuple keys."""
-        if self._eigenvectors is None:
-            raise RuntimeError("Compression not applied. Call apply_compression() first.")
-
-        Lambda_full = self._build_lambda_full(C_ell_dict)
-        VU_Lambda = matrix_mult(Lambda_full, self._VU)
-        U_S_U = matrix_mult(self._VU.T, VU_Lambda)
-        return self._U_N_U + U_S_U
-
-    def get_compressed_inverse_multi(self, C_ell_dict: dict) -> np.ndarray:
-        """Compute inverse of compressed covariance. Accepts 2-tuple or 3-tuple keys."""
-        return matrix_inverse_symm(self.get_compressed_covariance_multi(C_ell_dict))
-
-    def get_derivative_matrix_multi(
-        self, ell: int, comp_i: int, comp_j: int, mode: int = 0
-    ) -> np.ndarray:
-        """Get compressed derivative matrix for (comp_i, comp_j, mode) at ell."""
-        if self._eigenvectors is None:
-            raise RuntimeError("Compression not applied. Call apply_compression() first.")
-
-        if (
-            self._spins[comp_i] == 0
-            and self._spins[comp_j] == 0
-            and self.n_components == 1
-        ):
-            return self.get_derivative_matrix(ell)
-
-        E = self._build_derivative_matrix_with_spins(ell, comp_i, comp_j, mode)
-        E_VU = matrix_mult(E, self._VU)
-        return matrix_mult(self._VU.T, E_VU)
-
-    def compute_fisher_matrix_multi(
+    def compute_fisher_matrix(
         self,
-        C_ell_dict: dict,
-        spectra_list: list[tuple],
+        C_ell,
+        spectra_list: list[tuple] | None = None,
         ell_min: int = 2,
         ell_max: int | None = None,
     ) -> np.ndarray:
-        """Compute Fisher matrix. Accepts 2-tuple or 3-tuple spectra_list entries."""
+        """Compute Fisher matrix.
+
+        Parameters
+        ----------
+        C_ell : numpy.ndarray or dict
+            Power spectrum. Can be array (single-field) or dict (multi-field).
+        spectra_list : list of tuple or None
+            For multi-field: required list of spectra.
+            For single-field: should be None.
+        ell_min : int
+            Minimum multipole.
+        ell_max : int or None
+            Maximum multipole.
+
+        Returns
+        -------
+        numpy.ndarray
+            Fisher matrix.
+        """
         if ell_max is None:
             ell_max = self.lmax
+
+        # Single-field path
+        if not isinstance(C_ell, dict):
+            if spectra_list is not None:
+                raise ValueError(
+                    "spectra_list should be None for single-field (array) input"
+                )
+
+            n_ell = ell_max - ell_min + 1
+            fisher = np.zeros((n_ell, n_ell))
+
+            C_c_inv = self.get_compressed_inverse(C_ell)
+
+            Cinv_dC = {}
+            for ell in range(ell_min, ell_max + 1):
+                dC = self.get_derivative_matrix(ell)
+                Cinv_dC[ell] = matrix_mult(C_c_inv, dC)
+
+            for ell_i in range(ell_min, ell_max + 1):
+                for ell_j in range(ell_i, ell_max + 1):
+                    idx_i = ell_i - ell_min
+                    idx_j = ell_j - ell_min
+
+                    fisher_val = 0.5 * matrix_trace(Cinv_dC[ell_i], Cinv_dC[ell_j])
+                    fisher[idx_i, idx_j] = fisher_val
+                    if idx_i != idx_j:
+                        fisher[idx_j, idx_i] = fisher_val
+
+            return fisher
+
+        # Multi-field path
+        if spectra_list is None:
+            raise ValueError("spectra_list is required for multi-field (dict) input")
 
         n_ell = ell_max - ell_min + 1
         n_spec = len(spectra_list)
         fisher = np.zeros((n_spec * n_ell, n_spec * n_ell))
 
-        C_c_inv = self.get_compressed_inverse_multi(C_ell_dict)
+        C_c_inv = self.get_compressed_inverse(C_ell)
 
         Cinv_dC = {}
         for spec_idx, spec_entry in enumerate(spectra_list):
             comp_i, comp_j = spec_entry[0], spec_entry[1]
             mode = spec_entry[2] if len(spec_entry) == 3 else 0
             for ell in range(ell_min, ell_max + 1):
-                dC = self.get_derivative_matrix_multi(ell, comp_i, comp_j, mode)
+                dC = self.get_derivative_matrix(ell, comp_i, comp_j, mode)
                 Cinv_dC[(spec_idx, ell)] = matrix_mult(C_c_inv, dC)
 
         for spec_a in range(n_spec):
@@ -1263,25 +1244,14 @@ class PixelProjectedCompression(BaseCompression):
 
         return fisher
 
-    def get_weighted_compressed_data_multi(
-        self, data: np.ndarray, C_ell_dict: dict
-    ) -> np.ndarray:
-        """Compute C_c^{-1} @ U^T @ d. Accepts 2-tuple or 3-tuple keys."""
-        if self._eigenvectors is None:
-            raise RuntimeError("Compression not applied. Call apply_compression() first.")
-
-        d_compressed = self._eigenvectors.T @ data
-        C_c_inv = self.get_compressed_inverse_multi(C_ell_dict)
-        return matrix_mult(C_c_inv, d_compressed)
-
-    def prepare_smw_multi(self, C_ell_dict: dict) -> SMWPrepared:
+    def prepare_smw(self, C_ell_dict: dict) -> SMWPrepared:
         """Precompute compressed inverse and logdet for reuse across sims."""
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
         from ..basics import matrix_slogdet_symm
 
-        C_c = self.get_compressed_covariance_multi(C_ell_dict)
+        C_c = self.get_compressed_covariance(C_ell_dict)
         C_c_inv = matrix_inverse_symm(C_c)
         _, logdet = matrix_slogdet_symm(C_c)
         return SMWPrepared(C_c_inv, None, logdet)
@@ -1296,63 +1266,23 @@ class PixelProjectedCompression(BaseCompression):
         d_c = self._eigenvectors.T @ data
         return float(d_c.T @ C_c_inv @ d_c)
 
-    def compute_quadratic_form_multi(self, data: np.ndarray, C_ell_dict: dict) -> float:
-        """Compute d^T C^{-1} d in compressed space."""
-        C_c_inv, _, _ = self.prepare_smw_multi(C_ell_dict)
-        return self.quadratic_form_from_prepared(data, C_c_inv)
+    def get_logdet(self, C_ell) -> float:
+        """
+        Compute log determinant of compressed covariance.
 
-    def get_logdet_multi(self, C_ell_dict: dict) -> float:
-        """Compute log determinant of compressed covariance."""
-        _, _, logdet = self.prepare_smw_multi(C_ell_dict)
+        Parameters
+        ----------
+        C_ell : numpy.ndarray or dict
+            Power spectrum (array for single-field, dict for multi-field).
+        """
+        if isinstance(C_ell, dict):
+            _, _, logdet = self.prepare_smw(C_ell)
+            return logdet
+        from ..basics import matrix_slogdet_symm
+
+        C_c = self.get_compressed_covariance(C_ell)
+        _, logdet = matrix_slogdet_symm(np.asfortranarray(C_c))
         return logdet
-
-    # === Deprecated _with_spins aliases (delegate to _multi) ===
-
-    def get_compressed_covariance_with_spins(self, C_ell_dict: dict) -> np.ndarray:
-        """Deprecated: use get_compressed_covariance_multi."""
-        return self.get_compressed_covariance_multi(C_ell_dict)
-
-    def get_compressed_inverse_with_spins(self, C_ell_dict: dict) -> np.ndarray:
-        """Deprecated: use get_compressed_inverse_multi."""
-        return self.get_compressed_inverse_multi(C_ell_dict)
-
-    def get_derivative_matrix_with_spins(
-        self, ell: int, comp_i: int, comp_j: int, mode: int = 0
-    ) -> np.ndarray:
-        """Deprecated: use get_derivative_matrix_multi."""
-        return self.get_derivative_matrix_multi(ell, comp_i, comp_j, mode)
-
-    def compute_fisher_matrix_with_spins(
-        self,
-        C_ell_dict: dict,
-        spectra_list: list,
-        ell_min: int = 2,
-        ell_max: int | None = None,
-    ) -> np.ndarray:
-        """Deprecated: use compute_fisher_matrix_multi."""
-        return self.compute_fisher_matrix_multi(
-            C_ell_dict, spectra_list, ell_min, ell_max
-        )
-
-    def get_weighted_compressed_data_with_spins(
-        self, data: np.ndarray, C_ell_dict: dict
-    ) -> np.ndarray:
-        """Deprecated: use get_weighted_compressed_data_multi."""
-        return self.get_weighted_compressed_data_multi(data, C_ell_dict)
-
-    def prepare_smw_with_spins(self, C_ell_dict: dict) -> SMWPrepared:
-        """Deprecated: use prepare_smw_multi."""
-        return self.prepare_smw_multi(C_ell_dict)
-
-    def compute_quadratic_form_with_spins(
-        self, data: np.ndarray, C_ell_dict: dict
-    ) -> float:
-        """Deprecated: use compute_quadratic_form_multi."""
-        return self.compute_quadratic_form_multi(data, C_ell_dict)
-
-    def get_logdet_with_spins(self, C_ell_dict: dict) -> float:
-        """Deprecated: use get_logdet_multi."""
-        return self.get_logdet_multi(C_ell_dict)
 
     @property
     def compression_ratio(self) -> float:

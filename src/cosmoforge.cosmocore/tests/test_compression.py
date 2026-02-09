@@ -1,5 +1,5 @@
 """
-Tests for CompressionManager, compute_fisher_matrix, per-field thresholds,
+Tests for create_compression, compute_fisher_matrix, per-field thresholds,
 and PICSLike-compatible methods on PixelProjectedCompression.
 """
 
@@ -8,21 +8,21 @@ import pytest
 from numpy.testing import assert_allclose
 
 
-class TestCompressionManager:
-    """Tests for the CompressionManager facade."""
+class TestCreateCompression:
+    """Tests for the create_compression factory function."""
 
     def test_harmonic_method(self, uniform_sky_setup):
-        """Test CompressionManager with harmonic method."""
-        from cosmocore.compression import CompressionManager
+        """Test create_compression with harmonic method."""
+        from cosmocore.compression import create_compression
 
         setup = uniform_sky_setup
-        cm = CompressionManager(
+        cm = create_compression(
+            method="harmonic",
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
-            method="harmonic",
         )
 
         cm.setup()
@@ -32,17 +32,17 @@ class TestCompressionManager:
         assert cm.n_kept == cm.n_modes  # Harmonic keeps all modes
 
     def test_pixel_projected_method(self, uniform_sky_setup):
-        """Test CompressionManager with pixel_projected method."""
-        from cosmocore.compression import CompressionManager
+        """Test create_compression with pixel_projected method."""
+        from cosmocore.compression import create_compression
 
         setup = uniform_sky_setup
-        cm = CompressionManager(
+        cm = create_compression(
+            method="pixel_projected",
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
-            method="pixel_projected",
             epsilon=1e-6,
         )
 
@@ -54,36 +54,36 @@ class TestCompressionManager:
 
     def test_unknown_method_raises(self, uniform_sky_setup):
         """Test that unknown method raises error."""
-        from cosmocore.compression import CompressionManager
+        from cosmocore.compression import create_compression
 
         setup = uniform_sky_setup
 
         with pytest.raises(ValueError, match="Unknown compression method"):
-            CompressionManager(
+            create_compression(
+                method="invalid",
                 N=setup["N"],
                 N_inv=setup["N_inv"],
                 theta=setup["theta"],
                 phi=setup["phi"],
                 lmax=setup["lmax"],
-                method="invalid",
             )
 
     def test_facade_delegates_correctly(self, uniform_sky_setup):
-        """Test that facade methods delegate to implementation."""
-        from cosmocore.compression import CompressionManager, HarmonicCompression
+        """Test that create_compression returns correct implementation."""
+        from cosmocore.compression import HarmonicCompression, create_compression
 
         setup = uniform_sky_setup
         n_ell = setup["lmax"] - 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        # Create both directly and via facade
-        cm = CompressionManager(
+        # Create both directly and via factory
+        cm = create_compression(
+            method="harmonic",
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
-            method="harmonic",
         )
         cm.setup()
 
@@ -104,20 +104,20 @@ class TestCompressionManager:
         )
 
     def test_fisher_matrix_via_facade(self, uniform_sky_setup):
-        """Test Fisher matrix computation via facade."""
-        from cosmocore.compression import CompressionManager
+        """Test Fisher matrix computation via factory."""
+        from cosmocore.compression import create_compression
 
         setup = uniform_sky_setup
         n_ell = setup["lmax"] - 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        cm = CompressionManager(
+        cm = create_compression(
+            method="harmonic",
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
-            method="harmonic",
         )
         cm.setup()
 
@@ -128,19 +128,19 @@ class TestCompressionManager:
 
     def test_pixel_projected_with_basis(self, uniform_sky_setup):
         """Test pixel_projected with different basis."""
-        from cosmocore.compression import CompressionManager
+        from cosmocore.compression import create_compression
 
         setup = uniform_sky_setup
         n_ell = setup["lmax"] - 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        cm = CompressionManager(
+        cm = create_compression(
+            method="pixel_projected",
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
-            method="pixel_projected",
             basis="snr",
             C_ell=C_ell,
             epsilon=1e-4,
@@ -223,21 +223,21 @@ class TestComputeFisherMatrix:
         assert np.all(eigenvalues >= -1e-10)
 
     def test_fisher_matrix_via_manager(self, uniform_sky_setup):
-        """Test compute_fisher_matrix via CompressionManager facade."""
-        from cosmocore.compression import CompressionManager
+        """Test compute_fisher_matrix via create_compression factory."""
+        from cosmocore.compression import create_compression
 
         setup = uniform_sky_setup
         lmax = setup["lmax"]
         n_ell = lmax - 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        cm = CompressionManager(
+        cm = create_compression(
+            method="harmonic",
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=lmax,
-            method="harmonic",
         )
         cm.setup()
 
@@ -421,7 +421,7 @@ class TestPerFieldThreshold:
             (0, 0, 1): np.ones(lmax - 1) * 1e-4,
         }
         spectra_list = [(0, 0, 0), (0, 0, 1)]
-        fisher = ppc_split.compute_fisher_matrix_multi(
+        fisher = ppc_split.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
         )
         assert_allclose(fisher, fisher.T, atol=1e-12)
@@ -473,10 +473,10 @@ class TestPerFieldThreshold:
         }
         spectra_list = [(0, 0, 0), (0, 0, 1)]
 
-        f_scalar = ppc_scalar.compute_fisher_matrix_multi(
+        f_scalar = ppc_scalar.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
         )
-        f_tuple = ppc_tuple.compute_fisher_matrix_multi(
+        f_tuple = ppc_tuple.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
         )
 
@@ -528,7 +528,7 @@ class TestPerFieldThreshold:
             (0, 1, 0): np.ones(lmax - 1) * 2e-4,
         }
         spectra_list = [(0, 0, 0), (1, 1, 0), (1, 1, 1), (0, 1, 0)]
-        fisher = ppc.compute_fisher_matrix_multi(
+        fisher = ppc.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
         )
         assert_allclose(fisher, fisher.T, atol=1e-12)
@@ -581,7 +581,7 @@ class TestPerFieldThreshold:
 
 
 # =============================================================================
-# PICSLike methods tests (prepare_smw_multi, quadratic_form, logdet)
+# PICSLike methods tests (prepare_smw, quadratic_form, logdet)
 # =============================================================================
 
 
@@ -621,7 +621,7 @@ class TestPixelProjectedPICSLikeMethods:
         }
         return ppc, C_ell_dict, N
 
-    def test_compute_quadratic_form_multi(self):
+    def test_compute_quadratic_form(self):
         """Quadratic form matches brute-force d^T C^{-1} d."""
         from cosmocore.basics import matrix_inverse_symm
 
@@ -632,7 +632,7 @@ class TestPixelProjectedPICSLikeMethods:
         data = np.random.randn(ppc.n_pix)
 
         # Compressed quadratic form
-        qf_compressed = ppc.compute_quadratic_form_multi(data, C_ell_dict)
+        qf_compressed = ppc.compute_quadratic_form(data, C_ell_dict)
 
         # Brute-force in full pixel space
         Lambda_full = ppc._build_lambda_full_3tuple(C_ell_dict)
@@ -656,10 +656,10 @@ class TestPixelProjectedPICSLikeMethods:
         data = np.random.randn(ppc.n_pix)
 
         # Direct computation
-        qf_direct = ppc.compute_quadratic_form_multi(data, C_ell_dict)
+        qf_direct = ppc.compute_quadratic_form(data, C_ell_dict)
 
         # Two-step: prepare then compute
-        C_c_inv, _, logdet = ppc.prepare_smw_multi(C_ell_dict)
+        C_c_inv, _, logdet = ppc.prepare_smw(C_ell_dict)
         assert C_c_inv.shape == (ppc.n_kept, ppc.n_kept)
         assert isinstance(logdet, float)
 
@@ -672,22 +672,22 @@ class TestPixelProjectedPICSLikeMethods:
             err_msg="Prepared quadratic form should match direct",
         )
 
-    def test_get_logdet_multi(self):
+    def test_get_logdet(self):
         """get_logdet matches slogdet of compressed covariance."""
         np.random.seed(42)
         ppc, C_ell_dict, _ = self._make_spin2_setup()
 
-        logdet = ppc.get_logdet_multi(C_ell_dict)
+        logdet = ppc.get_logdet(C_ell_dict)
 
         # Directly compute
-        C_c = ppc.get_compressed_covariance_multi(C_ell_dict)
+        C_c = ppc.get_compressed_covariance(C_ell_dict)
         _, expected_logdet = np.linalg.slogdet(C_c)
 
         assert_allclose(
             logdet,
             expected_logdet,
             rtol=1e-10,
-            err_msg="get_logdet_multi should match slogdet(C_compressed)",
+            err_msg="get_logdet should match slogdet(C_compressed)",
         )
 
     def test_eb_split_preserves_b_mode_fisher(self):
@@ -738,10 +738,10 @@ class TestPixelProjectedPICSLikeMethods:
         }
         spectra_list = [(0, 0, 0), (0, 0, 1)]  # EE, BB
 
-        fisher_agg = ppc_aggressive.compute_fisher_matrix_multi(
+        fisher_agg = ppc_aggressive.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
         )
-        fisher_split = ppc_split.compute_fisher_matrix_multi(
+        fisher_split = ppc_split.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
         )
 

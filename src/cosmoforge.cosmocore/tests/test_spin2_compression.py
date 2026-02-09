@@ -246,11 +246,11 @@ class TestSpin2Derivatives:
         ell = 3
 
         # EE derivative
-        E_ee = hc.get_derivative_matrix_multi(ell, 1, 1, mode=0)
+        E_ee = hc.get_derivative_matrix(ell, 1, 1, mode=0)
         # BB derivative
-        E_bb = hc.get_derivative_matrix_multi(ell, 1, 1, mode=1)
+        E_bb = hc.get_derivative_matrix(ell, 1, 1, mode=1)
         # EB derivative
-        E_eb = hc.get_derivative_matrix_multi(ell, 1, 1, mode=2)
+        E_eb = hc.get_derivative_matrix(ell, 1, 1, mode=2)
 
         # EE should only have entries in [n_base:2*n_base, n_base:2*n_base]
         assert np.all(E_ee[:n_base, :] == 0), "EE should not touch T block"
@@ -295,7 +295,7 @@ class TestSpin2Derivatives:
         ell = 3
 
         # TE derivative
-        E_te = hc.get_derivative_matrix_multi(ell, 0, 1, mode=0)
+        E_te = hc.get_derivative_matrix(ell, 0, 1, mode=0)
 
         # Should have entries in T×E block and E×T block (symmetric)
         assert np.any(E_te[:n_base, n_base : 2 * n_base] != 0)
@@ -346,7 +346,7 @@ class TestSpin2Fisher:
             (0, 1, 0),  # TE
         ]
 
-        fisher = hc.compute_fisher_matrix_multi(
+        fisher = hc.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
         )
 
@@ -384,7 +384,7 @@ class TestSpin2Fisher:
 
         spectra_list = [(0, 0, 0), (1, 1, 0), (1, 1, 1)]
 
-        fisher = hc.compute_fisher_matrix_multi(
+        fisher = hc.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
         )
 
@@ -415,7 +415,7 @@ class TestSpin2Fisher:
 
         spectra_list = [(0, 0, 0), (0, 0, 1)]
 
-        fisher = hc.compute_fisher_matrix_multi(
+        fisher = hc.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
         )
 
@@ -446,12 +446,12 @@ def _pixel_space_fisher_with_spins(C_inv, V, hc, lmax, spectra_list):
 
     for si, (ci, cj, mode_i) in enumerate(spectra_list):
         for ell_i in range(2, lmax + 1):
-            E_i = hc.get_derivative_matrix_multi(ell_i, ci, cj, mode_i)
+            E_i = hc.get_derivative_matrix(ell_i, ci, cj, mode_i)
             dS_i = V.T @ E_i @ V
 
             for sj, (ck, cl, mode_j) in enumerate(spectra_list):
                 for ell_j in range(2, lmax + 1):
-                    E_j = hc.get_derivative_matrix_multi(ell_j, ck, cl, mode_j)
+                    E_j = hc.get_derivative_matrix(ell_j, ck, cl, mode_j)
                     dS_j = V.T @ E_j @ V
 
                     temp1 = matrix_mult(C_inv, dS_i)
@@ -521,7 +521,7 @@ class TestSpin2Benchmark:
 
         # --- Compressed Fisher ---
         t0 = time.perf_counter()
-        fisher_compressed = hc.compute_fisher_matrix_multi(
+        fisher_compressed = hc.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
         )
         t_compressed = time.perf_counter() - t0
@@ -632,7 +632,7 @@ class TestSpin2Benchmark:
 
         # --- Compressed Fisher ---
         t0 = time.perf_counter()
-        fisher_compressed = hc.compute_fisher_matrix_multi(
+        fisher_compressed = hc.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
         )
         t_compressed = time.perf_counter() - t0
@@ -742,7 +742,7 @@ class TestPixelProjectedSpin2:
             (0, 0, 1): np.ones(lmax - 1) * 1e-4,  # BB
         }
 
-        C_c = ppc.get_compressed_covariance_multi(C_ell_dict)
+        C_c = ppc.get_compressed_covariance(C_ell_dict)
         assert C_c.shape == (ppc.n_kept, ppc.n_kept)
         # Should be symmetric
         assert_allclose(C_c, C_c.T, atol=1e-12)
@@ -777,7 +777,7 @@ class TestPixelProjectedSpin2:
         }
         spectra_list = [(0, 0, 0), (0, 0, 1)]
 
-        fisher = ppc.compute_fisher_matrix_multi(
+        fisher = ppc.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
         )
 
@@ -827,7 +827,7 @@ class TestPixelProjectedSpin2:
             (0, 1, 0),  # TE
         ]
 
-        fisher = ppc.compute_fisher_matrix_multi(
+        fisher = ppc.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
         )
 
@@ -866,12 +866,12 @@ class TestPixelProjectedSpin2:
         }
 
         data = np.random.randn(2 * n_pix)
-        w = ppc.get_weighted_compressed_data_multi(data, C_ell_dict)
+        w = ppc.get_weighted_compressed_data(data, C_ell_dict)
         assert w.shape == (ppc.n_kept,)
 
     def test_spin2_manager_delegates(self):
-        """CompressionManager should delegate spin-2 methods to PixelProjected."""
-        from cosmocore.compression import CompressionManager
+        """create_compression should produce working spin-2 PixelProjected."""
+        from cosmocore.compression import create_compression
 
         np.random.seed(42)
         n_pix = 20
@@ -882,13 +882,13 @@ class TestPixelProjectedSpin2:
         N = np.eye(2 * n_pix) * 0.01
         N_inv = np.eye(2 * n_pix) * 100.0
 
-        cm = CompressionManager(
-            N,
-            N_inv,
-            theta,
-            phi,
-            lmax,
+        cm = create_compression(
             method="pixel_projected",
+            N=N,
+            N_inv=N_inv,
+            theta=theta,
+            phi=phi,
+            lmax=lmax,
             spins=[2],
             epsilon=1e-6,
         )
@@ -900,7 +900,7 @@ class TestPixelProjectedSpin2:
         }
         spectra_list = [(0, 0, 0), (0, 0, 1)]
 
-        fisher = cm.compute_fisher_matrix_multi(
+        fisher = cm.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
         )
 
@@ -1073,7 +1073,7 @@ class TestPixelProjectedSpin2Benchmark:
         }
         spectra_list = [(0, 0, 0), (0, 0, 1)]
 
-        fisher_compressed = ppc.compute_fisher_matrix_multi(
+        fisher_compressed = ppc.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
         )
 
@@ -1173,7 +1173,7 @@ class TestPixelProjectedSpin2Benchmark:
             (0, 1, 0),  # TE
         ]
 
-        fisher_compressed = ppc.compute_fisher_matrix_multi(
+        fisher_compressed = ppc.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
         )
 

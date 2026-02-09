@@ -386,7 +386,7 @@ class Core(ABC):
         use_smw_optimization: bool = True,
     ):
         """
-        Create and configure a CompressionManager for SMW-based operations.
+        Create and configure a compression instance for SMW-based operations.
 
         This method sets up the Sherman-Morrison-Woodbury compression framework
         for efficient covariance matrix operations. It requires that geometry
@@ -430,8 +430,8 @@ class Core(ABC):
 
         Returns
         -------
-        CompressionManager
-            Configured compression manager ready for use.
+        BaseCompression
+            Configured compression instance ready for use.
 
         Raises
         ------
@@ -628,7 +628,7 @@ class Core(ABC):
         else:
             return matrix_inverse_symm(self.get_total_covariance(C_ell), overwrite=True)
 
-    def get_covariance_logdet(self, C_ell: np.ndarray) -> float:
+    def get_covariance_logdet(self, C_ell) -> float:
         """
         Get log determinant of covariance matrix log|C|.
 
@@ -637,8 +637,8 @@ class Core(ABC):
 
         Parameters
         ----------
-        C_ell : numpy.ndarray
-            Power spectrum values for ell = 2 to lmax.
+        C_ell : numpy.ndarray or dict
+            Power spectrum values (array) or dict with 3-tuple keys.
 
         Returns
         -------
@@ -648,7 +648,11 @@ class Core(ABC):
         if hasattr(self, "compression_manager") and self.compression_manager is not None:
             return self.compression_manager.get_full_logdet(C_ell)
         else:
-            _, logdet = matrix_slogdet_symm(self.get_total_covariance(C_ell))
+            if isinstance(C_ell, dict):
+                C_ell_arr = C_ell.get((0, 0, 0), next(iter(C_ell.values())))
+            else:
+                C_ell_arr = C_ell
+            _, logdet = matrix_slogdet_symm(self.get_total_covariance(C_ell_arr))
             return logdet
 
     def get_derivative_matrix(self, ell: int) -> np.ndarray:
@@ -673,7 +677,7 @@ class Core(ABC):
         else:
             return self._build_derivative_matrix(ell)
 
-    def compute_quadratic_form(self, data: np.ndarray, C_ell: np.ndarray) -> float:
+    def compute_quadratic_form(self, data: np.ndarray, C_ell) -> float:
         """
         Compute quadratic form d^T C^{-1} d.
 
@@ -684,8 +688,8 @@ class Core(ABC):
         ----------
         data : numpy.ndarray
             Data vector in pixel space.
-        C_ell : numpy.ndarray
-            Power spectrum values for ell = 2 to lmax.
+        C_ell : numpy.ndarray or dict
+            Power spectrum values (array) or dict with 3-tuple keys.
 
         Returns
         -------
@@ -695,61 +699,12 @@ class Core(ABC):
         if hasattr(self, "compression_manager") and self.compression_manager is not None:
             return self.compression_manager.compute_quadratic_form(data, C_ell)
         else:
-            C_inv = self.get_covariance_inverse(C_ell)
+            if isinstance(C_ell, dict):
+                C_ell_arr = C_ell.get((0, 0, 0), next(iter(C_ell.values())))
+            else:
+                C_ell_arr = C_ell
+            C_inv = self.get_covariance_inverse(C_ell_arr)
             return float(data.T @ C_inv @ data)
-
-    def compute_quadratic_form_with_spins(
-        self, data: np.ndarray, C_ell_dict: dict[tuple, np.ndarray]
-    ) -> float:
-        """
-        Compute d^T C^{-1} d with spin-2 support.
-
-        Uses compression manager's SMW-based computation when available.
-
-        Parameters
-        ----------
-        data : numpy.ndarray
-            Data vector in pixel space.
-        C_ell_dict : dict
-            Dictionary with 3-tuple keys (comp_i, comp_j, mode).
-
-        Returns
-        -------
-        float
-            Quadratic form value d^T C^{-1} d.
-        """
-        if hasattr(self, "compression_manager") and self.compression_manager is not None:
-            return self.compression_manager.compute_quadratic_form_multi(data, C_ell_dict)
-        else:
-            C_inv = self.get_covariance_inverse(
-                C_ell_dict.get((0, 0, 0), next(iter(C_ell_dict.values())))
-            )
-            return float(data.T @ C_inv @ data)
-
-    def get_covariance_logdet_with_spins(
-        self, C_ell_dict: dict[tuple, np.ndarray]
-    ) -> float:
-        """
-        Get log|C| with spin-2 support.
-
-        Uses compression manager's SMW formula when available.
-
-        Parameters
-        ----------
-        C_ell_dict : dict
-            Dictionary with 3-tuple keys (comp_i, comp_j, mode).
-
-        Returns
-        -------
-        float
-            Log determinant of covariance matrix.
-        """
-        if hasattr(self, "compression_manager") and self.compression_manager is not None:
-            return self.compression_manager.get_full_logdet_multi(C_ell_dict)
-        else:
-            C_ell = C_ell_dict.get((0, 0, 0), next(iter(C_ell_dict.values())))
-            _, logdet = matrix_slogdet_symm(self.get_total_covariance(C_ell))
-            return logdet
 
     def _build_signal_matrix(self, C_ell: np.ndarray) -> np.ndarray:
         """Build signal covariance matrix. Subclasses must override."""

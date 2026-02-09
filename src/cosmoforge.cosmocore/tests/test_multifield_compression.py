@@ -145,7 +145,7 @@ class TestMultiFieldCompressedOperations:
         }
 
         # Multi-field covariance via dedicated method
-        C_compressed = hc.get_compressed_covariance_multi(C_ell_dict)
+        C_compressed = hc.get_compressed_covariance(C_ell_dict)
 
         # Shape should be (n_modes_total, n_modes_total)
         n_modes_per_component = (setup["lmax"] + 1) ** 2 - 4
@@ -173,7 +173,7 @@ class TestMultiFieldCompressedOperations:
             (0, 1): np.ones(n_ell) * 0.5e-6,
         }
 
-        C_compressed = hc.get_compressed_covariance_multi(C_ell_dict)
+        C_compressed = hc.get_compressed_covariance(C_ell_dict)
 
         assert_allclose(C_compressed, C_compressed.T, rtol=1e-10, atol=1e-15)
 
@@ -205,7 +205,7 @@ class TestMultiFieldFisher:
         spectra_list = [(0, 0), (1, 1), (0, 1)]  # 3 spectra
 
         # Multi-field Fisher: shape is (n_spectra * n_ell, n_spectra * n_ell)
-        fisher = hc.compute_fisher_matrix_multi(C_ell_dict, spectra_list)
+        fisher = hc.compute_fisher_matrix(C_ell_dict, spectra_list)
 
         n_spectra = len(spectra_list)
         assert fisher.shape == (n_spectra * n_ell, n_spectra * n_ell)
@@ -232,7 +232,7 @@ class TestMultiFieldFisher:
         }
         spectra_list = [(0, 0), (1, 1), (0, 1)]
 
-        fisher = hc.compute_fisher_matrix_multi(C_ell_dict, spectra_list)
+        fisher = hc.compute_fisher_matrix(C_ell_dict, spectra_list)
 
         assert_allclose(fisher, fisher.T, rtol=1e-10)
 
@@ -258,27 +258,27 @@ class TestMultiFieldFisher:
         }
         spectra_list = [(0, 0), (1, 1), (0, 1)]
 
-        fisher = hc.compute_fisher_matrix_multi(C_ell_dict, spectra_list)
+        fisher = hc.compute_fisher_matrix(C_ell_dict, spectra_list)
 
         # Diagonal elements should all be positive
         assert np.all(np.diag(fisher) > 0)
 
 
 class TestMultiFieldManager:
-    """Tests for multi-field via CompressionManager facade."""
+    """Tests for multi-field via create_compression factory."""
 
     def test_manager_multi_field(self, two_scalar_field_setup):
-        """Test CompressionManager with multi-field input."""
-        from cosmocore.compression import CompressionManager
+        """Test create_compression with multi-field input."""
+        from cosmocore.compression import create_compression
 
         setup = two_scalar_field_setup
-        cm = CompressionManager(
+        cm = create_compression(
+            method="harmonic",
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
-            method="harmonic",
         )
         cm.setup()
 
@@ -286,8 +286,8 @@ class TestMultiFieldManager:
         assert cm.n_kept > 0
 
     def test_manager_multi_field_fisher(self, two_scalar_field_setup):
-        """Test Fisher computation via CompressionManager with multi-field dict."""
-        from cosmocore.compression import CompressionManager
+        """Test Fisher computation via create_compression with multi-field dict."""
+        from cosmocore.compression import create_compression
 
         setup = two_scalar_field_setup
         n_ell = setup["lmax"] - 1
@@ -298,18 +298,18 @@ class TestMultiFieldManager:
         }
         spectra_list = [(0, 0), (1, 1), (0, 1)]
 
-        cm = CompressionManager(
+        cm = create_compression(
+            method="harmonic",
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
-            method="harmonic",
         )
         cm.setup()
 
         # Multi-field Fisher via dedicated method
-        fisher = cm.compute_fisher_matrix_multi(C_ell_dict, spectra_list)
+        fisher = cm.compute_fisher_matrix(C_ell_dict, spectra_list)
 
         n_spectra = len(spectra_list)
         assert fisher.shape == (n_spectra * n_ell, n_spectra * n_ell)
@@ -342,7 +342,7 @@ class TestMultiFieldIntegration:
         # All 6 spectra: 3 auto + 3 cross
         spectra_list = [(0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2)]
 
-        fisher = hc.compute_fisher_matrix_multi(
+        fisher = hc.compute_fisher_matrix(
             setup["C_ell_dict"], spectra_list, ell_min=2, ell_max=setup["lmax"]
         )
 
@@ -376,7 +376,7 @@ class TestMultiFieldIntegration:
         # Only auto-spectra
         spectra_list = [(0, 0), (1, 1), (2, 2)]
 
-        fisher = hc.compute_fisher_matrix_multi(
+        fisher = hc.compute_fisher_matrix(
             setup["C_ell_dict"], spectra_list, ell_min=2, ell_max=setup["lmax"]
         )
 
@@ -431,7 +431,7 @@ class TestMultiFieldIntegration:
         fisher_single = hc_single.compute_fisher_matrix(C_ell_11)
 
         # Multi-field Fisher for just field 1 auto-spectrum
-        fisher_multi = hc_multi.compute_fisher_matrix_multi(
+        fisher_multi = hc_multi.compute_fisher_matrix(
             setup["C_ell_dict"], [(0, 0)], ell_min=2, ell_max=setup["lmax"]
         )
 
@@ -463,7 +463,7 @@ class TestMultiFieldIntegration:
         )
         hc.setup()
 
-        C_compressed = hc.get_compressed_covariance_multi(setup["C_ell_dict"])
+        C_compressed = hc.get_compressed_covariance(setup["C_ell_dict"])
 
         # Check positive definiteness
         eigenvalues = np.linalg.eigvalsh(C_compressed)
@@ -474,16 +474,16 @@ class TestMultiFieldIntegration:
 
     def test_n_components_correct(self, three_scalar_field_realistic_setup):
         """Test that n_components is correctly detected."""
-        from cosmocore.compression import CompressionManager
+        from cosmocore.compression import create_compression
 
         setup = three_scalar_field_realistic_setup
-        cm = CompressionManager(
+        cm = create_compression(
+            method="harmonic",
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
-            method="harmonic",
         )
         cm.setup()
 
@@ -530,7 +530,7 @@ class TestMultiFieldIntegration:
 
         # Compute compressed Fisher for single auto-spectrum (simpler case)
         spectra_list = [(0, 0)]
-        fisher_compressed = hc.compute_fisher_matrix_multi(
+        fisher_compressed = hc.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
         )
 
@@ -551,11 +551,11 @@ class TestMultiFieldIntegration:
 
         for ell_i in range(2, lmax + 1):
             # Build dS/dC_ell for field 0 using V^T E_ell V
-            E_i = hc.get_derivative_matrix_multi(ell_i, 0, 0)
+            E_i = hc.get_derivative_matrix(ell_i, 0, 0)
             dS_i = V.T @ E_i @ V
 
             for ell_j in range(ell_i, lmax + 1):
-                E_j = hc.get_derivative_matrix_multi(ell_j, 0, 0)
+                E_j = hc.get_derivative_matrix(ell_j, 0, 0)
                 dS_j = V.T @ E_j @ V
 
                 # F_ij = 0.5 * Tr[C^{-1} dS_i C^{-1} dS_j]

@@ -40,12 +40,12 @@ def compute_pixel_space_fisher(C_inv, V, Lambda_full, lmax, spectra_list, hc):
     for spec_idx_i, (comp_i, comp_j) in enumerate(spectra_list):
         for ell_i in range(2, lmax + 1):
             # Build dS/dC_ell for spectrum (comp_i, comp_j)
-            E_i = hc.get_derivative_matrix_multi(ell_i, comp_i, comp_j)
+            E_i = hc.get_derivative_matrix(ell_i, comp_i, comp_j)
             dS_i = V.T @ E_i @ V
 
             for spec_idx_j, (comp_k, comp_l) in enumerate(spectra_list):
                 for ell_j in range(2, lmax + 1):
-                    E_j = hc.get_derivative_matrix_multi(ell_j, comp_k, comp_l)
+                    E_j = hc.get_derivative_matrix(ell_j, comp_k, comp_l)
                     dS_j = V.T @ E_j @ V
 
                     # F_ij = 0.5 * Tr[C^{-1} dS_i C^{-1} dS_j]
@@ -179,7 +179,7 @@ class TestTEBScalarBenchmark:
         spectra_list = [(0, 0), (1, 1), (2, 2)]  # TT, EE, BB
 
         # Compressed Fisher
-        fisher_compressed = hc.compute_fisher_matrix_multi(
+        fisher_compressed = hc.compute_fisher_matrix(
             setup["C_ell_dict"], spectra_list, ell_min=2, ell_max=lmax
         )
 
@@ -237,7 +237,7 @@ class TestTEBScalarBenchmark:
         spectra_list = [(0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2)]
 
         # Compressed Fisher
-        fisher_compressed = hc.compute_fisher_matrix_multi(
+        fisher_compressed = hc.compute_fisher_matrix(
             setup["C_ell_dict"], spectra_list, ell_min=2, ell_max=lmax
         )
 
@@ -312,7 +312,7 @@ class TestTEBScalarBenchmark:
 
         # Time compressed Fisher computation
         t0 = time.perf_counter()
-        fisher_compressed = hc.compute_fisher_matrix_multi(
+        fisher_compressed = hc.compute_fisher_matrix(
             setup["C_ell_dict"], spectra_list, ell_min=2, ell_max=lmax
         )
         compressed_time = time.perf_counter() - t0
@@ -372,7 +372,7 @@ class TestTEBScalarBenchmark:
         n_spectra = len(spectra_list)
         n_ell = setup["n_ell"]
 
-        fisher = hc.compute_fisher_matrix_multi(
+        fisher = hc.compute_fisher_matrix(
             setup["C_ell_dict"], spectra_list, ell_min=2, ell_max=lmax
         )
 

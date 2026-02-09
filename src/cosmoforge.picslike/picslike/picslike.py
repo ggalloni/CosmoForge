@@ -530,7 +530,7 @@ class PICSLike(Core):
                 self.log(f"C_ell_dict set for parameters: {param_point}", level=3)
 
                 # Precompute K Cholesky and logdet ONCE for this parameter point
-                K_chol, _, logdet = self.compression_manager.prepare_smw_multi(C_ell_dict)
+                K_chol, _, logdet = self.compression_manager.prepare_smw(C_ell_dict)
 
                 chi_squared = []
                 for sim_idx in range(self.params.nsims):
@@ -539,7 +539,7 @@ class PICSLike(Core):
                         d2 = self.maps2[:, sim_idx]
                         d1_compressed = self.compression_manager.compress_data(d1)
                         d2_compressed = self.compression_manager.compress_data(d2)
-                        C_c_inv = self.compression_manager.get_compressed_inverse_multi(
+                        C_c_inv = self.compression_manager.get_compressed_inverse(
                             C_ell_dict
                         )
                         chi_sq = float(d1_compressed.T @ C_c_inv @ d2_compressed)

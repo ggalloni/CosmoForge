@@ -432,12 +432,12 @@ class Fisher(Core):
         start_time = time.time() if self.rank == 0 else None
 
         if use_compression:
-            # Optimized path: use compute_fisher_matrix_multi()
+            # Optimized path: use compute_fisher_matrix()
             if self.rank == 0:
                 # Build C_ell_dict and spectra_list from field collection
                 C_ell_dict, spectra_list = self._build_multi_spectrum_inputs()
 
-                self.fisher = self.compression_manager.compute_fisher_matrix_multi(
+                self.fisher = self.compression_manager.compute_fisher_matrix(
                     C_ell_dict,
                     spectra_list,
                     ell_min=2,

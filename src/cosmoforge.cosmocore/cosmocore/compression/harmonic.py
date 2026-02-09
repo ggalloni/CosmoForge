@@ -250,168 +250,113 @@ class HarmonicCompression(BaseCompression):
             (buffer_size, buffer_size), dtype=np.float64, order="F"
         )
 
-    def get_projected_inverse(self, C_ell: np.ndarray) -> np.ndarray:
+    def get_projected_inverse(self, C_ell):
         """
         Compute V C^{-1} V^T efficiently using SMW formula.
 
-        From the SMW formula, V C^{-1} V^T can be computed as:
-            V C^{-1} V^T = M - M K^{-1} M
-        where:
-            M = V N^{-1} V^T (precomputed)
-            K = Λ^{-1} + M
-
-        This is O(n_modes³) instead of O(n_pix³).
-
         Parameters
         ----------
-        C_ell : numpy.ndarray
-            Power spectrum values for ell = 2 to lmax.
+        C_ell : numpy.ndarray or dict
+            Power spectrum. Can be array (single-field) or dict (multi-field).
 
         Returns
         -------
         numpy.ndarray
-            Projected inverse covariance V C^{-1} V^T of shape (n_modes, n_modes).
+            Projected inverse covariance V C^{-1} V^T.
         """
-        # Get Λ^{-1} diagonal
-        Lambda_diag = self._build_lambda_diagonal(C_ell)
-        Lambda_inv_diag = np.where(Lambda_diag > 1e-30, 1.0 / Lambda_diag, 1e30)
+        # Handle both array and dict inputs
+        if isinstance(C_ell, dict):
+            # Multi-field path
+            if self.n_components == 1 and self._spins[0] == 0:
+                first_val = next(iter(C_ell.values()))
+                if isinstance(first_val, np.ndarray) and first_val.ndim == 1:
+                    # Dict with single entry - use single-field path
+                    Lambda_diag = self._build_lambda_diagonal(first_val)
+                    Lambda_inv_diag = np.where(
+                        Lambda_diag > 1e-30, 1.0 / Lambda_diag, 1e30
+                    )
+                    add_diagonal(self._V_Ninv_VT, Lambda_inv_diag, out=self._K_buffer)
+                    K_inv = matrix_inverse_symm(self._K_buffer, overwrite=True)
+                    return self._V_Ninv_VT - matrix_mult(
+                        matrix_mult(self._V_Ninv_VT, K_inv), self._V_Ninv_VT
+                    )
 
-        # K = Λ^{-1} + M using pre-allocated buffer
-        add_diagonal(self._V_Ninv_VT, Lambda_inv_diag, out=self._K_buffer)
+            K, _ = self._build_smw_kernel(C_ell)
+            K_inv = matrix_inverse_symm(np.asfortranarray(K), overwrite=True)
+            return self._V_Ninv_VT - matrix_mult(
+                matrix_mult(self._V_Ninv_VT, K_inv), self._V_Ninv_VT
+            )
+        else:
+            # Single-field array path
+            Lambda_diag = self._build_lambda_diagonal(C_ell)
+            Lambda_inv_diag = np.where(Lambda_diag > 1e-30, 1.0 / Lambda_diag, 1e30)
+            add_diagonal(self._V_Ninv_VT, Lambda_inv_diag, out=self._K_buffer)
+            K_inv = matrix_inverse_symm(self._K_buffer, overwrite=True)
+            return self._V_Ninv_VT - matrix_mult(
+                matrix_mult(self._V_Ninv_VT, K_inv), self._V_Ninv_VT
+            )
 
-        # K^{-1} using optimized symmetric inverse (K is positive definite)
-        # Buffer is already Fortran-ordered
-        K_inv = matrix_inverse_symm(self._K_buffer, overwrite=True)
-
-        # V C^{-1} V^T = M - M K^{-1} M
-        return self._V_Ninv_VT - matrix_mult(
-            matrix_mult(self._V_Ninv_VT, K_inv), self._V_Ninv_VT
-        )
-
-    def get_derivative_matrix(self, ell: int) -> np.ndarray:
+    def get_derivative_matrix(
+        self,
+        ell: int,
+        comp_i: int | None = None,
+        comp_j: int | None = None,
+        mode: int = 0,
+    ) -> np.ndarray:
         """
         Get the derivative matrix ∂S/∂C_ℓ in compressed form.
-
-        The traditional pixel-space derivative uses:
-            ∂S/∂C_ℓ = (2ℓ+1)/(4π) × P_ℓ(cos γ)
-
-        Since V^T E_ℓ V = P_ℓ(cos γ) (from the addition theorem), we need:
-            E_ℓ = (2ℓ+1)/(4π) × diag(1s for modes at ℓ)
-
-        This matches the traditional derivative from do_derivative_step.
-
-        Uses precomputed diagonals from _precompute_derivative_diagonals().
 
         Parameters
         ----------
         ell : int
             Multipole for which to compute the derivative.
+        comp_i, comp_j : int or None
+            Component indices for multi-field. None for single-field.
+        mode : int
+            Spin mode (0=EE/TE, 1=BB/TB, 2=EB). Only used with comp_i/comp_j.
 
         Returns
         -------
         numpy.ndarray
             Derivative matrix of shape (n_modes, n_modes).
         """
-        # Use precomputed diagonal to build the matrix
-        return np.diag(self._derivative_diagonals[ell])
+        if comp_i is None:
+            return np.diag(self._derivative_diagonals[ell])
+        if self.n_components == 1 and self._spins[0] == 0:
+            return np.diag(self._derivative_diagonals[ell])
+        return self._build_derivative_matrix_with_spins(ell, comp_i, comp_j, mode)
 
-    def compute_fisher_matrix(
-        self,
-        C_ell: np.ndarray,
-        ell_min: int = 2,
-        ell_max: int | None = None,
-    ) -> np.ndarray:
-        """
-        Compute full Fisher matrix with optimized diagonal derivative structure.
-
-        This override exploits the fact that for HarmonicCompression, the
-        derivative matrices E_ℓ are diagonal. This allows using fast column
-        scaling instead of full matrix multiplication.
-
-        The Fisher matrix element is:
-            F_ij = (1/2) Tr[(V C^{-1} V^T) E_i (V C^{-1} V^T) E_j]
-
-        Since E_ℓ is diagonal, (V C^{-1} V^T) @ E_ℓ = V_Cinv_VT * E_diag
-        (column scaling by broadcasting).
-
-        Parameters
-        ----------
-        C_ell : numpy.ndarray
-            Power spectrum values for ell = 2 to lmax.
-        ell_min : int, default 2
-            Minimum multipole to include in Fisher matrix.
-        ell_max : int or None, optional
-            Maximum multipole. If None, uses self.lmax.
-
-        Returns
-        -------
-        numpy.ndarray
-            Fisher matrix of shape (n_ell, n_ell).
-        """
-        if ell_max is None:
-            ell_max = self.lmax
-
-        n_ell = ell_max - ell_min + 1
-        fisher = np.zeros((n_ell, n_ell))
-
-        # Precompute V C^{-1} V^T ONCE
-        V_Cinv_VT = self.get_projected_inverse(C_ell)
-
-        # Exploit diagonal structure: (V C^{-1} V^T) @ diag(E) = V_Cinv_VT * E
-        # This is O(n²) instead of O(n³) for each ell
-        VCinvVT_E = {}
-        for ell in range(ell_min, ell_max + 1):
-            E_diag = self._derivative_diagonals[ell]
-            # Column scaling by broadcasting: (n_modes, n_modes) * (n_modes,)
-            VCinvVT_E[ell] = V_Cinv_VT * E_diag
-
-        # Compute Fisher elements using precomputed products
-        # Use optimized matrix_trace which is O(n²) instead of
-        # np.trace(A @ B) which is O(n³)
-        for ell_i in range(ell_min, ell_max + 1):
-            for ell_j in range(ell_i, ell_max + 1):
-                # F_ij = 0.5 * Tr[A_i @ A_j] where A_k = V_Cinv_VT * E_k
-
-                idx_i = ell_i - ell_min
-                idx_j = ell_j - ell_min
-
-                fisher_val = 0.5 * matrix_trace(VCinvVT_E[ell_i], VCinvVT_E[ell_j])
-                fisher[idx_i, idx_j] = fisher_val
-                if idx_i != idx_j:
-                    fisher[idx_j, idx_i] = fisher_val  # Symmetry
-
-        return fisher
-
-    def get_compressed_covariance(self, C_ell: np.ndarray) -> np.ndarray:
+    def get_compressed_covariance(self, C_ell):
         """
         Compute compressed covariance C̄ = V N V^T + Λ.
 
         Parameters
         ----------
-        C_ell : numpy.ndarray
-            Power spectrum values C_ell[ell] for ell = 2 to lmax.
+        C_ell : numpy.ndarray or dict
+            Power spectrum. Can be:
+            - numpy.ndarray: C_ell values for ell = 2 to lmax (single-field)
+            - dict: Multi-field with 2-tuple or 3-tuple keys
 
         Returns
         -------
         numpy.ndarray
-            Compressed covariance matrix of shape (n_modes, n_modes).
+            Compressed covariance matrix.
         """
-        Lambda_diag = self._build_lambda_diagonal(C_ell)
-        # C̄ = V N V^T + Λ (avoid creating full diagonal matrix)
-        return add_diagonal(self._V_N_VT, Lambda_diag)
-
-    def get_compressed_covariance_multi(self, C_ell_dict: dict) -> np.ndarray:
-        """Compute compressed covariance C̄ = V N V^T + Λ for multi-field.
-
-        Accepts both 2-tuple and 3-tuple keys.
-        """
-        if self.n_components == 1 and self._spins[0] == 0:
-            first_val = next(iter(C_ell_dict.values()))
-            if isinstance(first_val, np.ndarray) and first_val.ndim == 1:
-                return self.get_compressed_covariance(first_val)
-
-        Lambda_full = self._build_lambda_full(C_ell_dict)
-        return self._V_N_VT + Lambda_full
+        # Handle both array (single-field) and dict (multi-field) inputs
+        if isinstance(C_ell, dict):
+            # Multi-field path
+            if self.n_components == 1 and self._spins[0] == 0:
+                first_val = next(iter(C_ell.values()))
+                if isinstance(first_val, np.ndarray) and first_val.ndim == 1:
+                    # Single-key dict: use single-field path
+                    Lambda_diag = self._build_lambda_diagonal(first_val)
+                    return add_diagonal(self._V_N_VT, Lambda_diag)
+            Lambda_full = self._build_lambda_full(C_ell)
+            return self._V_N_VT + Lambda_full
+        else:
+            # Single-field array path
+            Lambda_diag = self._build_lambda_diagonal(C_ell)
+            return add_diagonal(self._V_N_VT, Lambda_diag)
 
     # === Full pixel-space operations (if needed) ===
 
@@ -432,81 +377,72 @@ class HarmonicCompression(BaseCompression):
         Lambda_diag = self._build_lambda_diagonal(C_ell)
         return smw_inverse(self.N_inv, self._V_N_inv, self._V_Ninv_VT, Lambda_diag)
 
-    def get_logdet(self, C_ell: np.ndarray) -> float:
+    def get_logdet(self, C_ell) -> float:
         """
         Compute log|N + S| using SMW formula.
 
         Parameters
         ----------
-        C_ell : numpy.ndarray
-            Power spectrum values for ell = 2 to lmax.
+        C_ell : numpy.ndarray or dict
+            Power spectrum (array for single-field, dict for multi-field).
 
         Returns
         -------
         float
             Log determinant of the full covariance matrix.
         """
+        if isinstance(C_ell, dict):
+            _, _, logdet = self.prepare_smw(C_ell)
+            return logdet
         Lambda_diag = self._build_lambda_diagonal(C_ell)
         return smw_logdet(self._log_det_N, self._V_Ninv_VT, Lambda_diag)
 
-    def get_full_logdet(self, C_ell: np.ndarray) -> float:
+    def get_full_logdet(self, C_ell) -> float:
         """Get exact log|N + S| via SMW formula."""
         return self.get_logdet(C_ell)
 
-    def get_full_logdet_multi(self, C_ell_dict: dict) -> float:
-        """Get exact log|N + S| via SMW formula for multi-field."""
-        return self.get_logdet_multi(C_ell_dict)
-
     def get_weighted_compressed_data(
-        self, data: np.ndarray, C_ell: np.ndarray, C_c_inv: np.ndarray | None = None
+        self, data: np.ndarray, C_ell, C_c_inv: np.ndarray | None = None
     ) -> np.ndarray:
         """
         Compute V @ C^{-1} @ d for QML estimation in compressed space.
-
-        This computes the weighted compressed data vector needed for QML:
-            w = V @ C^{-1} @ d
-
-        Using the SMW formula for C^{-1}:
-            C^{-1} = N^{-1} - N^{-1} V^T K^{-1} V N^{-1}
-        where K = Λ^{-1} + V N^{-1} V^T.
-
-        Therefore:
-            V @ C^{-1} @ d = V N^{-1} d - (V N^{-1} V^T) K^{-1} (V N^{-1} d)
 
         Parameters
         ----------
         data : numpy.ndarray
             Pixel-space data vector of length n_pix.
-        C_ell : numpy.ndarray
-            Power spectrum values for ell = 2 to lmax.
+        C_ell : numpy.ndarray or dict
+            Power spectrum (array for single-field, dict for multi-field).
         C_c_inv : numpy.ndarray, optional
-            Unused for harmonic compression. Provided for interface
-            compatibility with pixel_projected compression.
+            Unused for harmonic compression.
 
         Returns
         -------
         numpy.ndarray
-            Weighted compressed data vector w = V C^{-1} d of length n_modes.
+            Weighted compressed data vector w = V C^{-1} d.
         """
-        # Note: C_c_inv is unused for harmonic compression - we use SMW formula
-        del C_c_inv  # Silence unused parameter warning
-        # y = V N^{-1} d
-        y = self._V_N_inv @ data
+        if isinstance(C_ell, dict):
+            if self.n_components == 1 and self._spins[0] == 0:
+                first_val = next(iter(C_ell.values()))
+                if isinstance(first_val, np.ndarray) and first_val.ndim == 1:
+                    return self.get_weighted_compressed_data(data, first_val)
+            y = self._V_N_inv @ data
+            K, _ = self._build_smw_kernel(C_ell)
+            K_inv_y = np.linalg.solve(K, y)
+            M_K_inv_y = matrix_mult(self._V_Ninv_VT, K_inv_y)
+            return y - M_K_inv_y
 
-        # Build K = Λ^{-1} + V N^{-1} V^T
+        # Single-field array path
+        del C_c_inv
+        y = self._V_N_inv @ data
         Lambda_diag = self._build_lambda_diagonal(C_ell)
         K = smw_kernel(self._V_Ninv_VT, Lambda_diag)
-
-        # (V N^{-1} V^T) @ K^{-1} @ y = M @ K^{-1} @ y
         L = cholesky_decomposition(K)
         K_inv_y = cho_solve((L, True), y)
-
         M_K_inv_y = matrix_mult(self._V_Ninv_VT, K_inv_y)
-
-        # w = y - M @ K^{-1} @ y = V C^{-1} d
         return y - M_K_inv_y
 
-    def compute_quadratic_form(self, data: np.ndarray, C_ell: np.ndarray) -> float:
+    def compute_quadratic_form(self, data: np.ndarray, C_ell) -> float:
         """
         Compute d^T C^{-1} d efficiently using SMW formula.
 
@@ -514,20 +450,21 @@ class HarmonicCompression(BaseCompression):
         ----------
         data : numpy.ndarray
             Pixel-space data vector of length n_pix.
-        C_ell : numpy.ndarray
-            Power spectrum values for ell = 2 to lmax.
+        C_ell : numpy.ndarray or dict
+            Power spectrum (array for single-field, dict for multi-field).
 
         Returns
         -------
         float
             Quadratic form value d^T C^{-1} d.
         """
+        if isinstance(C_ell, dict):
+            K_chol, _, _ = self.prepare_smw(C_ell)
+            return self.quadratic_form_from_prepared(data, K_chol)
         Lambda_diag = self._build_lambda_diagonal(C_ell)
         return smw_quadratic_form(
             data, self.N_inv, self._V_N_inv, self._V_Ninv_VT, Lambda_diag
         )
-
-    # === Multi-field operations ===
 
     def _build_smw_kernel(self, C_ell_dict: dict) -> tuple[np.ndarray, np.ndarray]:
         """Build K = Lambda_inv + V N^{-1} V^T and return (K, Lambda_full)."""
@@ -537,61 +474,7 @@ class HarmonicCompression(BaseCompression):
         K = Lambda_inv + self._V_Ninv_VT
         return K, Lambda_full
 
-    def get_projected_inverse_multi(self, C_ell_dict: dict) -> np.ndarray:
-        """Compute V C^{-1} V^T for multi-field using block SMW formula.
-
-        Accepts both 2-tuple (comp_i, comp_j) and 3-tuple (comp_i, comp_j, mode) keys.
-        """
-        if self.n_components == 1 and self._spins[0] == 0:
-            first_val = next(iter(C_ell_dict.values()))
-            if isinstance(first_val, np.ndarray) and first_val.ndim == 1:
-                return self.get_projected_inverse(first_val)
-
-        K, _ = self._build_smw_kernel(C_ell_dict)
-        K_inv = matrix_inverse_symm(np.asfortranarray(K), overwrite=True)
-
-        return self._V_Ninv_VT - matrix_mult(
-            matrix_mult(self._V_Ninv_VT, K_inv), self._V_Ninv_VT
-        )
-
-    def get_weighted_compressed_data_multi(
-        self, data: np.ndarray, C_ell_dict: dict
-    ) -> np.ndarray:
-        """Compute V @ C^{-1} @ d for multi-field QML estimation.
-
-        Accepts both 2-tuple and 3-tuple keys in C_ell_dict.
-        """
-        if self.n_components == 1 and self._spins[0] == 0:
-            first_val = next(iter(C_ell_dict.values()))
-            if isinstance(first_val, np.ndarray) and first_val.ndim == 1:
-                return self.get_weighted_compressed_data(data, first_val)
-
-        y = self._V_N_inv @ data
-        K, _ = self._build_smw_kernel(C_ell_dict)
-
-        K_inv_y = np.linalg.solve(K, y)
-        M_K_inv_y = matrix_mult(self._V_Ninv_VT, K_inv_y)
-        return y - M_K_inv_y
-
-    def get_derivative_matrix_multi(
-        self, ell: int, comp_i: int, comp_j: int, mode: int = 0
-    ) -> np.ndarray:
-        """Get derivative matrix for spectrum (comp_i, comp_j, mode) at multipole ell.
-
-        Handles all spin combinations via _build_derivative_matrix_with_spins.
-        """
-        if self.n_components == 1 and self._spins[0] == 0:
-            return self.get_derivative_matrix(ell)
-
-        return self._build_derivative_matrix_with_spins(ell, comp_i, comp_j, mode)
-
-    # === Unified multi-field methods (accept both 2-tuple and 3-tuple keys) ===
-
-    def get_compressed_inverse_multi(self, C_ell_dict: dict) -> np.ndarray:
-        """Compute inverse of compressed covariance for multi-field."""
-        return matrix_inverse_symm(self.get_compressed_covariance_multi(C_ell_dict))
-
-    def prepare_smw_multi(self, C_ell_dict: dict) -> SMWPrepared:
+    def prepare_smw(self, C_ell_dict: dict) -> SMWPrepared:
         """Precompute K Cholesky factor and log determinant for reuse across sims."""
         K, Lambda_full = self._build_smw_kernel(C_ell_dict)
 
@@ -612,71 +495,7 @@ class HarmonicCompression(BaseCompression):
         term2 = float(y.T @ K_inv_y)
         return term1 - term2
 
-    def compute_quadratic_form_multi(self, data: np.ndarray, C_ell_dict: dict) -> float:
-        """Compute d^T C^{-1} d using SMW formula with full Lambda matrix."""
-        K_chol, _, _ = self.prepare_smw_multi(C_ell_dict)
-        return self.quadratic_form_from_prepared(data, K_chol)
-
-    def get_logdet_multi(self, C_ell_dict: dict) -> float:
-        """Compute log|N + V^T Lambda V| using SMW formula."""
-        _, _, logdet = self.prepare_smw_multi(C_ell_dict)
-        return logdet
-
-    # === Deprecated _with_spins aliases (delegate to _multi) ===
-
-    def get_derivative_matrix_with_spins(
-        self, ell: int, comp_i: int, comp_j: int, mode: int = 0
-    ) -> np.ndarray:
-        """Deprecated: use get_derivative_matrix_multi."""
-        return self.get_derivative_matrix_multi(ell, comp_i, comp_j, mode)
-
-    def get_projected_inverse_with_spins(self, C_ell_dict: dict) -> np.ndarray:
-        """Deprecated: use get_projected_inverse_multi."""
-        return self.get_projected_inverse_multi(C_ell_dict)
-
-    def compute_fisher_matrix_with_spins(
-        self,
-        C_ell_dict: dict,
-        spectra_list: list,
-        ell_min: int = 2,
-        ell_max: int | None = None,
-    ) -> np.ndarray:
-        """Deprecated: use compute_fisher_matrix_multi."""
-        return self.compute_fisher_matrix_multi(
-            C_ell_dict, spectra_list, ell_min, ell_max
-        )
-
-    def get_compressed_covariance_with_spins(self, C_ell_dict: dict) -> np.ndarray:
-        """Deprecated: use get_compressed_covariance_multi."""
-        return self.get_compressed_covariance_multi(C_ell_dict)
-
-    def get_compressed_inverse_with_spins(self, C_ell_dict: dict) -> np.ndarray:
-        """Deprecated: use get_compressed_inverse_multi."""
-        return self.get_compressed_inverse_multi(C_ell_dict)
-
-    def get_weighted_compressed_data_with_spins(
-        self, data: np.ndarray, C_ell_dict: dict
-    ) -> np.ndarray:
-        """Deprecated: use get_weighted_compressed_data_multi."""
-        return self.get_weighted_compressed_data_multi(data, C_ell_dict)
-
-    def prepare_smw_with_spins(self, C_ell_dict: dict) -> SMWPrepared:
-        """Deprecated: use prepare_smw_multi."""
-        return self.prepare_smw_multi(C_ell_dict)
-
-    def compute_quadratic_form_with_spins(
-        self, data: np.ndarray, C_ell_dict: dict
-    ) -> float:
-        """Deprecated: use compute_quadratic_form_multi."""
-        return self.compute_quadratic_form_multi(data, C_ell_dict)
-
-    def get_logdet_with_spins(self, C_ell_dict: dict) -> float:
-        """Deprecated: use get_logdet_multi."""
-        return self.get_logdet_multi(C_ell_dict)
-
-    def _get_derivative_diagonal_multi(
-        self, ell: int, comp_i: int, comp_j: int
-    ) -> np.ndarray:
+    def _get_derivative_diagonal(self, ell: int, comp_i: int, comp_j: int) -> np.ndarray:
         """
         Get derivative diagonal for spectrum (comp_i, comp_j) at multipole ell.
 
@@ -714,22 +533,83 @@ class HarmonicCompression(BaseCompression):
 
         return E_diag
 
-    def compute_fisher_matrix_multi(
+    def compute_fisher_matrix(
         self,
-        C_ell_dict: dict,
-        spectra_list: list[tuple],
+        C_ell,
+        spectra_list: list[tuple] | None = None,
         ell_min: int = 2,
         ell_max: int | None = None,
     ) -> np.ndarray:
-        """Compute Fisher matrix for multiple spectra (auto and cross).
+        """Compute Fisher matrix.
 
-        Accepts both 2-tuple and 3-tuple spectra_list entries.
-        3-tuple: (comp_i, comp_j, mode). 2-tuple: (comp_i, comp_j) with mode=0.
+        Parameters
+        ----------
+        C_ell : numpy.ndarray or dict
+            Power spectrum. Can be:
+            - numpy.ndarray: for single-field (spectra_list should be None)
+            - dict: for multi-field (spectra_list required)
+        spectra_list : list of tuple or None
+            For multi-field: list of 2-tuple or 3-tuple specifying spectra.
+            For single-field: should be None (auto-detected from C_ell type).
+        ell_min : int
+            Minimum multipole.
+        ell_max : int or None
+            Maximum multipole.
+
+        Returns
+        -------
+        numpy.ndarray
+            Fisher matrix.
         """
+        # Handle single-field array input (original behavior)
+        if not isinstance(C_ell, dict):
+            if spectra_list is not None:
+                raise ValueError(
+                    "spectra_list should be None for single-field (array) input"
+                )
+            # Call the base compute_fisher_matrix for single-field
+            if ell_max is None:
+                ell_max = self.lmax
+
+            n_ell = ell_max - ell_min + 1
+            fisher = np.zeros((n_ell, n_ell))
+
+            # Precompute V C^{-1} V^T ONCE
+            V_Cinv_VT = self.get_projected_inverse(C_ell)
+
+            # Exploit diagonal structure: (V C^{-1} V^T) @ diag(E) = V_Cinv_VT * E
+            # This is O(n²) instead of O(n³) for each ell
+            VCinvVT_E = {}
+            for ell in range(ell_min, ell_max + 1):
+                E_diag = self._derivative_diagonals[ell]
+                # Column scaling by broadcasting: (n_modes, n_modes) * (n_modes,)
+                VCinvVT_E[ell] = V_Cinv_VT * E_diag
+
+            # Compute Fisher elements using precomputed products
+            # Use optimized matrix_trace which is O(n²) instead of
+            # np.trace(A @ B) which is O(n³)
+            for ell_i in range(ell_min, ell_max + 1):
+                for ell_j in range(ell_i, ell_max + 1):
+                    # F_ij = 0.5 * Tr[A_i @ A_j] where A_k = V_Cinv_VT * E_k
+
+                    idx_i = ell_i - ell_min
+                    idx_j = ell_j - ell_min
+
+                    fisher_val = 0.5 * matrix_trace(VCinvVT_E[ell_i], VCinvVT_E[ell_j])
+                    fisher[idx_i, idx_j] = fisher_val
+                    if idx_i != idx_j:
+                        fisher[idx_j, idx_i] = fisher_val  # Symmetry
+
+            return fisher
+
+        # Multi-field dict input
+        if spectra_list is None:
+            raise ValueError("spectra_list is required for multi-field (dict) input")
+
         if self.n_components == 1 and self._spins[0] == 0 and len(spectra_list) == 1:
-            first_val = next(iter(C_ell_dict.values()))
+            first_val = next(iter(C_ell.values()))
             if isinstance(first_val, np.ndarray) and first_val.ndim == 1:
-                return self.compute_fisher_matrix(first_val, ell_min, ell_max)
+                return self.compute_fisher_matrix(first_val, None, ell_min, ell_max)
 
         if ell_max is None:
             ell_max = self.lmax
@@ -738,14 +618,14 @@ class HarmonicCompression(BaseCompression):
         n_spec = len(spectra_list)
         fisher = np.zeros((n_spec * n_ell, n_spec * n_ell))
 
-        V_Cinv_VT = self.get_projected_inverse_multi(C_ell_dict)
+        V_Cinv_VT = self.get_projected_inverse(C_ell)
 
         VCinvVT_E = {}
         for spec_idx, spec_entry in enumerate(spectra_list):
             comp_i, comp_j = spec_entry[0], spec_entry[1]
             mode = spec_entry[2] if len(spec_entry) == 3 else 0
             for ell in range(ell_min, ell_max + 1):
-                E_matrix = self.get_derivative_matrix_multi(ell, comp_i, comp_j, mode)
+                E_matrix = self.get_derivative_matrix(ell, comp_i, comp_j, mode)
                 VCinvVT_E[(spec_idx, ell)] = matrix_mult(V_Cinv_VT, E_matrix)
 
         for spec_a in range(n_spec):
