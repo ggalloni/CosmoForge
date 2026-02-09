@@ -1,8 +1,8 @@
 """
-Inspect per-field eigenspectra for a mixed spin-0 + spin-2 (TQU) setup.
+Inspect per-field eigenspectra for the nside=4 TQU test configuration.
 
-Creates a PixelProjectedCompression with one temperature (spin-0) field
-and one polarization (spin-2) field, then plots:
+Uses the same data as the quelo TQU Fisher test (nside=4, lmax=8,
+spins=[0,2]) to produce:
   1. Per-field eigenvalue spectra (with E/B overlay for the spin-2 field)
   2. Per-field basis comparison (harmonic vs noise_weighted)
 
@@ -10,77 +10,97 @@ Usage:
     uv run python scripts/inspect_eigenspectra.py
 """
 
-import numpy as np
+import os
+import tempfile
+
+import yaml
 
 from cosmocore.compression import PixelProjectedCompression
 
 
-def build_tqu_setup(n_pix_t=40, n_pix_p=30, lmax=8, seed=42):
-    """Build a mixed spin-0 + spin-2 test case."""
-    rng = np.random.default_rng(seed)
+def _resolve_config(config_path, quelo_root):
+    """Resolve relative paths in a config file (same logic as quelo conftest)."""
+    with open(os.path.join(quelo_root, config_path)) as f:
+        config = yaml.safe_load(f)
 
-    # Pixel positions (golden spiral for uniform coverage)
-    golden_ratio = (1 + np.sqrt(5)) / 2
+    package_prefix = "src/cosmoforge.quelo/"
+    for key, value in config.items():
+        if isinstance(value, str):
+            clean = value[3:] if value.startswith("../") else value
+            if clean.startswith(("tests/", "inputs/", "scripts/")):
+                config[key] = package_prefix + clean
 
-    def golden_positions(n, offset=0):
-        indices = np.arange(n)
-        theta = np.arccos(1 - 2 * (indices + 0.5) / n)
-        phi = (2 * np.pi * (indices + offset) / golden_ratio) % (2 * np.pi)
-        return theta, phi
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix=".yaml",
+        delete=False,
+    )
+    yaml.dump(config, tmp, default_flow_style=False)
+    tmp.close()
+    return tmp.name
 
-    theta_t, phi_t = golden_positions(n_pix_t, offset=0)
-    theta_p, phi_p = golden_positions(n_pix_p, offset=n_pix_t)
 
-    # Block-diagonal noise: T has lower noise than QU
-    total_pix = n_pix_t + 2 * n_pix_p
-    noise_var = np.empty(total_pix)
-    noise_var[:n_pix_t] = 0.01  # T noise
-    noise_var[n_pix_t:] = 0.05  # Q/U noise (higher)
+def build_tqu_from_test():
+    """
+    Build a PixelProjectedCompression from the nside=4 TQU test data.
 
-    # Add some pixel-dependent scatter
-    noise_var *= 1 + 0.3 * rng.standard_normal(total_pix) ** 2
+    Runs the same pipeline as quelo's Fisher test: reads the real mask,
+    noise covariance, beams, and Cls from the test data directory.
+    """
+    from quelo.fisher import Fisher
 
-    N = np.diag(noise_var)
-    N_inv = np.diag(1.0 / noise_var)
+    quelo_root = os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "src",
+        "cosmoforge.quelo",
+    )
+    config_file = _resolve_config(
+        "tests/data/nside4/TQU/config.yaml",
+        quelo_root,
+    )
 
-    return {
-        "N": N,
-        "N_inv": N_inv,
-        "theta": (theta_t, theta_p),
-        "phi": (phi_t, phi_p),
-        "lmax": lmax,
-        "n_pix_t": n_pix_t,
-        "n_pix_p": n_pix_p,
-    }
+    # Run the Fisher pipeline to get geometry + covariance
+    fisher = Fisher(config_file)
+    fisher.setup_fields()
+    fisher.setup_geometry()
+    fisher.setup_covariance_matrices()
+    fisher.setup_cls()
+    fisher.setup_beams()
+    os.unlink(config_file)
+
+    # Build a PixelProjectedCompression from the pipeline products
+    from cosmocore.basics import matrix_inverse_symm
+
+    ppc = PixelProjectedCompression(
+        N=fisher.NCov1,
+        N_inv=matrix_inverse_symm(fisher.NCov1),
+        theta=fisher.theta,
+        phi=fisher.phi,
+        lmax=fisher.params.lmax,
+        spins=[f.spin for f in fisher.collection.fields],
+    )
+    ppc.setup()
+    return ppc
 
 
 def main():
-    import matplotlib
     import matplotlib.pyplot as plt
+    import numpy as np
 
-    matplotlib.use("TkAgg")
+    print("Building TQU setup (nside=4, lmax=8, from quelo test data)...")
+    ppc = build_tqu_from_test()
 
-    print("Building TQU setup (spin-0 T + spin-2 QU)...")
-    setup = build_tqu_setup()
-
-    ppc = PixelProjectedCompression(
-        N=setup["N"],
-        N_inv=setup["N_inv"],
-        theta=setup["theta"],
-        phi=setup["phi"],
-        lmax=setup["lmax"],
-        spins=[0, 2],
-    )
-    ppc.setup()
-
-    print(f"  n_pix = {ppc.n_pix}  (T: {setup['n_pix_t']}, QU: 2x{setup['n_pix_p']})")
+    print(f"  n_pix = {ppc.n_pix}")
     print(f"  n_modes = {ppc.n_modes}  (base per component)")
     print(f"  n_components = {ppc.n_components}")
     print(f"  lmax = {ppc.lmax}")
     print()
 
     # --- Per-field eigenspectra (numeric summary) ---
-    per_field = ppc.compute_eigenspectrum_per_field(basis="noise_weighted")
+    per_field = ppc.compute_eigenspectrum_per_field(
+        basis="noise_weighted",
+    )
     for entry in per_field:
         ev = entry["normalized_eigenvalues"]
         n_sig = int(np.sum(ev > 1e-6))
@@ -94,16 +114,20 @@ def main():
 
     # --- Plot 1: eigenvalue spectra with E/B overlay ---
     print("Plotting per-field eigenvalue spectra...")
-    fig1, axes1 = ppc.plot_eigenvalue_spectrum(
+    fig1, _ = ppc.plot_eigenvalue_spectrum(
         basis="noise_weighted",
         show_eb_split=True,
         threshold_values=[1e-2, 1e-4, 1e-6],
     )
-    fig1.suptitle("Per-field eigenvalue spectra (noise_weighted)", fontsize=14, y=1.02)
+    fig1.suptitle(
+        "Per-field eigenvalue spectra (noise_weighted)",
+        fontsize=14,
+        y=1.02,
+    )
 
     # --- Plot 2: basis comparison ---
     print("Plotting basis comparison...")
-    fig2, axes2 = ppc.plot_eigenvalue_comparison(
+    fig2, _ = ppc.plot_eigenvalue_comparison(
         bases=["harmonic", "noise_weighted"],
     )
     fig2.suptitle("Basis comparison per field", fontsize=14, y=1.02)
