@@ -22,7 +22,6 @@ from ..basics import matrix_inverse_symm, matrix_mult, matrix_trace
 from .base import BaseCompression, SMWPrepared
 
 if TYPE_CHECKING:
-    from matplotlib.axes import Axes
     from matplotlib.figure import Figure
 
 # Available compression basis presets
@@ -643,130 +642,228 @@ class PixelProjectedCompression(BaseCompression):
 
         return eigenvalues, normalized_eigenvalues
 
-    def plot_eigenvalue_spectrum(
+    def compute_eigenspectrum_per_field(
         self,
         basis: str = "noise_weighted",
-        C_ell: np.ndarray | None = None,
-        ax: Axes | None = None,
-        log_scale: bool = True,
-        show_threshold_lines: bool = True,
-        threshold_values: list[float] | None = None,
-    ) -> tuple[Figure, Axes]:
+        C_ell: np.ndarray | dict | None = None,
+    ) -> list[dict]:
         """
-        Plot eigenvalue spectrum for compression threshold selection.
+        Compute per-component eigenvalue spectra.
 
-        The y-axis shows eigenvalues normalized by the maximum value, so values
-        can be directly used as the epsilon threshold for apply_compression().
+        Returns one entry per component with eigenvalues and normalized
+        eigenvalues.  For spin-2 components the result additionally contains
+        separate E- and B-mode eigenspectra.
 
         Parameters
         ----------
         basis : str, default "noise_weighted"
-            Compression basis: "harmonic", "noise_weighted", "total_covariance", "snr".
-        C_ell : numpy.ndarray, optional
-            Power spectrum values for ell = 2 to lmax. Required for
-            "total_covariance" and "snr" bases.
-        ax : matplotlib.axes.Axes, optional
-            Axes to plot on. If None, creates a new figure.
+            Compression basis.
+        C_ell : numpy.ndarray, dict, or None
+            Power spectrum (required for "total_covariance" and "snr" bases).
+
+        Returns
+        -------
+        list of dict
+            One dict per component with keys: ``component``, ``spin``,
+            ``label``, ``eigenvalues``, ``normalized_eigenvalues``.
+            Spin-2 components additionally have ``E_eigenvalues``,
+            ``E_normalized``, ``B_eigenvalues``, ``B_normalized``.
+        """
+        results: list[dict] = []
+
+        for comp_idx in range(self.n_components):
+            spin = self._spins[comp_idx]
+            pix_start = self._pix_offsets[comp_idx]
+            pix_end = self._pix_offsets[comp_idx + 1]
+
+            N_field = self._N[pix_start:pix_end, pix_start:pix_end]
+            N_field_inv = self.N_inv[pix_start:pix_end, pix_start:pix_end]
+            V_comp = self._V_blocks[comp_idx]
+
+            # Full-field compression matrix and eigendecomposition
+            comp_matrix = self._build_compression_matrix_for_subfield(
+                V_comp, N_field, N_field_inv, basis, None
+            )
+            eigenvalues = np.sort(np.linalg.eigvalsh(comp_matrix))[::-1]
+            max_ev = np.max(np.abs(eigenvalues))
+            normalized = eigenvalues / max_ev if max_ev > 0 else eigenvalues.copy()
+
+            entry: dict = {
+                "component": comp_idx,
+                "spin": spin,
+                "label": f"Field {comp_idx} (spin-{spin})",
+                "eigenvalues": eigenvalues,
+                "normalized_eigenvalues": normalized,
+            }
+
+            if spin == 2:
+                n_base = self._n_modes_base
+                V_E = V_comp[:n_base, :]
+                V_B = V_comp[n_base:, :]
+
+                comp_E = self._build_compression_matrix_for_subfield(
+                    V_E, N_field, N_field_inv, basis, None
+                )
+                ev_E = np.sort(np.linalg.eigvalsh(comp_E))[::-1]
+                max_E = np.max(np.abs(ev_E))
+                norm_E = ev_E / max_E if max_E > 0 else ev_E.copy()
+
+                comp_B = self._build_compression_matrix_for_subfield(
+                    V_B, N_field, N_field_inv, basis, None
+                )
+                ev_B = np.sort(np.linalg.eigvalsh(comp_B))[::-1]
+                max_B = np.max(np.abs(ev_B))
+                norm_B = ev_B / max_B if max_B > 0 else ev_B.copy()
+
+                entry["E_eigenvalues"] = ev_E
+                entry["E_normalized"] = norm_E
+                entry["B_eigenvalues"] = ev_B
+                entry["B_normalized"] = norm_B
+
+            results.append(entry)
+
+        return results
+
+    def plot_eigenvalue_spectrum(
+        self,
+        basis: str = "noise_weighted",
+        C_ell: np.ndarray | dict | None = None,
+        axes: np.ndarray | None = None,
+        log_scale: bool = True,
+        show_threshold_lines: bool = True,
+        threshold_values: list[float] | None = None,
+        show_eb_split: bool = True,
+    ) -> tuple[Figure, np.ndarray]:
+        """
+        Plot eigenvalue spectrum for compression threshold selection.
+
+        Creates one subplot per component.  For spin-2 components the E and B
+        sub-spectra are shown as dashed curves when ``show_eb_split`` is True.
+
+        Parameters
+        ----------
+        basis : str, default "noise_weighted"
+            Compression basis.
+        C_ell : numpy.ndarray, dict, or None
+            Power spectrum (required for "total_covariance" and "snr" bases).
+        axes : numpy.ndarray of Axes or None
+            Pre-created axes array (length ``n_components``).  If None, a new
+            figure is created.
         log_scale : bool, default True
             Whether to use logarithmic y-axis.
         show_threshold_lines : bool, default True
             Whether to show reference threshold lines.
-        threshold_values : list of float, optional
-            Custom threshold values to show. Default: [1e-2, 1e-4, 1e-6, 1e-8].
+        threshold_values : list of float or None
+            Custom threshold values to show.  Default: [1e-2, 1e-4, 1e-6, 1e-8].
+        show_eb_split : bool, default True
+            For spin-2 components, overlay E and B sub-spectra.
 
         Returns
         -------
         fig : matplotlib.figure.Figure
             The figure containing the plot.
-        ax : matplotlib.axes.Axes
-            The axes containing the plot.
-
-        Examples
-        --------
-        >>> ppc = PixelProjectedCompression(N, N_inv, theta, phi, lmax=100)
-        >>> ppc.setup()
-        >>> fig, ax = ppc.plot_eigenvalue_spectrum(basis="noise_weighted")
-        >>> # From the plot, decide threshold (e.g., 1e-4)
-        >>> ppc.apply_compression(epsilon=1e-4, basis="noise_weighted")
+        axes : numpy.ndarray
+            1-D array of Axes (length ``n_components``).
         """
         import matplotlib.pyplot as plt
 
-        _, normalized_eigenvalues = self.compute_eigenspectrum(basis, C_ell)
+        per_field = self.compute_eigenspectrum_per_field(basis, C_ell)
+        n_comp = len(per_field)
 
-        if ax is None:
-            fig, ax = plt.subplots(figsize=(10, 6))
+        if axes is None:
+            fig, axes_raw = plt.subplots(
+                1, n_comp, figsize=(6 * n_comp, 6), squeeze=False
+            )
+            axes_arr: np.ndarray = axes_raw[0]
         else:
-            fig = ax.get_figure()
+            axes_arr = np.atleast_1d(axes)
+            fig = axes_arr[0].get_figure()
 
-        # Plot eigenvalue spectrum
-        mode_indices = np.arange(1, len(normalized_eigenvalues) + 1)
-        ax.plot(
-            mode_indices, normalized_eigenvalues, "b-", linewidth=1.5, label="Eigenvalues"
-        )
+        if threshold_values is None:
+            threshold_values = [1e-2, 1e-4, 1e-6, 1e-8]
 
-        # Add threshold reference lines
-        if show_threshold_lines:
-            if threshold_values is None:
-                threshold_values = [1e-2, 1e-4, 1e-6, 1e-8]
-            colors = plt.cm.Reds(np.linspace(0.3, 0.9, len(threshold_values)))
-            for thresh, color in zip(threshold_values, colors):
-                n_kept = np.sum(normalized_eigenvalues > thresh)
-                ax.axhline(
-                    y=thresh,
-                    color=color,
-                    linestyle="--",
-                    alpha=0.7,
-                    label=f"ε={thresh:.0e} ({n_kept} modes)",
+        for idx, entry in enumerate(per_field):
+            ax = axes_arr[idx]
+            normalized = entry["normalized_eigenvalues"]
+            mode_indices = np.arange(1, len(normalized) + 1)
+            ax.plot(mode_indices, normalized, "b-", linewidth=1.5, label="Eigenvalues")
+
+            # E/B overlay for spin-2
+            if show_eb_split and entry["spin"] == 2:
+                norm_E = entry["E_normalized"]
+                norm_B = entry["B_normalized"]
+                ax.plot(
+                    np.arange(1, len(norm_E) + 1),
+                    norm_E,
+                    "r--",
+                    linewidth=1.2,
+                    label="E modes",
+                )
+                ax.plot(
+                    np.arange(1, len(norm_B) + 1),
+                    norm_B,
+                    "g--",
+                    linewidth=1.2,
+                    label="B modes",
                 )
 
-        # Formatting
-        if log_scale:
-            ax.set_yscale("log")
-        ax.set_xlabel("Mode index", fontsize=12)
-        ax.set_ylabel("Normalized eigenvalue (ε threshold)", fontsize=12)
-        ax.set_title(
-            f"Eigenvalue Spectrum: {basis}\n{COMPRESSION_BASES[basis]}", fontsize=12
-        )
-        ax.legend(loc="upper right", fontsize=9)
-        ax.grid(True, alpha=0.3)
-        ax.set_xlim(1, len(normalized_eigenvalues))
+            if show_threshold_lines:
+                colors = plt.cm.Reds(np.linspace(0.3, 0.9, len(threshold_values)))
+                for thresh, color in zip(threshold_values, colors):
+                    n_kept = int(np.sum(normalized > thresh))
+                    ax.axhline(
+                        y=thresh,
+                        color=color,
+                        linestyle="--",
+                        alpha=0.7,
+                        label=f"\u03b5={thresh:.0e} ({n_kept} modes)",
+                    )
 
-        # Add text annotation for total modes
-        n_total = len(normalized_eigenvalues)
-        n_significant = np.sum(normalized_eigenvalues > 1e-10)
-        ax.text(
-            0.02,
-            0.02,
-            f"Total modes: {n_total}\nSignificant (>1e-10): {n_significant}",
-            transform=ax.transAxes,
-            fontsize=9,
-            verticalalignment="bottom",
-            bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
-        )
+            if log_scale:
+                ax.set_yscale("log")
+            ax.set_xlabel("Mode index", fontsize=12)
+            ax.set_ylabel("Normalized eigenvalue", fontsize=12)
+            ax.set_title(f"{entry['label']}: {basis}", fontsize=12)
+            ax.legend(loc="upper right", fontsize=9)
+            ax.grid(True, alpha=0.3)
+            ax.set_xlim(1, len(normalized))
+
+            n_total = len(normalized)
+            n_significant = int(np.sum(normalized > 1e-10))
+            ax.text(
+                0.02,
+                0.02,
+                f"Total modes: {n_total}\nSignificant (>1e-10): {n_significant}",
+                transform=ax.transAxes,
+                fontsize=9,
+                verticalalignment="bottom",
+                bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
+            )
 
         plt.tight_layout()
-        return fig, ax
+        return fig, axes_arr
 
     def plot_eigenvalue_comparison(
         self,
         bases: list[str] | None = None,
-        C_ell: np.ndarray | None = None,
-        ax: Axes | None = None,
+        C_ell: np.ndarray | dict | None = None,
+        axes: np.ndarray | None = None,
         log_scale: bool = True,
-    ) -> tuple[Figure, Axes]:
+    ) -> tuple[Figure, np.ndarray]:
         """
         Compare eigenvalue spectra across different compression bases.
 
+        Creates one subplot per component, overlaying the different bases.
+
         Parameters
         ----------
-        bases : list of str, optional
-            Compression bases to compare. Default: all available bases.
-            Note: "total_covariance" and "snr" require C_ell.
-        C_ell : numpy.ndarray, optional
-            Power spectrum values for ell = 2 to lmax. Required for
-            "total_covariance" and "snr" bases.
-        ax : matplotlib.axes.Axes, optional
-            Axes to plot on. If None, creates a new figure.
+        bases : list of str or None
+            Compression bases to compare.  Default: all available (or just
+            "harmonic"/"noise_weighted" if C_ell is not provided).
+        C_ell : numpy.ndarray, dict, or None
+            Power spectrum (required for "total_covariance" and "snr" bases).
+        axes : numpy.ndarray of Axes or None
+            Pre-created axes array (length ``n_components``).
         log_scale : bool, default True
             Whether to use logarithmic y-axis.
 
@@ -774,49 +871,62 @@ class PixelProjectedCompression(BaseCompression):
         -------
         fig : matplotlib.figure.Figure
             The figure containing the plot.
-        ax : matplotlib.axes.Axes
-            The axes containing the plot.
+        axes : numpy.ndarray
+            1-D array of Axes (length ``n_components``).
         """
         import matplotlib.pyplot as plt
 
         if bases is None:
-            # Use all bases that don't require C_ell, or all if C_ell provided
             if C_ell is not None:
                 bases = list(COMPRESSION_BASES.keys())
             else:
                 bases = ["harmonic", "noise_weighted"]
 
-        if ax is None:
-            fig, ax = plt.subplots(figsize=(10, 6))
+        n_comp = self.n_components
+
+        if axes is None:
+            fig, axes_raw = plt.subplots(
+                1, n_comp, figsize=(6 * n_comp, 6), squeeze=False
+            )
+            axes_arr: np.ndarray = axes_raw[0]
         else:
-            fig = ax.get_figure()
+            axes_arr = np.atleast_1d(axes)
+            fig = axes_arr[0].get_figure()
 
-        colors = plt.cm.tab10(np.linspace(0, 1, len(bases)))
+        basis_colors = plt.cm.tab10(np.linspace(0, 1, len(bases)))
 
-        for basis, color in zip(bases, colors):
+        for basis, color in zip(bases, basis_colors):
             try:
-                _, normalized_eigenvalues = self.compute_eigenspectrum(basis, C_ell)
-                mode_indices = np.arange(1, len(normalized_eigenvalues) + 1)
+                per_field = self.compute_eigenspectrum_per_field(basis, C_ell)
+            except ValueError as e:
+                print(f"Skipping basis '{basis}': {e}")
+                continue
+
+            for idx, entry in enumerate(per_field):
+                ax = axes_arr[idx]
+                normalized = entry["normalized_eigenvalues"]
+                mode_indices = np.arange(1, len(normalized) + 1)
                 ax.plot(
                     mode_indices,
-                    normalized_eigenvalues,
+                    normalized,
                     color=color,
                     linewidth=1.5,
                     label=basis,
                 )
-            except ValueError as e:
-                print(f"Skipping basis '{basis}': {e}")
 
-        if log_scale:
-            ax.set_yscale("log")
-        ax.set_xlabel("Mode index", fontsize=12)
-        ax.set_ylabel("Normalized eigenvalue", fontsize=12)
-        ax.set_title("Eigenvalue Spectrum Comparison", fontsize=12)
-        ax.legend(loc="upper right", fontsize=10)
-        ax.grid(True, alpha=0.3)
+        for idx in range(n_comp):
+            ax = axes_arr[idx]
+            spin = self._spins[idx]
+            if log_scale:
+                ax.set_yscale("log")
+            ax.set_xlabel("Mode index", fontsize=12)
+            ax.set_ylabel("Normalized eigenvalue", fontsize=12)
+            ax.set_title(f"Field {idx} (spin-{spin}): Comparison", fontsize=12)
+            ax.legend(loc="upper right", fontsize=10)
+            ax.grid(True, alpha=0.3)
 
         plt.tight_layout()
-        return fig, ax
+        return fig, axes_arr
 
     def apply_compression(
         self,

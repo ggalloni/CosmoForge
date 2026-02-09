@@ -736,7 +736,7 @@ class TestPixelProjectedCompressionEigenspectrum:
             assert np.max(normalized) <= 1.0
 
     def test_plot_eigenvalue_spectrum_returns_figure(self, uniform_sky_setup):
-        """Test plot_eigenvalue_spectrum returns figure and axes."""
+        """Test plot_eigenvalue_spectrum returns figure and axes array."""
         import matplotlib
 
         matplotlib.use("Agg")  # Non-interactive backend for testing
@@ -754,14 +754,15 @@ class TestPixelProjectedCompressionEigenspectrum:
         )
         ppc.setup()
 
-        fig, ax = ppc.plot_eigenvalue_spectrum(basis="noise_weighted")
+        fig, axes = ppc.plot_eigenvalue_spectrum(basis="noise_weighted")
 
         assert fig is not None
-        assert ax is not None
+        assert axes is not None
+        assert len(axes) == 1
         plt.close(fig)
 
     def test_plot_eigenvalue_comparison_returns_figure(self, uniform_sky_setup):
-        """Test plot_eigenvalue_comparison returns figure and axes."""
+        """Test plot_eigenvalue_comparison returns figure and axes array."""
         import matplotlib
 
         matplotlib.use("Agg")
@@ -782,13 +783,14 @@ class TestPixelProjectedCompressionEigenspectrum:
         )
         ppc.setup()
 
-        fig, ax = ppc.plot_eigenvalue_comparison(
+        fig, axes = ppc.plot_eigenvalue_comparison(
             bases=["harmonic", "noise_weighted"],
             C_ell=C_ell,
         )
 
         assert fig is not None
-        assert ax is not None
+        assert axes is not None
+        assert len(axes) == 1
         plt.close(fig)
 
     def test_eigenspectrum_requires_cell_for_certain_bases(self, uniform_sky_setup):
@@ -810,3 +812,177 @@ class TestPixelProjectedCompressionEigenspectrum:
 
         with pytest.raises(ValueError, match="C_ell is required"):
             ppc.compute_eigenspectrum(basis="snr")
+
+
+class TestComputeEigenspectrumPerField:
+    """Tests for compute_eigenspectrum_per_field."""
+
+    def test_single_field_returns_length_one(self, uniform_sky_setup):
+        """Single-field returns a list of length 1 with correct keys."""
+        from cosmocore.compression import PixelProjectedCompression
+
+        setup = uniform_sky_setup
+        ppc = PixelProjectedCompression(
+            N=setup["N"],
+            N_inv=setup["N_inv"],
+            theta=setup["theta"],
+            phi=setup["phi"],
+            lmax=setup["lmax"],
+        )
+        ppc.setup()
+
+        result = ppc.compute_eigenspectrum_per_field(basis="noise_weighted")
+
+        assert len(result) == 1
+        entry = result[0]
+        assert entry["component"] == 0
+        assert entry["spin"] == 0
+        assert "eigenvalues" in entry
+        assert "normalized_eigenvalues" in entry
+        assert_allclose(np.max(entry["normalized_eigenvalues"]), 1.0, rtol=1e-10)
+        # eigenvalues should be sorted descending
+        assert np.all(entry["eigenvalues"][:-1] >= entry["eigenvalues"][1:])
+
+    def test_multi_field_returns_correct_length(self, two_scalar_field_setup):
+        """Multi-field returns list of length n_components."""
+        from cosmocore.compression import PixelProjectedCompression
+
+        setup = two_scalar_field_setup
+        ppc = PixelProjectedCompression(
+            N=setup["N"],
+            N_inv=setup["N_inv"],
+            theta=setup["theta"],
+            phi=setup["phi"],
+            lmax=setup["lmax"],
+        )
+        ppc.setup()
+
+        result = ppc.compute_eigenspectrum_per_field(basis="noise_weighted")
+
+        assert len(result) == 2
+        assert result[0]["component"] == 0
+        assert result[1]["component"] == 1
+        for entry in result:
+            assert "eigenvalues" in entry
+            assert "normalized_eigenvalues" in entry
+            assert_allclose(np.max(entry["normalized_eigenvalues"]), 1.0, rtol=1e-10)
+
+    def test_spin2_field_has_eb_keys(self):
+        """Spin-2 field has E/B eigenvalue keys."""
+        from cosmocore.compression import PixelProjectedCompression
+
+        np.random.seed(42)
+        n_pix = 20
+        theta = np.random.uniform(0.1, np.pi - 0.1, n_pix)
+        phi = np.random.uniform(0, 2 * np.pi, n_pix)
+        lmax = 5
+
+        N = np.eye(2 * n_pix) * 0.01
+        N_inv = np.eye(2 * n_pix) * 100.0
+
+        ppc = PixelProjectedCompression(N, N_inv, theta, phi, lmax, spins=[2])
+        ppc.setup()
+
+        result = ppc.compute_eigenspectrum_per_field(basis="noise_weighted")
+
+        assert len(result) == 1
+        entry = result[0]
+        assert entry["spin"] == 2
+        assert "E_eigenvalues" in entry
+        assert "E_normalized" in entry
+        assert "B_eigenvalues" in entry
+        assert "B_normalized" in entry
+        assert_allclose(np.max(entry["E_normalized"]), 1.0, rtol=1e-10)
+        assert_allclose(np.max(entry["B_normalized"]), 1.0, rtol=1e-10)
+
+
+class TestPlotMultiField:
+    """Tests for multi-field plotting methods."""
+
+    def test_plot_spectrum_multi_field(self, two_scalar_field_setup):
+        """Multi-field spectrum returns correct number of subplots."""
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        from cosmocore.compression import PixelProjectedCompression
+
+        setup = two_scalar_field_setup
+        ppc = PixelProjectedCompression(
+            N=setup["N"],
+            N_inv=setup["N_inv"],
+            theta=setup["theta"],
+            phi=setup["phi"],
+            lmax=setup["lmax"],
+        )
+        ppc.setup()
+
+        fig, axes = ppc.plot_eigenvalue_spectrum(basis="noise_weighted")
+
+        assert len(axes) == 2
+        plt.close(fig)
+
+    def test_plot_spectrum_spin2_eb_split(self):
+        """Spin-2 spectrum shows E/B curves."""
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        from cosmocore.compression import PixelProjectedCompression
+
+        np.random.seed(42)
+        n_pix = 20
+        theta = np.random.uniform(0.1, np.pi - 0.1, n_pix)
+        phi = np.random.uniform(0, 2 * np.pi, n_pix)
+        lmax = 5
+
+        N = np.eye(2 * n_pix) * 0.01
+        N_inv = np.eye(2 * n_pix) * 100.0
+
+        ppc = PixelProjectedCompression(N, N_inv, theta, phi, lmax, spins=[2])
+        ppc.setup()
+
+        fig, axes = ppc.plot_eigenvalue_spectrum(
+            basis="noise_weighted", show_eb_split=True
+        )
+
+        assert len(axes) == 1
+        ax = axes[0]
+        # Should have at least 3 lines: combined, E, B
+        labels = [line.get_label() for line in ax.get_lines()]
+        assert "E modes" in labels
+        assert "B modes" in labels
+        plt.close(fig)
+
+    def test_plot_comparison_multi_field(self, two_scalar_field_setup):
+        """Multi-field comparison returns correct number of subplots."""
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        from cosmocore.compression import PixelProjectedCompression
+
+        setup = two_scalar_field_setup
+        ppc = PixelProjectedCompression(
+            N=setup["N"],
+            N_inv=setup["N_inv"],
+            theta=setup["theta"],
+            phi=setup["phi"],
+            lmax=setup["lmax"],
+        )
+        ppc.setup()
+
+        fig, axes = ppc.plot_eigenvalue_comparison(
+            bases=["harmonic", "noise_weighted"],
+        )
+
+        assert len(axes) == 2
+        # Each subplot should have both bases plotted
+        for ax in axes:
+            labels = [line.get_label() for line in ax.get_lines()]
+            assert "harmonic" in labels
+            assert "noise_weighted" in labels
+        plt.close(fig)
