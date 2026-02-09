@@ -53,6 +53,7 @@ import numpy as np
 from mpi4py import MPI
 
 from cosmocore import (
+    BaseCompression,
     Core,
     FieldCollection,
     do_derivative_step,
@@ -169,7 +170,11 @@ class Spectra(Core):
     """
 
     def __init__(
-        self, params_file: str | None = None, fisher: Fisher | None = None, **kwargs
+        self,
+        params_file: str | None = None,
+        fisher: Fisher | None = None,
+        compression: dict | None = None,
+        **kwargs,
     ):
         """
         Initialize QML power spectrum estimation class.
@@ -177,65 +182,21 @@ class Spectra(Core):
         Parameters
         ----------
         params_file : str, optional
-            Path to YAML configuration file containing analysis parameters.
-            If None, parameters must be provided through kwargs or set later.
+            Path to YAML configuration file.
         fisher : Fisher, optional
-            Pre-computed Fisher matrix instance. If provided, the Spectra class
-            will reuse already computed components (covariance matrices, geometry,
-            field collections) for computational efficiency. The Fisher instance
-            must have completed its computation (run() method called).
+            Pre-computed Fisher instance. If provided, reuses computed components
+            (covariance matrices, geometry, field collections) for efficiency.
+        compression : dict, optional
+            Compression configuration (method, epsilon, basis, mode_fraction).
         **kwargs : dict
-            Additional keyword arguments passed to the Core parent class.
-            Common options include 'params' for direct parameter object,
-            'verbose' for logging level control.
+            Additional arguments passed to Core.
 
         Raises
         ------
         TypeError
-            If fisher is provided but is not an instance of Fisher class.
+            If fisher is not a Fisher instance.
         ValueError
-            If fisher is provided but doesn't contain a valid Fisher matrix
-            (computation not completed).
-
-        Notes
-        -----
-        Initialization performs several key steps:
-        1. Parameter loading and validation via Core.__init__
-        2. MPI communicator setup for parallel computation
-        3. Fisher matrix handling - either reuse provided instance or compute new
-        4. QML-specific variable initialization
-
-        When a Fisher instance is provided, the following components are reused:
-
-        - Field collections and geometry information
-        - Covariance matrices (both noise and inverted forms)
-        - Pixelization and active pixel information
-        - Signal matrices and derivative computation setup
-
-        This reuse significantly reduces computational overhead when performing
-        both Fisher forecasts and QML estimation on the same dataset.
-
-        The MPI environment must be initialized before creating Spectra instances
-        for parallel computation. Each process will handle a subset of multipoles
-        during the QML computation phase.
-
-        Examples
-        --------
-        Initialize from configuration file:
-
-        >>> spectra = Spectra("config/qml_analysis.yaml")
-
-        Initialize with pre-computed Fisher matrix:
-
-        >>> fisher = Fisher("config/fisher_config.yaml")
-        >>> fisher.run()
-        >>> spectra = Spectra("config/qml_config.yaml", fisher=fisher)
-
-        Initialize with direct parameters:
-
-        >>> from cosmocore.settings import InputParams
-        >>> params = InputParams()
-        >>> spectra = Spectra(params=params)
+            If fisher doesn't contain a valid Fisher matrix.
         """
         self.params: InputParams = None
         super().__init__(params=params_file, **kwargs)
@@ -244,6 +205,9 @@ class Spectra(Core):
         self.comm = MPI.COMM_WORLD
         self.rank = self.comm.Get_rank()
         self.size = self.comm.Get_size()
+
+        # Store compression config for Fisher creation
+        self._compression_config = compression
 
         # Initialize Fisher matrix or compute it
         if fisher is not None:
@@ -256,6 +220,8 @@ class Spectra(Core):
             self._reuse_fisher_components()
         else:
             self.fisher_instance = self._get_fisher()
+            # Also reuse components from the internally created Fisher
+            self._reuse_fisher_components()
 
         # Initialize QML-specific variables
         self.maps1 = None
@@ -291,44 +257,7 @@ class Spectra(Core):
         self._lmax_signal = value
 
     def _reuse_fisher_components(self):
-        """
-        Reuse computational components from a pre-computed Fisher instance.
-
-        This method extracts and reuses expensive-to-compute components from
-        an existing Fisher matrix computation, avoiding redundant calculations
-        when performing QML analysis on the same dataset configuration.
-
-        Notes
-        -----
-        Components reused from the Fisher instance include:
-
-        - Field collections: Precomputed HEALPix field setup and active pixels
-        - Geometry data: Pixel pointing vectors and spherical harmonic transforms
-        - Covariance matrices: Both noise covariance and inverted forms
-        - Signal matrices: Theoretical signal covariance from power spectra
-
-        This reuse provides significant computational savings, especially for:
-        1. High-resolution analyses where geometry setup is expensive
-        2. Large datasets where covariance matrix operations dominate
-        3. Combined Fisher + QML pipelines on identical configurations
-
-        The method performs safety checks to ensure each component exists
-        before attempting to copy it, gracefully handling partial Fisher
-        computations or different analysis configurations.
-
-        After copying Fisher components, covariance matrices are loaded
-        from disk files to ensure consistency with the QML analysis
-        requirements (inverted forms, proper normalization).
-
-        Examples
-        --------
-        This method is called automatically during initialization:
-
-        >>> fisher = Fisher("config.yaml")
-        >>> fisher.run()
-        >>> spectra = Spectra("config.yaml", fisher=fisher)
-        # _reuse_fisher_components() called internally
-        """
+        """Copy computational components from a pre-computed Fisher instance."""
         # Copy already computed variables from Fisher instance
         if (
             hasattr(self.fisher_instance, "collection")
@@ -363,54 +292,22 @@ class Spectra(Core):
         if hasattr(self.fisher_instance, "Sig") and self.fisher_instance.Sig is not None:
             self.Sig = self.fisher_instance.Sig
 
+        # Copy compression manager if available
+        if (
+            hasattr(self.fisher_instance, "compression_manager")
+            and self.fisher_instance.compression_manager is not None
+        ):
+            self.compression_manager: BaseCompression = (
+                self.fisher_instance.compression_manager
+            )
+        else:
+            self.compression_manager = None
+
         # Load covariance matrices
         self._load_covariance_matrices()
 
     def _load_covariance_matrices(self):
-        """
-        Load covariance matrices from binary files for QML computation.
-
-        This method reads both noise covariance matrices and their inverted
-        forms from disk files specified in the parameter configuration.
-        The matrices are reshaped to proper 2D format for subsequent
-        linear algebra operations.
-
-        Notes
-        -----
-        Loads the following matrices:
-
-        - invCov1, invCov2: Inverted total covariance matrices C^(-1)
-        - NCov1, NCov2: Original noise covariance matrices N
-
-        For cross-correlation analyses (do_cross=True), both primary and
-        secondary covariance matrices are loaded. The inverted matrices
-        are used directly in QML E-operator computation, while noise
-        matrices are needed for noise bias calculation.
-
-        Matrix files are expected to be in binary format (numpy.fromfile
-        compatible) with total size n_active_pixels^2 elements stored
-        in row-major order.
-
-        File paths are specified in the parameter configuration:
-
-        - outinvcovmatfile1, outinvcovmatfile2: Inverted covariance files
-        - outnoisecovmat1, outnoisecovmat2: Original noise covariance files
-          (created by Fisher.run())
-
-        Raises
-        ------
-        FileNotFoundError
-            If covariance matrix files are not found at specified paths.
-        ValueError
-            If matrix dimensions don't match expected active pixel counts.
-
-        Examples
-        --------
-        This method is called automatically during setup:
-
-        >>> spectra = Spectra("config.yaml")
-        >>> spectra._load_covariance_matrices()  # Called internally
-        """
+        """Load noise and inverted covariance matrices from disk files."""
         import os
 
         ntot = self.collection.total_active_pixels
@@ -437,60 +334,19 @@ class Spectra(Core):
 
     def _get_fisher(self) -> Fisher:
         """
-        Compute Fisher information matrix for QML error propagation.
-
-        This method creates and runs a Fisher matrix computation that will
-        be used for QML estimator normalization and error propagation.
-        The Fisher matrix provides the optimal weighting for combining
-        QML estimates across different multipoles and spectra.
+        Compute Fisher information matrix for QML normalization.
 
         Returns
         -------
         Fisher
-            Completed Fisher matrix computation instance with all necessary
-            components computed and available for QML analysis.
-
-        Notes
-        -----
-        The Fisher matrix computation includes:
-        1. Signal covariance matrix computation from theoretical power spectra
-        2. Total covariance matrix assembly (signal + noise)
-        3. Matrix inversion and derivative computation setup
-        4. Full Fisher matrix calculation using MPI parallelization
-
-        The computed Fisher matrix F_ij represents the information content
-        about parameter combinations θ_i, θ_j and is essential for:
-
-        - QML estimator normalization via F^(-1)
-        - Proper error bar computation on power spectrum estimates
-        - Optimal combination of estimates across multipoles
-
-        Timing information is logged for performance monitoring, especially
-        important for high-resolution analyses where Fisher computation
-        can be the dominant computational cost.
-
-        The method handles MPI coordination automatically, ensuring all
-        processes have consistent Fisher matrix information before
-        proceeding with QML computation.
-
-        Examples
-        --------
-        This method is called automatically when no Fisher instance is provided:
-
-        >>> spectra = Spectra("config.yaml")  # No fisher parameter
-        >>> # _get_fisher() called internally during initialization
-        >>> spectra.run()
-
-        See Also
-        --------
-        Fisher.run : Complete Fisher matrix computation pipeline
+            Completed Fisher instance with all components computed.
         """
         if self.rank == 0:
             self.log("Starting Fisher matrix computation...", level=1)
 
         start_time = time.time()
 
-        fisher = Fisher(self.params)
+        fisher = Fisher(self.params, compression=self._compression_config)
         fisher.run()
 
         if self.rank == 0:
@@ -503,58 +359,18 @@ class Spectra(Core):
 
     def setup_maps(self):
         """
-        Read and prepare observational map data for QML analysis.
+        Read observational map data from FITS files.
 
-        This method loads CMB observation maps from FITS files and prepares
-        them for QML power spectrum estimation. Maps are read using the
-        cosmocore map reading infrastructure with proper pixel selection,
-        field extraction, and calibration handling.
-
-        Notes
-        -----
-        Map loading process includes:
-        1. Memory allocation for map arrays based on active pixels
-        2. FITS file reading with HEALPix format support
-        3. Field selection (T, Q, U) based on analysis configuration
-        4. Pixel masking using active pixel information
-        5. Calibration factor application if specified
-
-        For cross-correlation analyses (do_cross=True), both primary and
-        secondary map sets are loaded. Maps are organized as arrays with
-        dimensions (n_active_pixels, n_simulations) to support Monte Carlo
-        error estimation and null testing.
-
-        The map reading uses the cosmocore.read_maps function which handles:
-
-        - HEALPix FITS format parsing
-        - Multiple field extraction (temperature and polarization)
-        - Pixel ordering conversion (RING/NESTED)
-        - Calibration and unit conversion
-        - Memory-efficient loading for large datasets
+        Loads maps with proper pixel selection, field extraction, and calibration.
+        For cross-correlation (do_cross=True), loads both primary and secondary maps.
+        Output shape: (n_active_pixels, n_simulations).
 
         Raises
         ------
         ValueError
-            If pixel information is not available (setup_geometry not called).
+            If pixel information not available (setup_geometry not called).
         FileNotFoundError
-            If input map files are not found at specified paths.
-        RuntimeError
-            If map dimensions don't match expected configuration.
-
-        Examples
-        --------
-        This method is called as part of the analysis pipeline:
-
-        >>> spectra = Spectra("config.yaml")
-        >>> # Called automatically in run(), or manually:
-        >>> spectra.setup_geometry()
-        >>> spectra.setup_maps()
-        >>> print(f"Maps shape: {spectra.maps1.shape}")
-
-        See Also
-        --------
-        cosmocore.read_maps : Core map reading functionality
-        setup_geometry : Pixel information setup required before map loading
+            If input map files not found.
         """
         if self.rank == 0:
             self.log("Reading maps", level=2)
@@ -593,64 +409,16 @@ class Spectra(Core):
         """
         Prepare inverted Fisher matrix with normalization for QML estimation.
 
-        This method processes the Fisher information matrix to create the
-        optimal weighting matrix for QML power spectrum estimates. The process
-        includes normalization factor computation, Fisher matrix conditioning,
-        inversion, and error bar calculation.
-
-        Notes
-        -----
-        The Fisher matrix preparation involves several critical steps:
-
-        **1. Smoothing Factor Computation:**
-        Computes the "vecmul" normalization factors that account for:
-
-        - Beam convolution effects in observed maps
-        - Finite pixel size and pixelization effects
-        - Mode coupling between different multipoles
-        - Proper normalization for power spectrum units
-
-        **2. Fisher Matrix Normalization:**
-        Applies normalization as: F'_ij = F_ij * vecmul_i * vecmul_j
-        This ensures proper weighting of different multipole contributions
-        and accounts for observational effects in the final estimates.
-
-        **3. Matrix Inversion:**
-        Inverts the normalized Fisher matrix using stable algorithms:
-        F_cov = (F')^(-1)
-        This covariance matrix provides optimal error propagation for QML estimates.
-
-        **4. Error Bar Computation:**
-        Extracts marginal errors as: σ_i = sqrt((F_cov)_ii)
-        These represent the expected 1σ uncertainties on power spectrum estimates.
-
-        The vecmul factors are computed from beam and pixelization effects:
-        vecmul_l = ∫ d²k W(k) B²(k) / ∫ d²k W(k)
-        where W(k) is the pixel window and B(k) is the beam transfer function.
-
-        All intermediate and final products are written to output files for
-        verification and subsequent analysis steps.
+        Computes smoothing factors (vecmul), applies normalization
+        F'_ij = F_ij * vecmul_i * vecmul_j,
+        inverts the Fisher matrix, and writes results to output files.
 
         Raises
         ------
         ValueError
             If Fisher matrix is not available or singular.
         LinAlgError
-            If Fisher matrix inversion fails due to poor conditioning.
-
-        Examples
-        --------
-        This method is called during the analysis setup:
-
-        >>> spectra = Spectra("config.yaml", fisher=fisher_instance)
-        >>> spectra.setup_fisher_inversion()
-        >>> cond_num = np.linalg.cond(spectra.invfisher)
-        >>> print(f"Covariance matrix condition number: {cond_num}")
-
-        See Also
-        --------
-        Fisher.get_fisher_matrix : Source of Fisher information matrix
-        cosmocore.matrix_inverse_symm : Stable symmetric matrix inversion
+            If Fisher matrix inversion fails.
         """
         if self.rank == 0:
             self.log("Reading and inverting Fisher matrix", level=2)
@@ -767,63 +535,24 @@ class Spectra(Core):
 
     def compute_e_operator(self, il: int, der_s: np.ndarray) -> np.ndarray:
         """
-        Compute the QML quadratic estimator matrix E_l for a given multipole.
-
-        This method constructs the quadratic estimator matrix used in QML
-        power spectrum estimation. The E-operator encapsulates the optimal
-        weighting for extracting power spectrum information from observed maps.
+        Compute QML quadratic estimator matrix E_l.
 
         Parameters
         ----------
         il : int
-            Linear multipole index in the parameter vector. Related to spherical
-            harmonic multipole l and spectrum type through the relationship:
-            spectrum_index = il // (lmax - 1), l = (il % (lmax - 1)) + 2
-        der_s : numpy.ndarray
-            Derivative of the signal covariance matrix ∂S/∂C_l with respect to
-            the power spectrum amplitude at the given multipole. Shape must
-            match the covariance matrix dimensions (n_active_pixels, n_active_pixels).
+            Linear multipole index: spectrum_idx = il // (lmax-1), l = (il % (lmax-1)) + 2
+        der_s : np.ndarray
+            Signal covariance derivative ∂S/∂C_l, shape (n_pix, n_pix).
 
         Returns
         -------
-        numpy.ndarray
-            Quadratic estimator matrix E_l with shape (n_active_pixels, n_active_pixels).
-            This matrix is used to compute power spectrum estimates via the quadratic
-            form q̂_l = (1/2) * x^T * E_l * x.
+        np.ndarray
+            E_l matrix for quadratic estimation: q̂_l = (1/2) * x^T * E_l * x
 
         Notes
         -----
-        The E-operator is computed differently for auto- and cross-correlation:
-
-        **Auto-correlation case (do_cross=False):**
-        E_l = (1/2) * C^(-1) * ∂S/∂C_l * C^(-1)
-        where C^(-1) is the inverted total covariance matrix.
-
-        **Cross-correlation case (do_cross=True):**
-        E_l = (1/2) * C₂^(-1) * ∂S/∂C_l * C₁^(-1)
-        where C₁^(-1) and C₂^(-1) are the inverted covariance matrices for
-        the two independent datasets being cross-correlated.
-
-        The factor of 1/2 accounts for the symmetry of the quadratic form and
-        ensures unbiased estimation. The E-operator has the key property that
-        E[x^T * E_l * x] = C_l for the true power spectrum value C_l.
-
-        Matrix multiplications are performed using optimized BLAS routines
-        via cosmocore.matrix_mult for computational efficiency. The computation
-        scales as O(n_pix^3) due to the matrix multiplications.
-
-        Examples
-        --------
-        >>> der_s = np.zeros((n_pix, n_pix))
-        >>> # ... fill der_s with signal derivative ...
-        >>> E_l = spectra.compute_e_operator(il=15, der_s=der_s)
-        >>> # Use E_l for quadratic estimation:
-        >>> qml_estimate = 0.5 * np.dot(data_vector, np.dot(E_l, data_vector))
-
-        See Also
-        --------
-        cosmocore.matrix_mult : Optimized matrix multiplication
-        cosmocore.do_derivative_step : Signal matrix derivative computation
+        Auto: E_l = (1/2) * C^{-1} * ∂S/∂C_l * C^{-1}
+        Cross: E_l = (1/2) * C₂^{-1} * ∂S/∂C_l * C₁^{-1}
         """
         if self.params.do_cross:
             # E = 0.5 * invCov2^{-1} * derS * invCov1^{-1}
@@ -836,112 +565,235 @@ class Spectra(Core):
 
     def compute_qml_spectra(self):
         """
-        Execute the main parallel QML power spectrum computation.
+        Execute parallel QML power spectrum computation.
 
-        This method implements the core QML estimation algorithm using MPI
-        parallelization to distribute multipole computations across processes.
-        For each multipole, it computes the derivative matrix, E-operator,
-        and quadratic estimates for all Monte Carlo simulations.
+        Distributes multipole computations across MPI processes (round-robin).
+        For each multipole: computes signal derivative, E-operator, and
+        quadratic estimates for all simulations. Selects compressed or
+        traditional method based on compression_manager availability.
+        """
+        # Check if we should use compressed computation
+        use_compression = (
+            hasattr(self, "compression_manager") and self.compression_manager is not None
+        )
 
-        Notes
-        -----
-        The computation follows this algorithmic structure:
+        if use_compression:
+            self._compute_qml_spectra_compressed()
+        else:
+            self._compute_qml_spectra_traditional()
 
-        **1. Work Distribution:**
-        Multipoles are distributed across MPI processes using round-robin:
-        process_rank = multipole_index % n_processes
+    def _build_multi_spectrum_inputs_spectra(self):
+        """Build C_ell_dict and spectra_list for multi-spectrum compressed QML."""
+        return self.collection.spectra_manager.build_inputs()
 
-        **2. For each assigned multipole l:**
+    def _compute_noise_cov_diag_compressed(
+        self, cm, C_ell, C_ell_dict, is_multi_field
+    ) -> np.ndarray:
+        """
+        Compute diagonal of noise covariance in compressed space.
 
-        - Compute signal derivative: ∂S/∂C_l using do_derivative_step
-        - Construct E-operator: E_l = (1/2) * C^(-1) * ∂S/∂C_l * C^(-1)
-        - Apply to all simulations: q̂_l^(sim) = x^(sim)T * E_l * x^(sim)
+        For harmonic compression:
+            Cov(w|noise) = V @ C^{-1} @ N @ C^{-1} @ V^T
 
-        **3. Noise Bias Handling (auto-correlation only):**
+        Returns the diagonal for efficient trace computation.
+        """
+        from scipy.linalg import cho_solve, cholesky
 
-        - Compute bias: bias_l = (1/2) * Tr[N * E_l]
-        - Optionally subtract from estimates if remove_nb=True
+        from cosmocore.basics import matrix_inverse_symm
 
-        **4. Cross-correlation vs Auto-correlation:**
+        if is_multi_field:
+            # Build full Lambda and its inverse (auto-detects key format)
+            Lambda_full = cm._build_lambda_full(C_ell_dict)
+            Lambda_reg = Lambda_full + np.eye(Lambda_full.shape[0]) * 1e-20
+            Lambda_inv = matrix_inverse_symm(np.asfortranarray(Lambda_reg))
 
-        - Cross: q̂_l = x₂^T * E_l * x₁ (naturally noise-bias free)
-        - Auto: q̂_l = x^T * E_l * x (requires noise bias computation)
+            M = cm._V_Ninv_VT
+            K = Lambda_inv + M
+            K_inv = matrix_inverse_symm(np.asfortranarray(K))
 
-        The parallelization strategy ensures good load balancing while
-        minimizing memory overhead. Each process only stores matrices
-        for its assigned multipoles, with final results gathered via
-        MPI reduction operations.
+            # V_Cinv = (I - M @ K^{-1}) @ V_Ninv
+            n_modes = cm.n_modes_total
+            I_minus_MKinv = np.eye(n_modes) - M @ K_inv
+            V_Cinv = I_minus_MKinv @ cm._V_N_inv
+        else:
+            Lambda_diag = cm._build_lambda_diagonal(C_ell)
+            Lambda_inv_diag = np.where(Lambda_diag > 1e-30, 1.0 / Lambda_diag, 1e30)
+            M = cm._V_Ninv_VT
+            K = np.diag(Lambda_inv_diag) + M
 
-        Computational complexity per multipole:
-        - Signal derivative: O(n_pix² * l)
-        - E-operator: O(n_pix³) (matrix multiplications)
-        - Quadratic forms: O(n_pix² * n_sims)
+            try:
+                L = cholesky(K, lower=True)
+                K_inv = cho_solve((L, True), np.eye(K.shape[0]))
+            except np.linalg.LinAlgError:
+                K_inv = np.linalg.inv(K)
 
-        Total scaling: O(n_ell * n_pix³ + n_ell * n_pix² * n_sims)
+            # V_Cinv = (I - M @ K^{-1}) @ V_Ninv
+            I_minus_MKinv = np.eye(cm.n_modes) - M @ K_inv
+            V_Cinv = I_minus_MKinv @ cm._V_N_inv
 
-        Examples
-        --------
-        This method is called as part of the computation pipeline:
+        # For diagonal N, compute noise_cov_w_diag
+        if hasattr(cm, "_N_inv_original"):
+            noise_var = 1.0 / np.diag(cm._N_inv_original)
+        else:
+            noise_var = 1.0 / np.diag(cm.N_inv)
+        sqrt_noise = np.sqrt(noise_var)
+        W = V_Cinv * sqrt_noise[np.newaxis, :]
 
-        >>> spectra = Spectra("config.yaml")
-        >>> spectra.setup_qml_computation()
-        >>> spectra.compute_qml_spectra()
-        >>> # Results available in spectra.qml_results after MPI reduction
+        # Diagonal of Cov(w|noise) = sum over columns of W^2
+        return np.sum(W**2, axis=1)
 
-        See Also
-        --------
-        compute_e_operator : E-operator construction for individual multipoles
-        _reduce_qml_results : MPI reduction of results from all processes
-        cosmocore.do_derivative_step : Signal matrix derivative computation
+    def _compute_qml_spectra_compressed(self):
+        """
+        Compute QML spectra using compressed representation.
+
+        This method performs QML estimation entirely in compressed space,
+        ensuring consistency with the compressed Fisher matrix computation.
+
+        The compressed QML estimator is:
+            q_l = (1/2) * w^T @ E_l @ w
+
+        where:
+            w = V @ C^{-1} @ d  (weighted compressed data via SMW)
+            E_l = get_derivative_matrix(ell) (diagonal with (2ℓ+1)/(4π) at modes for ℓ)
+
+        This is mathematically equivalent to the traditional estimator:
+            q_l = (1/2) * d^T @ C^{-1} @ dC_l @ C^{-1} @ d
+
+        The key insight is that dC_l = V^T @ E_l @ V in harmonic space, so:
+            q_l = (1/2) * d^T @ C^{-1} @ V^T @ E_l @ V @ C^{-1} @ d
+                = (1/2) * (V C^{-1} d)^T @ E_l @ (V C^{-1} d)
+                = (1/2) * w^T @ E_l @ w
+
+        Supports both single-field and multi-field compression.
         """
         if self.rank == 0:
-            self.log("Starting QML computation", level=2)
+            self.log("Starting QML computation (compressed)", level=2)
 
         start_time = time.time()
 
-        nell = self.params.nspectra * (self.params.lmax - 1)
-        ntot = sum(self.collection.n_active)
+        n_ell = self.params.lmax - 1
+        nell = self.params.nspectra * n_ell
+        cm = self.compression_manager
+        n_sims = self.params.nsims
+        n_compressed = cm.n_kept
 
-        # Allocate derivative matrix
-        der_s = np.zeros((ntot, ntot), dtype=np.float64)
-        E = np.zeros((ntot, ntot), dtype=np.float64)
+        # Multi-field path is needed when >1 components or spin-2 (spin-2 has
+        # multiple spectra EE/BB/EB even for a single field)
+        has_spin2 = any(f.spin == 2 for f in self.collection.fields)
+        is_multi_field = cm.n_components > 1 or has_spin2
+
+        # Build C_ell or C_ell_dict depending on multi-field
+        if is_multi_field:
+            C_ell_dict, spectra_list = self._build_multi_spectrum_inputs_spectra()
+            C_ell = None  # Not used for multi-field
+        else:
+            C_ell = self.collection.spectra_manager.get_cls(0, 0, 0)
+            C_ell_dict = None
+            spectra_list = [(0, 0)]
+
+        # Compute weighted compressed data for all simulations
+        # w = V @ C^{-1} @ d (using SMW formula internally)
+        # For multi-field, precompute K_inv once to avoid repeated matrix inversions
+        maps1_weighted = np.zeros((n_compressed, n_sims), dtype=np.float64)
+        if is_multi_field:
+            if cm.method == "harmonic":
+                # Precompute SMW matrices once
+                from cosmocore.basics import matrix_inverse_symm
+
+                Lambda_full = cm._build_lambda_full(C_ell_dict)
+                Lambda_reg = Lambda_full + np.eye(Lambda_full.shape[0]) * 1e-20
+                Lambda_inv = matrix_inverse_symm(np.asfortranarray(Lambda_reg))
+                K = Lambda_inv + cm._V_Ninv_VT
+                K_inv = matrix_inverse_symm(np.asfortranarray(K))
+                M_K_inv = cm._V_Ninv_VT @ K_inv
+
+                # Compute weighted data for all sims using precomputed matrices
+                # w = y - M @ K^{-1} @ y where y = V @ N^{-1} @ d
+                Y1 = cm._V_N_inv @ self.maps1  # (n_modes, n_sims)
+                maps1_weighted = Y1 - M_K_inv @ Y1
+            else:
+                # pixel_projected: use compressed-space weighted data
+                C_c_inv = cm.get_compressed_inverse(C_ell_dict)
+                d_c = cm.compress_data(self.maps1)
+                maps1_weighted = C_c_inv @ d_c
+        else:
+            C_c_inv = None
+            if cm.method == "pixel_projected":
+                C_c_inv = cm.get_compressed_inverse(C_ell)
+            for isim in range(n_sims):
+                maps1_weighted[:, isim] = cm.get_weighted_compressed_data(
+                    self.maps1[:, isim], C_ell, C_c_inv=C_c_inv
+                )
+
+        if self.params.do_cross:
+            maps2_weighted = np.zeros((n_compressed, n_sims), dtype=np.float64)
+            if is_multi_field:
+                if cm.method == "harmonic":
+                    # Use precomputed matrices
+                    Y2 = cm._V_N_inv @ self.maps2
+                    maps2_weighted = Y2 - M_K_inv @ Y2
+                else:
+                    d_c2 = cm.compress_data(self.maps2)
+                    maps2_weighted = C_c_inv @ d_c2
+            else:
+                for isim in range(n_sims):
+                    maps2_weighted[:, isim] = cm.get_weighted_compressed_data(
+                        self.maps2[:, isim], C_ell, C_c_inv=C_c_inv
+                    )
+
+        # For noise bias computation (only for non-cross)
+        noise_cov_w_diag = None
+        noise_cov_w = None
+        if not self.params.do_cross:
+            if cm.method == "harmonic":
+                noise_cov_w_diag = self._compute_noise_cov_diag_compressed(
+                    cm, C_ell, C_ell_dict, is_multi_field
+                )
+            else:
+                # For pixel_projected: use compressed quantities
+                if is_multi_field:
+                    C_bar_inv = cm.get_compressed_inverse(C_ell_dict)
+                    zero_dict = {k: np.zeros_like(v) for k, v in C_ell_dict.items()}
+                    N_bar = cm.get_compressed_covariance(zero_dict)
+                else:
+                    C_bar_inv = cm.get_compressed_inverse(C_ell)
+                    N_bar = cm.get_compressed_covariance(np.zeros_like(C_ell))
+                noise_cov_w = C_bar_inv @ N_bar @ C_bar_inv
 
         # Main computation loop - distribute multipoles across processes
         for il in range(nell):
             if self.rank == il % self.size:
-                # Compute derivative of signal matrix for this multipole
-                spectrum_idx = il // (self.params.lmax - 1)
-                ell = (il % (self.params.lmax - 1)) + 2
+                spectrum_idx = il // n_ell
+                ell = (il % n_ell) + 2
 
-                # Compute derivative step
-                do_derivative_step(
-                    der_s,
-                    spectrum_idx,
-                    self.npixs,
-                    self.params.spins,
-                    ell,
-                    self.collection,
-                )
-
-                # Compute E operator
-                E = self.compute_e_operator(il, der_s)
+                # Get compressed derivative matrix E_l
+                if is_multi_field:
+                    comp_i, comp_j, mode = spectra_list[spectrum_idx]
+                    E_l = cm.get_derivative_matrix(ell, comp_i, comp_j, mode)
+                else:
+                    E_l = cm.get_derivative_matrix(ell)
 
                 if self.params.do_cross:
                     # Cross-correlation case
-                    for isim in range(self.params.nsims):
-                        self.qml_results[isim, il] = matrix_mult(
-                            self.maps2[:, isim].T, matrix_mult(E, self.maps1[:, isim])
-                        )
+                    for isim in range(n_sims):
+                        w1 = maps1_weighted[:, isim]
+                        w2 = maps2_weighted[:, isim]
+                        self.qml_results[isim, il] = 0.5 * w2 @ E_l @ w1
                 else:
                     # Auto-correlation case
-                    # Compute noise bias
-                    tr_ne = matrix_trace(self.NCov1, E)
+                    # Compute noise bias: E[q_l|noise] = 0.5 * Tr[E_l @ Cov(w|noise)]
+                    if cm.method == "harmonic":
+                        # For harmonic, E_l is diagonal - use fast diagonal trace
+                        E_l_diag = np.diag(E_l)
+                        tr_ne = 0.5 * np.sum(E_l_diag * noise_cov_w_diag)
+                    else:
+                        # For pixel_projected, E_l is full matrix - use matrix_trace
+                        tr_ne = 0.5 * matrix_trace(E_l, noise_cov_w)
                     self.qml_noise_bias[il] = tr_ne
 
-                    for isim in range(self.params.nsims):
-                        qml_value = matrix_mult(
-                            self.maps1[:, isim].T, matrix_mult(E, self.maps1[:, isim])
-                        )
+                    for isim in range(n_sims):
+                        w = maps1_weighted[:, isim]
+                        qml_value = 0.5 * w @ E_l @ w
 
                         if hasattr(self.params, "remove_nb") and self.params.remove_nb:
                             qml_value -= tr_ne
@@ -952,7 +804,98 @@ class Spectra(Core):
         self.comm.Barrier()
 
         if self.rank == 0:
-            self.log("QML computation done", level=2)
+            self.log("QML computation done (compressed)", level=2)
+            self.log(
+                f"QML computation time: {time.time() - start_time:.2f} seconds", level=3
+            )
+
+        # Reduce results from all processes
+        self._reduce_qml_results(nell)
+
+    def _compute_qml_spectra_traditional(self):
+        """
+        Compute QML spectra using traditional pixel-space computation.
+
+        Optimized: Precomputes y = C^{-1} @ d to avoid building full E matrix.
+
+        The QML estimator is:
+            q_l = (1/2) * d^T @ C^{-1} @ dC_l @ C^{-1} @ d
+                = (1/2) * y^T @ dC_l @ y   where y = C^{-1} @ d
+
+        This reduces complexity from 2 × O(n³) to 1 × O(n³) per multipole,
+        as we only need C^{-1} @ dC for noise bias (not the full E matrix).
+        """
+        if self.rank == 0:
+            self.log("Starting QML computation (traditional, optimized)", level=2)
+
+        start_time = time.time()
+
+        nell = self.params.nspectra * (self.params.lmax - 1)
+        ntot = sum(self.collection.n_active)
+
+        # Precompute weighted data: y = C^{-1} @ d for all simulations
+        # This is O(n² × nsims) and avoids rebuilding for each ℓ
+        y1 = matrix_mult(self.invCov1, self.maps1)  # (ntot, nsims)
+
+        if self.params.do_cross:
+            y2 = matrix_mult(self.invCov2, self.maps2)  # (ntot, nsims)
+
+        # For noise bias: Tr[N @ E] = 0.5 * Tr[N @ C^{-1} @ dC @ C^{-1}]
+        # Using cyclic trace property: = 0.5 * Tr[C^{-1} @ N @ C^{-1} @ dC]
+        # Precompute C^{-1} @ N @ C^{-1} once (O(n³)), then Tr(... @ dC) per ℓ
+        if not self.params.do_cross:
+            Cinv_N_Cinv = matrix_mult(self.invCov1, matrix_mult(self.NCov1, self.invCov1))
+
+        # Allocate derivative matrix
+        der_s = np.zeros((ntot, ntot), dtype=np.float64)
+
+        # Main computation loop - distribute multipoles across processes
+        for il in range(nell):
+            if self.rank == il % self.size:
+                spectrum_idx = il // (self.params.lmax - 1)
+                ell = (il % (self.params.lmax - 1)) + 2
+
+                # Compute derivative matrix dC_l
+                der_s.fill(0.0)
+                do_derivative_step(
+                    der_s,
+                    spectrum_idx,
+                    self.npixs,
+                    self.params.spins,
+                    ell,
+                    self.collection,
+                )
+
+                # Compute dC @ y for all sims at once: O(n² × nsims)
+                dC_y1 = matrix_mult(der_s, y1)
+
+                if self.params.do_cross:
+                    # Cross-correlation: q_l = 0.5 * y2^T @ dC @ y1
+                    for isim in range(self.params.nsims):
+                        self.qml_results[isim, il] = 0.5 * np.dot(
+                            y2[:, isim], dC_y1[:, isim]
+                        )
+                else:
+                    # Auto-correlation case
+                    # Noise bias: Tr[N @ E] = 0.5 * Tr[C^{-1} @ N @ C^{-1} @ dC]
+                    # Using precomputed Cinv_N_Cinv: Tr(Cinv_N_Cinv @ dC)
+                    tr_ne = 0.5 * matrix_trace(Cinv_N_Cinv, der_s)
+                    self.qml_noise_bias[il] = tr_ne
+
+                    # QML values: q_l = 0.5 * y^T @ dC @ y
+                    for isim in range(self.params.nsims):
+                        qml_value = 0.5 * np.dot(y1[:, isim], dC_y1[:, isim])
+
+                        if hasattr(self.params, "remove_nb") and self.params.remove_nb:
+                            qml_value -= tr_ne
+
+                        self.qml_results[isim, il] = qml_value
+
+        # Synchronize all processes
+        self.comm.Barrier()
+
+        if self.rank == 0:
+            self.log("QML computation done (traditional, optimized)", level=2)
             self.log(
                 f"QML computation time: {time.time() - start_time:.2f} seconds", level=3
             )
@@ -961,61 +904,7 @@ class Spectra(Core):
         self._reduce_qml_results(nell)
 
     def _reduce_qml_results(self, nell: int):
-        """
-        Collect and combine QML results from all MPI processes.
-
-        This method performs MPI reduction operations to gather partial QML
-        results computed across different processes and combine them into
-        complete power spectrum estimates and noise bias arrays.
-
-        Parameters
-        ----------
-        nell : int
-            Total number of multipole parameters (n_spectra * (lmax - 1)).
-            Used to allocate reduction arrays with correct dimensions.
-
-        Notes
-        -----
-        The reduction process handles two types of results:
-
-        **1. QML Power Spectrum Estimates:**
-        Each process computed estimates for a subset of multipoles.
-        Results are summed across processes using MPI.SUM to combine
-        contributions from all assigned multipoles.
-
-        **2. Noise Bias Terms (auto-correlation only):**
-        Noise bias values computed for each multipole are similarly
-        reduced using MPI.SUM operation.
-
-        The MPI reduction ensures that only the master process (rank 0)
-        receives the complete combined results, while worker processes
-        retain only their partial contributions.
-
-        Memory allocation for reduction arrays:
-        - reduced_qml_results: (n_simulations, nell) array
-        - reduced_qml_noise_bias: (nell,) array (auto-correlation only)
-
-        After reduction, the master process updates its local arrays
-        with the complete results, making them available for final
-        Fisher matrix multiplication and output.
-
-        The reduction is essential for the distributed computation model
-        where different processes handle different multipoles, ensuring
-        all contributions are properly combined for the final estimates.
-
-        Examples
-        --------
-        This method is called automatically after parallel computation:
-
-        >>> # Called internally by compute_qml_spectra()
-        >>> spectra._reduce_qml_results(nell)
-        >>> # Now spectra.qml_results contains complete results on rank 0
-
-        See Also
-        --------
-        compute_qml_spectra : Main computation method that calls this reduction
-        MPI.Reduce : Low-level MPI reduction operation used internally
-        """
+        """Gather and combine QML results from all MPI processes."""
         # Reduce y vectors
         reduced_qml_results = np.zeros((self.params.nsims, nell), dtype=np.float64)
         self.comm.Reduce(self.qml_results, reduced_qml_results, op=MPI.SUM, root=0)
@@ -1034,62 +923,10 @@ class Spectra(Core):
 
     def compute(self):
         """
-        Execute the complete QML power spectrum computation phase.
+        Execute QML power spectrum computation.
 
-        This method serves as the main computational entry point for QML
-        estimation, coordinating the setup and execution of the quadratic
-        maximum likelihood algorithm. It orchestrates both initialization
-        and the parallel computation phases.
-
-        Notes
-        -----
-        The computation phase consists of two main steps:
-
-        **1. Setup Phase:**
-        Initializes computational arrays and variables via setup_qml_computation():
-        - Allocates memory for QML results and noise bias arrays
-        - Sizes arrays based on number of multipoles and simulations
-        - Prepares data structures for parallel computation
-
-        **2. Computation Phase:**
-        Executes the main QML algorithm via compute_qml_spectra():
-        - Distributes multipole computations across MPI processes
-        - Computes signal derivatives and E-operators for each multipole
-        - Applies quadratic estimators to all Monte Carlo simulations
-        - Reduces results from all processes to master process
-
-        This method assumes that all prerequisite setup has been completed:
-        - Field collections and geometry information loaded
-        - Covariance matrices computed and inverted
-        - Maps read and prepared for analysis
-        - Fisher matrix computed and inverted with normalization
-
-        The separation between setup and computation phases allows for
-        flexibility in the analysis pipeline and clear separation of
-        concerns between initialization and the computationally intensive
-        QML estimation phase.
-
-        Examples
-        --------
-        Called as part of the full analysis pipeline:
-
-        >>> spectra = Spectra("config.yaml")
-        >>> # ... setup phases completed in run() ...
-        >>> spectra.compute()  # Execute QML computation
-        >>> power_spectra = spectra.get_power_spectra()
-
-        Or manually after setup:
-
-        >>> spectra = Spectra("config.yaml", fisher=fisher_instance)
-        >>> spectra.setup_maps()
-        >>> spectra.setup_fisher_inversion()
-        >>> spectra.compute()
-
-        See Also
-        --------
-        setup_qml_computation : Initialize arrays for QML computation
-        compute_qml_spectra : Main parallel QML estimation algorithm
-        run : Complete analysis pipeline including this computation phase
+        Calls setup_qml_computation() to initialize arrays, then
+        compute_qml_spectra() for the main parallel computation.
         """
         # Setup QML computation variables
         self.setup_qml_computation()
@@ -1101,91 +938,20 @@ class Spectra(Core):
         """
         Execute the complete QML power spectrum analysis pipeline.
 
-        This method orchestrates the entire QML analysis from initial parameter
-        setup through final power spectrum computation and output. It handles
-        the complex coordination between MPI processes and manages the optimal
-        reuse of computational components when Fisher matrix data is available.
-
-        Notes
-        -----
-        The analysis pipeline consists of several coordinated phases:
-
-        **Phase 1 - Master Process Setup (Rank 0 only):**
-        Determines whether to reuse pre-computed Fisher components or perform
-        complete setup from scratch:
-
-        - **Fisher Reuse Path:** When a Fisher instance is provided, expensive
-          computational components (geometry, covariance matrices, field collections)
-          are reused for efficiency
-        - **Full Setup Path:** When no Fisher instance is available, complete
-          setup is performed including field initialization, geometry computation,
-          covariance matrix setup, power spectra loading, and beam functions
-
-        **Phase 2 - QML-Specific Setup:**
-        - Map data loading from FITS files with proper field extraction
-        - Fisher matrix inversion with normalization factor computation
-        - Error bar calculation and output file writing
-
-        **Phase 3 - MPI Data Broadcasting:**
-        Essential data structures are broadcast from master to all worker processes:
-        - Parameter configurations and field collections
-        - Geometry data (pixel vectors, active pixel information)
-        - Covariance matrices (both original and inverted forms)
-        - Observational maps for all simulations
-        - Inverted Fisher matrix and normalization factors
-
-        **Phase 4 - Parallel QML Computation:**
-        The main computational phase where multipole estimates are computed
-        in parallel across all processes, followed by MPI reduction to
-        gather complete results.
-
-        **Phase 5 - Finalization:**
-        MPI synchronization ensures all processes complete successfully
-        before pipeline termination.
-
-        The method optimizes computational efficiency by:
-        1. Reusing expensive Fisher computations when possible
-        2. Minimizing data broadcasting through selective variable sharing
-        3. Ensuring proper load balancing in parallel computation phases
-        4. Managing memory efficiently across different analysis scales
+        Pipeline phases:
+        1. Master setup: fields, geometry, covariance, spectra, beams
+           (reuses Fisher components if provided)
+        2. QML setup: maps, Fisher inversion
+        3. MPI broadcast of shared data to workers
+        4. Parallel QML computation
+        5. MPI synchronization
 
         Raises
         ------
         ValueError
-            If required setup components are missing or inconsistent.
-        MPIError
-            If MPI communication fails during broadcasting or computation phases.
+            If required setup components are missing.
         FileNotFoundError
-            If input files (maps, covariance matrices) are not accessible.
-
-        Examples
-        --------
-        Complete analysis with Fisher reuse:
-
-        >>> fisher = Fisher("config/fisher_config.yaml")
-        >>> fisher.run()
-        >>> spectra = Spectra("config/qml_config.yaml", fisher=fisher)
-        >>> spectra.run()  # Efficient reuse of Fisher components
-        >>> results = spectra.get_power_spectra()
-
-        Standalone QML analysis:
-
-        >>> spectra = Spectra("config/standalone_config.yaml")
-        >>> spectra.run()  # Complete pipeline including Fisher computation
-        >>> power_spectra = spectra.get_power_spectra()
-        >>> noise_bias = spectra.get_noise_bias()
-
-        MPI parallel execution:
-
-        >>> # Command line: mpirun -n 16 python qml_analysis.py
-        >>> spectra = Spectra("config/large_scale_config.yaml")
-        >>> spectra.run()  # Scales across all available processes
-
-        See Also
-        --------
-        Fisher.run : Fisher matrix computation pipeline for error propagation
-        compute : Main QML computation phase executed within this pipeline
-        _broadcast_variables : MPI data distribution to worker processes
+            If input files not accessible.
         """
         # Only rank 0 does the initial setup
         if self.rank == 0:
@@ -1226,65 +992,7 @@ class Spectra(Core):
         self.comm.Barrier()
 
     def _broadcast_variables(self):
-        """
-        Distribute essential computational data from master to all MPI processes.
-
-        This method broadcasts all necessary data structures from the master process
-        (rank 0) to worker processes, ensuring consistent access to shared data
-        required for parallel QML computation. The broadcasting is essential for
-        the distributed computation model where different processes handle different
-        multipoles but need access to the same underlying data.
-
-        Notes
-        -----
-        The broadcast operation distributes several categories of data:
-
-        **Core Analysis Components:**
-        - params: Complete parameter configuration for the analysis
-        - collection: Field collection with HEALPix setup and active pixels
-        - npixs: Pixel count information for different fields
-        - pixact: Active pixel index arrays for efficient data access
-        - point_vectors: Pixel pointing vectors for spherical harmonic transforms
-
-        **Covariance Matrix Data:**
-        - NCov1, NCov2: Original noise covariance matrices for bias computation
-        - invCov1, invCov2: Inverted total covariance matrices for E-operators
-        - Cross-correlation matrices broadcast only when do_cross=True
-
-        **Observational Data:**
-        - maps1, maps2: CMB observation maps for all Monte Carlo simulations
-        - Secondary maps broadcast only for cross-correlation analyses
-
-        **QML-Specific Data:**
-        - invfisher: Inverted Fisher matrix for final spectrum normalization
-        - normalization: Vecmul factors for beam and pixelization corrections
-
-        Broadcasting Strategy:
-        Each variable is broadcast using the pattern:
-        ```python
-        variable = comm.bcast(variable if rank == 0 else None, root=0)
-        ```
-        This ensures the master process provides the data while workers receive it.
-
-        Memory Considerations:
-        The broadcast operation can be memory-intensive for large datasets,
-        particularly for high-resolution analyses where covariance matrices
-        and maps consume significant memory. The implementation balances
-        memory usage with computational efficiency.
-
-        Examples
-        --------
-        This method is called automatically during the analysis pipeline:
-
-        >>> # Called internally by run() method
-        >>> spectra._broadcast_variables()
-        >>> # All processes now have access to shared data structures
-
-        See Also
-        --------
-        run : Main pipeline method that coordinates this broadcasting
-        MPI.bcast : Low-level MPI broadcast operation used internally
-        """
+        """Broadcast essential data from master to all MPI worker processes."""
         # Broadcast parameters and core variables
         self.params = self.comm.bcast(self.params if self.rank == 0 else None, root=0)
         self.collection = self.comm.bcast(
@@ -1320,85 +1028,22 @@ class Spectra(Core):
 
     def _normalize_spectra(self, spectra: np.ndarray) -> np.ndarray:
         """
-        Apply Fisher matrix normalization to produce final power spectrum estimates.
-
-        This method performs the final step in QML estimation by multiplying
-        raw quadratic estimates with the inverted Fisher matrix to produce
-        optimally-weighted power spectrum estimates. This normalization is
-        essential for obtaining unbiased, minimum-variance estimates.
+        Apply Fisher matrix normalization to raw QML estimates.
 
         Parameters
         ----------
-        spectra : numpy.ndarray
-            Raw QML estimates or noise bias terms to be normalized. Can be either:
-            - 1D array with shape (n_total_parameters,) for single realization
-            - 2D array with shape (n_simulations, n_total_parameters) for multiple
-              Monte Carlo realizations
+        spectra : np.ndarray
+            Raw QML estimates, shape (n_params,) or (n_sims, n_params).
 
         Returns
         -------
-        numpy.ndarray
-            Normalized power spectrum estimates with the same shape as input.
-            These represent the final QML power spectrum estimates with optimal
-            statistical properties.
+        np.ndarray
+            Normalized power spectrum estimates with same shape as input.
 
         Raises
         ------
         ValueError
-            If Fisher matrix inversion or normalization factors are not available.
-            This indicates setup_fisher_inversion() was not called successfully.
-
-        Notes
-        -----
-        The normalization process implements the final QML transformation:
-
-        **Mathematical Foundation:**
-        For raw estimates y_i, the normalized estimates are:
-        C̃_l = Σ_i,j (F^(-1))_ij * (y_i * vecmul_i)
-
-        where F^(-1) is the inverted Fisher matrix and vecmul_i are the
-        normalization factors accounting for beam and pixelization effects.
-
-        **Two-Step Process:**
-        1. **Vecmul Application:** Raw estimates are multiplied by normalization
-           factors: y'_i = y_i * vecmul_i
-        2. **Fisher Multiplication:** Normalized estimates computed via matrix
-           multiplication: C̃ = F^(-1) * y'
-
-        **Statistical Properties:**
-        The resulting estimates have optimal properties:
-        - Unbiased: E[C̃_l] = C_l^true
-        - Minimum variance: Var[C̃_l] = (F^(-1))_ll
-        - Proper error propagation across multipoles
-
-        **Computational Efficiency:**
-        For multiple simulations, the normalization is applied row-wise to
-        optimize memory access patterns and minimize redundant computations.
-
-        The vecmul factors account for:
-        - Beam convolution effects in the observed maps
-        - Finite pixel size and HEALPix pixelization
-        - Mode coupling between different multipoles
-        - Proper unit conversion for power spectrum measurements
-
-        Examples
-        --------
-        Normalize QML results for final output:
-
-        >>> raw_estimates = spectra.qml_results  # Shape: (n_sims, n_params)
-        >>> final_spectra = spectra._normalize_spectra(raw_estimates)
-        >>> print(f"Final spectra shape: {final_spectra.shape}")
-
-        Normalize noise bias terms:
-
-        >>> raw_bias = spectra.qml_noise_bias  # Shape: (n_params,)
-        >>> normalized_bias = spectra._normalize_spectra(raw_bias)
-
-        See Also
-        --------
-        setup_fisher_inversion : Prepares Fisher matrix and normalization factors
-        get_power_spectra : Public interface that calls this normalization
-        Fisher.get_fisher_matrix : Source of Fisher information matrix
+            If Fisher inversion or normalization factors not available.
         """
         if self.invfisher is None or self.normalization is None:
             raise ValueError("Fisher inversion and normalization must be set up first.")
@@ -1420,83 +1065,14 @@ class Spectra(Core):
 
     def get_power_spectra(self) -> np.ndarray | None:
         """
-        Retrieve final QML power spectrum estimates with optimal normalization.
-
-        This method returns the completed power spectrum estimates after full
-        QML computation and Fisher matrix normalization. The estimates represent
-        optimal, unbiased measurements of the angular power spectra C_l from
-        the input CMB observations.
+        Retrieve final normalized QML power spectrum estimates.
 
         Returns
         -------
-        numpy.ndarray or None
-            Final power spectrum estimates with shape (n_simulations, n_parameters)
-            where n_parameters = n_spectra * (lmax - 1). Returns None for worker
-            processes (rank != 0) or if computation has not completed.
-
-        Notes
-        -----
-        The returned power spectra have several important properties:
-
-        **Statistical Optimality:**
-        - Unbiased: E[C̃_l] = C_l^true for the true underlying power spectrum
-        - Minimum variance: Achieves the Cramér-Rao lower bound for estimation
-        - Optimal error propagation: Uncertainties properly weighted across multipoles
-
-        **Physical Units:**
-        Power spectra are in units consistent with the input map calibration,
-        typically μK² for temperature or (μK)² for polarization depending
-        on the analysis configuration.
-
-        **Array Structure:**
-
-        - Dimension 0: Monte Carlo simulation index (0 to nsims-1)
-        - Dimension 1: Parameter index combining spectrum type and multipole:
-          parameter_index = spectrum_index * (lmax-1) + (l-2)
-          where l ranges from 2 to lmax
-
-        **Spectrum Ordering:**
-        Parameters are ordered by spectrum type (TT, EE, BB, TE, etc.) as
-        defined in the field collection configuration, with multipoles
-        nested within each spectrum type.
-
-        **Error Information:**
-        Statistical uncertainties can be obtained from the Fisher matrix
-        covariance via the associated Fisher instance. The diagonal elements
-        of F^(-1) provide the marginal variances for each parameter.
-
-        **Multiple Simulations:**
-
-        When multiple Monte Carlo simulations are processed (nsims > 1),
-        the mean across simulations provides the central estimate while
-        the scatter enables empirical error estimation and null testing.
-
-        Examples
-        --------
-        Basic power spectrum retrieval:
-
-        >>> spectra = Spectra("config.yaml")
-        >>> spectra.run()
-        >>> if spectra.rank == 0:  # Only master process has results
-        ...     power_spectra = spectra.get_power_spectra()
-        ...     print(f"Shape: {power_spectra.shape}")
-        ...     # Extract specific spectrum (e.g., TT)
-        ...     tt_spectrum = power_spectra[0, :lmax-1]  # First simulation, TT only
-
-        Statistical analysis with multiple simulations:
-
-        >>> power_spectra = spectra.get_power_spectra()
-        >>> if power_spectra is not None:
-        ...     mean_spectra = np.mean(power_spectra, axis=0)
-        ...     std_spectra = np.std(power_spectra, axis=0)
-        ...     print(f"Mean C_2: {mean_spectra[0]:.2e}")
-        ...     print(f"Standard deviation: {std_spectra[0]:.2e}")
-
-        See Also
-        --------
-        get_noise_bias : Retrieve noise bias estimates for auto-correlation
-        Fisher.get_error_bars : Statistical uncertainties from Fisher matrix
-        _normalize_spectra : Internal normalization method called by this function
+        np.ndarray or None
+            Shape (n_sims, n_params) where n_params = n_spectra * (lmax-1).
+            Parameters ordered by spectrum type, multipoles nested within.
+            Returns None for worker processes or if computation incomplete.
         """
         if self.rank == 0 and self.qml_results is not None:
             power_spectra = self._normalize_spectra(self.qml_results)
@@ -1505,97 +1081,17 @@ class Spectra(Core):
 
     def get_noise_bias(self) -> np.ndarray | None:
         """
-        Retrieve noise bias estimates for auto-correlation power spectra.
-
-        This method returns the computed noise bias terms that arise in
-        auto-correlation QML analyses due to the quadratic nature of the
-        estimator when applied to the same dataset. These bias terms can
-        be subtracted for unbiased power spectrum estimation.
+        Retrieve noise bias estimates for auto-correlation spectra.
 
         Returns
         -------
-        numpy.ndarray or None
-            Noise bias estimates with shape (n_parameters,) where n_parameters =
-            n_spectra * (lmax - 1). Returns None for worker processes (rank != 0),
-            cross-correlation analyses (do_cross=True), or if computation has
-            not completed.
+        np.ndarray or None
+            Shape (n_params,). Returns None for workers, cross-correlation
+            analyses (do_cross=True), or if computation incomplete.
 
         Notes
         -----
-        **Noise Bias Origin:**
-        In auto-correlation QML estimation, the quadratic estimator applied to
-        the same dataset introduces a bias term:
-
-        bias_l = E[x^T * E_l * x] - C_l = (1/2) * Tr[N * E_l]
-
-        where N is the noise covariance matrix and E_l is the quadratic estimator
-        for multipole l. This bias arises because the estimator correlates noise
-        realizations with themselves.
-
-        **Cross-Correlation Exemption:**
-        Cross-correlation analyses using independent noise realizations are
-        naturally free from this bias, so this method returns None when
-        do_cross=True.
-
-        **Bias Subtraction:**
-        The bias can be removed from power spectrum estimates:
-        C_l^unbiased = C_l^raw - bias_l
-
-        Whether bias subtraction is applied during computation depends on
-        the remove_nb parameter setting.
-
-        **Physical Interpretation:**
-        Noise bias represents the systematic offset introduced by instrumental
-        noise when using the same data for both signal estimation and template
-        construction. It scales with the noise level and is typically most
-        significant at high multipoles where signal-to-noise is low.
-
-        **Normalization:**
-        Like power spectrum estimates, noise bias terms are normalized using
-        the inverted Fisher matrix and vecmul factors to ensure consistent
-        units and proper statistical weighting.
-
-        **Monte Carlo Validation:**
-        Noise bias can be empirically validated using Monte Carlo simulations
-        with noise-only inputs. The mean QML estimate from pure noise
-        realizations should match the computed bias terms.
-
-        Examples
-        --------
-        Basic noise bias retrieval:
-
-        >>> spectra = Spectra("config.yaml")  # Auto-correlation analysis
-        >>> spectra.run()
-        >>> if spectra.rank == 0:
-        ...     noise_bias = spectra.get_noise_bias()
-        ...     if noise_bias is not None:
-        ...         print(f"Noise bias shape: {noise_bias.shape}")
-        ...         print(f"Bias at l=2: {noise_bias[0]:.2e}")
-
-        Bias subtraction from power spectra:
-
-        >>> power_spectra = spectra.get_power_spectra()
-        >>> noise_bias = spectra.get_noise_bias()
-        >>> if power_spectra is not None and noise_bias is not None:
-        ...     # Subtract bias from each simulation
-        ...     corrected_spectra = power_spectra - noise_bias[np.newaxis, :]
-        ...     print("Noise bias correction applied")
-
-        Noise bias validation with simulations:
-
-        >>> # Using noise-only simulations to verify bias computation
-        >>> noise_bias_theory = spectra.get_noise_bias()
-        >>> noise_only_estimates = spectra.get_power_spectra()  # From noise sims
-        >>> if both arrays available:
-        ...     empirical_bias = np.mean(noise_only_estimates, axis=0)
-        ...     residuals = empirical_bias - noise_bias_theory
-        ...     print(f"Bias validation RMS: {np.sqrt(np.mean(residuals**2)):.2e}")
-
-        See Also
-        --------
-        get_power_spectra : Main power spectrum estimates (may include bias)
-        _normalize_spectra : Normalization method applied to bias terms
-        compute_qml_spectra : Computation method where bias is calculated
+        Noise bias: (1/2) * Tr[N * E_l]. Cross-correlations are bias-free.
         """
         if self.rank == 0 and self.qml_noise_bias is not None:
             noise_bias = self._normalize_spectra(self.qml_noise_bias)

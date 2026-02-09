@@ -78,6 +78,7 @@ exclude_lines = [
     "raise NotImplementedError",
     "raise ValueError",
     "raise TypeError",
+    "except np.linalg.LinAlgError",
     "if __name__ == .__main__.:",
     "if TYPE_CHECKING:",
     "self.log",

@@ -62,13 +62,18 @@ def config_resolver(local_path):
         # Update relative paths in config
         for key, value in config.items():
             if isinstance(value, str):
+                # Handle paths with ../ prefix (strip it first)
+                clean_value = value
+                if value.startswith("../"):
+                    clean_value = value[3:]  # Remove "../" prefix
+
                 if (
-                    value.startswith("tests/")
-                    or value.startswith("inputs/")
-                    or value.startswith("scripts/")
+                    clean_value.startswith("tests/")
+                    or clean_value.startswith("inputs/")
+                    or clean_value.startswith("scripts/")
                 ):
                     # Add package prefix if needed
-                    config[key] = package_prefix + value
+                    config[key] = package_prefix + clean_value
 
         # Create a temporary config file with resolved paths
         temp_config = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)

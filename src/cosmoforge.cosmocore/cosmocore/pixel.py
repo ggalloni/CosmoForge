@@ -94,7 +94,9 @@ def count_nonzero_mask(mask):
     return npixs
 
 
-def compute_pointings(nside, npixs, point_vectors, active, ordering):
+def compute_pointings(
+    nside, npixs, point_vectors, theta_vectors, phi_vectors, active, ordering
+):
     """
     Compute 3D pointing vectors for active HEALPix pixels.
 
@@ -107,6 +109,12 @@ def compute_pointings(nside, npixs, point_vectors, active, ordering):
     point_vectors : tuple of numpy.ndarray
         Tuple of arrays to store pointing vectors for each field.
         Each array has shape (n_active, 3).
+    theta_vectors : tuple of numpy.ndarray
+        Tuple of arrays to store theta unit vectors for each field.
+        Each array has shape (n_active).
+    phi_vectors : tuple of numpy.ndarray
+        Tuple of arrays to store phi unit vectors for each field.
+        Each array has shape (n_active).
     active : numpy.ndarray or tuple
         Active pixel indices for each field.
     ordering : int
@@ -137,8 +145,10 @@ def compute_pointings(nside, npixs, point_vectors, active, ordering):
             point_vectors[field_idx][i, 0] = x / norm
             point_vectors[field_idx][i, 1] = y / norm
             point_vectors[field_idx][i, 2] = z / norm
+            theta_vectors[field_idx][i] = theta
+            phi_vectors[field_idx][i] = phi
 
-    return point_vectors
+    return point_vectors, theta_vectors, phi_vectors
 
 
 @njit(cache=True)

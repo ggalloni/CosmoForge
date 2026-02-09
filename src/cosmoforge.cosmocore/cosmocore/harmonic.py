@@ -404,6 +404,29 @@ class SpectraManager:
             raise ValueError(f"No power spectrum found for {label}")
         return self._cls_dict[label]
 
+    def build_inputs(
+        self,
+    ) -> tuple[dict[tuple[int, int, int], np.ndarray], list[tuple[int, int, int]]]:
+        """
+        Build C_ell_dict and spectra_list for compressed multi-field operations.
+
+        Iterates over the spectra map to build a dictionary with 3-tuple keys
+        (comp_i, comp_j, mode) and an ordered list of spectra.
+
+        Returns
+        -------
+        C_ell_dict : dict
+            Dictionary mapping (comp_i, comp_j, mode) to C_ell arrays.
+        spectra_list : list
+            Ordered list of (comp_i, comp_j, mode) tuples.
+        """
+        C_ell_dict = {}
+        spectra_list = []
+        for fi, fj, mode in self._spectra_map:
+            C_ell_dict[(fi, fj, mode)] = self.get_cls(fi, fj, mode)
+            spectra_list.append((fi, fj, mode))
+        return C_ell_dict, spectra_list
+
     def apply_normalization(self, lmax: int | None = None) -> None:
         """
         Apply normalization factors based on spin combinations.
@@ -784,6 +807,30 @@ class BeamManager:
         if not self._beam_dict:
             raise ValueError("Beams have not been set. Call set_beams_from_params first.")
         return self._beam_dict.copy()
+
+    def get_beam(self, label: str) -> np.ndarray:
+        """
+        Get beam window function for a specific field label.
+
+        Parameters
+        ----------
+        label : str
+            Field label (e.g., 'T', 'E', 'B').
+
+        Returns
+        -------
+        np.ndarray
+            Beam window function B(ℓ) for ℓ = 2 to ℓ = lmax.
+
+        Raises
+        ------
+        ValueError
+            If beams have not been set or if label is not found.
+        """
+        beam_dict = self.get_beam_dict()
+        if label not in beam_dict:
+            raise ValueError(f"No beam found for label '{label}'")
+        return beam_dict[label]
 
     def apply_smoothing(
         self, spectra_manager: SpectraManager, lmax: int | None = None

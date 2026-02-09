@@ -31,6 +31,18 @@ class ConcreteCore(Core):
         return "executed"
 
 
+class CoreWithSignal(ConcreteCore):
+    """ConcreteCore with signal matrix for testing uncompressed API."""
+
+    def _build_signal_matrix(self, C_ell):
+        n = self.NCov1.shape[0]
+        return np.eye(n) * np.sum(C_ell)
+
+    def _build_derivative_matrix(self, ell):
+        n = self.NCov1.shape[0]
+        return np.eye(n) * 1.0
+
+
 def test_core_initialization_with_inputparams():
     """Test Core initialization with InputParams instance."""
     params = InputParams()
@@ -641,3 +653,80 @@ def test_setup_covariance_matrices_with_output():
 
         finally:
             Path(params.maskfile).unlink()
+
+
+def test_uncompressed_covariance_api():
+    """Test the 5 uncompressed fallback methods on Core."""
+    np.random.seed(42)
+    n = 10
+    core = CoreWithSignal({"nside": 16, "lmax": 5, "spins": [0], "labels": ["T"]})
+    core.NCov1 = np.eye(n) * 0.1
+    C_ell = np.ones(4) * 1e-3
+
+    # get_total_covariance
+    C = core.get_total_covariance(C_ell)
+    assert C.shape == (n, n)
+    np.testing.assert_allclose(np.diag(C), 0.1 + np.sum(C_ell))
+
+    # get_covariance_inverse
+    C_inv = core.get_covariance_inverse(C_ell)
+    np.testing.assert_allclose(C @ C_inv, np.eye(n), atol=1e-12)
+
+    # get_derivative_matrix
+    dC = core.get_derivative_matrix(5)
+    assert dC.shape == (n, n)
+
+    # get_covariance_logdet - array and dict paths
+    logdet = core.get_covariance_logdet(C_ell)
+    expected_logdet = n * np.log(0.1 + np.sum(C_ell))
+    np.testing.assert_allclose(logdet, expected_logdet, atol=1e-12)
+    logdet_d = core.get_covariance_logdet({(0, 0, 0): C_ell})
+    np.testing.assert_allclose(logdet_d, expected_logdet, atol=1e-12)
+
+    # compute_quadratic_form - array and dict paths
+    data = np.random.randn(n)
+    qf = core.compute_quadratic_form(data, C_ell)
+    qf_expected = float(data @ C_inv @ data)
+    np.testing.assert_allclose(qf, qf_expected, atol=1e-12)
+    qf_d = core.compute_quadratic_form(data, {(0, 0, 0): C_ell})
+    np.testing.assert_allclose(qf_d, qf_expected, atol=1e-12)
+
+
+def test_setup_compression_basic(uniform_sky_setup):
+    """Test setup_compression creates a compression manager."""
+    setup = uniform_sky_setup
+    core = CoreWithSignal(
+        {"nside": 16, "lmax": setup["lmax"], "spins": [0], "labels": ["T"]}
+    )
+    core.NCov1 = setup["N"]
+    core.theta = (setup["theta"],)
+    core.phi = (setup["phi"],)
+
+    # Harmonic compression
+    cm = core.setup_compression(
+        method="harmonic", lmax=setup["lmax"], use_smw_optimization=False
+    )
+    assert cm is not None
+    assert core.compression_manager is cm
+
+    # Pixel-projected compression
+    cm2 = core.setup_compression(
+        method="pixel_projected",
+        lmax=setup["lmax"],
+        use_smw_optimization=False,
+        epsilon=1e-4,
+    )
+    assert cm2 is not None
+
+
+def test_setup_compression_validation():
+    """Test setup_compression raises errors for missing prerequisites."""
+    core = CoreWithSignal({"nside": 16, "lmax": 5, "spins": [0], "labels": ["T"]})
+
+    with pytest.raises(ValueError, match="Geometry must be set up"):
+        core.setup_compression()
+
+    core.theta = (np.array([1.0]),)
+    core.phi = (np.array([1.0]),)
+    with pytest.raises(ValueError, match="Covariance matrices must be set up"):
+        core.setup_compression()
