@@ -106,10 +106,8 @@ class HarmonicCompression(BaseCompression):
         - N_eff = N + S_fixed is used instead of N
         This dramatically reduces the SMW dimension.
         """
-        # Build harmonic operator for reduced ell range if switch optimization
-        self._build_harmonic_operator()
-        self._build_ell_mode_mapping()
-        self._precompute_derivative_diagonals()
+        # Build harmonic operator, ell-mode mapping, and derivative diagonals
+        self._build_basis()
 
         # Compute effective noise matrix when switch optimization is enabled
         if self._use_switch_optimization:

@@ -512,8 +512,7 @@ class PixelProjectedCompression(BaseCompression):
         - P_h = V^T V: harmonic projector (n_pix × n_pix, rank n_modes)
         - N from N^{-1}: needed for compressed covariance
         """
-        self._build_harmonic_operator()
-        self._build_ell_mode_mapping()
+        self._build_basis()
 
         # P_h = V^T V (harmonic projector, n_pix × n_pix but rank n_modes)
         self._P_h = matrix_mult(self._V.T, self._V)
