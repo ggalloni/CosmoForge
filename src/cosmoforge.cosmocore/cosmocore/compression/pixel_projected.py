@@ -101,7 +101,7 @@ class PixelProjectedCompression(BaseCompression):
     >>> ppc = PixelProjectedCompression(N, N_inv, theta, phi, lmax=100)
     >>> ppc.setup()
     >>> # Inspect eigenvalue spectrum to choose threshold
-    >>> fig, ax = ppc.plot_eigenvalue_spectrum(basis="noise_weighted")
+    >>> fig, axes = ppc.plot_eigenvalue_spectrum(basis="noise_weighted")
     >>> # Apply compression with chosen threshold
     >>> ppc.apply_compression(epsilon=1e-4, basis="noise_weighted")
     >>> fisher_element = ppc.compute_fisher_element(C_ell, ell_i=10, ell_j=10)
@@ -669,6 +669,12 @@ class PixelProjectedCompression(BaseCompression):
             Spin-2 components additionally have ``E_eigenvalues``,
             ``E_normalized``, ``B_eigenvalues``, ``B_normalized``.
         """
+        if basis not in COMPRESSION_BASES:
+            raise ValueError(
+                f"Unknown compression basis '{basis}'. "
+                f"Available: {list(COMPRESSION_BASES.keys())}"
+            )
+
         results: list[dict] = []
 
         for comp_idx in range(self.n_components):
@@ -680,9 +686,24 @@ class PixelProjectedCompression(BaseCompression):
             N_field_inv = self.N_inv[pix_start:pix_end, pix_start:pix_end]
             V_comp = self._V_blocks[comp_idx]
 
-            # Full-field compression matrix and eigendecomposition
+            # Resolve per-mode C_ell diagonals for this component
+            cell_diag_0, cell_diag_1 = self._resolve_cell_diagonals(C_ell, comp_idx, spin)
+
+            # Full-field C_ell diagonal
+            if spin == 2 and cell_diag_0 is not None:
+                cell_sub_full = np.concatenate(
+                    [
+                        cell_diag_0,
+                        cell_diag_1
+                        if cell_diag_1 is not None
+                        else np.zeros_like(cell_diag_0),
+                    ]
+                )
+            else:
+                cell_sub_full = cell_diag_0
+
             comp_matrix = self._build_compression_matrix_for_subfield(
-                V_comp, N_field, N_field_inv, basis, None
+                V_comp, N_field, N_field_inv, basis, cell_sub_full
             )
             eigenvalues = np.sort(np.linalg.eigvalsh(comp_matrix))[::-1]
             max_ev = np.max(np.abs(eigenvalues))
@@ -702,14 +723,14 @@ class PixelProjectedCompression(BaseCompression):
                 V_B = V_comp[n_base:, :]
 
                 comp_E = self._build_compression_matrix_for_subfield(
-                    V_E, N_field, N_field_inv, basis, None
+                    V_E, N_field, N_field_inv, basis, cell_diag_0
                 )
                 ev_E = np.sort(np.linalg.eigvalsh(comp_E))[::-1]
                 max_E = np.max(np.abs(ev_E))
                 norm_E = ev_E / max_E if max_E > 0 else ev_E.copy()
 
                 comp_B = self._build_compression_matrix_for_subfield(
-                    V_B, N_field, N_field_inv, basis, None
+                    V_B, N_field, N_field_inv, basis, cell_diag_1
                 )
                 ev_B = np.sort(np.linalg.eigvalsh(comp_B))[::-1]
                 max_B = np.max(np.abs(ev_B))
@@ -724,6 +745,42 @@ class PixelProjectedCompression(BaseCompression):
 
         return results
 
+    def _resolve_cell_diagonals(
+        self,
+        C_ell: np.ndarray | dict | None,
+        comp_idx: int,
+        spin: int,
+    ) -> tuple[np.ndarray | None, np.ndarray | None]:
+        """
+        Extract per-mode C_ell diagonals for a component.
+
+        Returns
+        -------
+        cell_diag_0 : numpy.ndarray or None
+            Auto-spectrum diagonal (TT for spin-0, EE for spin-2).
+        cell_diag_1 : numpy.ndarray or None
+            BB diagonal (only for spin-2, None otherwise).
+        """
+        if C_ell is None:
+            return None, None
+
+        if not isinstance(C_ell, dict):
+            return self._build_lambda_diagonal(C_ell), None
+
+        # Dict: try 3-tuple key (comp, comp, mode), then 2-tuple
+        arr_0 = C_ell.get((comp_idx, comp_idx, 0))
+        if arr_0 is None:
+            arr_0 = C_ell.get((comp_idx, comp_idx))
+        diag_0 = self._build_lambda_diagonal(arr_0) if arr_0 is not None else None
+
+        diag_1 = None
+        if spin == 2:
+            arr_1 = C_ell.get((comp_idx, comp_idx, 1))
+            if arr_1 is not None:
+                diag_1 = self._build_lambda_diagonal(arr_1)
+
+        return diag_0, diag_1
+
     def plot_eigenvalue_spectrum(
         self,
         basis: str = "noise_weighted",
@@ -737,8 +794,11 @@ class PixelProjectedCompression(BaseCompression):
         """
         Plot eigenvalue spectrum for compression threshold selection.
 
-        Creates one subplot per component.  For spin-2 components the E and B
-        sub-spectra are shown as dashed curves when ``show_eb_split`` is True.
+        Creates one subplot per component.  The y-axis shows eigenvalues
+        normalized by the maximum value, so values can be directly used as the
+        ``epsilon`` threshold for :meth:`apply_compression`.  For spin-2
+        components the E and B sub-spectra are shown as dashed curves when
+        ``show_eb_split`` is True.
 
         Parameters
         ----------
@@ -764,6 +824,14 @@ class PixelProjectedCompression(BaseCompression):
             The figure containing the plot.
         axes : numpy.ndarray
             1-D array of Axes (length ``n_components``).
+
+        Examples
+        --------
+        >>> ppc = PixelProjectedCompression(N, N_inv, theta, phi, lmax=100)
+        >>> ppc.setup()
+        >>> fig, axes = ppc.plot_eigenvalue_spectrum(basis="noise_weighted")
+        >>> # From the plot, decide threshold (e.g., 1e-4)
+        >>> ppc.apply_compression(epsilon=1e-4, basis="noise_weighted")
         """
         import matplotlib.pyplot as plt
 
@@ -863,7 +931,8 @@ class PixelProjectedCompression(BaseCompression):
         C_ell : numpy.ndarray, dict, or None
             Power spectrum (required for "total_covariance" and "snr" bases).
         axes : numpy.ndarray of Axes or None
-            Pre-created axes array (length ``n_components``).
+            Pre-created axes array (length ``n_components``).  If None, a new
+            figure is created.
         log_scale : bool, default True
             Whether to use logarithmic y-axis.
 

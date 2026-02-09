@@ -895,6 +895,77 @@ class TestComputeEigenspectrumPerField:
         assert_allclose(np.max(entry["E_normalized"]), 1.0, rtol=1e-10)
         assert_allclose(np.max(entry["B_normalized"]), 1.0, rtol=1e-10)
 
+    def test_total_covariance_basis_single_field(self, uniform_sky_setup):
+        """total_covariance basis works when C_ell is provided."""
+        from cosmocore.compression import PixelProjectedCompression
+
+        setup = uniform_sky_setup
+        n_ell = setup["lmax"] - 1
+        C_ell = np.ones(n_ell) * 1e-6
+
+        ppc = PixelProjectedCompression(
+            N=setup["N"],
+            N_inv=setup["N_inv"],
+            theta=setup["theta"],
+            phi=setup["phi"],
+            lmax=setup["lmax"],
+        )
+        ppc.setup()
+
+        result = ppc.compute_eigenspectrum_per_field(
+            basis="total_covariance", C_ell=C_ell
+        )
+
+        assert len(result) == 1
+        assert_allclose(np.max(result[0]["normalized_eigenvalues"]), 1.0, rtol=1e-10)
+
+    def test_total_covariance_basis_multi_field(self, two_scalar_field_setup):
+        """total_covariance basis works with dict C_ell for multi-field."""
+        from cosmocore.compression import PixelProjectedCompression
+
+        setup = two_scalar_field_setup
+        lmax = setup["lmax"]
+        n_ell = lmax - 1
+        C_ell_dict = {
+            (0, 0): np.ones(n_ell) * 1e-5,
+            (1, 1): np.ones(n_ell) * 0.8e-5,
+            (0, 1): np.ones(n_ell) * 0.3e-5,
+        }
+
+        ppc = PixelProjectedCompression(
+            N=setup["N"],
+            N_inv=setup["N_inv"],
+            theta=setup["theta"],
+            phi=setup["phi"],
+            lmax=lmax,
+        )
+        ppc.setup()
+
+        result = ppc.compute_eigenspectrum_per_field(
+            basis="total_covariance", C_ell=C_ell_dict
+        )
+
+        assert len(result) == 2
+        for entry in result:
+            assert_allclose(np.max(entry["normalized_eigenvalues"]), 1.0, rtol=1e-10)
+
+    def test_unknown_basis_raises(self, uniform_sky_setup):
+        """Unknown basis raises ValueError with available list."""
+        from cosmocore.compression import PixelProjectedCompression
+
+        setup = uniform_sky_setup
+        ppc = PixelProjectedCompression(
+            N=setup["N"],
+            N_inv=setup["N_inv"],
+            theta=setup["theta"],
+            phi=setup["phi"],
+            lmax=setup["lmax"],
+        )
+        ppc.setup()
+
+        with pytest.raises(ValueError, match="Unknown compression basis"):
+            ppc.compute_eigenspectrum_per_field(basis="invalid_basis")
+
 
 class TestPlotMultiField:
     """Tests for multi-field plotting methods."""
@@ -986,3 +1057,199 @@ class TestPlotMultiField:
             assert "harmonic" in labels
             assert "noise_weighted" in labels
         plt.close(fig)
+
+
+# =============================================================================
+# Coverage-focused tests for uncovered PPC operations
+# =============================================================================
+
+
+class TestPPCOperationChain:
+    """Exercise all PPC operations after compression to cover downstream methods."""
+
+    def test_single_field_full_chain(self, uniform_sky_setup):
+        """Cover single-field: properties, derivative, weighted data, qf, logdet, SMW."""
+        from cosmocore.compression import PixelProjectedCompression
+
+        setup = uniform_sky_setup
+        ppc = PixelProjectedCompression(
+            N=setup["N"],
+            N_inv=setup["N_inv"],
+            theta=setup["theta"],
+            phi=setup["phi"],
+            lmax=setup["lmax"],
+        )
+        ppc.setup()
+        ppc.apply_compression(epsilon=1e-6)
+
+        C_ell = np.ones(setup["lmax"] - 1) * 1e-6
+
+        # Properties
+        assert ppc.projector.shape == (ppc.n_kept, ppc.n_pix)
+        assert ppc.n_compressed == ppc.n_kept
+        assert ppc.eigenvalues is not None
+        assert ppc.compression_basis == "noise_weighted"
+        assert 0 < ppc.compression_ratio <= 1.0
+
+        # Derivative matrix
+        dC = ppc.get_derivative_matrix(5)
+        assert dC.shape == (ppc.n_kept, ppc.n_kept)
+
+        # Weighted compressed data
+        np.random.seed(42)
+        data = np.random.randn(ppc.n_pix)
+        w = ppc.get_weighted_compressed_data(data, C_ell)
+        assert w.shape == (ppc.n_kept,)
+
+        # Quadratic form
+        qf = ppc.compute_quadratic_form(data, C_ell)
+        assert qf > 0
+
+        # Log determinant (array path)
+        logdet = ppc.get_logdet(C_ell)
+        assert isinstance(logdet, float)
+
+        # Prepare SMW and reuse
+        C_ell_dict = {(0, 0, 0): C_ell}
+        C_c_inv, _, logdet_smw = ppc.prepare_smw(C_ell_dict)
+        assert C_c_inv.shape == (ppc.n_kept, ppc.n_kept)
+        qf2 = ppc.quadratic_form_from_prepared(data, C_c_inv)
+        assert qf2 > 0
+
+    def test_multi_field_dict_operations(self, two_scalar_field_setup):
+        """Cover multi-field dict paths: covariance, derivative, Fisher, weighted data."""
+        from cosmocore.compression import PixelProjectedCompression
+
+        setup = two_scalar_field_setup
+        lmax = setup["lmax"]
+        ppc = PixelProjectedCompression(
+            N=setup["N"],
+            N_inv=setup["N_inv"],
+            theta=setup["theta"],
+            phi=setup["phi"],
+            lmax=lmax,
+            spins=[0, 0],
+        )
+        ppc.setup()
+        ppc.apply_compression(epsilon=1e-6)
+
+        C_ell_dict = {
+            (0, 0, 0): np.ones(lmax - 1) * 1e-5,
+            (1, 1, 0): np.ones(lmax - 1) * 1e-5,
+            (0, 1, 0): np.ones(lmax - 1) * 5e-6,
+        }
+        spectra_list = [(0, 0, 0), (1, 1, 0), (0, 1, 0)]
+
+        # Compressed covariance with dict
+        C_c = ppc.get_compressed_covariance(C_ell_dict)
+        assert C_c.shape == (ppc.n_kept, ppc.n_kept)
+
+        # Cross-component derivative
+        dC = ppc.get_derivative_matrix(5, comp_i=0, comp_j=1, mode=0)
+        assert dC.shape == (ppc.n_kept, ppc.n_kept)
+
+        # Multi-field Fisher
+        n_ell = lmax - 1
+        fisher = ppc.compute_fisher_matrix(C_ell_dict, spectra_list)
+        assert fisher.shape == (3 * n_ell, 3 * n_ell)
+        assert_allclose(fisher, fisher.T, atol=1e-12)
+
+        # Weighted data and quadratic form with dict
+        np.random.seed(42)
+        data = np.random.randn(ppc.n_pix)
+        w = ppc.get_weighted_compressed_data(data, C_ell_dict)
+        assert w.shape == (ppc.n_kept,)
+        qf = ppc.compute_quadratic_form(data, C_ell_dict)
+        assert qf > 0
+
+        # Logdet with dict
+        logdet = ppc.get_logdet(C_ell_dict)
+        assert isinstance(logdet, float)
+
+    def test_default_compression_no_threshold(self, uniform_sky_setup):
+        """apply_compression with neither epsilon nor mode_fraction."""
+        from cosmocore.compression import PixelProjectedCompression
+
+        setup = uniform_sky_setup
+        ppc = PixelProjectedCompression(
+            N=setup["N"],
+            N_inv=setup["N_inv"],
+            theta=setup["theta"],
+            phi=setup["phi"],
+            lmax=setup["lmax"],
+        )
+        ppc.setup()
+        ppc.apply_compression()
+        assert ppc.n_kept > 0
+
+    def test_runtime_errors_before_compression(self, uniform_sky_setup):
+        """Operations before apply_compression raise RuntimeError."""
+        from cosmocore.compression import PixelProjectedCompression
+
+        setup = uniform_sky_setup
+        ppc = PixelProjectedCompression(
+            N=setup["N"],
+            N_inv=setup["N_inv"],
+            theta=setup["theta"],
+            phi=setup["phi"],
+            lmax=setup["lmax"],
+        )
+        ppc.setup()
+
+        C_ell = np.ones(setup["lmax"] - 1) * 1e-6
+        data = np.zeros(ppc.n_pix)
+
+        with pytest.raises(RuntimeError):
+            ppc.projector
+        with pytest.raises(RuntimeError):
+            ppc.get_projected_inverse(C_ell)
+        with pytest.raises(RuntimeError):
+            ppc.get_derivative_matrix(5)
+        with pytest.raises(RuntimeError):
+            ppc.get_compressed_covariance(C_ell)
+        with pytest.raises(RuntimeError):
+            ppc.get_weighted_compressed_data(data, C_ell)
+        with pytest.raises(RuntimeError):
+            ppc.compute_quadratic_form(data, C_ell)
+        with pytest.raises(RuntimeError):
+            ppc.prepare_smw({(0, 0, 0): C_ell})
+        with pytest.raises(RuntimeError):
+            ppc.quadratic_form_from_prepared(data, np.eye(2))
+
+    def test_spectra_list_required_for_dict(self, uniform_sky_setup):
+        """compute_fisher_matrix with dict C_ell requires spectra_list."""
+        from cosmocore.compression import PixelProjectedCompression
+
+        setup = uniform_sky_setup
+        ppc = PixelProjectedCompression(
+            N=setup["N"],
+            N_inv=setup["N_inv"],
+            theta=setup["theta"],
+            phi=setup["phi"],
+            lmax=setup["lmax"],
+        )
+        ppc.setup()
+        ppc.apply_compression(epsilon=1e-6)
+
+        C_ell_dict = {(0, 0, 0): np.ones(setup["lmax"] - 1) * 1e-6}
+        with pytest.raises(ValueError, match="spectra_list is required"):
+            ppc.compute_fisher_matrix(C_ell_dict)
+
+    def test_spectra_list_none_for_array(self, uniform_sky_setup):
+        """compute_fisher_matrix with array C_ell rejects spectra_list."""
+        from cosmocore.compression import PixelProjectedCompression
+
+        setup = uniform_sky_setup
+        ppc = PixelProjectedCompression(
+            N=setup["N"],
+            N_inv=setup["N_inv"],
+            theta=setup["theta"],
+            phi=setup["phi"],
+            lmax=setup["lmax"],
+        )
+        ppc.setup()
+        ppc.apply_compression(epsilon=1e-6)
+
+        C_ell = np.ones(setup["lmax"] - 1) * 1e-6
+        with pytest.raises(ValueError, match="spectra_list should be None"):
+            ppc.compute_fisher_matrix(C_ell, spectra_list=[(0, 0, 0)])
