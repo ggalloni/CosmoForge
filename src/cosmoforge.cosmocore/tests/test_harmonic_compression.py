@@ -594,3 +594,129 @@ class TestHarmonicCompressionBeam:
         C_bar_no_beam = hc_no_beam.get_compressed_covariance(C_ell)
         C_bar_unit_beam = hc_unit_beam.get_compressed_covariance(C_ell)
         assert_allclose(C_bar_no_beam, C_bar_unit_beam, rtol=1e-10)
+
+
+# =============================================================================
+# Coverage-focused tests for untested HarmonicCompression operations
+# =============================================================================
+
+
+class TestHarmonicDictOperations:
+    """Cover dict-path operations: weighted data, quadratic form, SMW, logdet."""
+
+    def test_single_field_weighted_data_and_qf(self, uniform_sky_setup):
+        """Cover get_weighted_compressed_data and compute_quadratic_form (array)."""
+        from cosmocore.compression import HarmonicCompression
+
+        setup = uniform_sky_setup
+        hc = HarmonicCompression(
+            N=setup["N"],
+            N_inv=setup["N_inv"],
+            theta=setup["theta"],
+            phi=setup["phi"],
+            lmax=setup["lmax"],
+        )
+        hc.setup()
+
+        C_ell = np.ones(setup["lmax"] - 1) * 1e-6
+        np.random.seed(42)
+        data = np.random.randn(setup["n_pix"])
+
+        w = hc.get_weighted_compressed_data(data, C_ell)
+        assert w.shape == (hc.n_modes,)
+
+        qf = hc.compute_quadratic_form(data, C_ell)
+        assert qf > 0
+
+        # Direct derivative matrix call (comp_i=None and single-comp shortcut)
+        dC = hc.get_derivative_matrix(5)
+        assert dC.shape == (hc.n_modes, hc.n_modes)
+        dC2 = hc.get_derivative_matrix(5, comp_i=0, comp_j=0)
+        assert_allclose(dC, dC2)
+
+    def test_multi_field_weighted_data_qf_logdet(self, two_scalar_field_setup):
+        """Cover dict paths: weighted data, quadratic form, logdet, prepare_smw."""
+        from cosmocore.compression import HarmonicCompression
+
+        setup = two_scalar_field_setup
+        lmax = setup["lmax"]
+        hc = HarmonicCompression(
+            N=setup["N"],
+            N_inv=setup["N_inv"],
+            theta=setup["theta"],
+            phi=setup["phi"],
+            lmax=lmax,
+            spins=[0, 0],
+        )
+        hc.setup()
+
+        C_ell_dict = {
+            (0, 0, 0): np.ones(lmax - 1) * 1e-5,
+            (1, 1, 0): np.ones(lmax - 1) * 1e-5,
+            (0, 1, 0): np.ones(lmax - 1) * 5e-6,
+        }
+
+        np.random.seed(42)
+        data = np.random.randn(hc.n_pix)
+
+        # Weighted compressed data (dict path)
+        w = hc.get_weighted_compressed_data(data, C_ell_dict)
+        assert w.shape == (hc.n_modes_total,)
+
+        # Quadratic form (dict path)
+        qf = hc.compute_quadratic_form(data, C_ell_dict)
+        assert qf > 0
+
+        # Log determinant (dict path)
+        logdet = hc.get_logdet(C_ell_dict)
+        assert isinstance(logdet, float)
+
+        # get_full_logdet alias
+        logdet2 = hc.get_full_logdet(C_ell_dict)
+        assert_allclose(logdet, logdet2)
+
+        # prepare_smw and quadratic_form_from_prepared
+        K_chol, _, logdet_smw = hc.prepare_smw(C_ell_dict)
+        assert isinstance(logdet_smw, float)
+        qf2 = hc.quadratic_form_from_prepared(data, K_chol)
+        assert_allclose(qf, qf2, rtol=1e-8)
+
+    def test_single_entry_dict_fast_paths(self, uniform_sky_setup):
+        """Cover single-entry dict fast paths in projected_inverse, covariance, Fisher."""
+        from cosmocore.compression import HarmonicCompression
+
+        setup = uniform_sky_setup
+        lmax = setup["lmax"]
+        hc = HarmonicCompression(
+            N=setup["N"],
+            N_inv=setup["N_inv"],
+            theta=setup["theta"],
+            phi=setup["phi"],
+            lmax=lmax,
+        )
+        hc.setup()
+
+        C_ell_arr = np.ones(lmax - 1) * 1e-6
+        C_ell_dict = {(0, 0, 0): C_ell_arr}
+
+        # These should hit the single-entry dict fast paths
+        # and produce results identical to the array path
+        cov_arr = hc.get_compressed_covariance(C_ell_arr)
+        cov_dict = hc.get_compressed_covariance(C_ell_dict)
+        assert_allclose(cov_arr, cov_dict, rtol=1e-10)
+
+        inv_arr = hc.get_projected_inverse(C_ell_arr)
+        inv_dict = hc.get_projected_inverse(C_ell_dict)
+        assert_allclose(inv_arr, inv_dict, rtol=1e-10)
+
+        # Single-entry dict Fisher fast path
+        fisher_arr = hc.compute_fisher_matrix(C_ell_arr)
+        fisher_dict = hc.compute_fisher_matrix(C_ell_dict, spectra_list=[(0, 0, 0)])
+        assert_allclose(fisher_arr, fisher_dict, rtol=1e-10)
+
+        # Weighted data single-entry dict fast path
+        np.random.seed(42)
+        data = np.random.randn(setup["n_pix"])
+        w_arr = hc.get_weighted_compressed_data(data, C_ell_arr)
+        w_dict = hc.get_weighted_compressed_data(data, C_ell_dict)
+        assert_allclose(w_arr, w_dict, rtol=1e-10)
