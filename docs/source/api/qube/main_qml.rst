@@ -160,6 +160,13 @@ The pipeline includes comprehensive validation:
 Output Products
 ---------------
 
+The format of power spectrum outputs depends on the normalization mode selected
+when calling ``get_power_spectra(mode=...)``. The default ``"deconvolved"`` mode
+returns estimates of the true :math:`C_\ell`; ``"decorrelated"`` returns
+uncorrelated bandpowers with unit-variance errors; ``"convolved"`` returns raw
+estimates with the window matrix for forward-modelling comparisons. See
+:doc:`spectra` for full details.
+
 Primary Outputs
 ^^^^^^^^^^^^^^^
 

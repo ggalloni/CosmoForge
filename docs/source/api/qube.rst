@@ -1,6 +1,13 @@
 CosmoForge.QUBE Package
 =======================
 
+.. image:: /_static/logo_qube.png
+   :alt: QUBE Logo
+   :align: center
+   :width: 40%
+
+|
+
 QUBE is the analysis engine of CosmoForge, implementing Fisher matrix analysis and
 Quadratic Maximum Likelihood (QML) power spectrum estimation for cosmological parameter
 inference from CMB observations. The package provides optimal statistical methods for
@@ -55,9 +62,11 @@ Statistical Optimality
 ^^^^^^^^^^^^^^^^^^^^^^^
 
 * **Minimum variance**: Achieves Cramér-Rao lower bound for parameter estimation
-* **Unbiased estimation**: Proper treatment of noise bias in auto-correlation analyses  
+* **Unbiased estimation**: Proper treatment of noise bias in auto-correlation analyses
 * **Optimal weighting**: Fisher matrix provides optimal combination of estimates
 * **Exact likelihood**: No approximations in covariance matrix treatment
+* **Normalization modes**: Three output normalizations (deconvolved, decorrelated, convolved)
+  for different analysis workflows — see :doc:`qube/spectra` for details
 
 Observational Realism
 ^^^^^^^^^^^^^^^^^^^^^
@@ -145,10 +154,14 @@ QML Power Spectrum Estimation
    # Run complete QML pipeline
    spectra.run()
 
-   # Get power spectrum estimates
+   # Get power spectrum estimates (default: deconvolved)
    if spectra.rank == 0:
        power_spectra = spectra.get_power_spectra()
        noise_bias = spectra.get_noise_bias()
+
+       # Other normalization modes
+       cl_decorr = spectra.get_power_spectra(mode="decorrelated")
+       y, W, convolve = spectra.get_power_spectra(mode="convolved")
 
 Combined Fisher + QML Analysis
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
