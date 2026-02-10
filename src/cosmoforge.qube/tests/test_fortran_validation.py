@@ -17,6 +17,7 @@ import os
 
 import numpy as np
 import pytest
+
 from qube import Spectra
 
 FORTRAN_REF_DIR = "tests/data/nside8/B/fortran_reference"

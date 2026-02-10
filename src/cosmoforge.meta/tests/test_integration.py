@@ -38,10 +38,9 @@ def test_import_picslike():
 def test_workspace_integration():
     """Test that all workspace packages can be imported together."""
     try:
-        import qube
-
         import cosmocore
         import picslike
+        import qube
 
         # Test that packages are properly installed
         assert cosmocore is not None
