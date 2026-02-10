@@ -1,0 +1,42 @@
+nside: 4
+spins: [0]
+labels: ["T"]
+physical_labels: ["T"]
+
+do_cross: false
+
+maskfile: '../tests/data/nside4/T/mask.fits'
+ordering: 2
+
+inputclfile: '../tests/data/nside4/T/dls.txt'
+covmatfile1: '../tests/data/nside4/T/NCVM1.bin'
+covmatfile2: '../tests/data/nside4/T/NCVM2.bin'
+
+lmax: 16
+
+load_inverted: false
+calibration: 1.0
+
+smoothing_type: 3
+fwhmarcmin: 440.0
+apply_pixwin: false
+beam_file: '../scripts/beam_440TP_pixwin16.fits'
+
+feedback: 1
+
+# PICSLike-specific parameters - small grid for fast testing
+nsims: 10
+inputmapfile1: '../tests/data/nside4/T/all_sims_T.fits'
+inputmapfile2: '../tests/data/nside4/T/all_sims_T.fits'
+
+# Small 2x2 grid
+parameters:
+  amplitude: [0.95, 1.05, 2]
+  tilt: [-0.2, 0.2, 2]
+
+root_dir: '../tests/data/nside4/templates'
+root_filename: 'dls'
+
+# QML options
+remove_nb: true
+nspectra: 1

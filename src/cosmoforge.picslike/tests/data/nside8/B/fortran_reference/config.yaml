@@ -4,12 +4,12 @@ labels: ["B"]
 
 do_cross: false
 
-maskfile: 'tests/data/nside8/B/fortran_reference/mask.fits'
-output_geometry_file: 'tests/data/nside8/B/fortran_reference/geometry.dat'
+maskfile: '../tests/data/nside8/B/fortran_reference/mask.fits'
+output_geometry_file: '../tests/data/nside8/B/fortran_reference/geometry.dat'
 ordering: 0
 
-inputclfile: 'tests/data/nside8/B/fortran_reference/input_cls.txt'
-covmatfile1: 'tests/data/nside8/B/fortran_reference/ncov_B_only.bin'
+inputclfile: '../tests/data/nside8/B/fortran_reference/input_cls.txt'
+covmatfile1: '../tests/data/nside8/B/fortran_reference/ncov_B_only.bin'
 
 lmax: 32
 
@@ -17,35 +17,35 @@ lmax: 32
 # Outside this range, the fiducial spectrum is always used
 lswitch_low: 2
 lswitch_high: 16
-fiducialfile: 'tests/data/nside8/B/fortran_reference/fiducial_cls.txt'
+fiducialfile: '../tests/data/nside8/B/fortran_reference/fiducial_cls.txt'
 
 load_inverted: false
 calibration: 1.0
 
 smoothing_type: 3
-beam_file: 'tests/data/nside8/B/fortran_reference/beam.fits'
+beam_file: '../tests/data/nside8/B/fortran_reference/beam.fits'
 apply_pixwin: false
 
-outnoisecovmat1: 'tests/data/nside8/B/fortran_reference/output_ncov.bin'
-outinvcovmatfile1: 'tests/data/nside8/B/fortran_reference/output_invcov.bin'
+outnoisecovmat1: '../tests/data/nside8/B/fortran_reference/output_ncov.bin'
+outinvcovmatfile1: '../tests/data/nside8/B/fortran_reference/output_invcov.bin'
 
 feedback: 1
-outfilefisher: 'tests/data/nside8/B/fortran_reference/output_fisher.dat'
+outfilefisher: '../tests/data/nside8/B/fortran_reference/output_fisher.dat'
 
 # PICSLike-specific parameters
 nsims: 1
-inputmapfile1: 'tests/data/nside8/B/fortran_reference/map.fits'
+inputmapfile1: '../tests/data/nside8/B/fortran_reference/map.fits'
 
 # Output files for QML
-outcovmatfile: 'tests/data/nside8/B/fortran_reference/output_cov_matrix.dat'
-outerrfile: 'tests/data/nside8/B/fortran_reference/output_errors.dat'
+outcovmatfile: '../tests/data/nside8/B/fortran_reference/output_cov_matrix.dat'
+outerrfile: '../tests/data/nside8/B/fortran_reference/output_errors.dat'
 
 # Options
 remove_nb: true
 nspectra: 1
 
 # Theory spectra location (relative to picslike package)
-root_dir: 'tests/data/nside8/B/fortran_reference/theory_spectra'
+root_dir: '../tests/data/nside8/B/fortran_reference/theory_spectra'
 root_filename: 'fine_dls_r_likelihood'
 
 # Parameter grid (format: [min, max, n_points] for np.linspace)

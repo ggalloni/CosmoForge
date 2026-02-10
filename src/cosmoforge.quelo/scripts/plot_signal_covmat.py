@@ -58,7 +58,7 @@ def get_signal_covmat(fields, local_path):
 
     pixact = collection.get_active_pixels()
 
-    point_vectors = compute_pointings(
+    point_vectors, _, _ = compute_pointings(
         Par.nside, npixs, point_vectors, pixact, Par.ordering
     )
 

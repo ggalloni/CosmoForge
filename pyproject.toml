@@ -12,6 +12,7 @@ dependencies = []
 [dependency-groups]
 dev = [
     "matplotlib>=3.10.5",
+    "pyqt6>=6.10.2",
     "pytest>=8.4.1",
     "pytest-cov>=6.2.1",
     "pyyaml>=6.0.2",
@@ -60,7 +61,10 @@ line-length = 90
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
-addopts = ["--import-mode=importlib"]
+addopts = ["--import-mode=importlib", "-m", "not slow"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
 
 [tool.coverage.run]
 source = ["src/"]

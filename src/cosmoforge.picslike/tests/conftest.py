@@ -280,7 +280,10 @@ def config_resolver(local_path):
         # Update relative paths in config
         for key, value in config.items():
             if isinstance(value, str):
-                if (
+                # Handle ../tests/ prefix (convert to tests/)
+                if value.startswith("../tests/"):
+                    config[key] = package_prefix + value.replace("../", "")
+                elif (
                     value.startswith("tests/")
                     or value.startswith("inputs/")
                     or value.startswith("scripts/")

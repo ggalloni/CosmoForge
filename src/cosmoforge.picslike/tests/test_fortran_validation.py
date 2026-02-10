@@ -96,15 +96,19 @@ def python_signal(config_path, fortran_ref_path):
     active_pixels = field.active_pixels
     n_active = len(active_pixels)
 
-    point_vectors = np.empty((n_active, 3), dtype=np.float64)
-    point_vectors = compute_pointings(
+    point_vectors = (np.empty((n_active, 3), dtype=np.float64),)
+    theta_vectors = (np.empty(n_active, dtype=np.float64),)
+    phi_vectors = (np.empty(n_active, dtype=np.float64),)
+    point_vectors, theta_vectors, phi_vectors = compute_pointings(
         nside,
         [n_active],
-        (point_vectors,),
-        np.array([active_pixels], dtype=object),
-        "ring",
+        point_vectors,
+        theta_vectors,
+        phi_vectors,
+        np.array([active_pixels]),
+        0,  # RING ordering
     )
-    collection.set_pointing_vectors([point_vectors[0]])
+    collection.set_pointing_vectors(point_vectors)
 
     # Read and set Cls with lmax_signal
     cls_dict = readcl(params.inputclfile, params, DummyLogger(), lmax=lmax_signal)
@@ -226,10 +230,13 @@ def test_full_fortran_validation(local_path, fortran_ref_path):
         N_VALIDATION_POINTS,
     ]
 
-    # Resolve file paths
+    # Resolve file paths (handle both tests/ and ../tests/ prefixes)
     for key, value in config.items():
-        if isinstance(value, str) and value.startswith("tests/"):
-            config[key] = os.path.join(local_path, value)
+        if isinstance(value, str):
+            if value.startswith("../tests/"):
+                config[key] = os.path.join(local_path, value.replace("../", ""))
+            elif value.startswith("tests/"):
+                config[key] = os.path.join(local_path, value)
 
     # Create temporary config file
     temp_config = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
@@ -269,15 +276,19 @@ def test_full_fortran_validation(local_path, fortran_ref_path):
     active_pixels = field.active_pixels
     n_active = len(active_pixels)
 
-    point_vectors = np.empty((n_active, 3), dtype=np.float64)
-    point_vectors = compute_pointings(
+    point_vectors = (np.empty((n_active, 3), dtype=np.float64),)
+    theta_vectors = (np.empty(n_active, dtype=np.float64),)
+    phi_vectors = (np.empty(n_active, dtype=np.float64),)
+    point_vectors, theta_vectors, phi_vectors = compute_pointings(
         nside,
         [n_active],
-        (point_vectors,),
-        np.array([active_pixels], dtype=object),
-        "ring",
+        point_vectors,
+        theta_vectors,
+        phi_vectors,
+        np.array([active_pixels]),
+        0,  # RING ordering
     )
-    collection.set_pointing_vectors([point_vectors[0]])
+    collection.set_pointing_vectors(point_vectors)
 
     cls_dict = readcl(params.inputclfile, params, DummyLogger(), lmax=lmax_signal)
     collection.set_cls(cls_dict, lmax=lmax_signal)

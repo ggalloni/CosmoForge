@@ -76,9 +76,11 @@ def test_derivative_step_scalar_fields():
     point_vectors = tuple(
         np.empty((npixs[i], 3), dtype=np.float64) for i in range(len(npixs))
     )
+    theta_vectors = tuple(np.empty(npixs[i], dtype=np.float64) for i in range(len(npixs)))
+    phi_vectors = tuple(np.empty(npixs[i], dtype=np.float64) for i in range(len(npixs)))
     pixact = collection.get_active_pixels()
-    point_vectors = compute_pointings(
-        Par.nside, npixs, point_vectors, pixact, Par.ordering
+    point_vectors, theta_vectors, phi_vectors = compute_pointings(
+        Par.nside, npixs, point_vectors, theta_vectors, phi_vectors, pixact, Par.ordering
     )
 
     collection.set_pointing_vectors(point_vectors)
@@ -169,9 +171,11 @@ def test_derivative_step_polarization_fields():
     point_vectors = tuple(
         np.empty((npixs[i], 3), dtype=np.float64) for i in range(len(npixs))
     )
+    theta_vectors = tuple(np.empty(npixs[i], dtype=np.float64) for i in range(len(npixs)))
+    phi_vectors = tuple(np.empty(npixs[i], dtype=np.float64) for i in range(len(npixs)))
     pixact = collection.get_active_pixels()
-    point_vectors = compute_pointings(
-        Par.nside, npixs, point_vectors, pixact, Par.ordering
+    point_vectors, theta_vectors, phi_vectors = compute_pointings(
+        Par.nside, npixs, point_vectors, theta_vectors, phi_vectors, pixact, Par.ordering
     )
 
     collection.set_pointing_vectors(point_vectors)
@@ -292,9 +296,11 @@ def test_derivative_step_temperature_polarization():
     point_vectors = tuple(
         np.empty((npixs[i], 3), dtype=np.float64) for i in range(len(npixs))
     )
+    theta_vectors = tuple(np.empty(npixs[i], dtype=np.float64) for i in range(len(npixs)))
+    phi_vectors = tuple(np.empty(npixs[i], dtype=np.float64) for i in range(len(npixs)))
     pixact = collection.get_active_pixels()
-    point_vectors = compute_pointings(
-        Par.nside, npixs, point_vectors, pixact, Par.ordering
+    point_vectors, theta_vectors, phi_vectors = compute_pointings(
+        Par.nside, npixs, point_vectors, theta_vectors, phi_vectors, pixact, Par.ordering
     )
 
     collection.set_pointing_vectors(point_vectors)
@@ -400,9 +406,11 @@ def test_derivative_step_scalar_temperature_polarization():
     point_vectors = tuple(
         np.empty((npixs[i], 3), dtype=np.float64) for i in range(len(npixs))
     )
+    theta_vectors = tuple(np.empty(npixs[i], dtype=np.float64) for i in range(len(npixs)))
+    phi_vectors = tuple(np.empty(npixs[i], dtype=np.float64) for i in range(len(npixs)))
     pixact = collection.get_active_pixels()
-    point_vectors = compute_pointings(
-        Par.nside, npixs, point_vectors, pixact, Par.ordering
+    point_vectors, theta_vectors, phi_vectors = compute_pointings(
+        Par.nside, npixs, point_vectors, theta_vectors, phi_vectors, pixact, Par.ordering
     )
 
     collection.set_pointing_vectors(point_vectors)
@@ -493,9 +501,11 @@ def test_derivative_step_consistency():
     point_vectors = tuple(
         np.empty((npixs[i], 3), dtype=np.float64) for i in range(len(npixs))
     )
+    theta_vectors = tuple(np.empty(npixs[i], dtype=np.float64) for i in range(len(npixs)))
+    phi_vectors = tuple(np.empty(npixs[i], dtype=np.float64) for i in range(len(npixs)))
     pixact = collection.get_active_pixels()
-    point_vectors = compute_pointings(
-        Par.nside, npixs, point_vectors, pixact, Par.ordering
+    point_vectors, theta_vectors, phi_vectors = compute_pointings(
+        Par.nside, npixs, point_vectors, theta_vectors, phi_vectors, pixact, Par.ordering
     )
 
     collection.set_pointing_vectors(point_vectors)

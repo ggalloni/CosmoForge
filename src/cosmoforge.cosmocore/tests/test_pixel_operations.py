@@ -13,11 +13,15 @@ def test_compute_pointings():
     npixs = [3]  # 3 active pixels in field 0
     active_pixels = np.array([[0, 5, 10]])  # Active pixel indices
 
-    # Create empty point_vectors tuple
+    # Create empty point_vectors, theta_vectors, phi_vectors tuples
     point_vectors = (np.zeros((3, 3)),)  # (n_active, 3) for field 0
+    theta_vectors = (np.zeros(3),)  # (n_active,) for field 0
+    phi_vectors = (np.zeros(3),)  # (n_active,) for field 0
 
     # Test RING ordering
-    result = compute_pointings(nside, npixs, point_vectors, active_pixels, 0)
+    result, _, _ = compute_pointings(
+        nside, npixs, point_vectors, theta_vectors, phi_vectors, active_pixels, 0
+    )
 
     # Check that we get normalized unit vectors
     vectors = result[0]
@@ -30,8 +34,16 @@ def test_compute_pointings():
 
     # Test NESTED ordering
     point_vectors_nested = (np.zeros((3, 3)),)
-    result_nested = compute_pointings(
-        nside, npixs, point_vectors_nested, active_pixels, 1
+    theta_vectors_nested = (np.zeros(3),)
+    phi_vectors_nested = (np.zeros(3),)
+    result_nested, _, _ = compute_pointings(
+        nside,
+        npixs,
+        point_vectors_nested,
+        theta_vectors_nested,
+        phi_vectors_nested,
+        active_pixels,
+        1,
     )
 
     # Should be different from RING (in general)

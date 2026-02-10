@@ -89,16 +89,27 @@ class ParameterGrid:
         theoretical_spectra: dict[tuple, np.ndarray] | None = None,
         root_dir: str | None = None,
         root_filename: str | None = None,
+        lmax_signal: int | None = None,
     ) -> None:
         """
         Initialize parameter grid.
 
         Parameters
         ----------
+        core_params : InputParams
+            Analysis parameters containing nside, lmax, etc.
         parameter_ranges : dict[str, np.ndarray]
             Dictionary mapping parameter names to value arrays.
         theoretical_spectra : dict[tuple, np.ndarray]
             Dictionary mapping parameter tuples to power spectra.
+        root_dir : str, optional
+            Directory containing theoretical spectra files.
+        root_filename : str, optional
+            Root filename for theoretical spectra.
+        lmax_signal : int, optional
+            Maximum multipole for signal computation. If None, uses 4*nside.
+            This ensures spectra are read with the correct lmax even when
+            analysis lmax differs from signal lmax.
 
         Raises
         ------
@@ -107,6 +118,11 @@ class ParameterGrid:
         """
 
         self.core_params = core_params
+
+        # Store lmax_signal, defaulting to 4*nside if not provided
+        self.lmax_signal = (
+            lmax_signal if lmax_signal is not None else 4 * core_params.nside
+        )
 
         self.parameter_names = list(parameter_ranges.keys())
         self.parameter_ranges = deepcopy(parameter_ranges)
@@ -180,7 +196,9 @@ class ParameterGrid:
                     "fiducialfile must be specified when using lswitch_low/lswitch_high"
                 )
             fiducial_spectrum = readcl(
-                inputclfile=fiducialfile.strip(), Params=self.core_params
+                inputclfile=fiducialfile.strip(),
+                Params=self.core_params,
+                lmax=self.lmax_signal,
             )
 
         root = self.root_dir + "/" + self.root_filename
@@ -195,7 +213,9 @@ class ParameterGrid:
                 + ".txt"
             )
 
-            param_spectrum = readcl(inputclfile=filename, Params=self.core_params)
+            param_spectrum = readcl(
+                inputclfile=filename, Params=self.core_params, lmax=self.lmax_signal
+            )
 
             # Apply switch behavior if configured
             if fiducial_spectrum is not None:

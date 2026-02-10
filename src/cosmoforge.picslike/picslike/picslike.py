@@ -152,6 +152,7 @@ class PICSLike(Core):
     def __init__(
         self,
         params_file: str | None = None,
+        compression: dict | None = None,
         **kwargs: Any,
     ) -> None:
         """
@@ -160,18 +161,11 @@ class PICSLike(Core):
         Parameters
         ----------
         params_file : str, optional
-            Path to YAML configuration file containing analysis parameters.
-            If None, parameters must be provided through kwargs or set later.
+            Path to YAML configuration file.
+        compression : dict, optional
+            Compression configuration (method, epsilon, basis, mode_fraction).
         **kwargs : Any
-            Additional keyword arguments passed to the Core parent class.
-            Common options include 'params' for direct parameter object,
-            'verbose' for logging level control.
-
-        Notes
-        -----
-        Initializes the PICSLike class by calling the parent Core constructor
-        and setting up MPI communication. The MPI environment must be properly
-        initialized before creating PICSLike instances.
+            Additional arguments passed to Core.
         """
         # Initialize parent Core class
         super().__init__(params=params_file, **kwargs)
@@ -180,6 +174,9 @@ class PICSLike(Core):
         self.comm = MPI.COMM_WORLD
         self.rank = self.comm.Get_rank()
         self.size = self.comm.Get_size()
+
+        # Store compression config
+        self._compression_config = compression
 
         # Initialize attributes
         self.maps1 = None
@@ -198,12 +195,7 @@ class PICSLike(Core):
 
     @property
     def lmax_signal(self) -> int:
-        """
-        Maximum multipole for signal matrix computation.
-
-        This defaults to 4 * nside, which is the standard HEALPix limit for
-        signal covariance computation. Can be overridden if needed.
-        """
+        """Maximum multipole for signal matrix computation (defaults to 4*nside)."""
         if self._lmax_signal is not None:
             return self._lmax_signal
         return 4 * self.params.nside
@@ -215,45 +207,17 @@ class PICSLike(Core):
 
     def compute_signal_matrix(self, param_point: tuple) -> np.ndarray:
         """
-        Compute the theoretical signal covariance matrix from power spectra.
-
-        This method computes the signal covariance matrix S that represents the
-        theoretical covariances between different pixels based on the input power
-        spectra. The signal matrix is essential for Fisher matrix computation as
-        it defines the expected cosmological signal.
+        Compute signal covariance matrix for a given parameter point.
 
         Returns
         -------
-        numpy.ndarray
-            Signal covariance matrix S with shape (n_active_pixels, n_active_pixels).
-            The matrix is symmetric and positive semi-definite.
+        np.ndarray
+            Signal covariance matrix S, shape (n_active_pixels, n_active_pixels).
 
         Raises
         ------
         ValueError
-            If noise covariance matrices (NCov1) have not been set up prior to
-            calling this method.
-
-        Notes
-        -----
-        The signal matrix computation involves:
-        1. Initialization of zero matrix with same shape as noise covariance
-        2. Population using theoretical power spectra via compute_signal_matrix
-        3. Conversion to Fortran memory layout for optimal BLAS performance
-
-        The computation scales as O(N_pix^2 * l_max) and can be memory-intensive
-        for high resolution analyses. Progress and timing information are logged
-        for the master process (rank 0).
-
-        The signal matrix elements are computed as:
-        S_ij = Σ_l (2l+1)/(4π) * C_l * Y_lm(n̂_i) * Y_lm*(n̂_j)
-
-        Examples
-        --------
-        >>> fisher = Fisher("config.yaml")
-        >>> fisher.setup_covariance_matrices()  # Must be called first
-        >>> S = fisher.compute_signal_matrix()
-        >>> print(f"Signal matrix shape: {S.shape}")
+            If noise covariance matrices not set up.
         """
         if self.NCov1 is None:
             raise ValueError("Covariance matrices must be set up first")
@@ -284,44 +248,9 @@ class PICSLike(Core):
 
     def prepare_covariance_matrix(self):
         """
-        Prepare total covariance matrices and compute their inverses.
+        Prepare total covariance C = S + N and compute its inverse.
 
-        This method combines the signal and noise covariance matrices to form
-        the total covariance matrix C = S + N, then computes the matrix inverses
-        required for Fisher matrix calculation. The inverted matrices are also
-        written to disk for potential reuse.
-
-        Notes
-        -----
-        The preparation process involves:
-        1. Adding signal matrix to noise covariance: C = N + S
-        2. Computing matrix inverse using Cholesky decomposition for stability
-        3. Writing inverse matrices to files specified in parameters
-        4. Handling cross-correlation case with secondary covariance matrix
-
-        For cross-correlation analyses (params.do_cross = True), both primary
-        and secondary covariance matrices are processed. The matrices are
-        converted to Fortran memory layout for optimal linear algebra performance.
-
-        Matrix inversion uses symmetric positive definite properties for
-        numerical stability via cosmocore.matrix_inverse_symm().
-
-        Memory optimization: The signal matrix (self.Sig) is modified in-place
-        to become the total covariance, avoiding an extra matrix allocation.
-        This is safe because self.Sig is recreated fresh for each parameter point.
-
-        Raises
-        ------
-        LinAlgError
-            If covariance matrices are not positive definite (e.g., due to
-            insufficient noise regularization or numerical precision issues).
-
-        Examples
-        --------
-        >>> fisher = Fisher("config.yaml")
-        >>> fisher.setup_signal_matrix()
-        >>> fisher.prepare_covariance_matrices()
-        # Inverse covariance matrices are now ready for Fisher computation
+        Modifies self.Sig in-place to form total covariance, then inverts it.
         """
         # Add noise to signal IN-PLACE to form total covariance.
         # This avoids allocating a separate array (saves n_pix^2 memory).
@@ -340,58 +269,18 @@ class PICSLike(Core):
 
     def setup_maps(self):
         """
-        Read and prepare observational map data for QML analysis.
+        Read observational map data from FITS files.
 
-        This method loads CMB observation maps from FITS files and prepares
-        them for QML power spectrum estimation. Maps are read using the
-        cosmocore map reading infrastructure with proper pixel selection,
-        field extraction, and calibration handling.
-
-        Notes
-        -----
-        Map loading process includes:
-        1. Memory allocation for map arrays based on active pixels
-        2. FITS file reading with HEALPix format support
-        3. Field selection (T, Q, U) based on analysis configuration
-        4. Pixel masking using active pixel information
-        5. Calibration factor application if specified
-
-        For cross-correlation analyses (do_cross=True), both primary and
-        secondary map sets are loaded. Maps are organized as arrays with
-        dimensions (n_active_pixels, n_simulations) to support Monte Carlo
-        error estimation and null testing.
-
-        The map reading uses the cosmocore.read_maps function which handles:
-
-        - HEALPix FITS format parsing
-        - Multiple field extraction (temperature and polarization)
-        - Pixel ordering conversion (RING/NESTED)
-        - Calibration and unit conversion
-        - Memory-efficient loading for large datasets
+        Loads maps with proper pixel selection, field extraction, and calibration.
+        For cross-correlation (do_cross=True), loads both primary and secondary maps.
+        Output shape: (n_active_pixels, n_simulations).
 
         Raises
         ------
         ValueError
-            If pixel information is not available (setup_geometry not called).
+            If pixel information not available (setup_geometry not called).
         FileNotFoundError
-            If input map files are not found at specified paths.
-        RuntimeError
-            If map dimensions don't match expected configuration.
-
-        Examples
-        --------
-        This method is called as part of the analysis pipeline:
-
-        >>> spectra = Spectra("config.yaml")
-        >>> # Called automatically in run(), or manually:
-        >>> spectra.setup_geometry()
-        >>> spectra.setup_maps()
-        >>> print(f"Maps shape: {spectra.maps1.shape}")
-
-        See Also
-        --------
-        cosmocore.read_maps : Core map reading functionality
-        setup_geometry : Pixel information setup required before map loading
+            If input map files not found.
         """
         if self.rank == 0:
             self.log("Reading maps", level=2)
@@ -459,37 +348,7 @@ class PICSLike(Core):
             self.log(f"Set simulation index to: {sim_idx}")
 
     def setup_parameter_grid(self) -> None:
-        """
-        Set up parameter grid and associated theoretical spectra.
-
-        Parameters
-        ----------
-        parameter_ranges : dict[str, np.ndarray]
-            Dictionary mapping parameter names to their value ranges.
-            Each value should be a 1D array of parameter values to evaluate.
-        theoretical_spectra : dict[tuple, np.ndarray]
-            Dictionary mapping parameter value tuples to theoretical power spectra.
-            Keys are tuples of parameter values, values are power spectra arrays.
-
-        Examples
-        --------
-        >>> param_ranges = {
-        ...     'omega_b': np.linspace(0.02, 0.025, 10),
-        ...     'omega_c': np.linspace(0.10, 0.14, 10),
-        ... }
-        >>> theory_spectra = {
-        ...     (0.022, 0.12): cl_theory_1,
-        ...     (0.023, 0.12): cl_theory_2,
-        ...     # ... more spectra
-        ... }
-        >>> picslike.setup_parameter_grid(param_ranges, theory_spectra)
-
-        Notes
-        -----
-        The parameter grid defines the points in parameter space where the
-        likelihood will be evaluated. Each point must have a corresponding
-        theoretical power spectrum for signal covariance computation.
-        """
+        """Set up parameter grid from config and load associated theoretical spectra."""
         if self.rank == 0:
             self.log("Setting up parameter grid...", level=2)
 
@@ -505,6 +364,7 @@ class PICSLike(Core):
             parameter_ranges=self.parameter_ranges,
             root_dir=self.params.root_dir,
             root_filename=self.params.root_filename,
+            lmax_signal=self.lmax_signal,
         )
 
         if self.rank == 0:
@@ -512,65 +372,7 @@ class PICSLike(Core):
             self.log(f"Parameter grid contains {total_points} points", level=2)
 
     def _broadcast_variables(self):
-        """
-        Distribute essential computational data from master to all MPI processes.
-
-        This method broadcasts all necessary data structures from the master process
-        (rank 0) to worker processes, ensuring consistent access to shared data
-        required for parallel QML computation. The broadcasting is essential for
-        the distributed computation model where different processes handle different
-        multipoles but need access to the same underlying data.
-
-        Notes
-        -----
-        The broadcast operation distributes several categories of data:
-
-        **Core Analysis Components:**
-        - params: Complete parameter configuration for the analysis
-        - collection: Field collection with HEALPix setup and active pixels
-        - npixs: Pixel count information for different fields
-        - pixact: Active pixel index arrays for efficient data access
-        - point_vectors: Pixel pointing vectors for spherical harmonic transforms
-
-        **Covariance Matrix Data:**
-        - NCov1, NCov2: Original noise covariance matrices for bias computation
-        - invCov1, invCov2: Inverted total covariance matrices for E-operators
-        - Cross-correlation matrices broadcast only when do_cross=True
-
-        **Observational Data:**
-        - maps1, maps2: CMB observation maps for all Monte Carlo simulations
-        - Secondary maps broadcast only for cross-correlation analyses
-
-        **QML-Specific Data:**
-        - invfisher: Inverted Fisher matrix for final spectrum normalization
-        - normalization: Vecmul factors for beam and pixelization corrections
-
-        Broadcasting Strategy:
-        Each variable is broadcast using the pattern:
-        ```python
-        variable = comm.bcast(variable if rank == 0 else None, root=0)
-        ```
-        This ensures the master process provides the data while workers receive it.
-
-        Memory Considerations:
-        The broadcast operation can be memory-intensive for large datasets,
-        particularly for high-resolution analyses where covariance matrices
-        and maps consume significant memory. The implementation balances
-        memory usage with computational efficiency.
-
-        Examples
-        --------
-        This method is called automatically during the analysis pipeline:
-
-        >>> # Called internally by run() method
-        >>> spectra._broadcast_variables()
-        >>> # All processes now have access to shared data structures
-
-        See Also
-        --------
-        run : Main pipeline method that coordinates this broadcasting
-        MPI.bcast : Low-level MPI broadcast operation used internally
-        """
+        """Broadcast essential data from master to all MPI worker processes."""
         # Broadcast parameters and core variables
         self.params = self.comm.bcast(self.params if self.rank == 0 else None, root=0)
         self.collection: FieldCollection = self.comm.bcast(
@@ -664,32 +466,7 @@ class PICSLike(Core):
     def _compute_mean_likelihood_result(
         self, simulation_results: list[LikelihoodResult]
     ) -> LikelihoodResult:
-        """
-        Compute mean likelihood result from multiple simulations.
-
-        Parameters
-        ----------
-        simulation_results : list[LikelihoodResult]
-            List of LikelihoodResult objects, one for each simulation.
-
-        Returns
-        -------
-        LikelihoodResult
-            Mean likelihood result computed by averaging chi-squared and
-            log-likelihood values across all simulations.
-
-        Notes
-        -----
-        This method computes the ensemble average of likelihood values
-        across all simulations, which provides:
-        1. Reduced statistical noise in likelihood surface
-        2. Better estimate of expected likelihood behavior
-        3. More robust parameter estimation
-
-        The mean is computed as:
-        - chi² = mean(chi²_i) across simulations i
-        - log-likelihood = mean(log L_i) across simulations i
-        """
+        """Compute mean likelihood result by averaging over simulations."""
         if not simulation_results:
             raise ValueError("No simulation results provided")
 
@@ -719,54 +496,116 @@ class PICSLike(Core):
         return mean_result
 
     def _compute_likelihood_point(self, param_point: tuple) -> tuple[float, float]:
-        """
-        Compute likelihood for a single parameter point.
+        """Compute chi-squared and log-likelihood for a single parameter point."""
+        # Check if compression is enabled
+        use_compression = (
+            hasattr(self, "compression_manager") and self.compression_manager is not None
+        )
 
-        Parameters
-        ----------
-        param_point : tuple
-            Tuple of parameter values defining a point in parameter space.
+        if use_compression:
+            # Compressed path: use SMW formula - O(n_modes³) instead of O(N_pix³)
+            # Key optimization: we DON'T compute the full signal matrix!
+            # Instead, we work directly with C_ell in harmonic space.
 
-        Returns
-        -------
-        chi_squared : float
-            Chi-squared value for this parameter point.
-        log_likelihood : float
-            Log-likelihood value for this parameter point.
+            # Get spectrum for this parameter point and set up C_ell
+            # Note: Only the signal spectrum changes between parameter points.
+            # Beams are loaded once during setup (setup_beams), but smoothing
+            # must be re-applied after each set_cls call.
+            spectra_dict = self.parameter_grid.get_spectrum(param_point)
+            self.collection.set_cls(spectra_dict, lmax=self.lmax_signal)
 
-        Notes
-        -----
-        This method performs the core likelihood computation:
-        1. Retrieves theoretical spectrum for the parameter point
-        2. Computes signal covariance matrix from the spectrum
-        3. Assembles total covariance matrix (signal + noise)
-        4. Inverts the covariance matrix
-        5. Computes chi-squared and log-likelihood
+            # Apply beam smoothing to the new spectra
+            # This is much faster than set_beams() which re-reads beam files
+            self.collection.beam_manager.apply_smoothing(
+                self.collection.spectra_manager, lmax=self.lmax_signal
+            )
 
-        For the simulation dimension, we use the first simulation as the "observed" data.
-        In a real analysis, this would be the actual observational data.
-        """
-        # Compute signal covariance matrix for this parameter point
-        self.compute_signal_matrix(param_point)
-        self.log(f"Signal matrix computed for parameters: {param_point}", level=3)
+            # Detect if we need the multi-field path (>1 components or spin-2)
+            has_spin2 = any(f.spin == 2 for f in self.collection.fields)
+            is_multi_field = len(self.collection.fields) > 1 or has_spin2
 
-        # Prepare total covariance matrix and its inverse
-        self.prepare_covariance_matrix()
-        self.log("Total covariance matrix prepared and inverted", level=3)
+            if is_multi_field:
+                # Multi-field/spin-2 path: use full Lambda matrix
+                C_ell_dict = self._build_c_ell_dict()
+                self.log(f"C_ell_dict set for parameters: {param_point}", level=3)
 
-        # Compute chi-squared: d^T * C^-1 * d (without logdet)
-        if self.params.do_cross:
-            chi_squared = np.einsum("in,ij,jn->n", self.maps1, self.invCov, self.maps2)
+                # Precompute K Cholesky and logdet ONCE for this parameter point
+                K_chol, _, logdet = self.compression_manager.prepare_smw(C_ell_dict)
+
+                chi_squared = []
+                for sim_idx in range(self.params.nsims):
+                    if self.params.do_cross:
+                        d1 = self.maps1[:, sim_idx]
+                        d2 = self.maps2[:, sim_idx]
+                        d1_compressed = self.compression_manager.compress_data(d1)
+                        d2_compressed = self.compression_manager.compress_data(d2)
+                        C_c_inv = self.compression_manager.get_compressed_inverse(
+                            C_ell_dict
+                        )
+                        chi_sq = float(d1_compressed.T @ C_c_inv @ d2_compressed)
+                    else:
+                        chi_sq = self.compression_manager.quadratic_form_from_prepared(
+                            self.maps1[:, sim_idx], K_chol
+                        )
+                    chi_squared.append(chi_sq)
+
+                chi_squared = np.array(chi_squared)
+            else:
+                # Single-field path (existing code)
+                C_ell = self.collection.spectra_manager.get_cls(0, 0, 0)
+                self.log(f"C_ell set for parameters: {param_point}", level=3)
+
+                chi_squared = []
+                for sim_idx in range(self.params.nsims):
+                    if self.params.do_cross:
+                        d1 = self.maps1[:, sim_idx]
+                        d2 = self.maps2[:, sim_idx]
+                        d1_compressed = self.compression_manager.compress_data(d1)
+                        d2_compressed = self.compression_manager.compress_data(d2)
+                        C_inv = self.compression_manager.get_compressed_inverse(C_ell)
+                        chi_sq = float(d1_compressed.T @ C_inv @ d2_compressed)
+                    else:
+                        chi_sq = self.compute_quadratic_form(
+                            self.maps1[:, sim_idx], C_ell
+                        )
+                    chi_squared.append(chi_sq)
+
+                chi_squared = np.array(chi_squared)
+                logdet = self.get_covariance_logdet(C_ell)
+
+            self.log(f"Log-determinant of covariance (compressed): {logdet:.2f}", level=3)
         else:
-            chi_squared = np.einsum("in,ij,jn->n", self.maps1, self.invCov, self.maps1)
+            # Non-compressed path: compute full signal matrix
+            self.compute_signal_matrix(param_point)
+            self.log(f"Signal matrix computed for parameters: {param_point}", level=3)
+            # Non-compressed path: use existing direct matrix operations
+            self.prepare_covariance_matrix()
+            self.log("Total covariance matrix prepared and inverted", level=3)
 
-        # Log-likelihood: 0.5 * (logdet - chi2) = -0.5 * (chi2 - logdet)
-        # This convention matches the Fortran reference implementation
-        logdet = np.linalg.slogdet(self.total_cov)[1]
-        self.log(f"Log-determinant of covariance: {logdet:.2f}", level=3)
-        log_likelihood = 0.5 * (logdet - chi_squared)
+            # Compute chi-squared: d^T * C^-1 * d (without logdet)
+            if self.params.do_cross:
+                chi_squared = np.einsum(
+                    "in,ij,jn->n", self.maps1, self.invCov, self.maps2
+                )
+            else:
+                chi_squared = np.einsum(
+                    "in,ij,jn->n", self.maps1, self.invCov, self.maps1
+                )
+
+            # Get log-determinant for likelihood computation
+            logdet = np.linalg.slogdet(self.total_cov)[1]
+            self.log(f"Log-determinant of covariance: {logdet:.2f}", level=3)
+
+        # Standard Gaussian log-likelihood: -0.5 * (χ² + log|C|)
+        # (ignoring constant n*log(2π) term)
+        log_likelihood = -0.5 * (chi_squared + logdet)
 
         return chi_squared, log_likelihood
+
+    def _build_c_ell_dict(self) -> dict[tuple, np.ndarray]:
+        """Build C_ell_dict from spectra_manager for compressed operations."""
+        C_ell_dict, _ = self.collection.spectra_manager.build_inputs()
+        return C_ell_dict
 
     def get_chi_squared(self) -> np.ndarray:
         """
@@ -834,21 +673,13 @@ class PICSLike(Core):
 
         Returns
         -------
-        simulation_results : list[LikelihoodResult]
-            List of LikelihoodResult objects, one for each simulation.
+        list[LikelihoodResult]
+            One LikelihoodResult per simulation.
 
         Raises
         ------
         RuntimeError
-            If likelihood computation has not been performed.
-
-        Notes
-        -----
-        This method provides access to the individual likelihood results
-        for each simulation, allowing for:
-        1. Analysis of simulation-to-simulation variations
-        2. Computation of error bars and confidence intervals
-        3. Statistical studies of likelihood behavior
+            If compute() has not been called.
         """
         if not hasattr(self, "simulation_results") or self.simulation_results is None:
             msg = "Simulation results not available. Call compute() first."
@@ -862,18 +693,13 @@ class PICSLike(Core):
 
         Returns
         -------
-        mean_result : LikelihoodResult
-            Mean likelihood result used for plotting and analysis.
+        LikelihoodResult
+            Mean likelihood result for plotting and analysis.
 
         Raises
         ------
         RuntimeError
-            If likelihood computation has not been performed.
-
-        Notes
-        -----
-        This returns the same result as get_chi_squared(), get_log_likelihood(),
-        etc., but provides direct access to the averaged LikelihoodResult object.
+            If compute() has not been called.
         """
         if self.likelihood_result is None:
             msg = "Likelihood not computed. Call compute() first."
@@ -883,22 +709,12 @@ class PICSLike(Core):
 
     def save_results(self, output_path: str) -> None:
         """
-        Save likelihood computation results to file.
+        Save likelihood results to file.
 
         Parameters
         ----------
         output_path : str
-            Base path where results should be saved. Individual simulation
-            results will be saved with numbered suffixes.
-
-        Notes
-        -----
-        Saves both the mean likelihood results and individual simulation results:
-        - output_path: Mean likelihood result (for plotting and analysis)
-        - output_path_sim_XX: Individual simulation results (for error analysis)
-
-        The mean result is used for standard likelihood analysis and plotting,
-        while individual results enable Monte Carlo error estimation.
+            Base path for saving. Individual sims saved as output_path_sim_XX.
         """
         if self.likelihood_result is None:
             msg = "No results to save. Run compute() first."
@@ -936,25 +752,8 @@ class PICSLike(Core):
         """
         Execute the complete pixel-based likelihood analysis pipeline.
 
-        This method implements the abstract method from Core and orchestrates
-        the full analysis workflow from initialization to final results.
-
-        Returns
-        -------
-        LikelihoodResult
-            Final likelihood computation results.
-
-        Notes
-        -----
-        The complete pipeline includes:
-        1. Field and geometry setup
-        2. Covariance matrix preparation
-        3. Parameter grid configuration
-        4. Likelihood computation across parameter space
-        5. Statistical analysis and result storage
-
-        This method provides a high-level interface for running the complete
-        pixel-based likelihood analysis with minimal user intervention.
+        Pipeline: setup fields/geometry/covariance, configure parameter grid,
+        compute likelihood across parameter space, gather results.
         """
 
         self.setup_parameter_grid()
@@ -964,8 +763,20 @@ class PICSLike(Core):
             self.setup_fields()
             self.setup_geometry()
             self.setup_covariance_matrices()
-            self.setup_cls()
-            self.setup_beams()
+            self.setup_cls(lmax=self.lmax_signal)
+            self.setup_beams(lmax=self.lmax_signal)
+
+            # Setup compression if configured
+            if self._compression_config is not None:
+                compression_config = self._compression_config
+                self.setup_compression(
+                    method=compression_config.get("method", "harmonic"),
+                    epsilon=compression_config.get("epsilon"),
+                    mode_fraction=compression_config.get("mode_fraction"),
+                    basis=compression_config.get("basis", "noise_weighted"),
+                    C_ell=compression_config.get("C_ell"),
+                )
+                self.log("Compression manager setup completed", level=3)
 
             if self.maps1 is None:
                 self.setup_maps()

@@ -4,29 +4,44 @@
 [![Documentation](https://img.shields.io/badge/docs-cosmocore-blue.svg)](https://ggalloni.github.io/CosmoForge/api/cosmocore.html)
 [![Performance](https://img.shields.io/badge/performance-numba-green.svg)](https://numba.pydata.org/)
 
-> **📚 [CosmoCore Documentation](https://ggalloni.github.io/CosmoForge/api/cosmocore.html) | [API Reference](https://ggalloni.github.io/CosmoForge/api/cosmocore/basics.html) | [Main Documentation](https://ggalloni.github.io/CosmoForge/)**
+> [CosmoCore Documentation](https://ggalloni.github.io/CosmoForge/api/cosmocore.html) | [API Reference](https://ggalloni.github.io/CosmoForge/api/cosmocore/basics.html) | [Main Documentation](https://ggalloni.github.io/CosmoForge/)
 
-CosmoCore is the foundational package of CosmoForge, providing core functionality for cosmological analysis including field management, matrix operations, I/O utilities, and fundamental mathematical operations.
+CosmoCore is the foundational package of CosmoForge, providing core functionality for cosmological CMB analysis including field management, compression methods, matrix operations, I/O utilities, and spherical harmonic operations.
 
 ## Overview
 
 CosmoCore serves as the base layer for all cosmological computations in CosmoForge. It provides:
 
-- **Field Management**: Scalar and polarization field handling with HEALPix integration
-- **Matrix Operations**: Optimized linear algebra operations with Numba acceleration
+- **Field Management**: Scalar (temperature) and spin-2 (polarization) field handling with HEALPix integration
+- **Compression**: Harmonic and pixel-projected compression for Fisher matrix computation, with multi-field and spin-2 support
+- **Matrix Operations**: Optimized LAPACK-based linear algebra with Numba acceleration
+- **Harmonic Analysis**: Power spectrum management, beam handling, and spherical harmonic transforms
+- **Pixel Operations**: Signal matrix computation and HEALPix pixel-based operations
 - **I/O Utilities**: Reading and writing of cosmological data formats
-- **Harmonic Analysis**: Power spectrum management and beam handling
-- **Pixel Operations**: HEALPix pixel-based computations
 
 ## Key Components
 
-### Core Classes
+### Compression
 
-- **`Core`**: Base class for all cosmological analysis pipelines
-- **`BaseField`**: Abstract base for cosmological fields
-- **`ScalarField`**: Temperature field implementation
-- **`PolarizationField`**: Polarization (E/B) field implementation
+Two compression methods for efficient CMB Fisher matrix and QML estimation:
+
+- **`HarmonicCompression`** (Tegmark-like): Direct transformation to harmonic space (n_pix -> n_modes). Fast when n_modes << n_pix.
+- **`PixelProjectedCompression`** (Gjerlow-like): Pixel-space projector with eigenvalue compression (n_pix -> n_kept). Supports multiple compression bases and per-field threshold tuning.
+- **`create_compression`**: Factory function for creating compression instances by name.
+
+Both methods support:
+
+- **Multi-field**: Multiple components with independent sky coverage and noise
+- **Spin-2 polarization**: E/B mode decomposition with spin-weighted spherical harmonics
+- **Per-field eigenspectrum inspection**: `compute_eigenspectrum_per_field()` for choosing compression thresholds, with E/B breakdown for spin-2 fields
+- **Visualization**: `plot_eigenvalue_spectrum()` and `plot_eigenvalue_comparison()` with per-component subplots
+
+### Fields
+
+- **`ScalarField`**: Temperature (spin-0) field implementation
+- **`PolarizationField`**: Polarization (spin-2, E/B) field implementation
 - **`FieldCollection`**: Container for managing multiple fields
+- **`create_field`**: Factory function for field creation
 
 ### Managers
 
@@ -35,9 +50,17 @@ CosmoCore serves as the base layer for all cosmological computations in CosmoFor
 
 ### Mathematical Operations
 
-- **Legendre Polynomials**: `legendre_00`, `legendre_02`, `legendre_22`
-- **Matrix Operations**: `matrix_mult`, `matrix_inverse_symm`, `matrix_trace`
+- **Legendre Polynomials**: `legendre_00`, `legendre_02`, `legendre_22`, `legendre_plm`
+- **Matrix Operations**: `matrix_mult`, `matrix_inverse_symm`, `matrix_trace`, `matrix_slogdet_symm`
 - **Harmonic Transforms**: `cl_to_vec`, `vec_to_cl`
+- **Wigner d-matrices**: Spin-weighted harmonic basis functions
+- **SMW Formula**: Sherman-Morrison-Woodbury compressed inverse and log-determinant
+
+### Core
+
+- **`Core`**: Base class for cosmological analysis pipelines
+- **`InputParams`**: Parameter file management
+- **`CosmoLogger`** / **`Timer`**: Logging and profiling utilities
 
 ## Installation
 
@@ -47,45 +70,74 @@ CosmoCore is automatically installed as part of CosmoForge:
 pip install -e /path/to/CosmoForge
 ```
 
-## Documentation
-
-For detailed API documentation and examples:
-
-- **[Core Module](https://ggalloni.github.io/CosmoForge/api/cosmocore/core.html)** - Main Core class and pipeline functionality
-- **[Fields Module](https://ggalloni.github.io/CosmoForge/api/cosmocore/fields.html)** - Field management and HEALPix operations
-- **[Basics Module](https://ggalloni.github.io/CosmoForge/api/cosmocore/basics.html)** - Mathematical utilities and matrix operations
-- **[Harmonic Module](https://ggalloni.github.io/CosmoForge/api/cosmocore/harmonic.html)** - Power spectrum and beam management
-- **[I/O Module](https://ggalloni.github.io/CosmoForge/api/cosmocore/in_out.html)** - Data input/output utilities
-
 ## Usage
 
-### Basic Field Creation
+### Compression Workflow
+
+```python
+from cosmocore.compression import PixelProjectedCompression
+import numpy as np
+
+# Set up compression
+ppc = PixelProjectedCompression(N, N_inv, theta, phi, lmax=100)
+ppc.setup()
+
+# Inspect per-field eigenspectra to choose thresholds
+fig, axes = ppc.plot_eigenvalue_spectrum(basis="noise_weighted")
+
+# Apply compression with chosen threshold
+ppc.apply_compression(epsilon=1e-4, basis="noise_weighted")
+
+# Compute Fisher matrix
+fisher = ppc.compute_fisher_matrix(C_ell)
+```
+
+### Multi-Field with Spin-2 Polarization
+
+```python
+from cosmocore.compression import PixelProjectedCompression
+
+# T (spin-0) + QU (spin-2) setup
+ppc = PixelProjectedCompression(
+    N, N_inv,
+    theta=(theta_t, theta_p),
+    phi=(phi_t, phi_p),
+    lmax=100,
+    spins=[0, 2],
+)
+ppc.setup()
+
+# Per-field eigenspectrum with E/B breakdown
+spectra = ppc.compute_eigenspectrum_per_field(basis="noise_weighted")
+for entry in spectra:
+    print(f"{entry['label']}: {len(entry['eigenvalues'])} modes")
+
+# Per-field thresholds (scalar for T, E/B tuple for polarization)
+ppc.apply_compression(epsilon=[1e-4, (1e-4, 1e-3)])
+
+# Multi-field Fisher matrix
+fisher = ppc.compute_fisher_matrix(C_ell_dict, spectra_list)
+```
+
+### Field Creation
 
 ```python
 from cosmocore import create_field, FieldCollection
-import numpy as np
 
 # Create temperature field
 temp_field = create_field(
-    spin=0,
-    nside=32,
-    lmax=64,
-    mask=mask_array,
-    labels="T"
+    spin=0, nside=32, lmax=64,
+    mask=mask_array, labels="T"
 )
 
 # Create polarization field
 pol_field = create_field(
-    spin=2,
-    nside=32,
-    lmax=64,
-    mask=mask_array,
-    labels=["E", "B"]
+    spin=2, nside=32, lmax=64,
+    mask=mask_array, labels=["E", "B"]
 )
 
 # Create field collection
-fields = [temp_field, pol_field]
-collection = FieldCollection(params, fields)
+collection = FieldCollection(params, [temp_field, pol_field])
 ```
 
 ### Power Spectrum Management
@@ -93,48 +145,22 @@ collection = FieldCollection(params, fields)
 ```python
 from cosmocore import SpectraManager, BeamManager
 
-# Create managers
 spectra_mgr = SpectraManager(fields)
 beam_mgr = BeamManager(fields)
 
-# Set power spectra from file
 spectra_mgr.set_cls_from_file("fiducial_cls.txt", params)
-
-# Apply normalization
 spectra_mgr.apply_normalization()
-
-# Apply beam smoothing
 beam_mgr.apply_smoothing(spectra_mgr)
 ```
 
-### Matrix Operations Example
+### Matrix Operations
 
 ```python
 from cosmocore import matrix_mult, matrix_inverse_symm, matrix_trace
 
-# Matrix multiplication
 C = matrix_mult(A, B)
-
-# Symmetric matrix inversion
 inv_A = matrix_inverse_symm(A)
-
-# Matrix trace
 tr_AB = matrix_trace(A, B)
-```
-
-### I/O Operations
-
-```python
-from cosmocore import read_mask, read_covmat, readcl
-
-# Read mask
-mask = read_mask(maskfile, mask_array)
-
-# Read covariance matrix
-covmat = read_covmat(covmatfile, npix, active_pixels, C)
-
-# Read power spectra
-cls = readcl(clfile, cl_array)
 ```
 
 ## Configuration
@@ -159,111 +185,82 @@ fwhmarcmin: 5.0
 beam_file: "data/beam.fits"
 ```
 
+## Architecture
+
+```text
+cosmocore/
+├── __init__.py              # Public API
+├── core.py                  # Core base class
+├── fields.py                # Field implementations (Scalar, Polarization)
+├── settings.py              # Parameter management
+├── harmonic.py              # Power spectrum and beam managers
+├── pixel.py                 # Pixel-based signal matrix operations
+├── in_out.py                # I/O utilities
+├── logger.py                # Logging and timing
+├── basics/                  # Mathematical primitives
+│   ├── linalg.py            #   Matrix operations (mult, inverse, trace)
+│   ├── legendre.py          #   Legendre polynomial evaluation
+│   ├── wigner.py            #   Wigner d-matrices for spin-2
+│   ├── geometry.py          #   Rotation angles and coordinate transforms
+│   ├── indexing.py          #   Spectrum index utilities
+│   └── smw.py               #   Sherman-Morrison-Woodbury formula
+└── compression/             # Data compression for Fisher/QML
+    ├── base.py              #   Abstract base class and SMW types
+    ├── harmonic_basis.py    #   Harmonic basis builder (V operator, Lambda)
+    ├── harmonic.py          #   HarmonicCompression (Tegmark-like)
+    └── pixel_projected.py   #   PixelProjectedCompression (Gjerlow-like)
+```
+
 ## Performance Features
 
 ### Numba Acceleration
 
-Critical functions use Numba JIT compilation:
+Critical functions use Numba JIT compilation for near-C performance:
 
 ```python
 @njit(cache=True)
 def legendre_unified(cos_theta, lmax, pl_00, pl_02, pl_22):
-    # High-performance Legendre polynomial computation
     ...
 ```
 
 ### Memory Optimization
 
-- In-place operations where possible
-- Efficient memory layouts for matrix operations
-- Optimized data structures for large datasets
+- In-place operations and pre-allocated buffers for hot paths
+- Efficient memory layouts (Fortran-order for LAPACK calls)
+- SMW formula avoids forming full n_pix x n_pix inverses
 
 ### Vectorized Operations
 
-- NumPy vectorization for array operations
-- Efficient broadcasting for field operations
-- Optimized inner loops for critical computations
-
-## API Reference
-
-### Field Creation
-
-```python
-def create_field(spin, nside, lmax, mask=None, labels=None):
-    """Create field based on spin value."""
-    
-def compute_pointings(nside, active_pixels, ordering=1):
-    """Compute pointing vectors for active pixels."""
-```
-
-### Matrix Operations
-
-```python
-def matrix_mult(A, B):
-    """Multiply two matrices using BLAS."""
-
-def matrix_inverse_symm(M):
-    """Invert symmetric matrix using Cholesky decomposition."""
-
-def matrix_trace(A, B):
-    """Compute trace of matrix product."""
-```
-
-### Harmonic Operations
-
-```python
-def cl_to_vec(cl, vec):
-    """Convert Cl array to vector format."""
-
-def vec_to_cl(vec, cl):
-    """Convert vector to Cl array format."""
-```
+- NumPy/BLAS vectorization for matrix operations
+- Precomputed derivative diagonals for O(l^2) Fisher computation
+- Block-diagonal structure exploited for multi-field compression
 
 ## Testing
 
 Run CosmoCore tests:
 
 ```bash
-cd src/cosmoforge.cosmocore
-python -m pytest tests/
+uv run pytest src/cosmoforge.cosmocore/tests/
 ```
 
 ## Dependencies
 
 - NumPy: Numerical computations
-- SciPy: Scientific computing
+- SciPy: Scientific computing (LAPACK wrappers)
 - Numba: JIT compilation
+- Matplotlib: Eigenspectrum visualization
 - HEALPix: Pixelization (via healpy)
 
-## Architecture
+## Documentation
 
-CosmoCore follows a modular architecture:
+- [Core Module](https://ggalloni.github.io/CosmoForge/api/cosmocore/core.html) - Main Core class and pipeline
+- [Fields Module](https://ggalloni.github.io/CosmoForge/api/cosmocore/fields.html) - Field management and HEALPix
+- [Basics Module](https://ggalloni.github.io/CosmoForge/api/cosmocore/basics.html) - Mathematical utilities
+- [Harmonic Module](https://ggalloni.github.io/CosmoForge/api/cosmocore/harmonic.html) - Power spectrum and beams
+- [I/O Module](https://ggalloni.github.io/CosmoForge/api/cosmocore/in_out.html) - Data input/output
 
-```text
-cosmocore/
-├── __init__.py          # Public API
-├── core.py              # Core base class
-├── fields.py            # Field implementations
-├── settings.py          # Parameter management
-├── basics.py            # Basic mathematical operations
-├── harmonic.py          # Harmonic analysis tools
-├── pixel.py             # Pixel-based operations
-└── in_out.py           # I/O utilities
-```
+## References
 
-## Extension Points
-
-CosmoCore is designed to be extensible:
-
-- **Custom Fields**: Inherit from `BaseField`
-- **Custom Operations**: Add to existing modules
-- **New Algorithms**: Implement using existing infrastructure
-
-## Performance Benchmarks
-
-Typical performance on modern hardware:
-
-- Field creation: ~1ms for nside=32
-- Matrix operations: ~10ms for 1000x1000 matrices
-- Power spectrum operations: ~1ms for lmax=100
-- I/O operations: ~100ms for typical data files
+- Tegmark, M. "How to measure CMB power spectra without losing information" Phys. Rev. D 55, 5895 (1997)
+- Gjerlow, E. et al. "Component separation for the CMB with a low-resolution analysis" A&A 629, A51 (2019)
+- Gorski, K.M. et al. "HEALPix: A Framework for High-Resolution Discretization and Fast Analysis of Data Distributed on the Sphere" Astrophys. J. 622, 759-771 (2005)
