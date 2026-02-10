@@ -11,7 +11,7 @@
 
 > **📚 [QUBE Documentation](https://ggalloni.github.io/CosmoForge/api/qube.html) | [Fisher Analysis API](https://ggalloni.github.io/CosmoForge/api/qube/fisher.html) | [Spectra API](https://ggalloni.github.io/CosmoForge/api/qube/spectra.html) | [Main Documentation](https://ggalloni.github.io/CosmoForge/)**
 
-QUBE: Quadratic maximum likelihood UnBiased Estimator is the analysis engine of CosmoForge, implementing Fisher matrix analysis and Quadratic Maximum Likelihood (QML) power spectrum estimation for cosmological parameter inference from CMB data.
+QUBE: Quadratic maximum likelihood UnBiased Estimator is the analysis engine of CosmoForge, implementing Fisher matrix analysis and Quadratic Maximum Likelihood (QML) power spectrum estimation for any spin-0 or spin-2 field on the sphere. Applications include CMB temperature and polarization, galaxy surveys, 21 cm intensity mapping, and any other signal that can be described by angular power spectra.
 
 ## Overview
 
@@ -20,7 +20,7 @@ QUBE provides two main analysis methods:
 - **Fisher Matrix Analysis**: Fast parameter forecasting and covariance estimation
 - **QML Power Spectrum Estimation**: Optimal power spectrum recovery from noisy data
 
-Both methods support MPI parallelization for large-scale analyses and can handle temperature and polarization data with realistic instrumental effects.
+Both methods support MPI parallelization for large-scale analyses and can handle spin-0 and spin-2 data (e.g. temperature and polarization) with realistic instrumental effects.
 
 ## Key Features
 
@@ -421,4 +421,3 @@ See the main CosmoForge README for contribution guidelines.
 
 - Quadratic Maximum Likelihood: Tegmark (1997)
 - Fisher Information: Tegmark et al. (1997)
-- CMB Analysis: Planck Collaboration (2020)

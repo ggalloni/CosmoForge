@@ -6,13 +6,13 @@
 
 > [CosmoCore Documentation](https://ggalloni.github.io/CosmoForge/api/cosmocore.html) | [API Reference](https://ggalloni.github.io/CosmoForge/api/cosmocore/basics.html) | [Main Documentation](https://ggalloni.github.io/CosmoForge/)
 
-CosmoCore is the foundational package of CosmoForge, providing core functionality for cosmological CMB analysis including field management, compression methods, matrix operations, I/O utilities, and spherical harmonic operations.
+CosmoCore is the foundational package of CosmoForge, providing core functionality for the analysis of spin-0 and spin-2 fields on the sphere, including field management, compression methods, matrix operations, I/O utilities, and spherical harmonic operations.
 
 ## Overview
 
 CosmoCore serves as the base layer for all cosmological computations in CosmoForge. It provides:
 
-- **Field Management**: Scalar (temperature) and spin-2 (polarization) field handling with HEALPix integration
+- **Field Management**: Scalar (spin-0) and tensor (spin-2) field handling with HEALPix integration
 - **Compression**: Harmonic and pixel-projected compression for Fisher matrix computation, with multi-field and spin-2 support
 - **Matrix Operations**: Optimized LAPACK-based linear algebra with Numba acceleration
 - **Harmonic Analysis**: Power spectrum management, beam handling, and spherical harmonic transforms
@@ -23,7 +23,7 @@ CosmoCore serves as the base layer for all cosmological computations in CosmoFor
 
 ### Compression
 
-Two compression methods for efficient CMB Fisher matrix and QML estimation:
+Two compression methods for efficient Fisher matrix and QML estimation:
 
 - **`HarmonicCompression`** (Tegmark-like): Direct transformation to harmonic space (n_pix -> n_modes). Fast when n_modes << n_pix.
 - **`PixelProjectedCompression`** (Gjerlow-like): Pixel-space projector with eigenvalue compression (n_pix -> n_kept). Supports multiple compression bases and per-field threshold tuning.
@@ -38,8 +38,8 @@ Both methods support:
 
 ### Fields
 
-- **`ScalarField`**: Temperature (spin-0) field implementation
-- **`PolarizationField`**: Polarization (spin-2, E/B) field implementation
+- **`ScalarField`**: Spin-0 field implementation (e.g. CMB temperature, convergence)
+- **`PolarizationField`**: Spin-2 field implementation (e.g. CMB polarization, cosmic shear)
 - **`FieldCollection`**: Container for managing multiple fields
 - **`create_field`**: Factory function for field creation
 

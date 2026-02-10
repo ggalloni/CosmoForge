@@ -1,10 +1,10 @@
 """
-CosmoCore: Core infrastructure for cosmological CMB analysis.
+CosmoCore: Core infrastructure for analysis of spin-0 and spin-2 fields on the sphere.
 
-This package provides foundational utilities for cosmological analysis of the
-Cosmic Microwave Background (CMB), including pixel-space operations, spherical
-harmonic transformations, and matrix operations. It serves as the common
-computational backbone for the CosmoForge framework.
+This package provides foundational utilities for cosmological analysis of angular
+fields on the sphere, including pixel-space operations, spherical harmonic
+transformations, and matrix operations. It serves as the common computational
+backbone for the CosmoForge framework.
 
 The package implements:
 
@@ -12,8 +12,8 @@ The package implements:
   and HEALPix-based pixelization handling
 - **Harmonic operations**: Power spectrum management, beam window functions,
   and spherical harmonic transforms
-- **Field management**: Scalar (temperature) and spin-2 (polarization) field
-  handling with proper coordinate transformations
+- **Field management**: Scalar (spin-0) and tensor (spin-2) field handling
+  with proper coordinate transformations
 - **Matrix operations**: Optimized LAPACK-based routines for covariance matrix
   inversion and determinant computation
 
@@ -26,7 +26,7 @@ Infrastructure:
 .. [2] Reinecke, M. & Seljak, U. "Libsharp - spherical harmonic transforms revisited"
    Astron. Astrophys. 554, A112 (2013)
 
-CMB Polarization Formalism:
+Spin-2 Field Formalism:
 .. [3] Kamionkowski, M., Kosowsky, A. & Stebbins, A. "Statistics of cosmic microwave
    background polarization" Phys. Rev. D 55, 7368 (1997)
 .. [4] Zaldarriaga, M. & Seljak, U. "All-sky analysis of polarization in the microwave

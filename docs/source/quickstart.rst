@@ -99,26 +99,31 @@ Fisher Matrix Analysis
 
 .. code-block:: python
 
-   # Example Fisher matrix analysis
-   # (Full documentation pending QUBE package completion)
    from cosmoforge.qube import Fisher
 
    # Initialize Fisher analysis
    fisher = Fisher("config/fisher_config.yaml")
    fisher.run()
 
+   if fisher.rank == 0:
+       errors = fisher.get_error_bars()
+
 QML Power Spectrum Estimation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: python
 
-   # Example QML estimation
-   # (Full documentation pending QUBE package completion)
-   from cosmoforge.qube import QML
+   from cosmoforge.qube import Spectra
 
    # Initialize QML analysis
-   qml = QML("config/qml_config.yaml")
-   qml.run()
+   spectra = Spectra("config/qml_config.yaml")
+   spectra.run()
+
+   if spectra.rank == 0:
+       # Default: deconvolved estimates of true C_ell
+       cl = spectra.get_power_spectra()
+       # Other modes: "decorrelated", "convolved"
+       cl_decorr = spectra.get_power_spectra(mode="decorrelated")
 
 Next Steps
 ----------

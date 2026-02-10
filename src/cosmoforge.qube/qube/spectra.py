@@ -2,9 +2,11 @@
 Quadratic Maximum Likelihood (QML) power spectrum estimation for cosmological analysis.
 
 This module implements the Spectra class for optimal power spectrum estimation from
-CMB observations using the Quadratic Maximum Likelihood estimator. The QML method
-provides unbiased, minimum-variance power spectrum estimates that properly account
-for sky cuts, instrumental noise, and pixel correlations.
+observations of spin-0 and spin-2 fields on the sphere using the Quadratic Maximum
+Likelihood estimator. The QML method provides unbiased, minimum-variance power spectrum
+estimates that properly account for sky cuts, instrumental noise, and pixel correlations.
+Applications include CMB temperature and polarization, cosmic shear, and any other signal
+described by angular power spectra.
 
 The QML estimator for power spectrum amplitude q_l is given by:
 
@@ -72,10 +74,11 @@ from qube import Fisher
 
 class Spectra(Core):
     """
-    Quadratic Maximum Likelihood (QML) power spectrum estimator for CMB analysis.
+    Quadratic Maximum Likelihood (QML) power spectrum estimator.
 
     This class implements the QML method for optimal power spectrum estimation from
-    cosmic microwave background observations. The QML estimator provides unbiased,
+    observations of spin-0 and spin-2 fields on the sphere (e.g. CMB temperature
+    and polarization, cosmic shear). The QML estimator provides unbiased,
     minimum-variance estimates of angular power spectra C_l while properly accounting
     for instrumental noise, sky cuts, and pixel correlations.
 
