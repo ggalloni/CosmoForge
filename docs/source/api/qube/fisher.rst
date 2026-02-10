@@ -68,6 +68,8 @@ Results Retrieval
    :no-index:
 .. automethod:: Fisher.get_error_bars
    :no-index:
+.. automethod:: Fisher.get_window_matrix
+   :no-index:
 
 Usage Examples
 --------------
