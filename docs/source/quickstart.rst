@@ -9,7 +9,7 @@ CosmoForge Architecture
 CosmoForge is organized as a namespace package with three main components:
 
 * **cosmoforge.cosmocore**: Core mathematical and computational utilities
-* **cosmoforge.quelo**: QML estimation and Fisher matrix analysis  
+* **cosmoforge.qube**: QML estimation and Fisher matrix analysis
 * **cosmoforge.meta**: Metadata and project-wide utilities
 
 Getting Started with CosmoCore
@@ -91,8 +91,8 @@ Access optimized mathematical functions:
    vec2 = np.array([0.0, 1.0, 0.0])
    dot_product = scalar_prod(vec1, vec2)
 
-Getting Started with Quelo
----------------------------
+Getting Started with QUBE
+-------------------------
 
 Fisher Matrix Analysis
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -100,9 +100,9 @@ Fisher Matrix Analysis
 .. code-block:: python
 
    # Example Fisher matrix analysis
-   # (Full documentation pending Quelo package completion)
-   from cosmoforge.quelo import Fisher
-   
+   # (Full documentation pending QUBE package completion)
+   from cosmoforge.qube import Fisher
+
    # Initialize Fisher analysis
    fisher = Fisher("config/fisher_config.yaml")
    fisher.run()
@@ -113,9 +113,9 @@ QML Power Spectrum Estimation
 .. code-block:: python
 
    # Example QML estimation
-   # (Full documentation pending Quelo package completion)
-   from cosmoforge.quelo import QML
-   
+   # (Full documentation pending QUBE package completion)
+   from cosmoforge.qube import QML
+
    # Initialize QML analysis
    qml = QML("config/qml_config.yaml")
    qml.run()
@@ -126,4 +126,4 @@ Next Steps
 * Read the :doc:`tutorials/index` for detailed examples
 * Explore the :doc:`api/cosmocore` reference for CosmoCore functions
 * Check the example notebooks in the repository
-* See :doc:`api/quelo` and :doc:`api/meta` for other package documentation
+* See :doc:`api/qube` and :doc:`api/meta` for other package documentation

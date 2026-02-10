@@ -8,7 +8,7 @@ members = [
     "cosmoforge",
     "meta",
     "picslike",
-    "quelo",
+    "qube",
 ]
 
 [[package]]
@@ -705,14 +705,14 @@ source = { virtual = "src/cosmoforge.meta" }
 dependencies = [
     { name = "cosmocore" },
     { name = "picslike" },
-    { name = "quelo" },
+    { name = "qube" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "cosmocore", editable = "src/cosmoforge.cosmocore" },
     { name = "picslike", editable = "src/cosmoforge.picslike" },
-    { name = "quelo", editable = "src/cosmoforge.quelo" },
+    { name = "qube", editable = "src/cosmoforge.qube" },
 ]
 
 [[package]]
@@ -1141,9 +1141,9 @@ wheels = [
 ]
 
 [[package]]
-name = "quelo"
+name = "qube"
 version = "0.1.0"
-source = { editable = "src/cosmoforge.quelo" }
+source = { editable = "src/cosmoforge.qube" }
 dependencies = [
     { name = "cosmocore" },
     { name = "tqdm" },

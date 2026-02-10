@@ -1,40 +1,32 @@
 [project]
-name = "cosmoforge"
+name = "qube"
 version = "0.1.0"
-description = "CosmoForge: collection of codes for Cosmology."
+description = "QUBE: Quadratic maximum likelihood UnBiased Estimator"
 readme = "README.md"
 authors = [
     { name = "Giacomo Galloni", email = "giacomo.galloni@unife.it" }
 ]
 requires-python = ">=3.11,<3.14"
-dependencies = []
-
-[dependency-groups]
-dev = [
-    "matplotlib>=3.10.5",
-    "pyqt6>=6.10.2",
-    "pytest>=8.4.1",
-    "pytest-cov>=6.2.1",
-    "pyyaml>=6.0.2",
-    "ruff>=0.12.9",
-]
-docs = [
-    "sphinx>=8.2.3",
-    "sphinx-rtd-theme>=3.0.2",
-    "myst-parser>=4.0.1",
-    "sphinx-autodoc-typehints>=2.6.1",
+dependencies = [
+    "cosmocore",
+    "tqdm>=4.67.1",
 ]
 
-[tool.uv]
-package = false  # Don't treat the root directory as a package
+[tool.uv.sources]
+cosmocore = { workspace = true }
 
-[tool.uv.workspace]
-members = [
-    "src/cosmoforge.cosmocore",
-    "src/cosmoforge.picslike",
-    "src/cosmoforge.qube",
-    "src/cosmoforge.meta",
+[build-system]
+requires = ["setuptools>=64", "setuptools_scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = [
+    "qube",
+    "tests",
 ]
+
+[tool.setuptools.package-data]
+"tests" = ["data/**/*"]
 
 [tool.ruff.lint]
 select = ["E713", "E703", "E714", "E741", "E10", "E11", "E20", "E22", "E23", "E25", "E262", "E27", "E301", "E302", "E304", "E9", "F405", "F406", "F5", "F6", "F7", "F8", "E501", "W191", "F401", "W1", "W292", "W293", "W3"]
@@ -42,7 +34,7 @@ extend-select = ["I"]
 ignore = []
 
 [tool.ruff.lint.isort]
-known-first-party = ["qube", "cosmocore", "cosmoforge", "picslike"]
+known-first-party = ["qube", "cosmocore", "cosmoforge"]
 force-single-line = false
 
 [tool.ruff.lint.per-file-ignores]
@@ -59,15 +51,8 @@ line-ending = "auto"
 exclude = ["build", ".eggs"]
 line-length = 90
 
-[tool.pytest.ini_options]
-pythonpath = ["."]
-addopts = ["--import-mode=importlib", "-m", "not slow"]
-markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-]
-
 [tool.coverage.run]
-source = ["src/"]
+source = ["qube/"]
 omit = [
     "*/tests/*",
     "*/test_*",
@@ -89,8 +74,8 @@ exclude_lines = [
     "raise AssertionError",
     "raise NotImplementedError",
     "raise ValueError",
-    "raise FileNotFoundError",
     "raise TypeError",
+    "except np.linalg.LinAlgError",
     "if __name__ == .__main__.:",
     "if TYPE_CHECKING:",
     "self.log",
@@ -103,3 +88,4 @@ directory = "htmlcov"
 
 [tool.coverage.xml]
 output = "coverage.xml"
+

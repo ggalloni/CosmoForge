@@ -173,7 +173,7 @@ theoretical_spectra:
 PICSLike seamlessly integrates with other CosmoForge packages:
 
 - **cosmocore**: Provides base functionality and field management
-- **quelo**: Can be used for complementary QML power spectrum analysis
+- **qube**: Can be used for complementary QML power spectrum analysis
 - **meta**: Provides workflow management and configuration utilities
 
 ## Testing

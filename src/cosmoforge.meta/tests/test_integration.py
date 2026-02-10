@@ -13,15 +13,15 @@ def test_import_cosmocore():
         pytest.fail(f"Failed to import cosmocore: {e}")
 
 
-def test_import_quelo():
-    """Test that quelo can be imported successfully."""
+def test_import_qube():
+    """Test that qube can be imported successfully."""
     try:
-        import quelo
+        import qube
 
         # Check for main classes
-        assert hasattr(quelo, "Fisher") or hasattr(quelo, "Spectra")
+        assert hasattr(qube, "Fisher") or hasattr(qube, "Spectra")
     except ImportError as e:
-        pytest.fail(f"Failed to import quelo: {e}")
+        pytest.fail(f"Failed to import qube: {e}")
 
 
 def test_import_picslike():
@@ -40,15 +40,15 @@ def test_workspace_integration():
     try:
         import cosmocore
         import picslike
-        import quelo
+        import qube
 
         # Test that packages are properly installed
         assert cosmocore is not None
-        assert quelo is not None
+        assert qube is not None
         assert picslike is not None
 
         # Test that we can access main functionality
-        assert hasattr(quelo, "Fisher")
+        assert hasattr(qube, "Fisher")
         assert hasattr(picslike, "PICSLike")
 
     except Exception as e:

@@ -23,9 +23,9 @@ flag_management:
         - type: project
           target: 90%
           threshold: 1%
-    - name: quelo
+    - name: qube
       paths:
-        - src/cosmoforge.quelo/
+        - src/cosmoforge.qube/
       carryforward: true
       statuses:
         - type: project

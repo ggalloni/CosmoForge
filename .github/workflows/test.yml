@@ -18,12 +18,12 @@ jobs:
     outputs:
       affected-packages: ${{ steps.changes.outputs.affected-packages }}
       test-cosmocore: ${{ steps.changes.outputs.test-cosmocore }}
-      test-quelo: ${{ steps.changes.outputs.test-quelo }}
+      test-qube: ${{ steps.changes.outputs.test-qube }}
       test-picslike: ${{ steps.changes.outputs.test-picslike }}
       test-meta: ${{ steps.changes.outputs.test-meta }}
       test-all: ${{ steps.changes.outputs.test-all }}
       cosmocore-strategy: ${{ steps.changes.outputs.cosmocore-strategy }}
-      quelo-strategy: ${{ steps.changes.outputs.quelo-strategy }}
+      qube-strategy: ${{ steps.changes.outputs.qube-strategy }}
       picslike-strategy: ${{ steps.changes.outputs.picslike-strategy }}
       meta-strategy: ${{ steps.changes.outputs.meta-strategy }}
       strategy: ${{ steps.changes.outputs.strategy }}
@@ -55,18 +55,18 @@ jobs:
           if echo "$output" | grep -q "TEST_ALL="; then
             echo "test-all=true" >> $GITHUB_OUTPUT
             echo "test-cosmocore=true" >> $GITHUB_OUTPUT
-            echo "test-quelo=true" >> $GITHUB_OUTPUT
+            echo "test-qube=true" >> $GITHUB_OUTPUT
             echo "test-picslike=true" >> $GITHUB_OUTPUT
             echo "test-meta=true" >> $GITHUB_OUTPUT
 
             # Parse individual strategies even in TEST_ALL case
             cosmocore_strategy=$(echo "$output" | grep "TEST_COSMOCORE=" | cut -d'=' -f2)
-            quelo_strategy=$(echo "$output" | grep "TEST_QUELO=" | cut -d'=' -f2)
+            qube_strategy=$(echo "$output" | grep "TEST_QUBE=" | cut -d'=' -f2)
             picslike_strategy=$(echo "$output" | grep "TEST_PICSLIKE=" | cut -d'=' -f2)
             meta_strategy=$(echo "$output" | grep "TEST_META=" | cut -d'=' -f2)
 
             echo "cosmocore-strategy=$cosmocore_strategy" >> $GITHUB_OUTPUT
-            echo "quelo-strategy=$quelo_strategy" >> $GITHUB_OUTPUT
+            echo "qube-strategy=$qube_strategy" >> $GITHUB_OUTPUT
             echo "picslike-strategy=$picslike_strategy" >> $GITHUB_OUTPUT
             echo "meta-strategy=$meta_strategy" >> $GITHUB_OUTPUT
           else
@@ -82,13 +82,13 @@ jobs:
               echo "cosmocore-strategy=none" >> $GITHUB_OUTPUT
             fi
             
-            quelo_strategy=$(echo "$output" | grep "TEST_QUELO=" | cut -d'=' -f2)
-            if [[ -n "$quelo_strategy" && "$quelo_strategy" != "none" ]]; then
-              echo "test-quelo=true" >> $GITHUB_OUTPUT
-              echo "quelo-strategy=$quelo_strategy" >> $GITHUB_OUTPUT
+            qube_strategy=$(echo "$output" | grep "TEST_QUBE=" | cut -d'=' -f2)
+            if [[ -n "$qube_strategy" && "$qube_strategy" != "none" ]]; then
+              echo "test-qube=true" >> $GITHUB_OUTPUT
+              echo "qube-strategy=$qube_strategy" >> $GITHUB_OUTPUT
             else
-              echo "test-quelo=false" >> $GITHUB_OUTPUT
-              echo "quelo-strategy=none" >> $GITHUB_OUTPUT
+              echo "test-qube=false" >> $GITHUB_OUTPUT
+              echo "qube-strategy=none" >> $GITHUB_OUTPUT
             fi
 
             picslike_strategy=$(echo "$output" | grep "TEST_PICSLIKE=" | cut -d'=' -f2)
@@ -160,18 +160,18 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: ggalloni/CosmoForge
 
-  test-quelo:
-    name: Test Quelo
+  test-qube:
+    name: Test QUBE
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: detect-changes
-    if: needs.detect-changes.outputs.test-quelo == 'true'
+    if: needs.detect-changes.outputs.test-qube == 'true'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Install MPI
-        if: contains(needs.detect-changes.outputs.quelo-strategy, 'test')
+        if: contains(needs.detect-changes.outputs.qube-strategy, 'test')
         run: |
           sudo apt-get update
           sudo apt-get install -y libopenmpi-dev openmpi-bin
@@ -190,22 +190,22 @@ jobs:
 
       - name: Run linting
         run: |
-          uv run ruff check src/cosmoforge.quelo/
-          uv run ruff format --check src/cosmoforge.quelo/
+          uv run ruff check src/cosmoforge.qube/
+          uv run ruff format --check src/cosmoforge.qube/
 
       - name: Run tests
-        if: contains(needs.detect-changes.outputs.quelo-strategy, 'test')
-        working-directory: src/cosmoforge.quelo
+        if: contains(needs.detect-changes.outputs.qube-strategy, 'test')
+        working-directory: src/cosmoforge.qube
         run: |
-          uv run pytest tests/ -v --cov=quelo --cov-report=xml
+          uv run pytest tests/ -v --cov=qube --cov-report=xml
 
       - name: Upload coverage to Codecov
-        if: contains(needs.detect-changes.outputs.quelo-strategy, 'test')
+        if: contains(needs.detect-changes.outputs.qube-strategy, 'test')
         uses: codecov/codecov-action@v4
         with:
-          file: src/cosmoforge.quelo/coverage.xml
-          flags: quelo
-          name: quelo-coverage
+          file: src/cosmoforge.qube/coverage.xml
+          flags: qube
+          name: qube-coverage
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: ggalloni/CosmoForge
@@ -303,7 +303,7 @@ jobs:
     name: Test Summary
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [detect-changes, test-cosmocore, test-quelo, test-picslike, test-meta]
+    needs: [detect-changes, test-cosmocore, test-qube, test-picslike, test-meta]
     if: always()
     steps:
       - name: Print test strategy
@@ -315,7 +315,7 @@ jobs:
           echo ""
           echo "## Test Results"
           echo "- CosmoCore: ${{ needs.test-cosmocore.result }} (strategy: ${{ needs.detect-changes.outputs.cosmocore-strategy }})"
-          echo "- Quelo: ${{ needs.test-quelo.result }} (strategy: ${{ needs.detect-changes.outputs.quelo-strategy }})"
+          echo "- QUBE: ${{ needs.test-qube.result }} (strategy: ${{ needs.detect-changes.outputs.qube-strategy }})"
           echo "- PICSLike: ${{ needs.test-picslike.result }} (strategy: ${{ needs.detect-changes.outputs.picslike-strategy }})"
           echo "- Meta: ${{ needs.test-meta.result }} (strategy: ${{ needs.detect-changes.outputs.meta-strategy }})"
           echo ""
@@ -323,8 +323,8 @@ jobs:
           if [[ "${{ needs.detect-changes.outputs.test-cosmocore }}" == "false" ]]; then
             echo "- CosmoCore: No changes detected, coverage preserved from previous runs"
           fi
-          if [[ "${{ needs.detect-changes.outputs.test-quelo }}" == "false" ]]; then
-            echo "- Quelo: No changes detected, coverage preserved from previous runs"
+          if [[ "${{ needs.detect-changes.outputs.test-qube }}" == "false" ]]; then
+            echo "- QUBE: No changes detected, coverage preserved from previous runs"
           fi
           if [[ "${{ needs.detect-changes.outputs.test-picslike }}" == "false" ]]; then
             echo "- PICSLike: No changes detected, coverage preserved from previous runs"
@@ -334,7 +334,7 @@ jobs:
       - name: Check if all tests passed
         run: |
           if [[ "${{ needs.test-cosmocore.result }}" == "failure" ]] || \
-             [[ "${{ needs.test-quelo.result }}" == "failure" ]] || \
+             [[ "${{ needs.test-qube.result }}" == "failure" ]] || \
              [[ "${{ needs.test-picslike.result }}" == "failure" ]] || \
              [[ "${{ needs.test-meta.result }}" == "failure" ]]; then
             echo "❌ Some tests failed"
