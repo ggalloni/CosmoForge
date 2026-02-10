@@ -29,6 +29,7 @@ Core Modules
    :maxdepth: 1
 
    cosmocore/basics
+   cosmocore/compression
    cosmocore/core
    cosmocore/fields
    cosmocore/harmonic

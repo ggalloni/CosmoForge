@@ -8,6 +8,7 @@ This directory contains detailed documentation for the CosmoForge.cosmocore pack
    :caption: Core Modules
 
    basics
+   compression
    core
    fields
    harmonic
