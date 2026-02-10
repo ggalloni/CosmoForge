@@ -415,6 +415,62 @@ def test_inv_fisher_sqrt_computation(local_path, config_resolver):
     )
 
 
+@pytest.mark.parametrize("fields", ["T", "QU"])
+def test_chi_squared_equivalence(fields, local_path, config_resolver):
+    """Chi-squared must be identical across all three normalization modes.
+
+    Since deconvolved, decorrelated, and convolved are invertible linear
+    transformations of the same raw QML estimates, chi-squared is invariant:
+      deconvolved:  (Ĉ - C_th)^T  F'      (Ĉ - C_th)
+      convolved:    (y' - W C_th)^T F'^{-1} (y' - W C_th)
+      decorrelated: ||q - F'^{1/2} C_th||^2
+    """
+    qml_analyzer = _get_qml_analyzer(fields, config_resolver)
+
+    # Retrieve data in all three modes
+    cl_deconv = qml_analyzer.get_power_spectra(mode="deconvolved")
+    cl_decorr = qml_analyzer.get_power_spectra(mode="decorrelated")
+    y, W, convolve = qml_analyzer.get_power_spectra(mode="convolved")
+
+    # Covariance matrices (no inversion needed for chi2, see below)
+    cov_deconv = qml_analyzer.get_covariance(mode="deconvolved")  # F'^{-1}
+    cov_conv = qml_analyzer.get_covariance(mode="convolved")  # F'
+
+    # Arbitrary non-zero theory spectrum
+    nell = cl_deconv.shape[1]
+    cl_theory = np.ones(nell)
+
+    # F'^{1/2} C_theory for decorrelated mode (using F^{1/2} = F^{-1/2} @ F')
+    inv_fisher_sqrt = qml_analyzer.inv_fisher_sqrt
+    theory_decorr = inv_fisher_sqrt @ cov_conv @ cl_theory
+
+    for i in range(cl_deconv.shape[0]):
+        # Deconvolved: precision matrix = (F'^{-1})^{-1} = F' = cov_conv
+        r_d = cl_deconv[i] - cl_theory
+        chi2_deconv = r_d @ cov_conv @ r_d
+
+        # Convolved: precision matrix = (F')^{-1} = F'^{-1} = cov_deconv
+        r_c = y[i] - convolve(cl_theory)
+        chi2_conv = r_c @ cov_deconv @ r_c
+
+        # Decorrelated: precision matrix = I (just squared norm)
+        r_q = cl_decorr[i] - theory_decorr
+        chi2_decorr = r_q @ r_q
+
+        np.testing.assert_allclose(
+            chi2_deconv,
+            chi2_conv,
+            rtol=1e-10,
+            err_msg=f"Deconvolved and convolved chi2 differ (sim {i})",
+        )
+        np.testing.assert_allclose(
+            chi2_deconv,
+            chi2_decorr,
+            rtol=1e-10,
+            err_msg=f"Deconvolved and decorrelated chi2 differ (sim {i})",
+        )
+
+
 @pytest.mark.parametrize("fields", ["T"])
 def test_write_power_spectra_deconvolved(fields, local_path, config_resolver, tmp_path):
     """Test write_power_spectra for deconvolved mode."""
