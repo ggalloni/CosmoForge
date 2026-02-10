@@ -48,6 +48,7 @@ References
 from __future__ import annotations
 
 import time
+import typing
 
 import numpy as np
 from mpi4py import MPI
@@ -229,6 +230,12 @@ class Spectra(Core):
         self.qml_results = None
         self.qml_noise_bias = None
         self.invfisher = None
+
+        # Normalization mode support
+        self.inv_fisher_sqrt: np.ndarray | None = None  # F^(-1/2) for decorrelated mode
+        self.fisher_normalized: np.ndarray | None = (
+            None  # Normalized Fisher (for convolved covariance)
+        )
 
         # lmax for signal matrix computation (matches Fortran convention of 4*nside)
         self._lmax_signal = None
@@ -457,6 +464,12 @@ class Spectra(Core):
                 self.normalization, self.normalization
             )
 
+            # Store normalized Fisher matrix for convolved mode covariance
+            self.fisher_normalized = self.invfisher.copy()
+
+            # Compute F^(-1/2) for decorrelated mode
+            self._compute_inv_fisher_sqrt(self.invfisher)
+
             # Invert Fisher matrix
             self.log("Inverting normalized Fisher matrix", level=2)
             start_time = time.time()
@@ -480,6 +493,85 @@ class Spectra(Core):
             error_bars = np.zeros((n_ell, nspectra), dtype=np.float64)
             vec_to_cl(vec_error_bars, error_bars)
             writecl(self.params.outerrfile, error_bars)
+
+    def _compute_inv_fisher_sqrt(self, fisher: np.ndarray) -> None:
+        """
+        Compute F^(-1/2) using eigendecomposition for decorrelated mode.
+
+        This method computes the matrix square root of the inverse Fisher matrix
+        using eigendecomposition: F = V Λ V^T → F^(-1/2) = V Λ^(-1/2) V^T.
+        This is used for the "decorrelated" normalization mode which produces
+        uncorrelated bandpower estimates.
+
+        Parameters
+        ----------
+        fisher : numpy.ndarray
+            Normalized Fisher information matrix of shape (nell, nell).
+            Must be symmetric positive semi-definite.
+
+        Notes
+        -----
+        The computation uses eigendecomposition for numerical stability:
+
+        1. Decompose: F = V Λ V^T where V are eigenvectors, Λ are eigenvalues
+        2. Compute inverse square root of eigenvalues: Λ^(-1/2)
+        3. Reconstruct: F^(-1/2) = V @ diag(Λ^(-1/2)) @ V^T
+
+        **Ill-conditioning handling:**
+        - Eigenvalues below 10^(-12) × max eigenvalue are set to zero
+        - A warning is logged if condition number exceeds 10^10
+        - This truncation prevents numerical instability from near-zero modes
+
+        The resulting F^(-1/2) matrix is stored in self.inv_fisher_sqrt and
+        used by the decorrelated mode to produce estimates with identity
+        covariance matrix.
+
+        Examples
+        --------
+        This method is called automatically during setup_fisher_inversion():
+
+        >>> spectra = Spectra("config.yaml")
+        >>> spectra.run()
+        >>> # inv_fisher_sqrt is now available for decorrelated mode
+        >>> cl_decorr = spectra.get_power_spectra(mode="decorrelated")
+
+        See Also
+        --------
+        get_power_spectra : Uses inv_fisher_sqrt for 'decorrelated' mode
+        setup_fisher_inversion : Calls this method during setup
+        """
+        eigenvalues, eigenvectors = np.linalg.eigh(fisher)
+
+        # Check conditioning
+        min_eigenvalue = (
+            eigenvalues[eigenvalues > 0].min() if np.any(eigenvalues > 0) else 1e-300
+        )
+        max_eigenvalue = eigenvalues.max()
+        cond = max_eigenvalue / min_eigenvalue if min_eigenvalue > 0 else np.inf
+
+        if cond > 1e10:
+            self.log(
+                f"Warning: Fisher matrix poorly conditioned (cond={cond:.2e}). "
+                "Decorrelated mode may have inflated errors.",
+                level=1,
+            )
+
+        # Compute Λ^(-1/2), handling small eigenvalues
+        inv_sqrt_eigenvalues = np.zeros_like(eigenvalues)
+        threshold = max_eigenvalue * 1e-12
+        valid = eigenvalues > threshold
+        inv_sqrt_eigenvalues[valid] = 1.0 / np.sqrt(eigenvalues[valid])
+
+        # F^(-1/2) = V @ diag(Λ^(-1/2)) @ V^T
+        self.inv_fisher_sqrt = (
+            eigenvectors @ np.diag(inv_sqrt_eigenvalues) @ eigenvectors.T
+        )
+
+        self.log(
+            f"Computed F^(-1/2) for decorrelated mode "
+            f"({np.sum(valid)}/{len(eigenvalues)} modes valid)",
+            level=3,
+        )
 
     def setup_qml_computation(self):
         """
@@ -1026,6 +1118,14 @@ class Spectra(Core):
             self.normalization if self.rank == 0 else None, root=0
         )
 
+        # Broadcast normalization mode support matrices
+        self.inv_fisher_sqrt = self.comm.bcast(
+            self.inv_fisher_sqrt if self.rank == 0 else None, root=0
+        )
+        self.fisher_normalized = self.comm.bcast(
+            self.fisher_normalized if self.rank == 0 else None, root=0
+        )
+
     def _normalize_spectra(self, spectra: np.ndarray) -> np.ndarray:
         """
         Apply Fisher matrix normalization to raw QML estimates.
@@ -1063,21 +1163,189 @@ class Spectra(Core):
 
         return normalized_spectra
 
-    def get_power_spectra(self) -> np.ndarray | None:
+    def get_power_spectra(
+        self, mode: str = "deconvolved"
+    ) -> np.ndarray | tuple[np.ndarray, np.ndarray, typing.Callable] | None:
         """
-        Retrieve final normalized QML power spectrum estimates.
+        Retrieve power spectrum estimates in specified normalization mode.
+
+        This method returns power spectrum estimates with three different
+        normalization prescriptions, allowing users to choose the output format
+        best suited to their analysis needs.
+
+        Parameters
+        ----------
+        mode : str, optional
+            Normalization mode for output (default: "deconvolved"):
+
+            - "deconvolved": F⁻¹y - estimates of true C_ℓ with correlated errors.
+              This is the standard QML output that attempts to recover the true
+              underlying spectrum by inverting the window function.
+
+            - "decorrelated": F⁻¹/²y - uncorrelated bandpower estimates with
+              identity covariance matrix. Useful when independent error bars
+              are needed.
+
+            - "convolved": Raw y estimates with window matrix W for theory
+              comparison. Instead of deconvolving the window, compare with
+              window-convolved theory: <y> = W @ C_true.
 
         Returns
         -------
-        np.ndarray or None
-            Shape (n_sims, n_params) where n_params = n_spectra * (lmax-1).
-            Parameters ordered by spectrum type, multipoles nested within.
-            Returns None for worker processes or if computation incomplete.
+        numpy.ndarray or tuple or None
+            For "deconvolved" or "decorrelated" modes:
+                Array of shape (n_simulations, n_parameters) containing
+                normalized power spectrum estimates.
+
+            For "convolved" mode:
+                Tuple of (y, W, convolve_theory_func) where:
+                - y: Raw estimates array of shape (n_simulations, n_parameters)
+                - W: Window matrix of shape (n_parameters, n_parameters)
+                - convolve_theory_func: Callable that applies W @ theory
+
+            Returns None for worker processes (rank != 0) or if computation
+            has not completed.
+
+        Raises
+        ------
+        ValueError
+            If mode is not one of "deconvolved", "decorrelated", "convolved".
+
+        Notes
+        -----
+        **Mode Comparison:**
+
+        | Mode | Formula | Covariance | Use Case |
+        |------|---------|------------|----------|
+        | deconvolved | F⁻¹y | F⁻¹ (correlated) | Standard analysis |
+        | decorrelated | F⁻¹/²y | I (identity) | Independent errors |
+        | convolved | y | F | Theory comparison |
+
+        **Deconvolved Mode (default):**
+        The standard QML output that inverts the window function to recover
+        estimates of the true C_ℓ. Errors are correlated between multipoles.
+
+        **Decorrelated Mode:**
+        Produces bandpower estimates with uncorrelated errors (unit variance).
+        Useful for plotting error bars or when independent measurements are
+        required. Note that information content is preserved but redistributed.
+
+        **Convolved Mode:**
+        Returns raw QML estimates without deconvolution, along with the window
+        matrix for comparing with convolved theoretical spectra. This avoids
+        numerical issues from inverting poorly-conditioned window matrices.
+
+        Examples
+        --------
+        Default (deconvolved) mode - backwards compatible:
+
+        >>> spectra = Spectra("config.yaml")
+        >>> spectra.run()
+        >>> cl_deconv = spectra.get_power_spectra()  # Default mode
+
+        Decorrelated bandpowers:
+
+        >>> cl_decorr = spectra.get_power_spectra(mode="decorrelated")
+        >>> # Errors are all 1.0 by construction
+
+        Convolved mode for theory comparison:
+
+        >>> y, W, convolve = spectra.get_power_spectra(mode="convolved")
+        >>> cl_theory_convolved = convolve(cl_theory)
+        >>> # Compare: y should match cl_theory_convolved
+
+        See Also
+        --------
+        get_covariance : Get covariance matrix for specified mode
+        get_error_bars : Get 1-sigma error bars for specified mode
+        convolve_theory : Apply window matrix to theoretical spectrum
         """
-        if self.rank == 0 and self.qml_results is not None:
-            power_spectra = self._normalize_spectra(self.qml_results)
-            return power_spectra
-        return None
+        valid_modes = ("deconvolved", "decorrelated", "convolved")
+        if mode not in valid_modes:
+            raise ValueError(f"mode must be one of {valid_modes}, got '{mode}'")
+
+        if self.rank != 0 or self.qml_results is None:
+            return None
+
+        if mode == "deconvolved":
+            return self._get_deconvolved()
+        elif mode == "decorrelated":
+            return self._get_decorrelated()
+        else:  # convolved
+            return self._get_convolved()
+
+    def _get_deconvolved(self) -> np.ndarray:
+        """
+        Compute deconvolved power spectrum estimates (F⁻¹y).
+
+        This is the standard QML output that multiplies raw estimates by the
+        inverse Fisher matrix to recover estimates of the true C_ℓ.
+
+        Returns
+        -------
+        numpy.ndarray
+            Deconvolved power spectrum estimates with shape (nsims, nell).
+        """
+        return self._normalize_spectra(self.qml_results)
+
+    def _get_decorrelated(self) -> np.ndarray:
+        """
+        Compute decorrelated bandpower estimates (F⁻¹/²y).
+
+        Produces uncorrelated estimates with identity covariance matrix.
+
+        Returns
+        -------
+        numpy.ndarray
+            Decorrelated power spectrum estimates with shape (nsims, nell).
+
+        Raises
+        ------
+        ValueError
+            If F^(-1/2) was not computed (e.g., due to ill-conditioning).
+        """
+        if self.inv_fisher_sqrt is None:
+            raise ValueError(
+                "F^(-1/2) not computed. Check Fisher matrix conditioning or "
+                "ensure setup_fisher_inversion() was called."
+            )
+
+        # Vectorized: broadcast normalization and apply matrix multiplication
+        decorrelated = (self.qml_results * self.normalization) @ self.inv_fisher_sqrt
+
+        return decorrelated
+
+    def _get_convolved(self) -> tuple[np.ndarray, np.ndarray, typing.Callable]:
+        """
+        Get raw QML estimates with window matrix for theory comparison.
+
+        Returns raw y estimates along with the window matrix W, allowing
+        comparison with window-convolved theoretical spectra.
+
+        Returns
+        -------
+        tuple
+            (y, W, convolve_theory_func) where:
+            - y: Raw normalized estimates, shape (nsims, nell)
+            - W: Window matrix, shape (nell, nell)
+            - convolve_theory_func: Callable to apply W @ theory
+        """
+        # Raw estimates multiplied by normalization
+        y = self.qml_results * self.normalization
+
+        # Window matrix from Fisher instance
+        W = self.fisher_instance.get_window_matrix()
+        if W is None:
+            raise ValueError("Window matrix not available from Fisher instance.")
+
+        # Apply normalization to window matrix to match y units
+        W_normalized = W * np.outer(self.normalization, self.normalization)
+
+        def convolve_theory(cl_theory: np.ndarray) -> np.ndarray:
+            """Apply window matrix to theoretical power spectrum."""
+            return W_normalized @ cl_theory
+
+        return (y, W_normalized, convolve_theory)
 
     def get_noise_bias(self) -> np.ndarray | None:
         """
@@ -1097,3 +1365,355 @@ class Spectra(Core):
             noise_bias = self._normalize_spectra(self.qml_noise_bias)
             return noise_bias
         return None
+
+    def get_covariance(self, mode: str = "deconvolved") -> np.ndarray | None:
+        """
+        Get covariance matrix for power spectrum estimates in specified mode.
+
+        Returns the covariance matrix appropriate for the normalization mode,
+        which quantifies the statistical uncertainties and correlations between
+        different multipole estimates.
+
+        Parameters
+        ----------
+        mode : str, optional
+            Normalization mode (default: "deconvolved"):
+
+            - "deconvolved": Returns F⁻¹, the inverse Fisher matrix with
+              correlated errors between multipoles.
+
+            - "decorrelated": Returns identity matrix I, as decorrelated
+              estimates have unit variance by construction.
+
+            - "convolved": Returns F, the normalized Fisher matrix, which
+              is the covariance of raw y estimates.
+
+        Returns
+        -------
+        numpy.ndarray or None
+            Covariance matrix of shape (nell, nell). Returns None for worker
+            processes (rank != 0) or if matrices are not available.
+
+        Raises
+        ------
+        ValueError
+            If mode is not one of "deconvolved", "decorrelated", "convolved".
+
+        Notes
+        -----
+        **Mode-specific covariances:**
+
+        | Mode | Covariance | Interpretation |
+        |------|------------|----------------|
+        | deconvolved | F⁻¹ | Correlated errors on C_ℓ estimates |
+        | decorrelated | I | Unit variance (uncorrelated) |
+        | convolved | F | Covariance of raw y estimates |
+
+        The covariance matrix is essential for:
+        - Computing chi-square statistics
+        - Parameter estimation from power spectra
+        - Constructing likelihood functions
+        - Understanding multipole correlations
+
+        Examples
+        --------
+        Get covariance for chi-square computation:
+
+        >>> cov = spectra.get_covariance(mode="deconvolved")
+        >>> cl_data = spectra.get_power_spectra(mode="deconvolved")
+        >>> residuals = np.mean(cl_data, axis=0) - cl_theory
+        >>> chi2 = residuals @ np.linalg.inv(cov) @ residuals
+
+        Decorrelated mode has identity covariance:
+
+        >>> cov_decorr = spectra.get_covariance(mode="decorrelated")
+        >>> # cov_decorr is identity matrix
+
+        See Also
+        --------
+        get_power_spectra : Get power spectrum estimates
+        get_error_bars : Get 1-sigma error bars (sqrt of diagonal)
+        """
+        valid_modes = ("deconvolved", "decorrelated", "convolved")
+        if mode not in valid_modes:
+            raise ValueError(f"mode must be one of {valid_modes}, got '{mode}'")
+
+        if self.rank != 0:
+            return None
+
+        if mode == "deconvolved":
+            if self.invfisher is None:
+                return None
+            return self.invfisher.copy()
+        elif mode == "decorrelated":
+            if self.invfisher is None:
+                return None
+            nell = self.invfisher.shape[0]
+            return np.eye(nell)
+        else:  # convolved
+            if self.fisher_normalized is None:
+                return None
+            return self.fisher_normalized.copy()
+
+    def get_error_bars(self, mode: str = "deconvolved") -> np.ndarray | None:
+        """
+        Get 1-sigma error bars for power spectrum estimates.
+
+        Returns the marginal standard deviations for each multipole estimate,
+        computed from the diagonal of the covariance matrix.
+
+        Parameters
+        ----------
+        mode : str, optional
+            Normalization mode (default: "deconvolved"):
+
+            - "deconvolved": sqrt(diag(F⁻¹)) - standard QML errors
+            - "decorrelated": all ones (unit variance by construction)
+            - "convolved": sqrt(diag(F)) - errors on raw y estimates
+
+        Returns
+        -------
+        numpy.ndarray or None
+            1D array of error bars with shape (nell,). Returns None for
+            worker processes (rank != 0) or if covariance not available.
+
+        Raises
+        ------
+        ValueError
+            If mode is not one of "deconvolved", "decorrelated", "convolved".
+
+        Notes
+        -----
+        The error bars are computed as:
+        σ_i = sqrt(Cov_ii)
+
+        where Cov is the mode-appropriate covariance matrix. These represent
+        marginal uncertainties on individual estimates, marginalized over all
+        other multipoles.
+
+        **Important:** For deconvolved and convolved modes, errors are
+        correlated between multipoles. The full covariance matrix (from
+        get_covariance) should be used for proper statistical analysis.
+
+        For decorrelated mode, error bars are all 1.0 by construction,
+        making them suitable for simple error bar plots.
+
+        Examples
+        --------
+        Get error bars for plotting:
+
+        >>> errors = spectra.get_error_bars(mode="deconvolved")
+        >>> cl = np.mean(spectra.get_power_spectra(), axis=0)
+        >>> plt.errorbar(ell, cl, yerr=errors)
+
+        Decorrelated mode has unit errors:
+
+        >>> errors_decorr = spectra.get_error_bars(mode="decorrelated")
+        >>> # All elements are 1.0
+
+        See Also
+        --------
+        get_covariance : Get full covariance matrix
+        get_power_spectra : Get power spectrum estimates
+        """
+        cov = self.get_covariance(mode)
+        if cov is None:
+            return None
+        return np.sqrt(np.diag(cov))
+
+    def convolve_theory(self, cl_theory: np.ndarray) -> np.ndarray | None:
+        """
+        Apply window matrix to theoretical power spectrum.
+
+        Convolves a theoretical power spectrum with the QML window matrix,
+        producing the expected value of the raw QML estimates y for that
+        theory: <y> = W @ C_theory.
+
+        Parameters
+        ----------
+        cl_theory : numpy.ndarray
+            Theoretical power spectrum values. Should be a 1D array with
+            shape (nell,) matching the QML output dimensions.
+
+        Returns
+        -------
+        numpy.ndarray or None
+            Window-convolved theoretical spectrum with shape (nell,).
+            Returns None if window matrix is not available.
+
+        Notes
+        -----
+        This method is useful for comparing QML estimates with theoretical
+        predictions when using the "convolved" normalization mode. Instead
+        of deconvolving the window function from the data (which can be
+        numerically unstable), the window is applied to the theory.
+
+        The relationship is:
+        <y> = W @ C_true
+
+        where y are the raw QML estimates and W is the window matrix.
+
+        Examples
+        --------
+        Compare convolved estimates with theory:
+
+        >>> y, W, _ = spectra.get_power_spectra(mode="convolved")
+        >>> cl_theory_convolved = spectra.convolve_theory(cl_theory)
+        >>> residuals = np.mean(y, axis=0) - cl_theory_convolved
+
+        See Also
+        --------
+        get_power_spectra : Get power spectra (convolved mode returns window)
+        """
+        if self.rank != 0:
+            return None
+
+        W = self.fisher_instance.get_window_matrix()
+        if W is None:
+            return None
+
+        # Apply normalization to window matrix
+        W_normalized = W * np.outer(self.normalization, self.normalization)
+        return W_normalized @ cl_theory
+
+    def write_power_spectra(
+        self,
+        mode: str = "deconvolved",
+        filename: str | None = None,
+        include_errors: bool = True,
+    ) -> None:
+        """
+        Write power spectra to file in specified normalization mode.
+
+        Outputs power spectrum estimates and optionally error bars to text
+        files. For convolved mode, also writes the window matrix.
+
+        Parameters
+        ----------
+        mode : str, optional
+            Normalization mode (default: "deconvolved"):
+            "deconvolved", "decorrelated", or "convolved".
+        filename : str or None, optional
+            Output filename. If None, auto-generates based on mode:
+            "{outclfile_base}_{mode}.{ext}"
+        include_errors : bool, optional
+            If True, writes error bars to a separate file (default: True).
+            For convolved mode, this parameter is ignored.
+
+        Notes
+        -----
+        **File outputs by mode:**
+
+        - deconvolved/decorrelated: Writes mean spectrum across simulations
+          and optionally error bars from diagonal of covariance.
+
+        - convolved: Writes mean raw y estimates and the window matrix W
+          to separate files (filename and filename_window).
+
+        Files are only written on the master process (rank 0).
+
+        Examples
+        --------
+        Write all modes:
+
+        >>> spectra.write_power_spectra(mode="deconvolved")
+        >>> spectra.write_power_spectra(mode="decorrelated")
+        >>> spectra.write_power_spectra(mode="convolved")
+
+        Custom filename:
+
+        >>> spectra.write_power_spectra(
+        ...     mode="deconvolved",
+        ...     filename="my_results.dat"
+        ... )
+
+        See Also
+        --------
+        get_power_spectra : Get power spectrum estimates
+        get_error_bars : Get 1-sigma error bars
+        """
+        if self.rank != 0:
+            return
+
+        valid_modes = ("deconvolved", "decorrelated", "convolved")
+        if mode not in valid_modes:
+            raise ValueError(f"mode must be one of {valid_modes}, got '{mode}'")
+
+        # Generate default filename
+        if filename is None:
+            if hasattr(self.params, "outclfile") and self.params.outclfile:
+                parts = self.params.outclfile.rsplit(".", 1)
+                base = parts[0]
+                ext = parts[1] if len(parts) > 1 else "dat"
+                filename = f"{base}_{mode}.{ext}"
+            else:
+                filename = f"spectra_{mode}.dat"
+
+        if mode == "convolved":
+            self._write_convolved(filename)
+        else:
+            spectra = self.get_power_spectra(mode=mode)
+            if spectra is None:
+                self.log(f"Cannot write {mode} spectra: not available", level=1)
+                return
+
+            mean_spectra = np.mean(spectra, axis=0)
+
+            # Convert to Cl format and write
+            n_ell = self.params.lmax - 1
+            nspectra = len(mean_spectra) // n_ell
+            cl_array = np.zeros((n_ell, nspectra), dtype=np.float64)
+            vec_to_cl(mean_spectra, cl_array)
+            writecl(filename, cl_array)
+            self.log(f"Wrote {mode} power spectra to {filename}", level=2)
+
+            if include_errors:
+                errors = self.get_error_bars(mode=mode)
+                if errors is not None:
+                    error_filename = filename.rsplit(".", 1)
+                    error_filename = (
+                        f"{error_filename[0]}_errors.{error_filename[1]}"
+                        if len(error_filename) > 1
+                        else f"{filename}_errors"
+                    )
+                    error_array = np.zeros((n_ell, nspectra), dtype=np.float64)
+                    vec_to_cl(errors, error_array)
+                    writecl(error_filename, error_array)
+                    self.log(f"Wrote {mode} error bars to {error_filename}", level=2)
+
+    def _write_convolved(self, filename: str) -> None:
+        """
+        Write convolved mode outputs: y vector and window matrix.
+
+        Parameters
+        ----------
+        filename : str
+            Base filename for outputs.
+        """
+        result = self.get_power_spectra(mode="convolved")
+        if result is None:
+            self.log("Cannot write convolved spectra: not available", level=1)
+            return
+
+        y, W, _ = result
+        mean_y = np.mean(y, axis=0)
+
+        # Write y vector
+        np.savetxt(
+            filename,
+            mean_y,
+            header="Raw QML estimates (y vector, mean across simulations)",
+        )
+        self.log(f"Wrote convolved y vector to {filename}", level=2)
+
+        # Write window matrix
+        parts = filename.rsplit(".", 1)
+        window_filename = (
+            f"{parts[0]}_window.{parts[1]}" if len(parts) > 1 else f"{filename}_window"
+        )
+        np.savetxt(
+            window_filename,
+            W,
+            header="Window matrix W: <y> = W @ C_true",
+        )
+        self.log(f"Wrote window matrix to {window_filename}", level=2)

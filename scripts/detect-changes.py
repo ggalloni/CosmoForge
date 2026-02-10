@@ -151,10 +151,28 @@ def determine_test_strategy(
         "meta": ["cosmocore", "quelo", "picslike"],  # Depends on all
     }
 
-    # If root files changed, test everything
+    # Critical root files that trigger full test suite
+    # Other root files (like .gitignore, README.md) don't affect tests
+    critical_root_patterns = [
+        "pyproject.toml",
+        "uv.lock",
+        ".github/workflows/",
+        "scripts/detect-changes.py",
+    ]
+
+    # Check if any critical root files changed
     if "root" in affected_packages:
-        test_strategy["all"] = ["lint", "test"]
-        return test_strategy
+        root_files = affected_packages["root"]
+        has_critical_changes = any(
+            any(
+                f.endswith(pattern) or f.startswith(pattern.rstrip("/"))
+                for pattern in critical_root_patterns
+            )
+            for f in root_files
+        )
+        if has_critical_changes:
+            test_strategy["all"] = ["lint", "test"]
+            return test_strategy
 
     # For each affected package, determine what to test
     packages_to_test = set()

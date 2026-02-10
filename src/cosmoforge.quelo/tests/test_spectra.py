@@ -15,6 +15,7 @@ from quelo import Fisher, Spectra
 _fisher_cache: dict[str, Fisher] = {}
 _spectra_cache: dict[str, tuple[np.ndarray, np.ndarray]] = {}
 _compressed_cache: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+_analyzer_cache: dict[str, Spectra] = {}
 
 
 def _get_fisher(fields: str, config_resolver, config_type: str = "config") -> Fisher:
@@ -42,6 +43,19 @@ def _get_spectra(
         os.unlink(config_file)
         _spectra_cache[key] = (qml.get_power_spectra(), qml.get_noise_bias())
     return _spectra_cache[key]
+
+
+def _get_qml_analyzer(fields: str, config_resolver) -> Spectra:
+    """Get or create a cached Spectra (QML analyzer) instance."""
+    key = fields
+    if key not in _analyzer_cache:
+        fisher = _get_fisher(fields, config_resolver)
+        config_file = config_resolver(f"tests/data/nside4/{fields}/config.yaml")
+        qml = Spectra(config_file, fisher=fisher)
+        qml.run()
+        os.unlink(config_file)
+        _analyzer_cache[key] = qml
+    return _analyzer_cache[key]
 
 
 def _get_compressed_spectra(
@@ -255,6 +269,323 @@ def test_pixel_projected_spectra_degradation(local_path, config_resolver):
                 f"PixelProjected noise bias diff "
                 f"({np.max(nb_diff) * 100:.1f}%) exceeds 100%"
             )
+
+
+@pytest.mark.parametrize("fields", ["T", "QU"])
+def test_normalization_modes(fields, local_path, config_resolver):
+    """Test the three normalization modes for QML power spectra."""
+    qml_analyzer = _get_qml_analyzer(fields, config_resolver)
+
+    # Test deconvolved mode (default, backwards compatible)
+    cl_deconv = qml_analyzer.get_power_spectra(mode="deconvolved")
+    cl_default = qml_analyzer.get_power_spectra()  # Should be same as deconvolved
+
+    assert cl_deconv is not None, "Deconvolved mode should return results"
+    assert cl_default is not None, "Default mode should return results"
+    np.testing.assert_array_equal(
+        cl_deconv, cl_default, err_msg="Default mode should equal deconvolved mode"
+    )
+
+    # Test decorrelated mode
+    cl_decorr = qml_analyzer.get_power_spectra(mode="decorrelated")
+    assert cl_decorr is not None, "Decorrelated mode should return results"
+    assert cl_decorr.shape == cl_deconv.shape, "Decorrelated shape should match"
+
+    # Test convolved mode
+    result = qml_analyzer.get_power_spectra(mode="convolved")
+    assert result is not None, "Convolved mode should return results"
+    assert isinstance(result, tuple), "Convolved mode should return tuple"
+    assert len(result) == 3, "Convolved tuple should have 3 elements"
+
+    y, W, convolve_func = result
+    assert y is not None, "Convolved y should not be None"
+    assert W is not None, "Window matrix should not be None"
+    assert callable(convolve_func), "convolve_func should be callable"
+
+    # Test that window matrix is square
+    nell = cl_deconv.shape[1]
+    assert W.shape == (nell, nell), f"Window matrix should be ({nell}, {nell})"
+
+    # Test invalid mode
+    with pytest.raises(ValueError, match="mode must be one of"):
+        qml_analyzer.get_power_spectra(mode="invalid_mode")
+
+
+@pytest.mark.parametrize("fields", ["T", "QU"])
+def test_covariance_methods(fields, local_path, config_resolver):
+    """Test get_covariance and get_error_bars methods."""
+    qml_analyzer = _get_qml_analyzer(fields, config_resolver)
+
+    # Get nell from power spectra shape
+    cl = qml_analyzer.get_power_spectra()
+    nell = cl.shape[1]
+
+    # Test deconvolved covariance (should be F^-1)
+    cov_deconv = qml_analyzer.get_covariance(mode="deconvolved")
+    assert cov_deconv is not None, "Deconvolved covariance should not be None"
+    assert cov_deconv.shape == (nell, nell), "Covariance should be (nell, nell)"
+
+    # Test decorrelated covariance (should be identity)
+    cov_decorr = qml_analyzer.get_covariance(mode="decorrelated")
+    assert cov_decorr is not None, "Decorrelated covariance should not be None"
+    np.testing.assert_allclose(
+        cov_decorr,
+        np.eye(nell),
+        atol=1e-10,
+        err_msg="Decorrelated covariance should be identity",
+    )
+
+    # Test convolved covariance (should be Fisher)
+    cov_conv = qml_analyzer.get_covariance(mode="convolved")
+    assert cov_conv is not None, "Convolved covariance should not be None"
+    assert cov_conv.shape == (nell, nell), "Convolved covariance should be (nell, nell)"
+
+    # Test error bars
+    errors_deconv = qml_analyzer.get_error_bars(mode="deconvolved")
+    assert errors_deconv is not None, "Deconvolved errors should not be None"
+    assert errors_deconv.shape == (nell,), "Errors should be 1D array"
+    np.testing.assert_array_equal(
+        errors_deconv,
+        np.sqrt(np.diag(cov_deconv)),
+        err_msg="Errors should be sqrt of diagonal",
+    )
+
+    # Decorrelated errors should all be 1.0
+    errors_decorr = qml_analyzer.get_error_bars(mode="decorrelated")
+    np.testing.assert_allclose(
+        errors_decorr,
+        np.ones(nell),
+        atol=1e-10,
+        err_msg="Decorrelated errors should all be 1.0",
+    )
+
+    # Test invalid mode
+    with pytest.raises(ValueError, match="mode must be one of"):
+        qml_analyzer.get_covariance(mode="invalid_mode")
+
+
+def test_convolve_theory(local_path, config_resolver):
+    """Test the convolve_theory helper method."""
+    fields = "T"
+    qml_analyzer = _get_qml_analyzer(fields, config_resolver)
+
+    # Create a mock theory spectrum
+    cl = qml_analyzer.get_power_spectra()
+    nell = cl.shape[1]
+    theory = np.ones(nell)  # Simple test theory
+
+    # Test convolve_theory
+    convolved = qml_analyzer.convolve_theory(theory)
+    assert convolved is not None, "convolve_theory should return result"
+    assert convolved.shape == (nell,), "Convolved theory should have shape (nell,)"
+
+    # Compare with convolved mode's helper
+    _, W, convolve_func = qml_analyzer.get_power_spectra(mode="convolved")
+    convolved_via_func = convolve_func(theory)
+
+    np.testing.assert_allclose(
+        convolved,
+        convolved_via_func,
+        atol=1e-10,
+        err_msg="convolve_theory should match convolved mode's helper",
+    )
+
+
+def test_inv_fisher_sqrt_computation(local_path, config_resolver):
+    """Test that F^(-1/2) is computed correctly."""
+    fields = "T"
+    qml_analyzer = _get_qml_analyzer(fields, config_resolver)
+
+    # Check that inv_fisher_sqrt exists
+    assert qml_analyzer.inv_fisher_sqrt is not None, "inv_fisher_sqrt should be computed"
+
+    # F^(-1/2) @ F^(-1/2) should equal F^(-1)
+    # Note: This is only approximate due to eigenvalue truncation
+    F_inv_sqrt = qml_analyzer.inv_fisher_sqrt
+    F_inv_reconstructed = F_inv_sqrt @ F_inv_sqrt
+    F_inv_actual = qml_analyzer.invfisher
+
+    # Check that they're close (allowing for numerical precision)
+    np.testing.assert_allclose(
+        F_inv_reconstructed,
+        F_inv_actual,
+        rtol=1e-5,
+        atol=1e-10,
+        err_msg="F^(-1/2) @ F^(-1/2) should approximate F^(-1)",
+    )
+
+
+@pytest.mark.parametrize("fields", ["T", "QU"])
+def test_chi_squared_equivalence(fields, local_path, config_resolver):
+    """Chi-squared must be identical across all three normalization modes.
+
+    Since deconvolved, decorrelated, and convolved are invertible linear
+    transformations of the same raw QML estimates, chi-squared is invariant:
+      deconvolved:  (Ĉ - C_th)^T  F'      (Ĉ - C_th)
+      convolved:    (y' - W C_th)^T F'^{-1} (y' - W C_th)
+      decorrelated: ||q - F'^{1/2} C_th||^2
+    """
+    qml_analyzer = _get_qml_analyzer(fields, config_resolver)
+
+    # Retrieve data in all three modes
+    cl_deconv = qml_analyzer.get_power_spectra(mode="deconvolved")
+    cl_decorr = qml_analyzer.get_power_spectra(mode="decorrelated")
+    y, W, convolve = qml_analyzer.get_power_spectra(mode="convolved")
+
+    # Covariance matrices (no inversion needed for chi2, see below)
+    cov_deconv = qml_analyzer.get_covariance(mode="deconvolved")  # F'^{-1}
+    cov_conv = qml_analyzer.get_covariance(mode="convolved")  # F'
+
+    # Arbitrary non-zero theory spectrum
+    nell = cl_deconv.shape[1]
+    cl_theory = np.ones(nell)
+
+    # F'^{1/2} C_theory for decorrelated mode (using F^{1/2} = F^{-1/2} @ F')
+    inv_fisher_sqrt = qml_analyzer.inv_fisher_sqrt
+    theory_decorr = inv_fisher_sqrt @ cov_conv @ cl_theory
+
+    for i in range(cl_deconv.shape[0]):
+        # Deconvolved: precision matrix = (F'^{-1})^{-1} = F' = cov_conv
+        r_d = cl_deconv[i] - cl_theory
+        chi2_deconv = r_d @ cov_conv @ r_d
+
+        # Convolved: precision matrix = (F')^{-1} = F'^{-1} = cov_deconv
+        r_c = y[i] - convolve(cl_theory)
+        chi2_conv = r_c @ cov_deconv @ r_c
+
+        # Decorrelated: precision matrix = I (just squared norm)
+        r_q = cl_decorr[i] - theory_decorr
+        chi2_decorr = r_q @ r_q
+
+        np.testing.assert_allclose(
+            chi2_deconv,
+            chi2_conv,
+            rtol=1e-10,
+            err_msg=f"Deconvolved and convolved chi2 differ (sim {i})",
+        )
+        np.testing.assert_allclose(
+            chi2_deconv,
+            chi2_decorr,
+            rtol=1e-10,
+            err_msg=f"Deconvolved and decorrelated chi2 differ (sim {i})",
+        )
+
+
+@pytest.mark.parametrize("fields", ["T"])
+def test_write_power_spectra_deconvolved(fields, local_path, config_resolver, tmp_path):
+    """Test write_power_spectra for deconvolved mode."""
+    qml_analyzer = _get_qml_analyzer(fields, config_resolver)
+
+    # Test with custom filename
+    output_file = tmp_path / "test_deconvolved.dat"
+    qml_analyzer.write_power_spectra(mode="deconvolved", filename=str(output_file))
+
+    assert output_file.exists(), "Deconvolved spectra file should be created"
+
+    # Check error file was also created
+    error_file = tmp_path / "test_deconvolved_errors.dat"
+    assert error_file.exists(), "Error bars file should be created"
+
+    # Verify file contents are valid
+    spectra_data = np.loadtxt(output_file)
+    assert spectra_data.size > 0, "Spectra file should contain data"
+
+    error_data = np.loadtxt(error_file)
+    assert error_data.size > 0, "Error file should contain data"
+
+
+@pytest.mark.parametrize("fields", ["T"])
+def test_write_power_spectra_no_errors(fields, local_path, config_resolver, tmp_path):
+    """Test write_power_spectra with include_errors=False."""
+    qml_analyzer = _get_qml_analyzer(fields, config_resolver)
+
+    output_file = tmp_path / "test_no_errors.dat"
+    qml_analyzer.write_power_spectra(
+        mode="deconvolved", filename=str(output_file), include_errors=False
+    )
+
+    assert output_file.exists(), "Spectra file should be created"
+
+    # Error file should NOT be created
+    error_file = tmp_path / "test_no_errors_errors.dat"
+    assert not error_file.exists(), "Error file should not be created when disabled"
+
+
+@pytest.mark.parametrize("fields", ["T"])
+def test_write_power_spectra_decorrelated(fields, local_path, config_resolver, tmp_path):
+    """Test write_power_spectra for decorrelated mode."""
+    qml_analyzer = _get_qml_analyzer(fields, config_resolver)
+
+    output_file = tmp_path / "test_decorrelated.dat"
+    qml_analyzer.write_power_spectra(mode="decorrelated", filename=str(output_file))
+
+    assert output_file.exists(), "Decorrelated spectra file should be created"
+
+    spectra_data = np.loadtxt(output_file)
+    assert spectra_data.size > 0, "Spectra file should contain data"
+
+
+@pytest.mark.parametrize("fields", ["T"])
+def test_write_power_spectra_convolved(fields, local_path, config_resolver, tmp_path):
+    """Test write_power_spectra for convolved mode."""
+    qml_analyzer = _get_qml_analyzer(fields, config_resolver)
+
+    output_file = tmp_path / "test_convolved.dat"
+    qml_analyzer.write_power_spectra(mode="convolved", filename=str(output_file))
+
+    # Check y vector file
+    assert output_file.exists(), "Convolved y vector file should be created"
+    y_data = np.loadtxt(output_file)
+    assert y_data.size > 0, "Y vector file should contain data"
+
+    # Check window matrix file
+    window_file = tmp_path / "test_convolved_window.dat"
+    assert window_file.exists(), "Window matrix file should be created"
+    W_data = np.loadtxt(window_file)
+    assert W_data.ndim == 2, "Window matrix should be 2D"
+    assert W_data.shape[0] == W_data.shape[1], "Window matrix should be square"
+
+
+@pytest.mark.parametrize("fields", ["T"])
+def test_write_power_spectra_auto_filename(fields, local_path, config_resolver, tmp_path):
+    """Test write_power_spectra auto-generates filename based on mode."""
+    qml_analyzer = _get_qml_analyzer(fields, config_resolver)
+
+    # Set outclfile to use tmp_path (not a default param, so we add it)
+    qml_analyzer.params.outclfile = str(tmp_path / "output_spectra.dat")
+
+    qml_analyzer.write_power_spectra(mode="deconvolved")
+    expected_file = tmp_path / "output_spectra_deconvolved.dat"
+    assert expected_file.exists(), "Auto-generated filename should work"
+
+
+@pytest.mark.parametrize("fields", ["T"])
+def test_write_power_spectra_fallback_filename(
+    fields, local_path, config_resolver, tmp_path, monkeypatch
+):
+    """Test write_power_spectra falls back to default filename when outclfile not set."""
+    qml_analyzer = _get_qml_analyzer(fields, config_resolver)
+
+    # Ensure outclfile is not set (use delattr if it exists)
+    if hasattr(qml_analyzer.params, "outclfile"):
+        delattr(qml_analyzer.params, "outclfile")
+
+    # Change to tmp_path so file is created there
+    monkeypatch.chdir(tmp_path)
+
+    qml_analyzer.write_power_spectra(mode="deconvolved")
+    expected_file = tmp_path / "spectra_deconvolved.dat"
+    assert expected_file.exists(), "Fallback filename should be spectra_{mode}.dat"
+
+
+@pytest.mark.parametrize("fields", ["T"])
+def test_write_power_spectra_invalid_mode(fields, local_path, config_resolver, tmp_path):
+    """Test write_power_spectra raises error for invalid mode."""
+    qml_analyzer = _get_qml_analyzer(fields, config_resolver)
+
+    output_file = tmp_path / "test_invalid.dat"
+    with pytest.raises(ValueError, match="mode must be one of"):
+        qml_analyzer.write_power_spectra(mode="invalid_mode", filename=str(output_file))
 
 
 # =============================================================================

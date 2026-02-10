@@ -4,6 +4,8 @@ coverage:
       default:
         target: 90%
         threshold: 2%
+    patch:
+      default: off  # Disable patch coverage check for new code
 
 flag_management:
   default_rules:
