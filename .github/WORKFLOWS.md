@@ -24,7 +24,7 @@ This is the comprehensive testing workflow that:
 **Jobs:**
 - **detect-changes**: Analyzes git diff to determine affected packages
 - **test-cosmocore**: Tests the cosmocore package (if affected)
-- **test-quelo**: Tests the quelo package (if affected)  
+- **test-qube**: Tests the qube package (if affected)  
 - **test-meta**: Tests the meta package (if affected)
 - **integration-tests**: Runs cross-package integration tests (if multiple packages affected)
 - **summary**: Provides a summary of all test results
@@ -53,21 +53,21 @@ python scripts/detect-changes.py develop
 🔍 Detecting changes in CosmoForge workspace...
 📁 Found 3 changed files:
    src/cosmoforge.cosmocore/cosmocore/core.py
-   src/cosmoforge.quelo/quelo/fisher.py
+   src/cosmoforge.qube/qube/fisher.py
    tests/test_integration.py
 
 📦 Affected packages:
    cosmocore: 1 files
-   quelo: 1 files
+   qube: 1 files
 
 🧪 Test strategy:
    cosmocore: lint, test, build
-   quelo: lint, test, build
+   qube: lint, test, build
 
 # Test Strategy Output (for CI/CD)
-AFFECTED_PACKAGES=cosmocore,quelo
+AFFECTED_PACKAGES=cosmocore,qube
 TEST_COSMOCORE=lint,test,build
-TEST_QUELO=lint,test,build
+TEST_QUBE=lint,test,build
 ```
 
 ### Test Runner Script (`scripts/test-runner.sh`)
@@ -80,7 +80,7 @@ Comprehensive local testing script with multiple options.
 
 # Test specific package
 ./scripts/test-runner.sh cosmocore
-./scripts/test-runner.sh quelo lint
+./scripts/test-runner.sh qube lint
 ./scripts/test-runner.sh meta test
 
 # Test all packages
@@ -99,13 +99,13 @@ The workflow understands package dependencies:
 
 ```
 cosmocore (base package)
-├── quelo (depends on cosmocore)
-└── meta (depends on cosmocore and quelo)
+├── qube (depends on cosmocore)
+└── meta (depends on cosmocore and qube)
 ```
 
 **Change Impact:**
-- Changes to `cosmocore` → Test `cosmocore`, `quelo`, and `meta`
-- Changes to `quelo` → Test `quelo` and `meta`
+- Changes to `cosmocore` → Test `cosmocore`, `qube`, and `meta`
+- Changes to `qube` → Test `qube` and `meta`
 - Changes to `meta` → Test `meta` only
 - Changes to root files (pyproject.toml, etc.) → Test all packages
 
@@ -158,7 +158,7 @@ Each package can run different types of tests based on what changed:
 ./scripts/test-runner.sh cosmocore all
 
 # Quick lint check
-./scripts/test-runner.sh quelo lint
+./scripts/test-runner.sh qube lint
 
 # Run tests for changed packages only
 ./scripts/test-runner.sh changes
@@ -186,7 +186,7 @@ You can customize the workflow by modifying:
 The workflows provide several outputs for downstream use:
 
 - `affected-packages`: Comma-separated list of changed packages
-- `test-cosmocore`, `test-quelo`, `test-meta`: Boolean flags
+- `test-cosmocore`, `test-qube`, `test-meta`: Boolean flags
 - `test-all`: Boolean flag for root changes
 - `strategy`: Detailed test strategy description
 

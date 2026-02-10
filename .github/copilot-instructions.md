@@ -5,7 +5,7 @@
 CosmoForge is a comprehensive Python framework for cosmological analysis, organized as a monorepo with three main packages:
 
 - **cosmocore**: Core mathematical and computational utilities for cosmological calculations
-- **quelo**: Quadratic Maximum Likelihood (QML) estimation tools for power spectra analysis
+- **qube**: Quadratic Maximum Likelihood (QML) estimation tools for power spectra analysis
 - **meta**: Project metadata, configuration management, and shared utilities
 
 ## Code Style and Standards
@@ -52,7 +52,7 @@ src/
 │   │   ├── pixel.py          # Pixel-space operations
 │   │   ├── settings.py       # Configuration and settings
 │   │   └── ...
-├── cosmoforge.quelo/         # QML estimation tools
+├── cosmoforge.qube/          # QML estimation tools
 ├── cosmoforge.meta/          # Meta-package and workflows
 ```
 
