@@ -375,7 +375,7 @@ from cosmoforge.meta import setup_package_environment
 def initialize_package():
     # Setup package environment
     env = setup_package_environment(
-        package_name="quelo",
+        package_name="qube",
         logging_level="INFO"
     )
     

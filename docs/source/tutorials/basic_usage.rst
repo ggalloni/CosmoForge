@@ -9,7 +9,7 @@ Overview
 CosmoForge is designed around three main packages:
 
 1. **CosmoCore**: Provides the mathematical foundation
-2. **Quelo**: Implements analysis algorithms  
+2. **QUBE**: Implements analysis algorithms
 3. **Meta**: Handles metadata and utilities
 
 Working with CosmoCore

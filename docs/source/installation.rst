@@ -1,7 +1,7 @@
 Installation
 ============
 
-CosmoForge is organized as a namespace package with three main subpackages that can be 
+CosmoForge is organized as a namespace package with three main subpackages that can be
 installed independently or together.
 
 Requirements
@@ -39,7 +39,7 @@ Install the entire CosmoForge framework:
    cd CosmoForge
    pip install -e .
 
-This installs all subpackages: cosmocore, quelo, and meta.
+This installs all subpackages: cosmocore, qube, and meta.
 
 Individual Package Installation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -51,9 +51,9 @@ Install specific subpackages as needed:
    # Install only CosmoCore
    cd CosmoForge/src/cosmoforge.cosmocore
    pip install -e .
-   
-   # Install only Quelo  
-   cd CosmoForge/src/cosmoforge.quelo
+
+   # Install only QUBE
+   cd CosmoForge/src/cosmoforge.qube
    pip install -e .
    
    # Install only Meta
@@ -84,13 +84,13 @@ Verify your installation:
    from cosmoforge.cosmocore.cosmocore.settings import InputParams
    params = InputParams()
    print(f"CosmoCore installed! nside={params.nside}")
-   
-   # Test Quelo (if installed)
+
+   # Test QUBE (if installed)
    try:
-       from cosmoforge.quelo import Fisher
-       print("Quelo installed successfully!")
+       from cosmoforge.qube import Fisher
+       print("QUBE installed successfully!")
    except ImportError:
-       print("Quelo not installed")
+       print("QUBE not installed")
    
    # Test Meta (if installed)
    try:

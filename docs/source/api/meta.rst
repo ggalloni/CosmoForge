@@ -10,7 +10,7 @@ Overview
 
 The Meta package is a meta-package that:
 
-* **Dependency Management**: Automatically installs cosmocore and quelo packages
+* **Dependency Management**: Automatically installs cosmocore and qube packages
 * **Unified Installation**: Provides single-command installation of entire framework
 * **Version Coordination**: Ensures compatible versions across all CosmoForge components
 * **Project Organization**: Maintains project-wide metadata and documentation
@@ -27,7 +27,7 @@ Instead of installing packages individually:
 
    # Without meta package
    pip install cosmocore
-   pip install quelo
+   pip install qube
 
 Users can install everything at once:
 
@@ -42,7 +42,7 @@ Dependency Coordination
 The meta package ensures that:
 
 * Compatible versions of all components are installed together
-* Dependencies between cosmocore and quelo are properly resolved
+* Dependencies between cosmocore and qube are properly resolved
 * Future CosmoForge packages are automatically included
 
 Project Structure
@@ -58,7 +58,7 @@ The meta package coordinates the following CosmoForge components:
      - Description
    * - :doc:`cosmocore`
      - Core mathematical and computational infrastructure
-   * - :doc:`quelo`
+   * - :doc:`qube`
      - Fisher matrix and QML power spectrum estimation
 
 Installation
@@ -79,7 +79,7 @@ To install the complete CosmoForge framework:
 This will automatically install:
 
 * ``cosmoforge.cosmocore`` - Core functionality
-* ``cosmoforge.quelo`` - Analysis engines
+* ``cosmoforge.qube`` - Analysis engines
 * All required dependencies (numpy, scipy, healpy, etc.)
 
 Usage
@@ -91,10 +91,10 @@ After installation, import and use any CosmoForge component:
 
    # Import from cosmocore
    from cosmoforge.cosmocore import Core, InputParams
-   
-   # Import from quelo
-   from cosmoforge.quelo import Fisher, Spectra
-   
+
+   # Import from qube
+   from cosmoforge.qube import Fisher, Spectra
+
    # Use the full framework
    params = InputParams("config.yaml")
    fisher = Fisher(params)
@@ -134,13 +134,13 @@ Dependencies
 The meta package automatically installs:
 
 * **cosmoforge.cosmocore**: Core computational framework
-* **cosmoforge.quelo**: Fisher matrix and QML estimation
+* **cosmoforge.qube**: Fisher matrix and QML estimation
 * **Python >= 3.11**: Minimum Python version requirement
 
 See Also
 --------
 
-* :doc:`cosmocore` : Core mathematical and computational infrastructure  
-* :doc:`quelo` : Fisher matrix and QML power spectrum estimation
+* :doc:`cosmocore` : Core mathematical and computational infrastructure
+* :doc:`qube` : Fisher matrix and QML power spectrum estimation
 * :doc:`../installation` : Detailed installation instructions
 * :doc:`../quickstart` : Getting started guide

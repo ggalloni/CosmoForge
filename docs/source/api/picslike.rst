@@ -237,7 +237,7 @@ Integration with CosmoForge
 PICSLike seamlessly integrates with other CosmoForge packages:
 
 - **cosmocore**: Provides base functionality, field management, and mathematical utilities
-- **quelo**: Complementary QML power spectrum analysis for comparison
+- **qube**: Complementary QML power spectrum analysis for comparison
 - **meta**: Workflow management and configuration utilities
 
 References

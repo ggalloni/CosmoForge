@@ -9,8 +9,8 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 <p align="center">
-  <img src="logos/logo_cosmoforge_light.png#gh-light-mode-only" alt="CosmoForge logo (light)" style="max-width:40%; height:auto;"/>
-  <img src="logos/logo_cosmoforge_dark.png#gh-dark-mode-only" alt="CosmoForge logo (dark)" style="max-width:40%; height:auto;"/>
+  <img src="logos/logo_cosmoforge_light.png#gh-light-mode-only" alt="CosmoForge logo (light)" style="max-width:30%; height:auto;"/>
+  <img src="logos/logo_cosmoforge_dark.png#gh-dark-mode-only" alt="CosmoForge logo (dark)" style="max-width:30%; height:auto;"/>
 </p>
 
 > **📚 [Complete Documentation](https://ggalloni.github.io/CosmoForge/) | [Installation Guide](https://ggalloni.github.io/CosmoForge/installation.html) | [Quick Start](https://ggalloni.github.io/CosmoForge/quickstart.html) | [API Reference](https://ggalloni.github.io/CosmoForge/api/cosmocore.html)**
@@ -22,7 +22,7 @@ CosmoForge is a comprehensive Python framework for cosmological analysis, focusi
 CosmoForge consists of several interconnected packages designed for efficient and accurate cosmological parameter estimation:
 
 - **cosmocore**: Core functionality for cosmological analysis including field management, matrix operations, and I/O utilities
-- **quelo**: QML and Fisher matrix implementations for power spectrum estimation
+- **qube**: QML and Fisher matrix implementations for power spectrum estimation
 - **picslike**: Pixel-based likelihood analysis for parameter estimation
 - **meta**: Metadata and utilities package
 
@@ -65,7 +65,7 @@ pip install -e .
 ### Fisher Matrix Analysis
 
 ```python
-from quelo import Fisher
+from qube import Fisher
 
 # Initialize Fisher analysis
 fisher = Fisher("config/fisher_config.yaml")
@@ -78,7 +78,7 @@ fisher_matrix = fisher.get_fisher_matrix()
 ### QML Power Spectrum Estimation
 
 ```python
-from quelo import Spectra
+from qube import Spectra
 
 # Initialize QML analysis
 qml = Spectra("config/qml_config.yaml")
@@ -106,7 +106,7 @@ best_fit = picslike.get_best_fit()
 ### Using with Precomputed Fisher
 
 ```python
-from quelo import Fisher, Spectra
+from qube import Fisher, Spectra
 
 # Compute Fisher matrix first
 fisher = Fisher("config/fisher_config.yaml")
@@ -123,7 +123,7 @@ qml.run()
 CosmoForge/
 ├── src/
 │   ├── cosmoforge.cosmocore/    # Core functionality
-│   ├── cosmoforge.quelo/        # QML and Fisher analysis
+│   ├── cosmoforge.qube/         # QML and Fisher analysis
 │   ├── cosmoforge.picslike/     # Pixel-based likelihood
 │   └── cosmoforge.meta/         # Metadata package
 ├── tests/                       # Test suite
@@ -155,7 +155,7 @@ uv run pytest
 
 # Run specific package tests
 uv run --package cosmocore pytest src/cosmoforge.cosmocore/tests/
-uv run --package quelo pytest src/cosmoforge.quelo/tests/
+uv run --package qube pytest src/cosmoforge.qube/tests/
 uv run --package picslike pytest src/cosmoforge.picslike/tests/
 ```
 

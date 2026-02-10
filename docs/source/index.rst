@@ -16,7 +16,7 @@ Architecture
 CosmoForge is organized as a namespace package containing four main subpackages:
 
 * **cosmoforge.cosmocore**: Core functionality for cosmological analysis including field management, matrix operations, and mathematical utilities
-* **cosmoforge.quelo**: QML and Fisher matrix implementations for power spectrum estimation
+* **cosmoforge.qube**: QML and Fisher matrix implementations for power spectrum estimation
 * **cosmoforge.picslike**: Pixel-based likelihood analysis for parameter estimation
 * **cosmoforge.meta**: Metadata and utilities package for project-wide configuration
 
@@ -37,7 +37,7 @@ Quick Start
 .. code-block:: python
 
    # Fisher Matrix Analysis
-   from quelo import Fisher
+   from qube import Fisher
    fisher = Fisher(params_file="config/fisher_config.yaml")
    fisher.run()
 
@@ -67,7 +67,7 @@ Contents
    :caption: API Reference:
 
    api/cosmocore
-   api/quelo
+   api/qube
    api/picslike
    api/meta
 
