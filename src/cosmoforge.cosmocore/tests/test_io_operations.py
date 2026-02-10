@@ -174,7 +174,7 @@ def test_read_maps_simple_healpix_format():
     import os
 
     # Use the fortran reference map which is a standard HEALPix file
-    mapfile = "src/cosmoforge.quelo/tests/data/nside8/B/fortran_reference/map.fits"
+    mapfile = "src/cosmoforge.qube/tests/data/nside8/B/fortran_reference/map.fits"
     if not os.path.exists(mapfile):
         import pytest
 

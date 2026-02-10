@@ -85,7 +85,7 @@ def map_files_to_packages(changed_files: List[str]) -> Dict[str, Set[str]]:
     """Map changed files to affected packages."""
     package_mapping = {
         "cosmocore": "src/cosmoforge.cosmocore/",
-        "quelo": "src/cosmoforge.quelo/",
+        "qube": "src/cosmoforge.qube/",
         "picslike": "src/cosmoforge.picslike/",
         "meta": "src/cosmoforge.meta/",
         "root": ["pyproject.toml", "uv.lock", "README.md", ".github/", "scripts/"],
@@ -146,9 +146,9 @@ def determine_test_strategy(
     # Package dependencies (packages that depend on others)
     dependencies = {
         "cosmocore": [],  # Base package
-        "quelo": ["cosmocore"],  # Depends on cosmocore
+        "qube": ["cosmocore"],  # Depends on cosmocore
         "picslike": ["cosmocore"],  # Depends on cosmocore
-        "meta": ["cosmocore", "quelo", "picslike"],  # Depends on all
+        "meta": ["cosmocore", "qube", "picslike"],  # Depends on all
     }
 
     # Critical root files that trigger full test suite
@@ -272,7 +272,7 @@ def main():
     # for workflow parsing
     if "all" in test_strategy:
         print("TEST_COSMOCORE=lint,test")
-        print("TEST_QUELO=lint,test")
+        print("TEST_QUBE=lint,test")
         print("TEST_PICSLIKE=lint,test")
         print("TEST_META=lint,test")
 

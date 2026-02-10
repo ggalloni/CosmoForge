@@ -1,4 +1,4 @@
-"""Test field management functionality extracted from quelo usage patterns."""
+"""Test field management functionality extracted from qube usage patterns."""
 
 import healpy as hp
 import numpy as np

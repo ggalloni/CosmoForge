@@ -2,7 +2,7 @@
 # Test runner script for CosmoForge packages
 # Usage: ./scripts/test-runner.sh [package_name] [test_type]
 #
-# package_name: cosmocore, quelo, meta, all
+# package_name: cosmocore, qube, meta, all
 # test_type: lint, test, build, all (default: all)
 
 set -e
@@ -136,7 +136,7 @@ test_changes() {
     if echo "$output" | grep -q "TEST_ALL="; then
         print_status "Root files changed, testing all packages..."
         test_package "cosmocore" "all"
-        test_package "quelo" "all" 
+        test_package "qube" "all" 
         test_package "meta" "all"
     else
         # Test individual packages
@@ -144,8 +144,8 @@ test_changes() {
             test_package "cosmocore" "all"
         fi
         
-        if echo "$output" | grep -q "TEST_QUELO="; then
-            test_package "quelo" "all"
+        if echo "$output" | grep -q "TEST_QUBE="; then
+            test_package "qube" "all"
         fi
         
         if echo "$output" | grep -q "TEST_META="; then
@@ -172,13 +172,13 @@ main() {
         "changes")
             test_changes
             ;;
-        "cosmocore"|"quelo"|"meta")
+        "cosmocore"|"qube"|"meta")
             test_package "$package" "$test_type"
             ;;
         "all")
             print_status "Testing all packages..."
             test_package "cosmocore" "$test_type"
-            test_package "quelo" "$test_type"
+            test_package "qube" "$test_type"
             test_package "meta" "$test_type"
             ;;
         *)
@@ -187,7 +187,7 @@ main() {
             echo "package_name:"
             echo "  changes    - Detect changes and test affected packages (default)"
             echo "  cosmocore  - Test only cosmocore package"
-            echo "  quelo      - Test only quelo package"
+            echo "  qube      - Test only qube package"
             echo "  meta       - Test only meta package"
             echo "  all        - Test all packages"
             echo ""

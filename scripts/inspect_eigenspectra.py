@@ -1,7 +1,7 @@
 """
 Inspect per-field eigenspectra for the nside=4 TQU test configuration.
 
-Uses the same data as the quelo TQU Fisher test (nside=4, lmax=8,
+Uses the same data as the qube TQU Fisher test (nside=4, lmax=8,
 spins=[0,2]) to produce:
   1. Per-field eigenvalue spectra (with E/B overlay for the spin-2 field)
   2. Per-field basis comparison (harmonic vs noise_weighted)
@@ -18,12 +18,12 @@ import yaml
 from cosmocore.compression import PixelProjectedCompression
 
 
-def _resolve_config(config_path, quelo_root):
-    """Resolve relative paths in a config file (same logic as quelo conftest)."""
-    with open(os.path.join(quelo_root, config_path)) as f:
+def _resolve_config(config_path, qube_root):
+    """Resolve relative paths in a config file (same logic as qube conftest)."""
+    with open(os.path.join(qube_root, config_path)) as f:
         config = yaml.safe_load(f)
 
-    package_prefix = "src/cosmoforge.quelo/"
+    package_prefix = "src/cosmoforge.qube/"
     for key, value in config.items():
         if isinstance(value, str):
             clean = value[3:] if value.startswith("../") else value
@@ -44,20 +44,20 @@ def build_tqu_from_test():
     """
     Build a PixelProjectedCompression from the nside=4 TQU test data.
 
-    Runs the same pipeline as quelo's Fisher test: reads the real mask,
+    Runs the same pipeline as qube's Fisher test: reads the real mask,
     noise covariance, beams, and Cls from the test data directory.
     """
-    from quelo.fisher import Fisher
+    from qube.fisher import Fisher
 
-    quelo_root = os.path.join(
+    qube_root = os.path.join(
         os.path.dirname(__file__),
         "..",
         "src",
-        "cosmoforge.quelo",
+        "cosmoforge.qube",
     )
     config_file = _resolve_config(
         "tests/data/nside4/TQU/config.yaml",
-        quelo_root,
+        qube_root,
     )
 
     # Run the Fisher pipeline to get geometry + covariance
@@ -88,7 +88,7 @@ def main():
     import matplotlib.pyplot as plt
     import numpy as np
 
-    print("Building TQU setup (nside=4, lmax=8, from quelo test data)...")
+    print("Building TQU setup (nside=4, lmax=8, from qube test data)...")
     ppc = build_tqu_from_test()
 
     print(f"  n_pix = {ppc.n_pix}")

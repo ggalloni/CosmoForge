@@ -9,11 +9,11 @@ authors = [
 requires-python = ">=3.11,<3.14"
 dependencies = [
     "cosmocore",
-    "quelo",
+    "qube",
     "picslike",
 ]
 
 [tool.uv.sources]
-quelo = { workspace = true }
+qube = { workspace = true }
 cosmocore = { workspace = true }
 picslike = { workspace = true }
