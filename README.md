@@ -15,7 +15,7 @@
 
 > **📚 [Complete Documentation](https://ggalloni.github.io/CosmoForge/) | [Installation Guide](https://ggalloni.github.io/CosmoForge/installation.html) | [Quick Start](https://ggalloni.github.io/CosmoForge/quickstart.html) | [API Reference](https://ggalloni.github.io/CosmoForge/api/cosmocore.html)**
 
-CosmoForge is a comprehensive Python framework for cosmological analysis, focusing on Cosmic Microwave Background (CMB) data analysis using Fisher matrix and Quadratic Maximum Likelihood (QML) power spectrum estimation methods.
+CosmoForge is a comprehensive Python framework for power spectrum estimation and likelihood analysis of spin-0 and spin-2 fields on the sphere, using Fisher matrix, Quadratic Maximum Likelihood (QML), and pixel-based likelihood methods. While widely applicable to any sky signal (e.g. CMB, galaxy surveys, 21 cm), it is particularly optimized for the analysis of partial-sky, noisy observations with complex noise covariance.
 
 ## Overview
 
@@ -33,7 +33,7 @@ CosmoForge consists of several interconnected packages designed for efficient an
 - **Pixel-Based Likelihood**: Direct likelihood evaluation in map pixel space for parameter estimation
 - **MPI Parallelization**: Efficient parallel computation support for large-scale analyses
 - **HEALPix Integration**: Full support for HEALPix pixelization scheme
-- **Flexible Field Management**: Support for scalar (temperature) and tensor (polarization) fields
+- **Flexible Field Management**: Support for scalar (spin-0) and tensor (spin-2) fields
 - **Beam and Noise Modeling**: Comprehensive instrumental effects modeling
 
 ## Installation

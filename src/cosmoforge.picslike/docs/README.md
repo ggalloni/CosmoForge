@@ -2,7 +2,7 @@
 
 ## Overview
 
-PICSLike is a comprehensive Python package for pixel-based likelihood analysis in cosmological parameter estimation. It provides tools for computing the likelihood of observational cosmic microwave background (CMB) data given theoretical predictions in pixel space, offering an alternative approach to traditional harmonic-space methods.
+PICSLike is a comprehensive Python package for pixel-based likelihood analysis of spin-0 and spin-2 fields on the sphere. It provides tools for computing the likelihood of observational data given theoretical predictions directly in pixel space, offering an alternative approach to traditional harmonic-space methods. While applicable to any spherical field (e.g. CMB, galaxy surveys, 21 cm), it is especially suited for partial-sky analyses with complex noise properties.
 
 ## Key Features
 
