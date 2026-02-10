@@ -3,7 +3,8 @@ Fisher matrix computation for cosmological parameter estimation.
 
 This module implements the Fisher class for calculating Fisher information matrices
 used in cosmological parameter forecasting. The Fisher matrix provides the expected
-parameter constraints from CMB observations and is computed as:
+parameter constraints from observations of spin-0 and spin-2 fields on the sphere
+(e.g. CMB temperature and polarization, cosmic shear) and is computed as:
 
 F_ij = (1/2) * Tr[C^(-1) * ∂C/∂θ_i * C^(-1) * ∂C/∂θ_j]
 
@@ -53,8 +54,9 @@ class Fisher(Core):
     Fisher matrix computation for cosmological parameter estimation.
 
     This class implements the Fisher information matrix calculation for forecasting
-    cosmological parameter constraints from CMB observations. It inherits from
-    cosmocore.Core and extends it with Fisher-specific functionality.
+    cosmological parameter constraints from observations of spin-0 and spin-2 fields
+    on the sphere. It inherits from cosmocore.Core and extends it with
+    Fisher-specific functionality.
 
     The Fisher matrix F_ij quantifies the information content of the data about
     parameters θ_i and θ_j, computed as:

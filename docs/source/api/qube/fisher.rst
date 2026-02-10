@@ -11,8 +11,9 @@ with the broader CosmoForge analysis pipeline.
 Mathematical Background
 -----------------------
 
-The Fisher information matrix quantifies the information content of observations 
-about model parameters. For CMB observations, it is computed as:
+The Fisher information matrix quantifies the information content of observations
+about model parameters. For observations of Gaussian fields on the sphere, it is
+computed as:
 
 .. math::
 

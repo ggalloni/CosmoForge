@@ -4,9 +4,10 @@ Power Spectrum Estimation
 .. currentmodule:: qube.spectra
 
 The Spectra class implements Quadratic Maximum Likelihood (QML) estimation for
-power spectrum recovery from CMB observations. This method provides unbiased,
-minimum-variance power spectrum estimates while properly accounting for noise,
-masking, and correlations.
+power spectrum recovery from partial-sky observations of spin-0 and spin-2 fields.
+This method provides unbiased, minimum-variance power spectrum estimates while properly
+accounting for noise, masking, and correlations. It applies to any Gaussian field on
+the sphere, such as CMB temperature and polarization, galaxy density, or 21 cm intensity.
 
 Mathematical Background
 -----------------------

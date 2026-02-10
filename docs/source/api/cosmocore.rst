@@ -10,7 +10,7 @@ Overview
 
 CosmoCore serves as the base layer for all cosmological computations in CosmoForge. It provides:
 
-* **Field Management**: Scalar and polarization field handling with HEALPix integration
+* **Field Management**: Scalar (spin-0) and tensor (spin-2) field handling with HEALPix integration
 * **Matrix Operations**: Optimized linear algebra operations with Numba acceleration  
 * **I/O Utilities**: Reading and writing of cosmological data formats
 * **Harmonic Analysis**: Power spectrum management and beam handling

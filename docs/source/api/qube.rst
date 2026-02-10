@@ -9,9 +9,11 @@ CosmoForge.QUBE Package
 |
 
 QUBE is the analysis engine of CosmoForge, implementing Fisher matrix analysis and
-Quadratic Maximum Likelihood (QML) power spectrum estimation for cosmological parameter
-inference from CMB observations. The package provides optimal statistical methods for
-power spectrum recovery and parameter forecasting from noisy, incomplete sky observations.
+Quadratic Maximum Likelihood (QML) power spectrum estimation for any spin-0 or spin-2
+field on the sphere. The package provides optimal statistical methods for power spectrum
+recovery and parameter forecasting from noisy, partial-sky observations. While applicable
+to a broad range of sky signals (e.g. CMB, galaxy surveys, 21 cm), its design is
+particularly optimized for the case of complex noise covariance and incomplete sky coverage.
 
 Overview
 --------
@@ -22,8 +24,8 @@ for CMB power spectrum analysis:
 * **Fisher Matrix Analysis**: Parameter forecasting and optimal experiment design
 * **QML Power Spectrum Estimation**: Unbiased, minimum-variance power spectrum recovery
 
-Both methods are designed for large-scale cosmological analyses with full MPI parallelization 
-support and can handle realistic observational complexities including partial sky coverage, 
+Both methods are designed for large-scale analyses with full MPI parallelization support
+and can handle realistic observational complexities including partial sky coverage,
 inhomogeneous noise, and instrumental systematics.
 
 Mathematical Foundation
@@ -39,21 +41,24 @@ model parameters:
 
    F_{ij} = \left\langle \frac{\partial^2 \ln \mathcal{L}}{\partial \theta_i \partial \theta_j} \right\rangle = \frac{1}{2} \text{Tr}\left[ \mathbf{C}^{-1} \frac{\partial \mathbf{C}}{\partial \theta_i} \mathbf{C}^{-1} \frac{\partial \mathbf{C}}{\partial \theta_j} \right]
 
-where :math:`\mathbf{C}` is the total covariance matrix and :math:`\theta_i` are the parameters 
-of interest. The inverse Fisher matrix provides the parameter covariance under Gaussian assumptions.
+where :math:`\mathbf{C}` is the total covariance matrix and :math:`\theta_i` are the power
+spectrum amplitudes (or other parameters of interest). The inverse Fisher matrix provides
+the parameter covariance under Gaussian assumptions.
 
 QML Power Spectrum Estimation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The Quadratic Maximum Likelihood estimator provides optimal power spectrum estimates [Tegmark1997]_ [Bond1998]_:
+The Quadratic Maximum Likelihood estimator provides optimal power spectrum estimates
+[Tegmark1997]_ [Bond1998]_:
 
 .. math::
 
    \hat{q}_\ell = \frac{1}{2} \mathbf{x}^T \mathbf{E}_\ell \mathbf{x}
 
-where :math:`\mathbf{E}_\ell = \mathbf{C}^{-1} \frac{\partial \mathbf{C}}{\partial q_\ell} \mathbf{C}^{-1}` 
-is the quadratic estimator matrix [Oh1999]_. Final estimates are optimally combined using the Fisher matrix.
-Advanced implementations may use iterative or Gibbs sampling approaches [Wandelt2004]_.
+where :math:`\mathbf{E}_\ell = \mathbf{C}^{-1} \frac{\partial \mathbf{C}}{\partial q_\ell} \mathbf{C}^{-1}`
+is the quadratic estimator matrix [Oh1999]_. Final estimates are optimally combined using
+the Fisher matrix. The method applies to any Gaussian field on the sphere, including but
+not limited to CMB temperature and polarization.
 
 Key Features
 ------------
@@ -75,6 +80,7 @@ Observational Realism
 * **Inhomogeneous noise**: Pixel-dependent noise modeling
 * **Beam convolution**: Instrumental beam effects in harmonic space
 * **Cross-correlations**: Independent dataset combinations for systematics control
+* **General applicability**: Any spin-0 or spin-2 Gaussian field (CMB, galaxy surveys, 21 cm, etc.)
 
 Computational Efficiency
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -207,12 +213,12 @@ Performance Considerations
 Memory Requirements
 ^^^^^^^^^^^^^^^^^^^
 
-The primary memory bottleneck is covariance matrix storage, scaling as :math:`O(N_{pix}^2)`. 
-For typical analyses:
+The primary memory bottleneck is covariance matrix storage, scaling as :math:`O(N_{pix}^2)`.
+For typical analyses with three field components (e.g. T+Q+U):
 
-* **nside=512**: ~16 GB for temperature + polarization
-* **nside=1024**: ~250 GB for temperature + polarization  
-* **nside=2048**: ~4 TB for temperature + polarization
+* **nside=512**: ~16 GB
+* **nside=1024**: ~250 GB
+* **nside=2048**: ~4 TB
 
 Computational Scaling
 ^^^^^^^^^^^^^^^^^^^^^^

@@ -3,16 +3,16 @@ QML Power Spectrum Estimation Pipeline
 
 .. currentmodule:: cosmoforge.qube
 
-The QML (Quadratic Maximum Likelihood) power spectrum estimation pipeline provides 
-unbiased, minimum-variance estimates of CMB power spectra from observed data. This 
-script orchestrates the complete analysis workflow from data input through 
-statistical inference.
+The QML (Quadratic Maximum Likelihood) power spectrum estimation pipeline provides
+unbiased, minimum-variance power spectrum estimates from observed data. This
+script orchestrates the complete analysis workflow from data input through
+statistical inference, for any spin-0 or spin-2 field on the sphere.
 
 Overview
 --------
 
-The ``main_qml.py`` script implements a comprehensive QML estimation pipeline 
-optimized for CMB power spectrum analysis. Key features include:
+The ``main_qml.py`` script implements a comprehensive QML estimation pipeline
+optimized for power spectrum analysis of spherical fields. Key features include:
 
 * Unbiased power spectrum estimation with exact error propagation
 * Support for auto-correlation and cross-correlation analyses
@@ -20,7 +20,7 @@ optimized for CMB power spectrum analysis. Key features include:
 * Integration with Fisher information matrix results
 * Comprehensive likelihood data for cosmological parameter fitting
 
-The pipeline handles both simulated and observed CMB data, providing production-ready 
+The pipeline handles both simulated and observed data, providing production-ready
 power spectrum estimates suitable for cosmological inference.
 
 Mathematical Background
@@ -37,7 +37,7 @@ unbiased estimate:
    \hat{C}_\ell = \frac{\mathbf{x}^T \mathbf{E}_\ell \mathbf{x}}{\text{Tr}[\mathbf{E}_\ell \mathbf{S}]}
 
 where:
-- :math:`\mathbf{x}` is the observed data vector (temperature and polarization maps)
+- :math:`\mathbf{x}` is the observed data vector (e.g. temperature and polarization maps)
 - :math:`\mathbf{E}_\ell = \mathbf{C}^{-1} \frac{\partial \mathbf{C}}{\partial C_\ell} \mathbf{C}^{-1}` is the estimator matrix
 - :math:`\mathbf{C}` is the total covariance matrix (signal + noise + systematics)
 - :math:`\mathbf{S}` is the signal covariance matrix
@@ -76,7 +76,7 @@ The execution pipeline consists of the following stages:
 
 1. **Environment Initialization**: Set up MPI communicator and process management
 2. **Configuration Parsing**: Load and validate YAML configuration parameters
-3. **Data Loading**: Read CMB maps, noise covariance, and auxiliary data files
+3. **Data Loading**: Read sky maps, noise covariance, and auxiliary data files
 4. **Geometry Setup**: Define pixel selection, multipole binning, and field combinations
 5. **Matrix Preparation**: Compute or load estimator and normalization matrices
 6. **QML Computation**: Execute parallel power spectrum estimation

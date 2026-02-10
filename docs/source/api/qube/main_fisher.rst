@@ -3,9 +3,10 @@ Fisher Matrix Analysis Pipeline
 
 .. currentmodule:: cosmoforge.qube
 
-The Fisher matrix analysis pipeline provides a complete framework for cosmological 
-parameter forecasting using CMB observations. This script orchestrates the full 
-computation workflow from input validation through results output.
+The Fisher matrix analysis pipeline provides a complete framework for power spectrum
+parameter forecasting from partial-sky observations of spin-0 and spin-2 fields.
+This script orchestrates the full computation workflow from input validation through
+results output.
 
 Overview
 --------
