@@ -1271,11 +1271,37 @@ class Spectra(Core):
             return None
 
         if mode == "deconvolved":
-            return self._get_deconvolved()
+            result = self._get_deconvolved()
         elif mode == "decorrelated":
-            return self._get_decorrelated()
+            result = self._get_decorrelated()
         else:  # convolved
-            return self._get_convolved()
+            result = self._get_convolved()
+
+        output_conv = getattr(self.params, "output_convention", "Cl")
+        if output_conv != "Cl" and result is not None:
+            result = self._apply_output_convention(result, mode)
+        return result
+
+    def _dl_factor(self) -> np.ndarray:
+        """Return the Cl->Dl factor tiled over all spectra."""
+        ell = np.arange(2, self.params.lmax + 1, dtype=np.float64)
+        return np.tile(ell * (ell + 1) / (2 * np.pi), self.params.nspectra)
+
+    def _apply_output_convention(self, result, mode):
+        """Apply Cl->Dl conversion to output power spectra."""
+        d = self._dl_factor()
+
+        if mode in ("deconvolved", "decorrelated"):
+            return result * d[np.newaxis, :]
+        else:  # convolved
+            y, W, convolve_cl = result
+            # W_Dl = D @ W_Cl @ D^{-1} so that <y_Dl> = W_Dl @ C_Dl
+            W_dl = W * np.outer(d, 1.0 / d)
+
+            def convolve_theory_dl(cl_theory_dl: np.ndarray) -> np.ndarray:
+                return W_dl @ cl_theory_dl
+
+            return (y * d[np.newaxis, :], W_dl, convolve_theory_dl)
 
     def _get_deconvolved(self) -> np.ndarray:
         """
@@ -1366,6 +1392,9 @@ class Spectra(Core):
         """
         if self.rank == 0 and self.qml_noise_bias is not None:
             noise_bias = self._normalize_spectra(self.qml_noise_bias)
+            output_conv = getattr(self.params, "output_convention", "Cl")
+            if output_conv != "Cl":
+                noise_bias = noise_bias * self._dl_factor()
             return noise_bias
         return None
 
@@ -1447,16 +1476,22 @@ class Spectra(Core):
         if mode == "deconvolved":
             if self.invfisher is None:
                 return None
-            return self.invfisher.copy()
+            cov = self.invfisher.copy()
         elif mode == "decorrelated":
             if self.invfisher is None:
                 return None
             nell = self.invfisher.shape[0]
-            return np.eye(nell)
+            cov = np.eye(nell)
         else:  # convolved
             if self.fisher_normalized is None:
                 return None
-            return self.fisher_normalized.copy()
+            cov = self.fisher_normalized.copy()
+
+        output_conv = getattr(self.params, "output_convention", "Cl")
+        if output_conv != "Cl":
+            d = self._dl_factor()
+            cov = cov * np.outer(d, d)
+        return cov
 
     def get_error_bars(self, mode: str = "deconvolved") -> np.ndarray | None:
         """
@@ -1577,6 +1612,13 @@ class Spectra(Core):
 
         # Apply normalization to window matrix
         W_normalized = W * np.outer(self.normalization, self.normalization)
+
+        output_conv = getattr(self.params, "output_convention", "Cl")
+        if output_conv != "Cl":
+            d = self._dl_factor()
+            # W_Dl = D @ W_Cl @ D^{-1}, input theory is Dl so convert first
+            return d * (W_normalized @ (cl_theory / d))
+
         return W_normalized @ cl_theory
 
     def write_power_spectra(
