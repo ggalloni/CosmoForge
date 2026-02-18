@@ -203,6 +203,9 @@ class InputParams:
         self.outerrfile = ""
         self.remove_nb = True
 
+        self.input_convention = "Cl"  # "Cl" or "Dl"
+        self.output_convention = "Cl"  # "Cl" or "Dl"
+
         self.parameters = {}
         self.root_dir = "inputs"
         self.root_filename = "theory_spectra"
