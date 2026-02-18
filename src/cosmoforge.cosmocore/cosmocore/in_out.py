@@ -186,6 +186,15 @@ def output_geometry(filegeometry, npixs, point_vectors, active):
                 f.write(f"{idx:6d}{vec[0]:24.16e}{vec[1]:24.16e}{vec[2]:24.16e}\n")
 
 
+def _parse_convention(value):
+    """Normalize a convention string to 'Cl' or 'Dl' (case-insensitive)."""
+    canonical = {"cl": "Cl", "dl": "Dl"}
+    key = value.strip().lower()
+    if key not in canonical:
+        raise ValueError(f"Unknown spectra convention '{value}'. Must be 'Cl' or 'Dl'.")
+    return canonical[key]
+
+
 def convert_spectra_normalization(cls_dict, from_norm, to_norm, lstart=2):
     """Convert between Cl and Dl = l(l+1)/(2pi) Cl conventions.
 
@@ -196,9 +205,9 @@ def convert_spectra_normalization(cls_dict, from_norm, to_norm, lstart=2):
     cls_dict : dict
         Dictionary mapping spectrum labels to power spectrum arrays.
     from_norm : str
-        Input normalization convention ("Cl" or "Dl").
+        Input convention ("Cl" or "Dl", case-insensitive).
     to_norm : str
-        Output normalization convention ("Cl" or "Dl").
+        Output convention ("Cl" or "Dl", case-insensitive).
     lstart : int, optional
         Starting multipole (default: 2).
 
@@ -207,16 +216,16 @@ def convert_spectra_normalization(cls_dict, from_norm, to_norm, lstart=2):
     dict
         The same cls_dict, modified in place.
     """
+    from_norm = _parse_convention(from_norm)
+    to_norm = _parse_convention(to_norm)
     if from_norm == to_norm:
         return cls_dict
     n_ell = next(iter(cls_dict.values())).shape[0]
     ell = np.arange(lstart, lstart + n_ell, dtype=np.float64)
     if from_norm == "Dl" and to_norm == "Cl":
         factor = 2 * np.pi / (ell * (ell + 1))
-    elif from_norm == "Cl" and to_norm == "Dl":
+    else:  # Cl -> Dl
         factor = ell * (ell + 1) / (2 * np.pi)
-    else:
-        raise ValueError(f"Unknown normalization: {from_norm} -> {to_norm}")
     for label in cls_dict:
         cls_dict[label] = cls_dict[label] * factor[: len(cls_dict[label])]
     return cls_dict
@@ -272,7 +281,7 @@ def readcl(inputclfile, Params: InputParams, logger=None, lmax: int | None = Non
                 continue  # skip the ell column
             cls_dict[label] = arr[: effective_lmax - 1, i]
 
-    input_conv = getattr(Params, "input_convention", "Cl")
+    input_conv = _parse_convention(getattr(Params, "input_convention", "Cl"))
     if input_conv != "Cl":
         convert_spectra_normalization(cls_dict, from_norm=input_conv, to_norm="Cl")
 

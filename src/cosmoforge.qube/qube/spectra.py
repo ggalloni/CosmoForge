@@ -1277,10 +1277,19 @@ class Spectra(Core):
         else:  # convolved
             result = self._get_convolved()
 
-        output_conv = getattr(self.params, "output_convention", "Cl")
-        if output_conv != "Cl" and result is not None:
+        if self._output_is_dl() and result is not None:
             result = self._apply_output_convention(result, mode)
         return result
+
+    def _output_is_dl(self) -> bool:
+        """Check if output convention is Dl (case-insensitive)."""
+        value = getattr(self.params, "output_convention", "Cl")
+        key = value.strip().lower()
+        if key not in ("cl", "dl"):
+            raise ValueError(
+                f"Unknown spectra convention '{value}'. Must be 'Cl' or 'Dl'."
+            )
+        return key == "dl"
 
     def _dl_factor(self) -> np.ndarray:
         """Return the Cl->Dl factor tiled over all spectra."""
@@ -1392,8 +1401,7 @@ class Spectra(Core):
         """
         if self.rank == 0 and self.qml_noise_bias is not None:
             noise_bias = self._normalize_spectra(self.qml_noise_bias)
-            output_conv = getattr(self.params, "output_convention", "Cl")
-            if output_conv != "Cl":
+            if self._output_is_dl():
                 noise_bias = noise_bias * self._dl_factor()
             return noise_bias
         return None
@@ -1487,8 +1495,7 @@ class Spectra(Core):
                 return None
             cov = self.fisher_normalized.copy()
 
-        output_conv = getattr(self.params, "output_convention", "Cl")
-        if output_conv != "Cl":
+        if self._output_is_dl():
             d = self._dl_factor()
             cov = cov * np.outer(d, d)
         return cov
@@ -1613,8 +1620,7 @@ class Spectra(Core):
         # Apply normalization to window matrix
         W_normalized = W * np.outer(self.normalization, self.normalization)
 
-        output_conv = getattr(self.params, "output_convention", "Cl")
-        if output_conv != "Cl":
+        if self._output_is_dl():
             d = self._dl_factor()
             # W_Dl = D @ W_Cl @ D^{-1}, input theory is Dl so convert first
             return d * (W_normalized @ (cl_theory / d))

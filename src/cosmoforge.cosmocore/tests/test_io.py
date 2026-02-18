@@ -72,7 +72,7 @@ class TestConvertSpectraNormalization:
     def test_invalid_normalization(self):
         """Unknown normalization raises ValueError."""
         cls = {"TT": np.array([1.0])}
-        with pytest.raises(ValueError, match="Unknown normalization"):
+        with pytest.raises(ValueError, match="Unknown spectra convention"):
             convert_spectra_normalization(cls, "Cl", "XX")
 
     def test_in_place_modification(self):
@@ -80,6 +80,16 @@ class TestConvertSpectraNormalization:
         cls = {"TT": np.array([1.0, 2.0])}
         result = convert_spectra_normalization(cls, "Cl", "Dl")
         assert result is cls
+
+    def test_case_insensitive(self):
+        """Convention strings are case-insensitive."""
+        ell = np.arange(2, 5, dtype=np.float64)
+        factor = ell * (ell + 1) / (2 * np.pi)
+        cl_values = np.array([1.0, 2.0, 3.0])
+        for from_str, to_str in [("cl", "dl"), ("CL", "DL"), ("cL", "Dl")]:
+            cls = {"TT": cl_values.copy()}
+            result = convert_spectra_normalization(cls, from_str, to_str)
+            np.testing.assert_allclose(result["TT"], cl_values * factor)
 
 
 class TestReadclNormalization:
