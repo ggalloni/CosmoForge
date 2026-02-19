@@ -121,7 +121,6 @@ class TestReadclNormalization:
         """input_convention='Dl' converts Dl values to Cl on read."""
         ell = np.arange(2, 5, dtype=np.float64)
         factor = ell * (ell + 1) / (2 * np.pi)
-        # Write Dl values
         dl_values = np.array([1.0, 2.0, 3.0])
         data = dl_values.reshape(-1, 1)
         filepath = self._write_cl_file(tmp_path, ["TT"], data)

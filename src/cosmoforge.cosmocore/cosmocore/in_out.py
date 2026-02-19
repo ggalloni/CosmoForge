@@ -275,11 +275,25 @@ def readcl(inputclfile, Params: InputParams, logger=None, lmax: int | None = Non
         arr = np.loadtxt(f, dtype=np.float64)
         if logger is not None:
             logger.log_with_feedback(f"Read Cls: {arr.shape} {labels}", level=4)
+        # Find where ell=2 starts (files may begin at ell=0 or ell=2)
+        ell_col = None
+        for i, label in enumerate(labels):
+            if label.lower() == "ell":
+                ell_col = i
+                break
+
+        if ell_col is not None:
+            ell_values = arr[:, ell_col].astype(int)
+            start_row = int(np.searchsorted(ell_values, 2))
+        else:
+            start_row = 0  # assume data starts at ell=2
+
+        n_ell = effective_lmax - 1  # number of multipoles from ell=2 to lmax
         cls_dict = {}
         for i, label in enumerate(labels):
             if label.lower() == "ell":
-                continue  # skip the ell column
-            cls_dict[label] = arr[: effective_lmax - 1, i]
+                continue
+            cls_dict[label] = arr[start_row : start_row + n_ell, i]
 
     input_conv = _parse_convention(getattr(Params, "input_convention", "Cl"))
     if input_conv != "Cl":
