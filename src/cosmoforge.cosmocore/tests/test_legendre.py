@@ -19,27 +19,7 @@ from cosmocore import (
 @njit(cache=True)
 def legendre_00_non_inplace(scalar_prod, lmax):
     """
-    Compute standard Legendre polynomials P_l(x) for spin-0 fields.
-
-    Parameters
-    ----------
-    scalar_prod : float
-        Argument x for the Legendre polynomials.
-    lmax : int
-        Maximum multipole moment.
-
-    Returns
-    -------
-    numpy.ndarray
-        Array of Legendre polynomial values P_l(x) for l=1 to lmax.
-
-    Notes
-    -----
-    Optimized computation using three-term recurrence relation:
-    P_l(x) = ((2l-1)xP_{l-1}(x) - (l-1)P_{l-2}(x))/l
-
-    Base cases: P_1(x) = x, P_2(x) = (3x² - 1)/2
-    Used for temperature (spin-0) correlations in CMB analysis.
+    Compute normalized Legendre polynomials (2ℓ+1)/(4π) × P_l(x) for spin-0 fields.
     """
     legendre = np.empty(lmax, dtype=np.float64)
 
@@ -47,6 +27,8 @@ def legendre_00_non_inplace(scalar_prod, lmax):
     legendre[0] = scalar_prod
     legendre[1] = 1.5 * scalar_prod * scalar_prod - 0.5
     if lmax == 2:
+        for k in range(lmax):
+            legendre[k] *= (2 * (k + 1) + 1) / (4 * np.pi)
         return legendre
 
     # Optimized recurrence: avoid division in loop
@@ -55,11 +37,14 @@ def legendre_00_non_inplace(scalar_prod, lmax):
     p_prev1 = legendre[1]  # P_{l-1}
 
     for ell in range(3, lmax + 1):
-        # P_l = ((2l-1)xP_{l-1} - (l-1)P_{l-2})/l
         p_curr = ((2 * ell - 1) * x * p_prev1 - (ell - 1) * p_prev2) / ell
         legendre[ell - 1] = p_curr
         p_prev2 = p_prev1
         p_prev1 = p_curr
+
+    # Post-hoc normalization
+    for k in range(lmax):
+        legendre[k] *= (2 * (k + 1) + 1) / (4 * np.pi)
 
     return legendre
 
@@ -67,46 +52,35 @@ def legendre_00_non_inplace(scalar_prod, lmax):
 @njit(cache=True)
 def legendre_22_non_inplace(scalar_prod, lmax):
     """
-    Compute associated Legendre polynomials P_l^{22}(x) for spin-2 fields.
-
-    Parameters
-    ----------
-    scalar_prod : float
-        Argument x for the associated Legendre polynomials.
-    lmax : int
-        Maximum multipole moment.
-
-    Returns
-    -------
-    numpy.ndarray
-        Array of associated Legendre polynomial values P_l^{22}(x) for l=2 to lmax.
-
-    Notes
-    -----
-    Optimized computation using modified recurrence relation for the 22 case:
-    P_l^{22}(x) = (x(2l-1)P_{l-1}^{22}(x) - (l+1)P_{l-2}^{22}(x))/(l-2)
-
-    Base case: P_2^{22}(x) = 3
-    Used for polarization (spin-2) auto-correlations in CMB analysis.
+    Compute normalized associated Legendre polynomials for spin-2 fields.
+    Includes (2ℓ+1)/(4π) × factor2 normalization.
     """
     legendre = np.zeros(lmax, dtype=np.float64)
 
     # Base case for l=2
     legendre[1] = 3.0
     if lmax == 2:
+        for k in range(1, lmax):
+            ell = k + 1
+            factor2 = 1.0 / ((ell + 2) * (ell + 1) * ell * (ell - 1))
+            legendre[k] *= (2 * ell + 1) / (4 * np.pi) * factor2
         return legendre
 
-    # Optimized recurrence: avoid division in loop, cache scalar_prod
     x = scalar_prod
-    p_prev2 = 0.0  # P_{l-2}^{22}
-    p_prev1 = legendre[1]  # P_{l-1}^{22}
+    p_prev2 = 0.0
+    p_prev1 = legendre[1]
 
     for ell in range(3, lmax + 1):
-        # Modified recurrence for 22 case
         p_curr = (x * (2 * ell - 1) * p_prev1 - (ell + 1) * p_prev2) / (ell - 2)
         legendre[ell - 1] = p_curr
         p_prev2 = p_prev1
         p_prev1 = p_curr
+
+    # Post-hoc normalization
+    for k in range(1, lmax):
+        ell = k + 1
+        factor2 = 1.0 / ((ell + 2) * (ell + 1) * ell * (ell - 1))
+        legendre[k] *= (2 * ell + 1) / (4 * np.pi) * factor2
 
     return legendre
 
@@ -114,47 +88,34 @@ def legendre_22_non_inplace(scalar_prod, lmax):
 @njit(cache=True)
 def legendre_02_non_inplace(scalar_prod, lmax):
     """
-    Compute associated Legendre polynomials P_l^{02}(x) for
-    spin-0 to spin-2 cross-correlations.
-
-    Parameters
-    ----------
-    scalar_prod : float
-        Argument x for the associated Legendre polynomials.
-    lmax : int
-        Maximum multipole moment.
-
-    Returns
-    -------
-    numpy.ndarray
-        Array of associated Legendre polynomial values P_l^{02}(x) for l=2 to lmax.
-
-    Notes
-    -----
-    Optimized computation using modified recurrence relation for the 02 case:
-    P_l^{02}(x) = (x(2l-1)P_{l-1}^{02}(x) - (l+1)P_{l-2}^{02}(x))/(l-2)
-
-    Base case: P_2^{02}(x) = 3(1 - x²)
-    Used for temperature-polarization cross-correlations in CMB analysis.
+    Compute normalized associated Legendre polynomials for spin-0 x spin-2.
+    Includes (2ℓ+1)/(4π) × factor normalization.
     """
     legendre = np.zeros(lmax, dtype=np.float64)
 
-    # Base case for l=2: P_2^{02} = 3(1 - x^2)
     legendre[1] = 3.0 * (1.0 - scalar_prod * scalar_prod)
     if lmax == 2:
+        for k in range(1, lmax):
+            ell = k + 1
+            factor = np.sqrt(1.0 / ((ell + 2) * (ell + 1) * ell * (ell - 1)))
+            legendre[k] *= (2 * ell + 1) / (4 * np.pi) * factor
         return legendre
 
-    # Optimized recurrence: avoid division in loop, cache scalar_prod
     x = scalar_prod
-    p_prev2 = 0.0  # P_{l-2}^{02}
-    p_prev1 = legendre[1]  # P_{l-1}^{02}
+    p_prev2 = 0.0
+    p_prev1 = legendre[1]
 
     for ell in range(3, lmax + 1):
-        # Modified recurrence for 02 case: (x(2l-1)P_{l-1} - (l+1)P_{l-2})/(l-2)
         p_curr = (x * (2 * ell - 1) * p_prev1 - (ell + 1) * p_prev2) / (ell - 2)
         legendre[ell - 1] = p_curr
         p_prev2 = p_prev1
         p_prev1 = p_curr
+
+    # Post-hoc normalization
+    for k in range(1, lmax):
+        ell = k + 1
+        factor = np.sqrt(1.0 / ((ell + 2) * (ell + 1) * ell * (ell - 1)))
+        legendre[k] *= (2 * ell + 1) / (4 * np.pi) * factor
 
     return legendre
 
@@ -162,132 +123,116 @@ def legendre_02_non_inplace(scalar_prod, lmax):
 @njit(cache=True)
 def legendre_unified_inplace(scalar_prod, legendre, spin_case):
     """
-    In-place unified Legendre polynomial computation.
-
-    Parameters
-    ----------
-    scalar_prod : float
-        Argument x for the Legendre polynomials.
-    legendre : numpy.ndarray
-        Pre-allocated array to fill with polynomial values (will be zeroed first).
-    spin_case : str
-        Spin case identifier: "00" for P_l, "22" for P_l^{22}, "02" for P_l^{02}.
-
-    Notes
-    -----
-    This is the most efficient version for hot loops - avoids all allocations
-    and unifies the three recurrence relations. The array is cleared and then
-    populated with the appropriate base cases and recurrence relation for
-    the specified spin case.
+    In-place unified Legendre polynomial computation with normalization.
     """
     lmax = len(legendre)
-    # Clear array
     legendre[:] = 0.0
 
     x = scalar_prod
     x2 = x * x
 
-    # Set base cases
-    if spin_case == "00":  # P_l case (00)
+    if spin_case == "00":
         if lmax >= 1:
             legendre[0] = x
         if lmax >= 2:
             legendre[1] = 1.5 * x2 - 0.5
-    elif spin_case == "22":  # P_l^{22} case (22)
+    elif spin_case == "22":
         if lmax >= 2:
             legendre[1] = 3.0
-    elif spin_case == "02":  # P_l^{02} case (02)
+    elif spin_case == "02":
         if lmax >= 2:
             legendre[1] = 3.0 * (1.0 - x2)
 
-    if lmax == 2:
-        return
+    if lmax > 2:
+        for ell in range(3, lmax + 1):
+            coeff_2l_minus_1 = 2 * ell - 1
+            if spin_case == "00":
+                numerator = (
+                    coeff_2l_minus_1 * x * legendre[ell - 2]
+                    - (ell - 1) * legendre[ell - 3]
+                )
+                legendre[ell - 1] = numerator / ell
+            elif spin_case == "22":
+                numerator = (
+                    coeff_2l_minus_1 * x * legendre[ell - 2]
+                    - (ell + 1) * legendre[ell - 3]
+                )
+                legendre[ell - 1] = numerator / (ell - 2)
+            elif spin_case == "02":
+                numerator = (
+                    coeff_2l_minus_1 * x * legendre[ell - 2]
+                    - (ell + 1) * legendre[ell - 3]
+                )
+                legendre[ell - 1] = numerator / (ell - 2)
 
-    # Unified recurrence - factorized for maximum efficiency
-    for ell in range(3, lmax + 1):
-        coeff_2l_minus_1 = 2 * ell - 1
-
-        if spin_case == "00":  # ((2l-1)xP_{l-1} - (l-1)P_{l-2})/l
-            numerator = (
-                coeff_2l_minus_1 * x * legendre[ell - 2] - (ell - 1) * legendre[ell - 3]
-            )
-            legendre[ell - 1] = numerator / ell
-        elif spin_case == "22":  # (x(2l-1)P_{l-1} - (l+1)P_{l-2})/(l-2)
-            numerator = (
-                coeff_2l_minus_1 * x * legendre[ell - 2] - (ell + 1) * legendre[ell - 3]
-            )
-            legendre[ell - 1] = numerator / (ell - 2)
-        elif spin_case == "02":  # (x(2l-1)P_{l-1} - (l+1)P_{l-2})/(l-2)
-            numerator = (
-                coeff_2l_minus_1 * x * legendre[ell - 2] - (ell + 1) * legendre[ell - 3]
-            )
-            legendre[ell - 1] = numerator / (ell - 2)
+    # Post-hoc normalization
+    if spin_case == "00":
+        for k in range(lmax):
+            legendre[k] *= (2 * (k + 1) + 1) / (4 * np.pi)
+    elif spin_case == "22":
+        for k in range(1, lmax):
+            ell = k + 1
+            factor2 = 1.0 / ((ell + 2) * (ell + 1) * ell * (ell - 1))
+            legendre[k] *= (2 * ell + 1) / (4 * np.pi) * factor2
+    elif spin_case == "02":
+        for k in range(1, lmax):
+            ell = k + 1
+            factor = np.sqrt(1.0 / ((ell + 2) * (ell + 1) * ell * (ell - 1)))
+            legendre[k] *= (2 * ell + 1) / (4 * np.pi) * factor
 
 
 @njit(cache=True)
 def legendre_unified_non_inplace(scalar_prod, lmax, spin_case):
     """
-    Unified Legendre polynomial computation for all spin cases.
-
-    Parameters
-    ----------
-    scalar_prod : float
-        Argument x for the Legendre polynomials.
-    lmax : int
-        Maximum multipole moment.
-    spin_case : str
-        Spin case identifier: "00" for P_l, "22" for P_l^{22}, "02" for P_l^{02}.
-
-    Returns
-    -------
-    numpy.ndarray
-        Array of Legendre polynomial values for the specified spin case.
-
-    Notes
-    -----
-    This unified function reduces code duplication and allows for better
-    optimization by factorizing common operations across all three spin
-    cases used in CMB analysis. Each case uses appropriate base conditions
-    and recurrence relations.
+    Unified Legendre polynomial computation with normalization.
     """
     legendre = np.zeros(lmax, dtype=np.float64)
     x = scalar_prod
     x2 = x * x
 
-    # Set base cases based on spin case
-    if spin_case == "00":  # P_l case (00)
+    if spin_case == "00":
         if lmax >= 1:
             legendre[0] = x
         if lmax >= 2:
             legendre[1] = 1.5 * x2 - 0.5
-    elif spin_case == "22":  # P_l^{22} case (22)
+    elif spin_case == "22":
         if lmax >= 2:
             legendre[1] = 3.0
-    elif spin_case == "02":  # P_l^{02} case (02)
+    elif spin_case == "02":
         if lmax >= 2:
             legendre[1] = 3.0 * (1.0 - x2)
 
-    if lmax == 2:
-        return legendre
+    if lmax > 2:
+        for ell in range(3, lmax + 1):
+            if spin_case == "00":
+                a, b, c = 2 * ell - 1, ell - 1, ell
+            elif spin_case == "22":
+                a, b, c = 2 * ell - 1, ell + 1, ell - 2
+            elif spin_case == "02":
+                a, b, c = 2 * ell - 1, ell + 1, ell - 2
+            legendre[ell - 1] = (a * x * legendre[ell - 2] - b * legendre[ell - 3]) / c
 
-    # Unified recurrence computation
-    # All cases follow pattern: P_l = (a*x*P_{l-1} - b*P_{l-2}) / c
-    for ell in range(3, lmax + 1):
-        if spin_case == "00":  # Standard Legendre: ((2l-1)xP_{l-1} - (l-1)P_{l-2})/l
-            a, b, c = 2 * ell - 1, ell - 1, ell
-        elif spin_case == "22":  # P_l^{22}: (x(2l-1)P_{l-1} - (l+1)P_{l-2})/(l-2)
-            a, b, c = 2 * ell - 1, ell + 1, ell - 2
-        elif spin_case == "02":  # P_l^{02}: (x(2l-1)P_{l-1} - (l+1)P_{l-2})/(l-2)
-            a, b, c = 2 * ell - 1, ell + 1, ell - 2
-
-        legendre[ell - 1] = (a * x * legendre[ell - 2] - b * legendre[ell - 3]) / c
+    # Post-hoc normalization
+    if spin_case == "00":
+        for k in range(lmax):
+            legendre[k] *= (2 * (k + 1) + 1) / (4 * np.pi)
+    elif spin_case == "22":
+        for k in range(1, lmax):
+            ell = k + 1
+            factor2 = 1.0 / ((ell + 2) * (ell + 1) * ell * (ell - 1))
+            legendre[k] *= (2 * ell + 1) / (4 * np.pi) * factor2
+    elif spin_case == "02":
+        for k in range(1, lmax):
+            ell = k + 1
+            factor = np.sqrt(1.0 / ((ell + 2) * (ell + 1) * ell * (ell - 1)))
+            legendre[k] *= (2 * ell + 1) / (4 * np.pi) * factor
 
     return legendre
 
 
 @njit(cache=True)
 def original_legendre_00(scalar_prod, lmax):
-    """Original 00 implementation."""
+    """Original 00 implementation with normalization."""
     legendre = np.ones(lmax, dtype=np.float64)
     legendre[0] = scalar_prod
     legendre[1] = 1.5 * scalar_prod * scalar_prod - 0.5
@@ -296,12 +241,14 @@ def original_legendre_00(scalar_prod, lmax):
             scalar_prod * (2 * ell - 1) * legendre[ell - 2]
             - (ell - 1) * legendre[ell - 3]
         ) / ell
+    for k in range(lmax):
+        legendre[k] *= (2 * (k + 1) + 1) / (4 * np.pi)
     return legendre
 
 
 @njit(cache=True)
 def original_legendre_22(scalar_prod, lmax):
-    """Original 22 implementation."""
+    """Original 22 implementation with normalization."""
     legendre = np.zeros(lmax, dtype=np.float64)
     legendre[1] = 3.0
     for ell in range(3, lmax + 1):
@@ -309,12 +256,16 @@ def original_legendre_22(scalar_prod, lmax):
             scalar_prod * (2 * ell - 1) * legendre[ell - 2]
             - (ell + 1) * legendre[ell - 3]
         ) / (ell - 2)
+    for k in range(1, lmax):
+        ell = k + 1
+        factor2 = 1.0 / ((ell + 2) * (ell + 1) * ell * (ell - 1))
+        legendre[k] *= (2 * ell + 1) / (4 * np.pi) * factor2
     return legendre
 
 
 @njit(cache=True)
 def original_legendre_02(scalar_prod, lmax):
-    """Original 02 implementation from compute_02_contribution."""
+    """Original 02 implementation with normalization."""
     legendre = np.zeros(lmax, dtype=np.float64)
     legendre[1] = 3.0 * (1.0 - scalar_prod * scalar_prod)
     for ell in range(3, lmax + 1):
@@ -322,6 +273,10 @@ def original_legendre_02(scalar_prod, lmax):
             scalar_prod * (2 * ell - 1) * legendre[ell - 2]
             - (ell + 1) * legendre[ell - 3]
         ) / (ell - 2)
+    for k in range(1, lmax):
+        ell = k + 1
+        factor = np.sqrt(1.0 / ((ell + 2) * (ell + 1) * ell * (ell - 1)))
+        legendre[k] *= (2 * ell + 1) / (4 * np.pi) * factor
     return legendre
 
 

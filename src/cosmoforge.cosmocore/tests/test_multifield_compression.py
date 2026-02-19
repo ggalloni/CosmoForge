@@ -508,14 +508,13 @@ class TestMultiFieldIntegration:
         lmax = setup["lmax"]
         n_ell = lmax - 1
 
-        # Different spectra per field
+        # Different spectra per field (physical C_ell values)
         ells = np.arange(2, lmax + 1)
-        norm_factor = (2 * ells + 1) / (4 * np.pi)
 
         C_ell_dict = {
-            (0, 0): norm_factor * 1e-5 / ells**2,
-            (1, 1): norm_factor * 0.8e-5 / ells**2,
-            (0, 1): norm_factor * 0.4e-5 / ells**2,
+            (0, 0): 1e-5 / ells**2,
+            (1, 1): 0.8e-5 / ells**2,
+            (0, 1): 0.4e-5 / ells**2,
         }
 
         # Setup compression

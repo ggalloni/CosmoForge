@@ -913,7 +913,6 @@ class FieldCollection:
             )
 
         self.spectra_manager.set_cls(cls_data, lmax=lmax)
-        self.spectra_manager.apply_normalization(lmax=lmax)
 
     def get_cls(self, field_i: int, field_j: int, mode: int = 0) -> np.ndarray:
         """

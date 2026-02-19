@@ -1238,6 +1238,12 @@ class Spectra(Core):
         matrix for comparing with convolved theoretical spectra. This avoids
         numerical issues from inverting poorly-conditioned window matrices.
 
+        **Output Convention:**
+        When ``output_convention`` is set to ``"Dl"`` in the configuration,
+        all returned spectra are converted from C_ℓ to D_ℓ = ℓ(ℓ+1)/(2π) C_ℓ.
+        In convolved mode, the window matrix is also transformed so that
+        the returned ``convolve_theory_func`` expects D_ℓ input.
+
         Examples
         --------
         Default (deconvolved) mode - backwards compatible:
@@ -1271,11 +1277,46 @@ class Spectra(Core):
             return None
 
         if mode == "deconvolved":
-            return self._get_deconvolved()
+            result = self._get_deconvolved()
         elif mode == "decorrelated":
-            return self._get_decorrelated()
+            result = self._get_decorrelated()
         else:  # convolved
-            return self._get_convolved()
+            result = self._get_convolved()
+
+        if self._output_is_dl() and result is not None:
+            result = self._apply_output_convention(result, mode)
+        return result
+
+    def _output_is_dl(self) -> bool:
+        """Check if output convention is Dl (case-insensitive)."""
+        value = getattr(self.params, "output_convention", "Cl")
+        key = value.strip().lower()
+        if key not in ("cl", "dl"):
+            raise ValueError(
+                f"Unknown spectra convention '{value}'. Must be 'Cl' or 'Dl'."
+            )
+        return key == "dl"
+
+    def _dl_factor(self) -> np.ndarray:
+        """Return the Cl->Dl factor tiled over all spectra."""
+        ell = np.arange(2, self.params.lmax + 1, dtype=np.float64)
+        return np.tile(ell * (ell + 1) / (2 * np.pi), self.params.nspectra)
+
+    def _apply_output_convention(self, result, mode):
+        """Apply Cl->Dl conversion to output power spectra."""
+        d = self._dl_factor()
+
+        if mode in ("deconvolved", "decorrelated"):
+            return result * d[np.newaxis, :]
+        else:  # convolved
+            y, W, convolve_cl = result
+            # W_Dl = D @ W_Cl @ D^{-1} so that <y_Dl> = W_Dl @ C_Dl
+            W_dl = W * np.outer(d, 1.0 / d)
+
+            def convolve_theory_dl(cl_theory_dl: np.ndarray) -> np.ndarray:
+                return W_dl @ cl_theory_dl
+
+            return (y * d[np.newaxis, :], W_dl, convolve_theory_dl)
 
     def _get_deconvolved(self) -> np.ndarray:
         """
@@ -1366,6 +1407,8 @@ class Spectra(Core):
         """
         if self.rank == 0 and self.qml_noise_bias is not None:
             noise_bias = self._normalize_spectra(self.qml_noise_bias)
+            if self._output_is_dl():
+                noise_bias = noise_bias * self._dl_factor()
             return noise_bias
         return None
 
@@ -1447,16 +1490,21 @@ class Spectra(Core):
         if mode == "deconvolved":
             if self.invfisher is None:
                 return None
-            return self.invfisher.copy()
+            cov = self.invfisher.copy()
         elif mode == "decorrelated":
             if self.invfisher is None:
                 return None
             nell = self.invfisher.shape[0]
-            return np.eye(nell)
+            cov = np.eye(nell)
         else:  # convolved
             if self.fisher_normalized is None:
                 return None
-            return self.fisher_normalized.copy()
+            cov = self.fisher_normalized.copy()
+
+        if self._output_is_dl():
+            d = self._dl_factor()
+            cov = cov * np.outer(d, d)
+        return cov
 
     def get_error_bars(self, mode: str = "deconvolved") -> np.ndarray | None:
         """
@@ -1536,13 +1584,15 @@ class Spectra(Core):
         ----------
         cl_theory : numpy.ndarray
             Theoretical power spectrum values. Should be a 1D array with
-            shape (nell,) matching the QML output dimensions.
+            shape (nell,) matching the QML output dimensions. When
+            ``output_convention="Dl"``, this should be D_ℓ values.
 
         Returns
         -------
         numpy.ndarray or None
-            Window-convolved theoretical spectrum with shape (nell,).
-            Returns None if window matrix is not available.
+            Window-convolved theoretical spectrum with shape (nell,),
+            in the same convention as the input. Returns None if window
+            matrix is not available.
 
         Notes
         -----
@@ -1555,6 +1605,8 @@ class Spectra(Core):
         <y> = W @ C_true
 
         where y are the raw QML estimates and W is the window matrix.
+        When ``output_convention="Dl"``, the window matrix is internally
+        transformed so the input and output are both in D_ℓ convention.
 
         Examples
         --------
@@ -1577,6 +1629,12 @@ class Spectra(Core):
 
         # Apply normalization to window matrix
         W_normalized = W * np.outer(self.normalization, self.normalization)
+
+        if self._output_is_dl():
+            d = self._dl_factor()
+            # W_Dl = D @ W_Cl @ D^{-1}, input theory is Dl so convert first
+            return d * (W_normalized @ (cl_theory / d))
+
         return W_normalized @ cl_theory
 
     def write_power_spectra(

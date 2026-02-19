@@ -186,6 +186,51 @@ def output_geometry(filegeometry, npixs, point_vectors, active):
                 f.write(f"{idx:6d}{vec[0]:24.16e}{vec[1]:24.16e}{vec[2]:24.16e}\n")
 
 
+def _parse_convention(value):
+    """Normalize a convention string to 'Cl' or 'Dl' (case-insensitive)."""
+    canonical = {"cl": "Cl", "dl": "Dl"}
+    key = value.strip().lower()
+    if key not in canonical:
+        raise ValueError(f"Unknown spectra convention '{value}'. Must be 'Cl' or 'Dl'.")
+    return canonical[key]
+
+
+def convert_spectra_normalization(cls_dict, from_norm, to_norm, lstart=2):
+    """Convert between Cl and Dl = l(l+1)/(2pi) Cl conventions.
+
+    Modifies cls_dict in place and returns it.
+
+    Parameters
+    ----------
+    cls_dict : dict
+        Dictionary mapping spectrum labels to power spectrum arrays.
+    from_norm : str
+        Input convention ("Cl" or "Dl", case-insensitive).
+    to_norm : str
+        Output convention ("Cl" or "Dl", case-insensitive).
+    lstart : int, optional
+        Starting multipole (default: 2).
+
+    Returns
+    -------
+    dict
+        The same cls_dict, modified in place.
+    """
+    from_norm = _parse_convention(from_norm)
+    to_norm = _parse_convention(to_norm)
+    if from_norm == to_norm:
+        return cls_dict
+    n_ell = next(iter(cls_dict.values())).shape[0]
+    ell = np.arange(lstart, lstart + n_ell, dtype=np.float64)
+    if from_norm == "Dl" and to_norm == "Cl":
+        factor = 2 * np.pi / (ell * (ell + 1))
+    else:  # Cl -> Dl
+        factor = ell * (ell + 1) / (2 * np.pi)
+    for label in cls_dict:
+        cls_dict[label] = cls_dict[label] * factor[: len(cls_dict[label])]
+    return cls_dict
+
+
 def readcl(inputclfile, Params: InputParams, logger=None, lmax: int | None = None):
     """
     Read power spectra from text file with header.
@@ -230,11 +275,30 @@ def readcl(inputclfile, Params: InputParams, logger=None, lmax: int | None = Non
         arr = np.loadtxt(f, dtype=np.float64)
         if logger is not None:
             logger.log_with_feedback(f"Read Cls: {arr.shape} {labels}", level=4)
+        # Find where ell=2 starts (files may begin at ell=0 or ell=2)
+        ell_col = None
+        for i, label in enumerate(labels):
+            if label.lower() == "ell":
+                ell_col = i
+                break
+
+        if ell_col is not None:
+            ell_values = arr[:, ell_col].astype(int)
+            start_row = int(np.searchsorted(ell_values, 2))
+        else:
+            start_row = 0  # assume data starts at ell=2
+
+        n_ell = effective_lmax - 1  # number of multipoles from ell=2 to lmax
         cls_dict = {}
         for i, label in enumerate(labels):
             if label.lower() == "ell":
-                continue  # skip the ell column
-            cls_dict[label] = arr[: effective_lmax - 1, i]
+                continue
+            cls_dict[label] = arr[start_row : start_row + n_ell, i]
+
+    input_conv = _parse_convention(getattr(Params, "input_convention", "Cl"))
+    if input_conv != "Cl":
+        convert_spectra_normalization(cls_dict, from_norm=input_conv, to_norm="Cl")
+
     return cls_dict
 
 

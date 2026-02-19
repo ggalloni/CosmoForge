@@ -10,6 +10,7 @@ output_geometry_file: 'tests/data/nside4/QU/geometry.dat'
 ordering: 2
 
 inputclfile: 'tests/data/nside4/QU/dls.txt'
+input_convention: Dl
 covmatfile1: 'tests/data/nside4/QU/NCVM1.bin'
 covmatfile2: 'tests/data/nside4/QU/NCVM2.bin'
 

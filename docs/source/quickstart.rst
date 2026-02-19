@@ -45,6 +45,7 @@ Use YAML files for configuration:
    lmax: 128
    labels: ["T", "E", "B"]          # Analysis field labels
    physical_labels: ["T", "Q", "U"] # Map field labels (or "TQU", "T1_T2")
+   input_convention: Dl              # "Cl" (default) or "Dl" for input files
    fwhmarcmin: 5.0
    apply_pixwin: true
 

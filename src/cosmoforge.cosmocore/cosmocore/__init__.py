@@ -79,6 +79,7 @@ from .harmonic import (
     vec_to_cl,
 )
 from .in_out import (
+    convert_spectra_normalization,
     output_geometry,
     read_covmat,
     read_maps,
@@ -123,6 +124,7 @@ __all__ = [
     "derivative_step_22",
     "do_derivative_step",
     # in_out
+    "convert_spectra_normalization",
     "output_geometry",
     "read_covmat",
     "read_maps",

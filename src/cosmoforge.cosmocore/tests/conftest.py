@@ -296,22 +296,19 @@ def three_scalar_field_realistic_setup():
 
     lmax = 10
 
-    # Realistic power spectra (including normalization factors)
+    # Realistic power spectra (physical C_ell values, no pre-normalization)
     n_ell = lmax - 1  # ell = 2 to lmax
     ells = np.arange(2, lmax + 1)
 
-    # Apply (2ell+1)/(4pi) normalization factor as done in SpectraManager
-    norm_factor = (2 * ells + 1) / (4 * np.pi)
-
     # Auto-spectra: different amplitudes for different fields
-    C_ell_11 = norm_factor * 1e-4 / ells**2  # Field 1 auto
-    C_ell_22 = norm_factor * 0.8e-4 / ells**2  # Field 2 auto
-    C_ell_33 = norm_factor * 0.6e-4 / ells**2  # Field 3 auto
+    C_ell_11 = 1e-4 / ells**2  # Field 1 auto
+    C_ell_22 = 0.8e-4 / ells**2  # Field 2 auto
+    C_ell_33 = 0.6e-4 / ells**2  # Field 3 auto
 
     # Cross-spectra: correlated but not perfectly
-    C_ell_12 = norm_factor * 0.5e-4 / ells**2  # 1-2 cross
-    C_ell_13 = norm_factor * 0.3e-4 / ells**2  # 1-3 cross
-    C_ell_23 = norm_factor * 0.4e-4 / ells**2  # 2-3 cross
+    C_ell_12 = 0.5e-4 / ells**2  # 1-2 cross
+    C_ell_13 = 0.3e-4 / ells**2  # 1-3 cross
+    C_ell_23 = 0.4e-4 / ells**2  # 2-3 cross
 
     C_ell_dict = {
         (0, 0): C_ell_11,

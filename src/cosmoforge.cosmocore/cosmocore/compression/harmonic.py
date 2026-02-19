@@ -520,14 +520,13 @@ class HarmonicCompression(BaseCompression):
 
         E_diag = np.zeros(self.n_modes_total, dtype=np.float64)
 
-        chngconv = (2 * ell + 1) / (4 * np.pi)
         local_mode_indices = self._ell_to_modes_local[ell]
 
         # For auto-spectrum (i == j): diagonal block
         if comp_i == comp_j:
             row_offset = self._mode_offsets[comp_i]
             for local_idx in local_mode_indices:
-                E_diag[row_offset + local_idx] = chngconv
+                E_diag[row_offset + local_idx] = 1.0
         # For cross-spectrum: off-diagonal blocks (not supported in diagonal form)
         # Cross-spectrum derivatives are not purely diagonal in the full matrix
 

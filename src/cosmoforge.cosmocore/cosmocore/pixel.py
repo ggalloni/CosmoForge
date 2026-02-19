@@ -180,7 +180,8 @@ def compute_00_contribution(cl, S_slice, vec1, vec2, legendre, mode, remove_dipo
     """
     npix = S_slice.shape[0]
     if mode == 0:
-        entry = np.sum(cl)
+        legendre_00(1.0, legendre)
+        entry = np.sum(cl * legendre[1:])
         if remove_dipole:
             entry += 1000.0 * cl[0] * 2.0
         for i in range(npix):
@@ -188,10 +189,11 @@ def compute_00_contribution(cl, S_slice, vec1, vec2, legendre, mode, remove_dipo
 
         for i in range(npix):
             for j in range(i + 1, npix):
-                legendre_00(vec1[j] @ vec2[i].T, legendre)
+                x = vec1[j] @ vec2[i].T
+                legendre_00(x, legendre)
                 S_slice[j, i] = np.sum(cl * legendre[1:])
                 if remove_dipole:
-                    S_slice[j, i] += 1000.0 * cl[0] * (1.0 + legendre[0])
+                    S_slice[j, i] += 1000.0 * cl[0] * (1.0 + x)
 
     elif mode == 1:
         for i in range(npix):
@@ -433,7 +435,7 @@ def compute_signal_matrix(
 
 
 @njit(cache=True)
-def derivative_step_00(S_slice, wl, vec1, vec2, current_ell, legendre, mode):
+def derivative_step_00(S_slice, vec1, vec2, current_ell, legendre, mode):
     """
     Compute derivative step for spin-0 x spin-0 field correlations.
 
@@ -441,8 +443,6 @@ def derivative_step_00(S_slice, wl, vec1, vec2, current_ell, legendre, mode):
     ----------
     S_slice : numpy.ndarray
         2D array slice to store derivative contributions.
-    wl : numpy.ndarray
-        Weighted coefficients for the current multipole.
     vec1, vec2 : numpy.ndarray
         3D pointing vectors for the two fields.
     current_ell : int
@@ -459,13 +459,14 @@ def derivative_step_00(S_slice, wl, vec1, vec2, current_ell, legendre, mode):
     """
     npix = S_slice.shape[0]
     if mode == 0:
+        legendre_00(1.0, legendre)
         for i in range(npix):
-            S_slice[i, i] = wl[current_ell - 2]
+            S_slice[i, i] = legendre[current_ell - 1]
 
         for i in range(npix):
             for j in range(i + 1, npix):
                 legendre_00(vec1[j] @ vec2[i].T, legendre)
-                S_slice[j, i] = legendre[current_ell - 1] * wl[current_ell - 2]
+                S_slice[j, i] = legendre[current_ell - 1]
 
         for i in range(S_slice.shape[0]):
             for j in range(i + 1, S_slice.shape[0]):
@@ -475,11 +476,11 @@ def derivative_step_00(S_slice, wl, vec1, vec2, current_ell, legendre, mode):
         for i in range(npix):
             for j in range(npix):
                 legendre_00(vec1[j] @ vec2[i].T, legendre)
-                S_slice[j, i] = legendre[current_ell - 1] * wl[current_ell - 2]
+                S_slice[j, i] = legendre[current_ell - 1]
 
 
 @njit(cache=True)
-def derivative_step_02(S_slice, wl, vec0, vec2, current_ell, mode, legendre):
+def derivative_step_02(S_slice, vec0, vec2, current_ell, mode, legendre):
     """
     Compute derivative step for spin-0 x spin-2 field correlations.
 
@@ -487,8 +488,6 @@ def derivative_step_02(S_slice, wl, vec0, vec2, current_ell, mode, legendre):
     ----------
     S_slice : numpy.ndarray
         2D array slice to store derivative contributions.
-    wl : numpy.ndarray
-        Weighted coefficients for the current multipole.
     vec0 : numpy.ndarray
         3D pointing vectors for the spin-0 field.
     vec2 : numpy.ndarray
@@ -518,19 +517,15 @@ def derivative_step_02(S_slice, wl, vec0, vec2, current_ell, mode, legendre):
             sin1 = np.sin(ang1)
 
             if mode == 0:
-                S_slice[j, i] = -wl[current_ell - 2] * legendre[current_ell - 1] * cos1
-                S_slice[j + npix_spin2, i] = (
-                    -wl[current_ell - 2] * legendre[current_ell - 1] * sin1
-                )
+                S_slice[j, i] = -legendre[current_ell - 1] * cos1
+                S_slice[j + npix_spin2, i] = -legendre[current_ell - 1] * sin1
             else:
-                S_slice[j, i] = wl[current_ell - 2] * legendre[current_ell - 1] * sin1
-                S_slice[j + npix_spin2, i] = (
-                    -wl[current_ell - 2] * legendre[current_ell - 1] * cos1
-                )
+                S_slice[j, i] = legendre[current_ell - 1] * sin1
+                S_slice[j + npix_spin2, i] = -legendre[current_ell - 1] * cos1
 
 
 @njit(cache=True)
-def derivative_step_22(S_slice, wl, vec1, vec2, current_ell, mode, legendre, f1, f2):
+def derivative_step_22(S_slice, vec1, vec2, current_ell, mode, legendre, f1, f2):
     """
     Compute derivative step for spin-2 x spin-2 field correlations.
 
@@ -538,8 +533,6 @@ def derivative_step_22(S_slice, wl, vec1, vec2, current_ell, mode, legendre, f1,
     ----------
     S_slice : numpy.ndarray
         2D array slice to store derivative contributions.
-    wl : numpy.ndarray
-        Weighted coefficients for the current multipole.
     vec1, vec2 : numpy.ndarray
         3D pointing vectors for the two spin-2 fields.
     current_ell : int
@@ -562,17 +555,17 @@ def derivative_step_22(S_slice, wl, vec1, vec2, current_ell, mode, legendre, f1,
     legendre_22(1.0, legendre, f1, f2)
 
     if mode == 0:  # such as EE
-        qq = f1[current_ell - 1] * wl[current_ell - 2]
-        uu = -f2[current_ell - 1] * wl[current_ell - 2]
+        qq = f1[current_ell - 1]
+        uu = -f2[current_ell - 1]
         qu = 0.0
     elif mode == 1:  # such as BB
-        qq = -f2[current_ell - 1] * wl[current_ell - 2]
-        uu = f1[current_ell - 1] * wl[current_ell - 2]
+        qq = -f2[current_ell - 1]
+        uu = f1[current_ell - 1]
         qu = 0.0
     elif mode == 2:  # such as EB
         qq = 0.0
         uu = 0.0
-        qu = (f1[current_ell - 1] + f2[current_ell - 1]) * wl[current_ell - 2]
+        qu = f1[current_ell - 1] + f2[current_ell - 1]
 
     for i in range(npix):
         S_slice[i, i] = qq
@@ -584,17 +577,17 @@ def derivative_step_22(S_slice, wl, vec1, vec2, current_ell, mode, legendre, f1,
         for j in range(i + 1, npix):
             legendre_22(vec1[j] @ vec2[i].T, legendre, f1, f2)
             if mode == 0:  # such as EE
-                qq = f1[current_ell - 1] * wl[current_ell - 2]
-                uu = -f2[current_ell - 1] * wl[current_ell - 2]
+                qq = f1[current_ell - 1]
+                uu = -f2[current_ell - 1]
                 qu = 0.0
             elif mode == 1:  # such as BB
-                qq = -f2[current_ell - 1] * wl[current_ell - 2]
-                uu = f1[current_ell - 1] * wl[current_ell - 2]
+                qq = -f2[current_ell - 1]
+                uu = f1[current_ell - 1]
                 qu = 0.0
             elif mode == 2:  # such as EB
                 qq = 0.0
                 uu = 0.0
-                qu = (f1[current_ell - 1] + f2[current_ell - 1]) * wl[current_ell - 2]
+                qu = f1[current_ell - 1] + f2[current_ell - 1]
 
             ang1, ang2 = get_rotation_angle(vec1[j], vec2[i])
             c1 = np.cos(ang1)
@@ -695,18 +688,12 @@ def do_derivative_step(
     nrow = 2 * npix_i if spin_i == 2 else npix_i
     ncol = 2 * npix_j if spin_j == 2 else npix_j
 
-    ell = np.arange(2, current_ell + 1)
-    factor2 = 1 / ((ell + 2) * (ell + 1) * ell * (ell - 1))
-    factor = np.sqrt(factor2)
-    chngconv = (2 * ell + 1) / (4 * np.pi)
-
     block = S[col_offset : col_offset + ncol, row_offset : row_offset + nrow]
     legendre = np.empty(current_ell)
 
     if spin_i == 0 and spin_j == 0:
         derivative_step_00(
             block,
-            chngconv,
             point_vectors_i,
             point_vectors_j,
             current_ell,
@@ -720,7 +707,6 @@ def do_derivative_step(
     elif (spin_i, spin_j) in [(0, 2), (2, 0)]:
         derivative_step_02(
             block,
-            chngconv * factor,
             point_vectors_i,
             point_vectors_j,
             current_ell,
@@ -735,7 +721,6 @@ def do_derivative_step(
         f2 = np.empty(current_ell)
         derivative_step_22(
             block,
-            chngconv * factor2,
             point_vectors_i,
             point_vectors_j,
             current_ell,

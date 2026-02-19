@@ -181,7 +181,7 @@ class HarmonicBasis:
 
             mode_idx = 0
             for ell in range(lmin_v, lmax_v + 1):
-                norm_ell = np.sqrt((ell + 2) * (ell + 1) * ell * (ell - 1))
+                scale_ell = np.sqrt((2 * ell + 1) / (4 * np.pi))
 
                 for m in range(-ell, ell + 1):
                     abs_m = abs(m)
@@ -193,7 +193,7 @@ class HarmonicBasis:
                     D_minus = d_minus2 - d_plus2
 
                     if m == 0:
-                        scale = norm_ell * 0.5
+                        scale = scale_ell * 0.5
 
                         V[mode_idx, ipix] = scale * D_plus
                         V[mode_idx, n_pix + ipix] = 0.0
@@ -201,7 +201,7 @@ class HarmonicBasis:
                         V[n_modes + mode_idx, ipix] = 0.0
                         V[n_modes + mode_idx, n_pix + ipix] = scale * D_plus
                     elif m > 0:
-                        scale = norm_ell * np.sqrt(2.0) * 0.5
+                        scale = scale_ell * np.sqrt(2.0) * 0.5
                         cm = cos_mphi[m, ipix]
                         sm = sin_mphi[m, ipix]
 
@@ -211,7 +211,7 @@ class HarmonicBasis:
                         V[n_modes + mode_idx, ipix] = -scale * D_minus * sm
                         V[n_modes + mode_idx, n_pix + ipix] = scale * D_plus * cm
                     else:  # m < 0
-                        scale = norm_ell * np.sqrt(2.0) * 0.5
+                        scale = scale_ell * np.sqrt(2.0) * 0.5
                         cm = cos_mphi[abs_m, ipix]
                         sm = sin_mphi[abs_m, ipix]
 
@@ -249,9 +249,8 @@ class HarmonicBasis:
         for ell in range(self._lmin_smw, self._lmax_smw + 1):
             E_diag = np.zeros(self._n_modes_per_component, dtype=np.float64)
             if ell in self._ell_to_modes_local:
-                chngconv = (2 * ell + 1) / (4 * np.pi)
                 for mode_idx in self._ell_to_modes_local[ell]:
-                    E_diag[mode_idx] = chngconv
+                    E_diag[mode_idx] = 1.0
             self._derivative_diagonals_local[ell] = E_diag
 
         if self.n_components == 1:
@@ -272,7 +271,6 @@ class HarmonicBasis:
         Returns the E matrix in n_modes_total x n_modes_total space.
         """
         E = np.zeros((self.n_modes_total, self.n_modes_total), dtype=np.float64)
-        chngconv = (2 * ell + 1) / (4 * np.pi)
         local_mode_indices = self._ell_to_modes_local[ell]
         n_base = self._n_modes_base
 
@@ -283,14 +281,13 @@ class HarmonicBasis:
             row_offset = self._mode_offsets[comp_i]
             col_offset = self._mode_offsets[comp_j]
             for idx in local_mode_indices:
-                E[row_offset + idx, col_offset + idx] = chngconv
+                E[row_offset + idx, col_offset + idx] = 1.0
             if comp_i != comp_j:
                 for idx in local_mode_indices:
-                    E[col_offset + idx, row_offset + idx] = chngconv
+                    E[col_offset + idx, row_offset + idx] = 1.0
 
         elif spin_i == 2 and spin_j == 2:
-            factor2 = 1.0 / ((ell + 2) * (ell + 1) * ell * (ell - 1))
-            deriv_val = chngconv * factor2
+            deriv_val = 1.0
             row_start = self._mode_offsets[comp_i]
             col_start = self._mode_offsets[comp_j]
 
@@ -318,8 +315,7 @@ class HarmonicBasis:
                         E[row_start + n_base + idx, col_start + idx] = deriv_val
 
         elif spin_i == 0 and spin_j == 2:
-            factor = np.sqrt(1.0 / ((ell + 2) * (ell + 1) * ell * (ell - 1)))
-            deriv_val = -chngconv * factor
+            deriv_val = -1.0
             row_start = self._mode_offsets[comp_i]
             col_start = self._mode_offsets[comp_j]
             col_sub = col_start + mode * n_base
@@ -328,8 +324,7 @@ class HarmonicBasis:
                 E[col_sub + idx, row_start + idx] = deriv_val
 
         elif spin_i == 2 and spin_j == 0:
-            factor = np.sqrt(1.0 / ((ell + 2) * (ell + 1) * ell * (ell - 1)))
-            deriv_val = -chngconv * factor
+            deriv_val = -1.0
             row_start = self._mode_offsets[comp_i]
             col_start = self._mode_offsets[comp_j]
             row_sub = row_start + mode * n_base

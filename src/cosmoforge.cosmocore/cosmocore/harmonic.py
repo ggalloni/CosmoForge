@@ -427,92 +427,6 @@ class SpectraManager:
             spectra_list.append((fi, fj, mode))
         return C_ell_dict, spectra_list
 
-    def apply_normalization(self, lmax: int | None = None) -> None:
-        """
-        Apply normalization factors based on spin combinations.
-
-        This method applies physics-based normalization factors that depend on
-        the spin properties of the fields involved in each power spectrum.
-        The normalization accounts for spherical harmonic conventions and
-        geometric factors.
-
-        The normalization factors are:
-        - Scalar-scalar (spin 0-0): (2ℓ+1)/(4π)
-        - Scalar-tensor (spin 0-2): (2ℓ+1)/(4π) × √[1/((ℓ+2)(ℓ+1)ℓ(ℓ-1))]
-        - Tensor-tensor (spin 2-2): (2ℓ+1)/(4π) × 1/((ℓ+2)(ℓ+1)ℓ(ℓ-1))
-
-        Parameters
-        ----------
-        lmax : int, optional
-            Maximum multipole to use. If None, uses the field's lmax.
-            This allows applying normalization up to a different lmax.
-
-        Notes
-        -----
-        This method modifies the power spectra in-place. Both the internal
-        dictionary and matrix representations are updated.
-
-        Examples
-        --------
-        >>> spectra_mgr.set_cls_from_file('input_cls.dat', params)
-        >>> spectra_mgr.apply_normalization()  # Apply physics normalization
-        """
-        # Use precomputed normalization factors
-        normalization_factors = self.compute_normalization_factors(lmax=lmax)
-
-        for idx, label in enumerate(self._spectra_labels):
-            if label in normalization_factors:
-                # Apply normalization factor
-                self._cls_matrix[:, idx] *= normalization_factors[label]
-                # Update dictionary
-                self._cls_dict[label] = self._cls_matrix[:, idx]
-
-    def compute_normalization_factors(
-        self, lmax: int | None = None
-    ) -> dict[str, np.ndarray]:
-        """
-        Compute normalization factors for all spectrum labels.
-
-        Parameters
-        ----------
-        lmax : int, optional
-            Maximum multipole to use. If None, uses the field's lmax.
-
-        Returns:
-        --------
-        dict[str, np.ndarray]
-            Dictionary mapping spectrum labels to normalization factor arrays
-        """
-        effective_lmax = lmax if lmax is not None else self.fields[0].lmax
-        ell = np.arange(2, effective_lmax + 1, dtype=np.float64)
-
-        # Base factors for different spin combinations
-        factor2 = 1 / ((ell + 2) * (ell + 1) * ell * (ell - 1))
-        factor = np.sqrt(factor2)
-        chngconv = (2 * ell + 1) / (4 * np.pi)
-
-        normalization_factors = {}
-
-        for label in self._spectra_labels:
-            # Find the field pair for this spectrum
-            for (i, j, mode), spec_label in self._spectra_map.items():
-                if spec_label == label:
-                    spin_i = self.fields[i].spin
-                    spin_j = self.fields[j].spin
-
-                    # Compute normalization factor based on spin combination
-                    norm_factor = chngconv.copy()
-                    if spin_i == 2 and spin_j == 2:
-                        norm_factor *= factor2
-                    elif (spin_i, spin_j) in [(0, 2), (2, 0)]:
-                        norm_factor *= factor
-                    # spin_i == 0 and spin_j == 0: no additional factor
-
-                    normalization_factors[label] = norm_factor
-                    break
-
-        return normalization_factors
-
     def compute_smoothing_factors(
         self, beam_manager: BeamManager, lmax: int | None = None
     ) -> dict[str, np.ndarray]:
@@ -532,18 +446,14 @@ class SpectraManager:
             Dictionary mapping spectrum labels to smoothing factor arrays
         """
         effective_lmax = lmax if lmax is not None else self.fields[0].lmax
-        ell = np.arange(2, effective_lmax + 1, dtype=np.float64)
-        chngconv_smooth = 2 * np.pi / (ell * (ell + 1.0))
+        n_ell = effective_lmax - 1  # ell from 2 to lmax
 
         # Get beam dictionary
         beam_dict = beam_manager.get_beam_dict()
         smoothing_factors = {}
 
-        n_ell = len(chngconv_smooth)  # Number of ell values for output
-
         for label in self._spectra_labels:
-            # Compute smoothing factor (beam + conversion)
-            smooth_factor = chngconv_smooth.copy()
+            smooth_factor = np.ones(n_ell, dtype=np.float64)
 
             # Extract field labels from spectrum label
             # (e.g., "TE" -> "T", "E")
@@ -574,8 +484,7 @@ class SpectraManager:
 
                 beam1 = beam1_full[:n_ell]
                 beam2 = beam2_full[:n_ell]
-                beam_factor = beam1 * beam2
-                smooth_factor *= beam_factor
+                smooth_factor = beam1 * beam2
 
             smoothing_factors[label] = smooth_factor
 
@@ -854,11 +763,10 @@ class BeamManager:
         Notes
         -----
         The smoothing operation multiplies each power spectrum by:
-        C_ℓ^smoothed = C_ℓ^theory × B₁(ℓ) × B₂(ℓ) × [2π / (ℓ(ℓ+1))]
+        C_ℓ^smoothed = C_ℓ^theory × B₁(ℓ) × B₂(ℓ)
 
         where B₁(ℓ) and B₂(ℓ) are the beam functions for the two fields
-        involved in the spectrum, and the geometric factor converts between
-        different power spectrum conventions.
+        involved in the spectrum.
 
         Examples
         --------

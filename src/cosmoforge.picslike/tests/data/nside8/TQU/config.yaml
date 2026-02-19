@@ -10,6 +10,7 @@ output_geometry_file: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.
 ordering: 2
 
 inputclfile: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.picslike/tests/data/nside8/TQU/dls.txt'
+input_convention: Dl
 covmatfile1: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.picslike/tests/data/nside8/TQU/NCVM1.bin'
 covmatfile2: '/home/ggalloni/Projects/GitHub/CosmoForge/src/cosmoforge.picslike/tests/data/nside8/TQU/NCVM2.bin'
 
