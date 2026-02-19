@@ -9,6 +9,7 @@ output_geometry_file: '../tests/data/nside4/T/geometry.dat'
 ordering: 2
 
 inputclfile: '../tests/data/nside4/T/dls.txt'
+input_convention: Dl
 covmatfile1: '../tests/data/nside4/T/NCVM1.bin'
 covmatfile2: '../tests/data/nside4/T/NCVM2.bin'
 
