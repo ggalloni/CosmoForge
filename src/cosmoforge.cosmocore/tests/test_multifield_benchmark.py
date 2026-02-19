@@ -116,20 +116,19 @@ def teb_scalar_setup():
 
     lmax = 8  # Same as nside=4 tests
 
-    # Realistic power spectra with normalization
+    # Realistic power spectra (physical C_ell values, no pre-normalization)
     n_ell = lmax - 1
     ells = np.arange(2, lmax + 1)
-    norm_factor = (2 * ells + 1) / (4 * np.pi)
 
     # Auto-spectra (TT, EE, BB)
-    C_TT = norm_factor * 1e-4 / ells**2
-    C_EE = norm_factor * 1e-5 / ells**2  # E weaker than T
-    C_BB = norm_factor * 1e-6 / ells**2  # B much weaker
+    C_TT = 1e-4 / ells**2
+    C_EE = 1e-5 / ells**2  # E weaker than T
+    C_BB = 1e-6 / ells**2  # B much weaker
 
     # Cross-spectra (TE correlation, TB/EB typically zero but add small values)
-    C_TE = norm_factor * 3e-5 / ells**2  # TE correlation
-    C_TB = norm_factor * 1e-8 / ells**2  # TB ~0
-    C_EB = norm_factor * 1e-8 / ells**2  # EB ~0
+    C_TE = 3e-5 / ells**2  # TE correlation
+    C_TB = 1e-8 / ells**2  # TB ~0
+    C_EB = 1e-8 / ells**2  # EB ~0
 
     C_ell_dict = {
         (0, 0): C_TT,  # TT

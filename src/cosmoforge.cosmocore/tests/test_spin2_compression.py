@@ -939,24 +939,19 @@ def _pixel_space_fisher_with_spins_raw(
         spin_i = spins[comp_i]
         spin_j = spins[comp_j]
         E = np.zeros((n_modes_total, n_modes_total), dtype=np.float64)
-        chngconv = (2 * ell + 1) / (4 * np.pi)
         local_mode_indices = ell_to_modes_local[ell]
         n_base = n_modes_base
-
-        # Spin-dependent normalization factors matching pixel.py convention
-        factor2 = 1.0 / ((ell + 2) * (ell + 1) * ell * (ell - 1))
-        factor = np.sqrt(factor2)
 
         if spin_i == 0 and spin_j == 0:
             row_offset = mode_offsets[comp_i]
             col_offset = mode_offsets[comp_j]
             for idx in local_mode_indices:
-                E[row_offset + idx, col_offset + idx] = chngconv
+                E[row_offset + idx, col_offset + idx] = 1.0
             if comp_i != comp_j:
                 for idx in local_mode_indices:
-                    E[col_offset + idx, row_offset + idx] = chngconv
+                    E[col_offset + idx, row_offset + idx] = 1.0
         elif spin_i == 2 and spin_j == 2:
-            deriv_val = chngconv * factor2
+            deriv_val = 1.0
             row_start = mode_offsets[comp_i]
             col_start = mode_offsets[comp_j]
             if mode == 0:
@@ -981,8 +976,7 @@ def _pixel_space_fisher_with_spins_raw(
                         E[col_start + idx, row_start + n_base + idx] = deriv_val
                         E[row_start + n_base + idx, col_start + idx] = deriv_val
         elif spin_i == 0 and spin_j == 2:
-            # Negative sign from spin-2 convention
-            deriv_val = -chngconv * factor
+            deriv_val = -1.0
             row_start = mode_offsets[comp_i]
             col_start = mode_offsets[comp_j]
             col_sub = col_start + mode * n_base
@@ -990,8 +984,7 @@ def _pixel_space_fisher_with_spins_raw(
                 E[row_start + idx, col_sub + idx] = deriv_val
                 E[col_sub + idx, row_start + idx] = deriv_val
         elif spin_i == 2 and spin_j == 0:
-            # Negative sign from spin-2 convention
-            deriv_val = -chngconv * factor
+            deriv_val = -1.0
             row_start = mode_offsets[comp_i]
             col_start = mode_offsets[comp_j]
             row_sub = row_start + mode * n_base
