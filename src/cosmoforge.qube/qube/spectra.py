@@ -1238,6 +1238,12 @@ class Spectra(Core):
         matrix for comparing with convolved theoretical spectra. This avoids
         numerical issues from inverting poorly-conditioned window matrices.
 
+        **Output Convention:**
+        When ``output_convention`` is set to ``"Dl"`` in the configuration,
+        all returned spectra are converted from C_ℓ to D_ℓ = ℓ(ℓ+1)/(2π) C_ℓ.
+        In convolved mode, the window matrix is also transformed so that
+        the returned ``convolve_theory_func`` expects D_ℓ input.
+
         Examples
         --------
         Default (deconvolved) mode - backwards compatible:
@@ -1578,13 +1584,15 @@ class Spectra(Core):
         ----------
         cl_theory : numpy.ndarray
             Theoretical power spectrum values. Should be a 1D array with
-            shape (nell,) matching the QML output dimensions.
+            shape (nell,) matching the QML output dimensions. When
+            ``output_convention="Dl"``, this should be D_ℓ values.
 
         Returns
         -------
         numpy.ndarray or None
-            Window-convolved theoretical spectrum with shape (nell,).
-            Returns None if window matrix is not available.
+            Window-convolved theoretical spectrum with shape (nell,),
+            in the same convention as the input. Returns None if window
+            matrix is not available.
 
         Notes
         -----
@@ -1597,6 +1605,8 @@ class Spectra(Core):
         <y> = W @ C_true
 
         where y are the raw QML estimates and W is the window matrix.
+        When ``output_convention="Dl"``, the window matrix is internally
+        transformed so the input and output are both in D_ℓ convention.
 
         Examples
         --------
