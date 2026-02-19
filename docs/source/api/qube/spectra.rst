@@ -333,6 +333,8 @@ Essential QML configuration parameters:
    mapfiles1: ["map_T.fits", "map_Q.fits", "map_U.fits"]
    covmatfile1: "noise_covariance.bin"
    maskfile: "analysis_mask.fits"
+   input_convention: Dl   # "Cl" (default) or "Dl" for input spectra
+   output_convention: Dl  # "Cl" (default) or "Dl" for output spectra
 
    # Multipole range
    lmin: 2

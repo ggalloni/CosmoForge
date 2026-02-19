@@ -38,7 +38,7 @@ from .basics import spec2idx
 
 
 class InputParams:
-    """
+    r"""
     Parameter management class for cosmological analysis configuration.
 
     This class handles all configuration parameters for cosmological analysis
@@ -88,6 +88,14 @@ class InputParams:
         Overall calibration factor for maps.
     ordering : int
         HEALPix map ordering (1=RING, 2=NESTED).
+    input_convention : str
+        Power spectrum convention of input files: ``"Cl"`` (default) or ``"Dl"``.
+        When set to ``"Dl"``, input spectra are converted from
+        :math:`D_\ell = \ell(\ell+1) C_\ell / (2\pi)` to :math:`C_\ell` on read.
+    output_convention : str
+        Power spectrum convention for QML output: ``"Cl"`` (default) or ``"Dl"``.
+        When set to ``"Dl"``, output spectra are converted from internal
+        :math:`C_\ell` to :math:`D_\ell` before being returned.
 
     Derived Attributes
     ------------------

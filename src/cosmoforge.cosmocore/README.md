@@ -176,6 +176,8 @@ labels: ["T", "E", "B"]
 # I/O configuration
 maskfile: "data/mask.fits"
 inputclfile: "data/fiducial_cls.txt"
+input_convention: Dl  # "Cl" (default) or "Dl" for input files
+output_convention: Cl  # "Cl" (default) or "Dl" for QML output
 covmatfile1: "data/noise_cov.bin"
 
 # Beam configuration
