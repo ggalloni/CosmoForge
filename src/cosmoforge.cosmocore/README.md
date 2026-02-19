@@ -149,7 +149,6 @@ spectra_mgr = SpectraManager(fields)
 beam_mgr = BeamManager(fields)
 
 spectra_mgr.set_cls_from_file("fiducial_cls.txt", params)
-spectra_mgr.apply_normalization()
 beam_mgr.apply_smoothing(spectra_mgr)
 ```
 

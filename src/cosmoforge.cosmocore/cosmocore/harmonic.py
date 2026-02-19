@@ -427,46 +427,6 @@ class SpectraManager:
             spectra_list.append((fi, fj, mode))
         return C_ell_dict, spectra_list
 
-    def apply_normalization(self, lmax: int | None = None) -> None:
-        """
-        Apply normalization factors based on spin combinations.
-
-        This method applies physics-based normalization factors that depend on
-        the spin properties of the fields involved in each power spectrum.
-        The normalization accounts for spherical harmonic conventions and
-        geometric factors.
-
-        The normalization factors are:
-        - Scalar-scalar (spin 0-0): (2ℓ+1)/(4π)
-        - Scalar-tensor (spin 0-2): (2ℓ+1)/(4π) × √[1/((ℓ+2)(ℓ+1)ℓ(ℓ-1))]
-        - Tensor-tensor (spin 2-2): (2ℓ+1)/(4π) × 1/((ℓ+2)(ℓ+1)ℓ(ℓ-1))
-
-        Parameters
-        ----------
-        lmax : int, optional
-            Maximum multipole to use. If None, uses the field's lmax.
-            This allows applying normalization up to a different lmax.
-
-        Notes
-        -----
-        This method modifies the power spectra in-place. Both the internal
-        dictionary and matrix representations are updated.
-
-        Examples
-        --------
-        >>> spectra_mgr.set_cls_from_file('input_cls.dat', params)
-        >>> spectra_mgr.apply_normalization()  # Apply physics normalization
-        """
-        # Use precomputed normalization factors
-        normalization_factors = self.compute_normalization_factors(lmax=lmax)
-
-        for idx, label in enumerate(self._spectra_labels):
-            if label in normalization_factors:
-                # Apply normalization factor
-                self._cls_matrix[:, idx] *= normalization_factors[label]
-                # Update dictionary
-                self._cls_dict[label] = self._cls_matrix[:, idx]
-
     def compute_normalization_factors(
         self, lmax: int | None = None
     ) -> dict[str, np.ndarray]:
