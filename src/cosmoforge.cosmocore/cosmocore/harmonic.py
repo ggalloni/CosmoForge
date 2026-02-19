@@ -763,11 +763,10 @@ class BeamManager:
         Notes
         -----
         The smoothing operation multiplies each power spectrum by:
-        C_ℓ^smoothed = C_ℓ^theory × B₁(ℓ) × B₂(ℓ) × [2π / (ℓ(ℓ+1))]
+        C_ℓ^smoothed = C_ℓ^theory × B₁(ℓ) × B₂(ℓ)
 
         where B₁(ℓ) and B₂(ℓ) are the beam functions for the two fields
-        involved in the spectrum, and the geometric factor converts between
-        different power spectrum conventions.
+        involved in the spectrum.
 
         Examples
         --------
