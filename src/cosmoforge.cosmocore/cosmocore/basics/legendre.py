@@ -28,8 +28,6 @@ def legendre_00(scalar_prod, legendre):
     # Base cases
     legendre[0] = scalar_prod
     legendre[1] = 1.5 * scalar_prod * scalar_prod - 0.5
-    if lmax == 2:
-        return
 
     # Optimized recurrence
     for ell in range(3, lmax + 1):
@@ -37,6 +35,10 @@ def legendre_00(scalar_prod, legendre):
             (2 * ell - 1) * scalar_prod * legendre[ell - 2]
             - (ell - 1) * legendre[ell - 3]
         ) / ell
+
+    # Absorb (2ℓ+1)/(4π) normalization into the polynomials
+    for k in range(lmax):
+        legendre[k] *= (2 * (k + 1) + 1) / (4 * np.pi)
 
 
 @njit(cache=True)
@@ -68,8 +70,6 @@ def legendre_22(scalar_prod, legendre, f1, f2):
     legendre[1] = 3.0
     f1[1] = 6.0 * (1.0 + scalar_prod * scalar_prod)
     f2[1] = -12.0 * scalar_prod
-    if lmax == 2:
-        return
 
     # Optimized recurrence
     for ell in range(3, lmax + 1):
@@ -85,6 +85,15 @@ def legendre_22(scalar_prod, legendre, f1, f2):
         f2[ell - 1] = 4.0 * (
             -(ell - 1) * scalar_prod * legendre[ell - 1] + (ell + 2) * legendre[ell - 2]
         )
+
+    # Absorb (2ℓ+1)/(4π) × factor2 normalization into the polynomials
+    for k in range(1, lmax):
+        ell = k + 1
+        factor2 = 1.0 / ((ell + 2) * (ell + 1) * ell * (ell - 1))
+        norm = (2 * ell + 1) / (4 * np.pi) * factor2
+        legendre[k] *= norm
+        f1[k] *= norm
+        f2[k] *= norm
 
 
 @njit(cache=True)
@@ -110,8 +119,6 @@ def legendre_02(scalar_prod, legendre):
     # Zero the array and set base case
     legendre[:] = 0.0
     legendre[1] = 3.0 * (1.0 - scalar_prod * scalar_prod)
-    if lmax == 2:
-        return
 
     # Optimized recurrence
     for ell in range(3, lmax + 1):
@@ -119,6 +126,12 @@ def legendre_02(scalar_prod, legendre):
             scalar_prod * (2 * ell - 1) * legendre[ell - 2]
             - (ell + 1) * legendre[ell - 3]
         ) / (ell - 2)
+
+    # Absorb (2ℓ+1)/(4π) × factor normalization into the polynomials
+    for k in range(1, lmax):
+        ell = k + 1
+        factor = np.sqrt(1.0 / ((ell + 2) * (ell + 1) * ell * (ell - 1)))
+        legendre[k] *= (2 * ell + 1) / (4 * np.pi) * factor
 
 
 @njit(cache=True)
@@ -173,3 +186,9 @@ def legendre_plm(cos_theta, sin_theta, plm):
             a = (2 * ell - 1) / np.sqrt(ell2_m2)
             b = np.sqrt(ell1_2_m2 / ell2_m2)
             plm[ell, m] = a * x * plm[ell - 1, m] - b * plm[ell - 2, m]
+
+    # Absorb sqrt((2ℓ+1)/(4π)) normalization into the polynomials
+    for ell in range(lmax + 1):
+        scale = np.sqrt((2 * ell + 1) / (4 * np.pi))
+        for m in range(ell + 1):
+            plm[ell, m] *= scale
