@@ -427,52 +427,6 @@ class SpectraManager:
             spectra_list.append((fi, fj, mode))
         return C_ell_dict, spectra_list
 
-    def compute_normalization_factors(
-        self, lmax: int | None = None
-    ) -> dict[str, np.ndarray]:
-        """
-        Compute normalization factors for all spectrum labels.
-
-        Parameters
-        ----------
-        lmax : int, optional
-            Maximum multipole to use. If None, uses the field's lmax.
-
-        Returns:
-        --------
-        dict[str, np.ndarray]
-            Dictionary mapping spectrum labels to normalization factor arrays
-        """
-        effective_lmax = lmax if lmax is not None else self.fields[0].lmax
-        ell = np.arange(2, effective_lmax + 1, dtype=np.float64)
-
-        # Base factors for different spin combinations
-        factor2 = 1 / ((ell + 2) * (ell + 1) * ell * (ell - 1))
-        factor = np.sqrt(factor2)
-        chngconv = (2 * ell + 1) / (4 * np.pi)
-
-        normalization_factors = {}
-
-        for label in self._spectra_labels:
-            # Find the field pair for this spectrum
-            for (i, j, mode), spec_label in self._spectra_map.items():
-                if spec_label == label:
-                    spin_i = self.fields[i].spin
-                    spin_j = self.fields[j].spin
-
-                    # Compute normalization factor based on spin combination
-                    norm_factor = chngconv.copy()
-                    if spin_i == 2 and spin_j == 2:
-                        norm_factor *= factor2
-                    elif (spin_i, spin_j) in [(0, 2), (2, 0)]:
-                        norm_factor *= factor
-                    # spin_i == 0 and spin_j == 0: no additional factor
-
-                    normalization_factors[label] = norm_factor
-                    break
-
-        return normalization_factors
-
     def compute_smoothing_factors(
         self, beam_manager: BeamManager, lmax: int | None = None
     ) -> dict[str, np.ndarray]:
@@ -492,18 +446,14 @@ class SpectraManager:
             Dictionary mapping spectrum labels to smoothing factor arrays
         """
         effective_lmax = lmax if lmax is not None else self.fields[0].lmax
-        ell = np.arange(2, effective_lmax + 1, dtype=np.float64)
-        chngconv_smooth = 2 * np.pi / (ell * (ell + 1.0))
+        n_ell = effective_lmax - 1  # ell from 2 to lmax
 
         # Get beam dictionary
         beam_dict = beam_manager.get_beam_dict()
         smoothing_factors = {}
 
-        n_ell = len(chngconv_smooth)  # Number of ell values for output
-
         for label in self._spectra_labels:
-            # Compute smoothing factor (beam + conversion)
-            smooth_factor = chngconv_smooth.copy()
+            smooth_factor = np.ones(n_ell, dtype=np.float64)
 
             # Extract field labels from spectrum label
             # (e.g., "TE" -> "T", "E")
@@ -534,8 +484,7 @@ class SpectraManager:
 
                 beam1 = beam1_full[:n_ell]
                 beam2 = beam2_full[:n_ell]
-                beam_factor = beam1 * beam2
-                smooth_factor *= beam_factor
+                smooth_factor = beam1 * beam2
 
             smoothing_factors[label] = smooth_factor
 
