@@ -677,6 +677,47 @@ class Core(ABC):
         else:
             return self._build_derivative_matrix(ell)
 
+    def set_binning(self, bins) -> None:
+        """
+        Configure multipole binning.
+
+        Parameters
+        ----------
+        bins : Bins
+            Binning specification defining multipole ranges and weights.
+        """
+        self.bins = bins
+
+    def get_binned_derivative_matrix(self, bin_idx: int) -> np.ndarray:
+        """
+        Compute binned derivative matrix dC^b = Sum_{ell in b} P_{b,ell} * dC^ell.
+
+        Calls get_derivative_matrix(ell) internally, so works transparently
+        with both pixel-space and compressed paths (single-spectrum).
+
+        Parameters
+        ----------
+        bin_idx : int
+            Index of the bin.
+
+        Returns
+        -------
+        numpy.ndarray
+            Binned derivative matrix.
+        """
+        P, _ = self.bins._bin_operators()
+        lmin_b = self.bins.lmins[bin_idx]
+        lmax_b = self.bins.lmaxs[bin_idx]
+        dC_b = None
+        for ell in range(lmin_b, lmax_b + 1):
+            dC_ell = self.get_derivative_matrix(ell)
+            w = P[bin_idx, ell]
+            if dC_b is None:
+                dC_b = w * dC_ell
+            else:
+                dC_b += w * dC_ell
+        return dC_b
+
     def compute_quadratic_form(self, data: np.ndarray, C_ell) -> float:
         """
         Compute quadratic form d^T C^{-1} d.
