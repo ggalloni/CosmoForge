@@ -303,12 +303,17 @@ class Spectra(Core):
         if hasattr(self.fisher_instance, "Sig") and self.fisher_instance.Sig is not None:
             self.Sig = self.fisher_instance.Sig
 
-        # Copy binning if available
+        # Copy binning and vecmul if available
         if (
             hasattr(self.fisher_instance, "bins")
             and self.fisher_instance.bins is not None
         ):
             self.bins = self.fisher_instance.bins
+        if (
+            hasattr(self.fisher_instance, "vecmul_per_ell")
+            and self.fisher_instance.vecmul_per_ell is not None
+        ):
+            self.vecmul_per_ell = self.fisher_instance.vecmul_per_ell
 
         # Copy compression manager if available
         if (
@@ -448,53 +453,11 @@ class Spectra(Core):
 
             self.invfisher = fisher_matrix.copy()
 
-            # Compute vecmul (smoothing factors) - this is critical!
-            self.log("Computing smoothing factors and vecmul", level=2)
-            smoothing_factors = self.collection.spectra_manager.compute_smoothing_factors(
-                self.collection.beam_manager
-            )
-
-            # Build per-ell vecmul, then construct vecmul-weighted binning
-            # matrix P_vm so that F'_binned = P_vm @ F_unbinned @ P_vm^T
-            # and q'_binned = P_vm @ q_unbinned give correctly normalized results.
+            # Vecmul is already absorbed into the derivative matrices
+            # during Fisher/QML computation, so normalization is identity.
             nbins = self.bins.nbins
-            n_ell = self.params.lmax - 1
-
-            # Per-ell vecmul vector (length nspectra * n_ell)
-            vecmul_per_ell = np.zeros(self.params.nspectra * n_ell, dtype=np.float64)
-            idx = 0
-            for _, spectrum_label in enumerate(self.collection.spectra_manager.labels):
-                if spectrum_label in smoothing_factors:
-                    smooth_factor = smoothing_factors[spectrum_label]
-                    for ell_idx in range(n_ell):
-                        vecmul_per_ell[idx] = smooth_factor[ell_idx]
-                        idx += 1
-                else:
-                    raise ValueError(f"No smoothing factors found for {spectrum_label}")
-
-            # Build block-diagonal binning matrix P (nspectra*nbins x nspectra*n_ell)
-            P_full, _ = self.bins._bin_operators()
-            P_ell = np.zeros((nbins, n_ell))
-            n_ell_P = P_full.shape[1] - 2
-            P_ell[:, :n_ell_P] = P_full[:, 2:]
-            nspectra = self.params.nspectra
-            P_block = np.zeros((nspectra * nbins, nspectra * n_ell))
-            for s in range(nspectra):
-                P_block[
-                    s * nbins : (s + 1) * nbins,
-                    s * n_ell : (s + 1) * n_ell,
-                ] = P_ell
-
-            # Binned normalization: P @ vm_per_ell
-            # Exact for delta_ell=1. For wider bins, absorbing vecmul
-            # into derivatives before binning would be the exact fix.
-            self.normalization = P_block @ vecmul_per_ell
-
-            # Apply vecmul normalization to Fisher matrix
-            self.log("Applying vecmul normalization to Fisher matrix", level=2)
-            self.invfisher = self.invfisher * np.outer(
-                self.normalization, self.normalization
-            )
+            nell = self.params.nspectra * nbins
+            self.normalization = np.ones(nell, dtype=np.float64)
 
             # Store normalized Fisher matrix for convolved mode covariance
             self.fisher_normalized = self.invfisher.copy()
@@ -675,17 +638,18 @@ class Spectra(Core):
         else:
             self._compute_qml_spectra_traditional()
 
-    def _build_multi_spectrum_inputs_spectra(self):
-        """Build C_ell_dict and spectra_list for multi-spectrum compressed QML."""
+    def _build_multi_spectrum_inputs(self):
+        """Build C_ell_dict and spectra_list for multi-spectrum."""
         return self.collection.spectra_manager.build_inputs()
 
     def _get_binned_derivative(
         self, bin_idx: int, spectrum_idx: int = 0, spectra_list=None
     ) -> np.ndarray:
-        """Get binned derivative matrix for QML computation.
+        """Get vecmul-weighted binned derivative for QML computation.
 
         Handles pixel-space (do_derivative_step) and compressed
         (cm.get_derivative_matrix) paths, single and multi-spectrum.
+        Vecmul is absorbed into the binning weights.
         """
         use_compression = (
             hasattr(self, "compression_manager") and self.compression_manager is not None
@@ -694,10 +658,12 @@ class Spectra(Core):
         P, _ = self.bins._bin_operators()
         lmin_b = self.bins.lmins[bin_idx]
         lmax_b = self.bins.lmaxs[bin_idx]
+        n_ell = self.params.lmax - 1
+        vm_offset = spectrum_idx * n_ell
         dC_b = None
 
         for ell in range(lmin_b, lmax_b + 1):
-            w = P[bin_idx, ell]
+            w = P[bin_idx, ell] * self.vecmul_per_ell[vm_offset + ell - 2]
 
             if use_compression:
                 cm = self.compression_manager
@@ -821,7 +787,7 @@ class Spectra(Core):
 
         # Build C_ell or C_ell_dict depending on multi-field
         if is_multi_field:
-            C_ell_dict, spectra_list = self._build_multi_spectrum_inputs_spectra()
+            C_ell_dict, spectra_list = self._build_multi_spectrum_inputs()
             C_ell = None  # Not used for multi-field
         else:
             C_ell = self.collection.spectra_manager.get_cls(0, 0, 0)
@@ -1144,8 +1110,11 @@ class Spectra(Core):
             self.normalization if self.rank == 0 else None, root=0
         )
 
-        # Broadcast binning
+        # Broadcast binning and vecmul
         self.bins = self.comm.bcast(self.bins if self.rank == 0 else None, root=0)
+        self.vecmul_per_ell = self.comm.bcast(
+            self.vecmul_per_ell if self.rank == 0 else None, root=0
+        )
 
         # Broadcast normalization mode support matrices
         self.inv_fisher_sqrt = self.comm.bcast(

@@ -114,7 +114,12 @@ def test_fortran_validation(python_spectra, fortran_data):
     results["signal"] = np.max(rel_diff)
 
     # 4. Fisher diagonal
-    diag_python = np.diag(python_spectra.fisher_instance.fisher)
+    # Fisher now includes vecmul normalization (absorbed into derivatives).
+    # Compare raw Fisher by dividing out vecmul.
+    fisher_python = python_spectra.fisher_instance.fisher
+    vm = python_spectra.fisher_instance.vecmul_per_ell
+    fisher_raw = fisher_python / np.outer(vm, vm)
+    diag_python = np.diag(fisher_raw)
     diag_fortran = np.diag(fortran_data["fisher"])
     results["fisher_diag"] = np.max(np.abs((diag_python - diag_fortran) / diag_fortran))
 

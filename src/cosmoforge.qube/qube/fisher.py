@@ -246,16 +246,17 @@ class Fisher(Core):
         # Get the appropriate C_inv for this representation
         if use_compression:
             # V C^{-1} V^T — precomputed once, reused for all bin pairs
-            C_ell = self._get_theory_cl_vector()
+            C_ell = self.collection.spectra_manager.get_cls(0, 0, 0)
             C_inv = self.compression_manager.get_projected_inverse(C_ell)
         else:
             # NCov1 is already C^{-1} after prepare_covariance_matrices()
             C_inv = self.NCov1
 
-        # Precompute C_inv @ dC_b for each bin
+        # Precompute C_inv @ dC'_b for each bin (vecmul-weighted)
+        vm = self.vecmul_per_ell[: self.n_ell]  # single spectrum
         Cinv_dC = {}
         for b in range(nbins):
-            dC_b = self.get_binned_derivative_matrix(b)
+            dC_b = self.get_binned_derivative_matrix(b, vecmul=vm)
             Cinv_dC[b] = matrix_mult(C_inv, dC_b)
 
         # Main computation loop over bin pairs
@@ -296,11 +297,6 @@ class Fisher(Core):
 
         self.comm.Barrier()
 
-    def _get_theory_cl_vector(self) -> np.ndarray:
-        """Get theoretical C_ell values from the field collection."""
-        cls = self.collection.spectra_manager.get_cls(0, 0, 0)
-        return cls
-
     def _build_multi_spectrum_inputs(self):
         """Build C_ell_dict and spectra_list for multi-spectrum compressed Fisher."""
         return self.collection.spectra_manager.build_inputs()
@@ -312,22 +308,25 @@ class Fisher(Core):
     def _get_binned_derivative_multi(
         self, bin_idx: int, spectrum_idx: int, spectra_list=None
     ) -> np.ndarray:
-        """Get binned derivative matrix for multi-spectrum analysis.
+        """Get vecmul-weighted binned derivative for multi-spectrum.
 
         Handles both pixel-space (do_derivative_step) and compressed
         (cm.get_derivative_matrix with component indices) paths.
+        Vecmul is absorbed into the binning weights.
         """
         use_compression = (
             hasattr(self, "compression_manager") and self.compression_manager is not None
         )
 
+        n_ell = self.n_ell
         P, _ = self.bins._bin_operators()
         lmin_b = self.bins.lmins[bin_idx]
         lmax_b = self.bins.lmaxs[bin_idx]
+        vm_offset = spectrum_idx * n_ell
         dC_b = None
 
         for ell in range(lmin_b, lmax_b + 1):
-            w = P[bin_idx, ell]
+            w = P[bin_idx, ell] * self.vecmul_per_ell[vm_offset + ell - 2]
 
             if use_compression:
                 comp_i, comp_j, mode = spectra_list[spectrum_idx]
@@ -563,8 +562,22 @@ class Fisher(Core):
             delta_ell = getattr(self.params, "delta_ell", 1)
             self.set_binning(Bins.fromdeltal(2, self.params.lmax, delta_ell))
 
-        # Setup Fisher matrices dimensions
+        # Compute per-ell vecmul (smoothing factors) for all spectra.
+        # Stored as a flat vector of length nspectra * n_ell.
         self.n_ell = self.params.lmax - 1
+        smoothing = self.collection.spectra_manager.compute_smoothing_factors(
+            self.collection.beam_manager
+        )
+        self.vecmul_per_ell = np.zeros(
+            self.params.nspectra * self.n_ell, dtype=np.float64
+        )
+        idx = 0
+        for label in self.collection.spectra_manager.labels:
+            sf = smoothing[label]
+            self.vecmul_per_ell[idx : idx + self.n_ell] = sf
+            idx += self.n_ell
+
+        # Setup Fisher matrices dimensions
         self.nell = self.params.nspectra * self.bins.nbins
         self.fisher = np.zeros((self.nell, self.nell))
 
@@ -578,7 +591,7 @@ class Fisher(Core):
     # =========================================================================
 
     def get_fisher_matrix(self) -> np.ndarray | None:
-        """Retrieve the computed Fisher information matrix."""
+        """Retrieve the computed Fisher information matrix (vecmul-normalized)."""
         if self.rank == 0:
             return self.fisher
         return None

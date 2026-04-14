@@ -688,9 +688,11 @@ class Core(ABC):
         """
         self.bins = bins
 
-    def get_binned_derivative_matrix(self, bin_idx: int) -> np.ndarray:
+    def get_binned_derivative_matrix(
+        self, bin_idx: int, vecmul: np.ndarray | None = None
+    ) -> np.ndarray:
         """
-        Compute binned derivative matrix dC^b = Sum_{ell in b} P_{b,ell} * dC^ell.
+        Compute binned derivative dC^b = Sum P_{b,ell} * [vm_ell *] dC^ell.
 
         Calls get_derivative_matrix(ell) internally, so works transparently
         with both pixel-space and compressed paths (single-spectrum).
@@ -699,11 +701,9 @@ class Core(ABC):
         ----------
         bin_idx : int
             Index of the bin.
-
-        Returns
-        -------
-        numpy.ndarray
-            Binned derivative matrix.
+        vecmul : np.ndarray or None
+            Per-ell smoothing factors (length n_ell, indexed from ell=2).
+            If provided, weights become P[b,ell] * vm[ell-2].
         """
         P, _ = self.bins._bin_operators()
         lmin_b = self.bins.lmins[bin_idx]
@@ -712,6 +712,8 @@ class Core(ABC):
         for ell in range(lmin_b, lmax_b + 1):
             dC_ell = self.get_derivative_matrix(ell)
             w = P[bin_idx, ell]
+            if vecmul is not None:
+                w *= vecmul[ell - 2]
             if dC_b is None:
                 dC_b = w * dC_ell
             else:
