@@ -1368,17 +1368,19 @@ class PixelProjectedCompression(BaseCompression):
 
             C_c_inv = self.get_compressed_inverse(C_ell)
 
-            Cinv_dC = {}
+            cinv_times_dc = {}
             for ell in range(ell_min, ell_max + 1):
                 dC = self.get_derivative_matrix(ell)
-                Cinv_dC[ell] = matrix_mult(C_c_inv, dC)
+                cinv_times_dc[ell] = matrix_mult(C_c_inv, dC)
 
             for ell_i in range(ell_min, ell_max + 1):
                 for ell_j in range(ell_i, ell_max + 1):
                     idx_i = ell_i - ell_min
                     idx_j = ell_j - ell_min
 
-                    fisher_val = 0.5 * matrix_trace(Cinv_dC[ell_i], Cinv_dC[ell_j])
+                    fisher_val = 0.5 * matrix_trace(
+                        cinv_times_dc[ell_i], cinv_times_dc[ell_j]
+                    )
                     fisher[idx_i, idx_j] = fisher_val
                     if idx_i != idx_j:
                         fisher[idx_j, idx_i] = fisher_val
@@ -1395,13 +1397,13 @@ class PixelProjectedCompression(BaseCompression):
 
         C_c_inv = self.get_compressed_inverse(C_ell)
 
-        Cinv_dC = {}
+        cinv_times_dc = {}
         for spec_idx, spec_entry in enumerate(spectra_list):
             comp_i, comp_j = spec_entry[0], spec_entry[1]
             mode = spec_entry[2] if len(spec_entry) == 3 else 0
             for ell in range(ell_min, ell_max + 1):
                 dC = self.get_derivative_matrix(ell, comp_i, comp_j, mode)
-                Cinv_dC[(spec_idx, ell)] = matrix_mult(C_c_inv, dC)
+                cinv_times_dc[(spec_idx, ell)] = matrix_mult(C_c_inv, dC)
 
         for spec_a in range(n_spec):
             for ell_a in range(ell_min, ell_max + 1):
@@ -1413,8 +1415,8 @@ class PixelProjectedCompression(BaseCompression):
                         idx_b = spec_b * n_ell + (ell_b - ell_min)
 
                         fisher_val = 0.5 * matrix_trace(
-                            Cinv_dC[(spec_a, ell_a)],
-                            Cinv_dC[(spec_b, ell_b)],
+                            cinv_times_dc[(spec_a, ell_a)],
+                            cinv_times_dc[(spec_b, ell_b)],
                         )
 
                         fisher[idx_a, idx_b] = fisher_val

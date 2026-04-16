@@ -179,8 +179,8 @@ class TestPrepareCovariance:
         picslike.compute_signal_matrix(param_point)
         picslike.prepare_covariance_matrix()
 
-        assert hasattr(picslike, "invCov")
-        assert picslike.invCov is not None
+        assert hasattr(picslike, "inv_cov")
+        assert picslike.inv_cov is not None
 
 
 class TestGetters:

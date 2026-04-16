@@ -264,7 +264,7 @@ class PICSLike(Core):
         self.log(f"Combined covariance matrix shape: {self.total_cov.shape}", level=4)
 
         # Compute inverse covariance matrix
-        self.invCov = matrix_inverse_symm(self.total_cov)
+        self.inv_cov = matrix_inverse_symm(self.total_cov)
         self.log("Computed inverse of primary covariance matrix", level=4)
 
     def setup_maps(self):
@@ -587,11 +587,11 @@ class PICSLike(Core):
             # Compute chi-squared: d^T * C^-1 * d (without logdet)
             if self.params.do_cross:
                 chi_squared = np.einsum(
-                    "in,ij,jn->n", self.maps1, self.invCov, self.maps2
+                    "in,ij,jn->n", self.maps1, self.inv_cov, self.maps2
                 )
             else:
                 chi_squared = np.einsum(
-                    "in,ij,jn->n", self.maps1, self.invCov, self.maps1
+                    "in,ij,jn->n", self.maps1, self.inv_cov, self.maps1
                 )
 
             # Get log-determinant for likelihood computation

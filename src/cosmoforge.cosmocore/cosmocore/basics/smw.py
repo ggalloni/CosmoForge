@@ -35,12 +35,12 @@ def smw_inverse(N_inv, V_N_inv, V_Ninv_VT, Lambda_diag, threshold=1e-30):
     numpy.ndarray
         The inverse (N + V^T Lambda V)^{-1}, shape (n, n).
     """
-    Lambda_inv_diag = np.where(
+    lambda_inv_diag = np.where(
         Lambda_diag > threshold, 1.0 / Lambda_diag, 1.0 / threshold
     )
     K = np.asfortranarray(V_Ninv_VT.copy())
     n = K.shape[0]
-    K.flat[:: n + 1] += Lambda_inv_diag
+    K.flat[:: n + 1] += lambda_inv_diag
     kernel_inv = matrix_inverse_symm(K, overwrite=True)
     return N_inv - V_N_inv.T @ kernel_inv @ V_N_inv
 
@@ -66,12 +66,12 @@ def smw_logdet(log_det_N, V_Ninv_VT, Lambda_diag, threshold=1e-30):
         The log determinant log|N + V^T Lambda V|.
     """
     log_det_Lambda = np.sum(np.log(np.maximum(Lambda_diag, threshold)))
-    Lambda_inv_diag = np.where(
+    lambda_inv_diag = np.where(
         Lambda_diag > threshold, 1.0 / Lambda_diag, 1.0 / threshold
     )
     K = np.asfortranarray(V_Ninv_VT.copy())
     n = K.shape[0]
-    K.flat[:: n + 1] += Lambda_inv_diag
+    K.flat[:: n + 1] += lambda_inv_diag
     _, log_det_K = matrix_slogdet_symm(K)
     return log_det_N + log_det_Lambda + log_det_K
 
@@ -94,12 +94,12 @@ def smw_kernel(V_Ninv_VT, Lambda_diag, threshold=1e-30):
     numpy.ndarray
         The kernel matrix K, shape (k, k), in Fortran order.
     """
-    Lambda_inv_diag = np.where(
+    lambda_inv_diag = np.where(
         Lambda_diag > threshold, 1.0 / Lambda_diag, 1.0 / threshold
     )
     K = np.asfortranarray(V_Ninv_VT.copy())
     n = K.shape[0]
-    K.flat[:: n + 1] += Lambda_inv_diag
+    K.flat[:: n + 1] += lambda_inv_diag
     return K
 
 
