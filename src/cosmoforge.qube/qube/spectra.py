@@ -1365,9 +1365,15 @@ class Spectra(Core):
         -------
         tuple
             (y, W, convolve_theory_func) where:
-            - y: Raw normalized estimates, shape (nsims, nell)
-            - W: Window matrix, shape (nell, nell)
+            - y: Raw normalized estimates, shape (nsims, n_params)
+            - W: Window matrix, shape (n_params, n_params)
             - convolve_theory_func: Callable to apply W @ theory
+
+        Notes
+        -----
+        With binning enabled, n_params = nspectra * nbins. The theory
+        input to convolve_theory must be binned (one value per bin),
+        e.g. via bins.bin_spectra(cl_theory, lmin=2).
         """
         # Raw estimates multiplied by normalization
         y = self.qml_results * self.normalization
@@ -1385,6 +1391,22 @@ class Spectra(Core):
             return W_normalized @ cl_theory
 
         return (y, W_normalized, convolve_theory)
+
+    def get_effective_ells(self) -> np.ndarray | None:
+        """
+        Return effective multipole for each bin.
+
+        For unbinned (delta_ell=1), returns integer ells from 2 to lmax.
+        For binned, returns bin midpoints.
+
+        Returns
+        -------
+        np.ndarray or None
+            Effective multipoles, shape (nbins,). None for workers.
+        """
+        if self.rank != 0:
+            return None
+        return self.bins.lbin
 
     def get_noise_bias(self) -> np.ndarray | None:
         """

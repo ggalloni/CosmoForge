@@ -562,6 +562,16 @@ class Fisher(Core):
             delta_ell = getattr(self.params, "delta_ell", 1)
             self.set_binning(Bins.fromdeltal(2, self.params.lmax, delta_ell))
 
+        # Warn if bins don't cover the full ell range
+        if self.bins.lmax < self.params.lmax:
+            self.log(
+                f"Binning covers ell up to {self.bins.lmax}, "
+                f"but lmax={self.params.lmax}. "
+                f"Multipoles {self.bins.lmax + 1}..{self.params.lmax} "
+                f"are excluded.",
+                level=1,
+            )
+
         # Compute per-ell vecmul (smoothing factors) for all spectra.
         # Stored as a flat vector of length nspectra * n_ell.
         self.n_ell = self.params.lmax - 1

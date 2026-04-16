@@ -254,6 +254,49 @@ class TestLinearityCompressed:
 
 
 # =============================================================================
+# Test: Multi-spectrum (TQU) linearity
+# =============================================================================
+
+
+class TestMultiSpectrumBinning:
+    """Binning works correctly for multi-spectrum (TQU) case."""
+
+    @pytest.fixture
+    def bins(self):
+        return Bins.fromdeltal(2, 8, 2)
+
+    def test_tqu_fisher_shape(self, config_resolver, bins):
+        """TQU binned Fisher has correct shape."""
+        f = _run_fisher_with_bins("TQU", config_resolver, bins=bins)
+        F = f.get_fisher_matrix()
+        nspectra = f.params.nspectra
+        assert F.shape == (nspectra * bins.nbins, nspectra * bins.nbins)
+
+    def test_tqu_fisher_symmetric_positive(self, config_resolver, bins):
+        """TQU binned Fisher is symmetric and positive semi-definite."""
+        f = _run_fisher_with_bins("TQU", config_resolver, bins=bins)
+        F = f.get_fisher_matrix()
+        np.testing.assert_allclose(F, F.T, atol=1e-14)
+        eigvals = np.linalg.eigvalsh(F)
+        assert np.all(eigvals > -1e-10)
+
+    def test_tqu_spectra_shape(self, config_resolver, bins):
+        """TQU binned spectra have correct shape."""
+        f = _run_fisher_with_bins("TQU", config_resolver, bins=bins)
+        s = _run_spectra_with_bins("TQU", config_resolver, bins=bins, fisher=f)
+        power = s.get_power_spectra()
+        nspectra = f.params.nspectra
+        assert power.shape[1] == nspectra * bins.nbins
+
+    def test_tqu_spectra_finite(self, config_resolver, bins):
+        """TQU binned spectra are finite."""
+        f = _run_fisher_with_bins("TQU", config_resolver, bins=bins)
+        s = _run_spectra_with_bins("TQU", config_resolver, bins=bins, fisher=f)
+        power = s.get_power_spectra()
+        assert np.all(np.isfinite(power))
+
+
+# =============================================================================
 # Test 4: Shape tests
 # =============================================================================
 
