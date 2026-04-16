@@ -162,7 +162,14 @@ class Fisher(Core):
     # =========================================================================
 
     def setup_signal_matrix(self) -> np.ndarray:
-        """Compute the theoretical signal covariance matrix from power spectra."""
+        """
+        Compute signal covariance S = Sum_ell C_ell P_ell from fiducial spectra.
+
+        Returns
+        -------
+        numpy.ndarray
+            Signal covariance matrix of shape (n_pix, n_pix).
+        """
         if self.noise_cov1 is None:
             raise ValueError("Covariance matrices must be set up first")
 
@@ -184,7 +191,12 @@ class Fisher(Core):
         return self.signal_matrix
 
     def prepare_covariance_matrices(self):
-        """Prepare total covariance matrices and compute their inverses."""
+        """
+        Build total covariance C = N + S, then compute C^{-1}.
+
+        After this method, noise_cov1 (and noise_cov2 if cross-correlation)
+        hold the inverted total covariance, not the original noise.
+        """
         if self.signal_matrix is None:
             self.setup_signal_matrix()
 
@@ -468,9 +480,6 @@ class Fisher(Core):
         Compression can be enabled via the compression parameter for
         spin-0 field analyses. Spin-2 field compression is planned for Phase 2.
         """
-        # Note: Multi-field compression validation is done in Core.setup_compression()
-        # Phase 1 supports multiple spin-0 fields; spin-2 support is planned for Phase 2
-
         # Setup phase (rank 0 only)
         if self.rank == 0:
             if self.params is None:

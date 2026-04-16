@@ -641,10 +641,23 @@ class Spectra(Core):
     def _get_binned_derivative(
         self, bin_idx: int, spectrum_idx: int = 0, spectra_list=None
     ) -> np.ndarray:
-        """Compute beam-smoothed binned derivative for QML computation.
+        """
+        Compute binned derivative dC^b = Sum_ell w_{b,ell} b²_ell dC^ell.
 
-        Handles pixel-space and compressed paths, single and multi-spectrum.
-        Beam smoothing factors b²_ell are absorbed into the binning weights.
+        Parameters
+        ----------
+        bin_idx : int
+            Multipole bin index.
+        spectrum_idx : int, optional
+            Spectrum index for multi-spectrum analysis (default: 0).
+        spectra_list : list or None
+            List of (comp_i, comp_j, mode) tuples for multi-field.
+
+        Returns
+        -------
+        numpy.ndarray
+            Binned derivative matrix, shape (n_pix, n_pix) or
+            (n_modes, n_modes) if compression is enabled.
         """
         use_compression = (
             hasattr(self, "compression_manager") and self.compression_manager is not None
@@ -1004,7 +1017,6 @@ class Spectra(Core):
         Calls setup_qml_computation() to initialize arrays, then
         compute_qml_spectra() for the main parallel computation.
         """
-        # Setup QML computation variables
         self.setup_qml_computation()
 
         # Compute QML power spectra
