@@ -922,57 +922,57 @@ class Spectra(Core):
 
         nbins = self.bins.nbins
         nspectra = self.params.nspectra
-        nell = nspectra * nbins
+        n_params = nspectra * nbins
 
-        # Precompute weighted data: y = C^{-1} @ d for all simulations
-        y1 = matrix_mult(self.invCov1, self.maps1)
+        # Precompute weighted data: y = C⁻¹ d for all simulations
+        weighted_maps1 = matrix_mult(self.invCov1, self.maps1)
 
         if self.params.do_cross:
-            y2 = matrix_mult(self.invCov2, self.maps2)
+            weighted_maps2 = matrix_mult(self.invCov2, self.maps2)
 
-        # For noise bias: precompute C^{-1} @ N @ C^{-1}
+        # For noise bias: C⁻¹ N C⁻¹ (precomputed once)
         if not self.params.do_cross:
-            Cinv_N_Cinv = matrix_mult(self.invCov1, matrix_mult(self.NCov1, self.invCov1))
+            cinv_noise_cinv = matrix_mult(
+                self.invCov1, matrix_mult(self.NCov1, self.invCov1)
+            )
 
-        # Main computation loop - distribute bins across processes
-        for il in range(nell):
-            if self.rank == il % self.size:
-                spectrum_idx = il // nbins
-                bin_idx = il % nbins
+        for param_idx in range(n_params):
+            if self.rank == param_idx % self.size:
+                spectrum_idx = param_idx // nbins
+                bin_idx = param_idx % nbins
 
-                # Compute binned derivative matrix
-                der_s = self._get_binned_derivative(bin_idx, spectrum_idx)
-
-                # Compute dC @ y for all sims at once
-                dC_y1 = matrix_mult(der_s, y1)
+                binned_deriv = self._get_binned_derivative(bin_idx, spectrum_idx)
+                deriv_times_y1 = matrix_mult(binned_deriv, weighted_maps1)
 
                 if self.params.do_cross:
                     for isim in range(self.params.nsims):
-                        self.qml_results[isim, il] = 0.5 * np.dot(
-                            y2[:, isim], dC_y1[:, isim]
+                        self.qml_results[isim, param_idx] = 0.5 * np.dot(
+                            weighted_maps2[:, isim], deriv_times_y1[:, isim]
                         )
                 else:
-                    # Noise bias
-                    tr_ne = 0.5 * matrix_trace(Cinv_N_Cinv, der_s)
-                    self.qml_noise_bias[il] = tr_ne
+                    noise_bias = 0.5 * matrix_trace(cinv_noise_cinv, binned_deriv)
+                    self.qml_noise_bias[param_idx] = noise_bias
 
                     for isim in range(self.params.nsims):
-                        qml_value = 0.5 * np.dot(y1[:, isim], dC_y1[:, isim])
-
+                        qml_value = 0.5 * np.dot(
+                            weighted_maps1[:, isim],
+                            deriv_times_y1[:, isim],
+                        )
                         if hasattr(self.params, "remove_nb") and self.params.remove_nb:
-                            qml_value -= tr_ne
+                            qml_value -= noise_bias
 
-                        self.qml_results[isim, il] = qml_value
+                        self.qml_results[isim, param_idx] = qml_value
 
         self.comm.Barrier()
 
         if self.rank == 0:
-            self.log("QML computation done (traditional, optimized)", level=2)
+            self.log("QML computation done (traditional)", level=2)
             self.log(
-                f"QML computation time: {time.time() - start_time:.2f} seconds", level=3
+                f"QML computation time: {time.time() - start_time:.2f} seconds",
+                level=3,
             )
 
-        self._reduce_qml_results(nell)
+        self._reduce_qml_results(n_params)
 
     def _reduce_qml_results(self, nell: int):
         """Gather and combine QML results from all MPI processes."""
@@ -1117,9 +1117,6 @@ class Spectra(Core):
         """
         Apply inverse Fisher to raw QML estimates: Ĉ = F⁻¹ q.
 
-        Vecmul is already absorbed into the derivatives, so this is
-        a direct matrix multiplication without extra normalization.
-
         Parameters
         ----------
         spectra : np.ndarray
@@ -1128,7 +1125,7 @@ class Spectra(Core):
         Returns
         -------
         np.ndarray
-            Deconvolved power spectrum estimates with same shape as input.
+            Deconvolved power spectrum estimates, same shape as input.
         """
         if self.invfisher is None:
             raise ValueError("Fisher inversion must be set up first.")

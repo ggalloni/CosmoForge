@@ -243,48 +243,42 @@ class Fisher(Core):
 
         fisher_local = np.zeros((nbins, nbins))
 
-        # Get the appropriate C_inv for this representation
         if use_compression:
-            # V C^{-1} V^T — precomputed once, reused for all bin pairs
             C_ell = self.collection.spectra_manager.get_cls(0, 0, 0)
             C_inv = self.compression_manager.get_projected_inverse(C_ell)
         else:
-            # NCov1 is already C^{-1} after prepare_covariance_matrices()
             C_inv = self.NCov1
 
-        Cinv_dC = {}
-        for b in range(nbins):
+        # Precompute C⁻¹ dC^b for each bin
+        cinv_times_dcb = {}
+        for bin_idx in range(nbins):
             dC_b = self.get_binned_derivative_matrix(
-                b, beam_smoothing=self.beam_smoothing[: self.n_ell]
+                bin_idx, beam_smoothing=self.beam_smoothing[: self.n_ell]
             )
-            Cinv_dC[b] = matrix_mult(C_inv, dC_b)
+            cinv_times_dcb[bin_idx] = matrix_mult(C_inv, dC_b)
 
-        # Main computation loop over bin pairs
+        # F_{bb'} = (1/2) Tr[(C⁻¹ dC^b)(C⁻¹ dC^{b'})]
         counter = 0
         for bi in range(nbins):
             for bj in range(bi, nbins):
                 counter += 1
-
                 if not (
                     counter > self.rank * elements_per_proc
                     and counter <= (self.rank + 1) * elements_per_proc
                 ):
                     continue
 
-                # F_ij = 0.5 * Tr[(C_inv @ dC_i) @ (C_inv @ dC_j)]
-                fisher_val = 0.5 * matrix_trace(Cinv_dC[bi], Cinv_dC[bj])
-
+                fisher_val = 0.5 * matrix_trace(cinv_times_dcb[bi], cinv_times_dcb[bj])
                 fisher_local[bi, bj] = fisher_val
                 if bi != bj:
                     fisher_local[bj, bi] = fisher_val
 
-        # Synchronize and reduce
         self.comm.Barrier()
-        redfisher = np.zeros_like(fisher_local)
-        self.comm.Reduce(fisher_local, redfisher, op=MPI.SUM, root=0)
+        reduced_fisher = np.zeros_like(fisher_local)
+        self.comm.Reduce(fisher_local, reduced_fisher, op=MPI.SUM, root=0)
 
         if self.rank == 0:
-            self.fisher = redfisher
+            self.fisher = reduced_fisher
             self.log("-" * 80, level=1)
             self.log("Fisher matrix computation completed", level=1)
 
@@ -365,9 +359,9 @@ class Fisher(Core):
 
         nbins = self.bins.nbins
         nspectra = self.params.nspectra
-        nell = nspectra * nbins
+        n_params = nspectra * nbins
 
-        total_elements = nell * (nell + 1) // 2
+        total_elements = n_params * (n_params + 1) // 2
         elements_per_proc = int(np.ceil(total_elements / self.size))
 
         if self.rank == 0:
@@ -377,43 +371,42 @@ class Fisher(Core):
                 level=2,
             )
 
-        fisher_local = np.zeros((nell, nell))
+        fisher_local = np.zeros((n_params, n_params))
 
-        # Get C_inv and spectra_list for this representation
         spectra_list = None
         if use_compression:
             C_ell_dict, spectra_list = self._build_multi_spectrum_inputs()
             C_inv = self.compression_manager.get_projected_inverse(C_ell_dict)
         else:
             if self.params.do_cross:
-                # For cross-correlation, C_inv uses both NCov1 and NCov2
-                # F_ij = 0.5 * Tr[C2_inv @ dC_i @ C1_inv @ dC_j]
                 C_inv1 = self.NCov1
                 C_inv2 = self.NCov2
             else:
                 C_inv = self.NCov1
 
-        # Precompute binned derivatives and C_inv products for each (spectrum, bin)
-        dC_matrices = {}
-        Cinv_dC = {}
-        for il in range(nell):
-            spectrum_idx = il // nbins
-            bin_idx = il % nbins
-            dC = self._get_binned_derivative_multi(bin_idx, spectrum_idx, spectra_list)
-            dC_matrices[il] = dC
+        # Precompute binned derivatives and C⁻¹ dC^b products
+        binned_derivatives = {}
+        cinv_times_dcb = {}
+        for param_idx in range(n_params):
+            spectrum_idx = param_idx // nbins
+            bin_idx = param_idx % nbins
+            binned_deriv = self._get_binned_derivative_multi(
+                bin_idx, spectrum_idx, spectra_list
+            )
+            binned_derivatives[param_idx] = binned_deriv
 
             if use_compression or not self.params.do_cross:
-                Cinv_dC[il] = matrix_mult(C_inv, dC)
+                cinv_times_dcb[param_idx] = matrix_mult(C_inv, binned_deriv)
             else:
-                # Cross: store C2_inv @ dC @ C1_inv for the trace
-                Cinv_dC[il] = matrix_mult(C_inv2, matrix_mult(dC, C_inv1))
+                cinv_times_dcb[param_idx] = matrix_mult(
+                    C_inv2, matrix_mult(binned_deriv, C_inv1)
+                )
 
-        # Main computation loop over (spectrum, bin) pairs
+        # F_{ij} = (1/2) Tr[(C⁻¹ dC^i)(C⁻¹ dC^j)]
         counter = 0
-        for il in range(nell):
-            for jl in range(il, nell):
+        for param_i in range(n_params):
+            for param_j in range(param_i, n_params):
                 counter += 1
-
                 if not (
                     counter > self.rank * elements_per_proc
                     and counter <= (self.rank + 1) * elements_per_proc
@@ -421,22 +414,24 @@ class Fisher(Core):
                     continue
 
                 if use_compression or not self.params.do_cross:
-                    fisher_val = 0.5 * matrix_trace(Cinv_dC[il], Cinv_dC[jl])
+                    fisher_val = 0.5 * matrix_trace(
+                        cinv_times_dcb[param_i], cinv_times_dcb[param_j]
+                    )
                 else:
-                    # Cross: F_ij = 0.5 * Tr[dC_j @ (C2_inv @ dC_i @ C1_inv)]
-                    fisher_val = 0.5 * matrix_trace(dC_matrices[jl], Cinv_dC[il])
+                    fisher_val = 0.5 * matrix_trace(
+                        binned_derivatives[param_j], cinv_times_dcb[param_i]
+                    )
 
-                fisher_local[il, jl] = fisher_val
-                if il != jl:
-                    fisher_local[jl, il] = fisher_val
+                fisher_local[param_i, param_j] = fisher_val
+                if param_i != param_j:
+                    fisher_local[param_j, param_i] = fisher_val
 
-        # Synchronize and reduce
         self.comm.Barrier()
-        redfisher = np.zeros_like(fisher_local)
-        self.comm.Reduce(fisher_local, redfisher, op=MPI.SUM, root=0)
+        reduced_fisher = np.zeros_like(fisher_local)
+        self.comm.Reduce(fisher_local, reduced_fisher, op=MPI.SUM, root=0)
 
         if self.rank == 0:
-            self.fisher = redfisher
+            self.fisher = reduced_fisher
             self.log("-" * 80, level=1)
             self.log("Fisher matrix computation completed", level=1)
 
