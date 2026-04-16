@@ -23,14 +23,36 @@ from qube import Fisher, Spectra
 _cache: dict[str, dict] = {}
 
 
+def _resolve_config_with_overrides(fields, config_resolver, overrides=None):
+    """Resolve config file and apply YAML-level overrides."""
+    import tempfile
+
+    import yaml
+
+    config_file = config_resolver(f"tests/data/nside4/{fields}/config.yaml")
+    if overrides:
+        with open(config_file) as f:
+            config = yaml.safe_load(f)
+        config.update(overrides)
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
+        yaml.dump(config, tmp, default_flow_style=False)
+        tmp.close()
+        os.unlink(config_file)
+        return tmp.name
+    return config_file
+
+
 def _run_fisher_with_bins(
     fields: str,
     config_resolver,
     bins: Bins | None = None,
     compression: dict | None = None,
+    config_overrides: dict | None = None,
 ) -> Fisher:
     """Run Fisher pipeline with optional binning and compression."""
-    config_file = config_resolver(f"tests/data/nside4/{fields}/config.yaml")
+    config_file = _resolve_config_with_overrides(
+        fields, config_resolver, config_overrides
+    )
     fisher = Fisher(config_file, compression=compression)
     if bins is not None:
         fisher.set_binning(bins)
@@ -390,3 +412,57 @@ class TestNormalizationModesBinned:
         assert errors.shape == (bins.nbins,)
         assert np.all(np.isfinite(errors))
         assert np.all(errors > 0)
+
+
+# =============================================================================
+# Config-based binning (delta_ell, custom lmins/lmaxs)
+# =============================================================================
+
+
+class TestConfigBinning:
+    """Binning configured via YAML matches Python API."""
+
+    def test_delta_ell_config_matches_api(self, config_resolver):
+        """delta_ell in config gives same Fisher as set_binning()."""
+        bins = Bins.fromdeltal(2, 8, 2)
+        f_api = _run_fisher_with_bins("T", config_resolver, bins=bins)
+
+        f_cfg = _run_fisher_with_bins(
+            "T",
+            config_resolver,
+            config_overrides={"delta_ell": 2},
+        )
+
+        np.testing.assert_allclose(
+            f_api.get_fisher_matrix(),
+            f_cfg.get_fisher_matrix(),
+        )
+
+    def test_custom_bins_config_matches_api(self, config_resolver):
+        """bin_lmins/bin_lmaxs in config gives same Fisher as Bins()."""
+        lmins = [2, 5]
+        lmaxs = [4, 7]
+        bins = Bins(lmins, lmaxs)
+        f_api = _run_fisher_with_bins("T", config_resolver, bins=bins)
+
+        f_cfg = _run_fisher_with_bins(
+            "T",
+            config_resolver,
+            config_overrides={"bin_lmins": lmins, "bin_lmaxs": lmaxs},
+        )
+
+        np.testing.assert_allclose(
+            f_api.get_fisher_matrix(),
+            f_cfg.get_fisher_matrix(),
+        )
+
+    def test_custom_bins_config_shape(self, config_resolver):
+        """Custom bins from config produce correct Fisher shape."""
+        lmins = [2, 4, 7]
+        lmaxs = [3, 6, 8]
+        f = _run_fisher_with_bins(
+            "T",
+            config_resolver,
+            config_overrides={"bin_lmins": lmins, "bin_lmaxs": lmaxs},
+        )
+        assert f.get_fisher_matrix().shape == (3, 3)

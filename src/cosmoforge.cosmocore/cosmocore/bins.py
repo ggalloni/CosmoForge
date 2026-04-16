@@ -18,15 +18,20 @@ class Bins:
     """
     Multipole binning specification.
 
-    Defines bins by their lower and upper multipole bounds. Provides
-    operators for binning spectra and covariance matrices.
+    Defines bins by their lower and upper multipole bounds. Both bounds
+    are **inclusive**: a bin with lmin=2, lmax=4 contains multipoles
+    {2, 3, 4}. Bins must not overlap and must be sorted in ascending
+    order. Gaps between bins are allowed (those multipoles are simply
+    excluded from the analysis).
 
     Parameters
     ----------
     lmins : array_like
-        Lower bound of each bin (inclusive).
+        Lower bound of each bin (inclusive). Bins with lmax < 2 are
+        automatically discarded since CMB power spectra start at ell=2.
     lmaxs : array_like
-        Upper bound of each bin (inclusive).
+        Upper bound of each bin (inclusive). Must satisfy
+        lmaxs[i] >= lmins[i] for each bin.
 
     Attributes
     ----------
@@ -39,25 +44,43 @@ class Bins:
     lbin : np.ndarray
         Effective multipole for each bin (midpoint).
     dl : np.ndarray
-        Width of each bin (lmax - lmin + 1).
+        Width of each bin (lmaxs - lmins + 1).
     lmin : int
         Global minimum multipole.
     lmax : int
         Global maximum multipole.
+
+    Examples
+    --------
+    Uniform bins of width 3 from ell=2 to ell=10:
+
+    >>> bins = Bins.fromdeltal(2, 10, 3)
+    >>> bins.lmins
+    array([2, 5, 8])
+    >>> bins.lmaxs
+    array([4, 7, 10])
+
+    Custom non-uniform bins:
+
+    >>> bins = Bins([2, 5, 10], [4, 9, 20])
+    >>> bins.dl
+    array([3, 5, 11])
     """
 
     def __init__(self, lmins, lmaxs):
         if len(lmins) != len(lmaxs):
-            msg = "Incoherent inputs"
-            raise ValueError(msg)
+            raise ValueError(
+                f"lmins and lmaxs must have the same length, "
+                f"got {len(lmins)} and {len(lmaxs)}"
+            )
 
-        lmins = np.asarray(lmins)
-        lmaxs = np.asarray(lmaxs)
+        lmins = np.asarray(lmins, dtype=int)
+        lmaxs = np.asarray(lmaxs, dtype=int)
         cutfirst = np.logical_and(lmaxs >= 2, lmins >= 2)
         self.lmins = lmins[cutfirst]
         self.lmaxs = lmaxs[cutfirst]
 
-        self._derive_ext()
+        self._validate_and_derive()
 
     @classmethod
     def fromdeltal(cls, lmin, lmax, delta_ell):
@@ -67,20 +90,28 @@ class Bins:
         lmaxs = lmins + delta_ell - 1
         return cls(lmins, lmaxs)
 
-    def _derive_ext(self):
-        for l1, l2 in zip(self.lmins, self.lmaxs):
-            if l1 > l2:
-                msg = "Incoherent inputs"
-                raise ValueError(msg)
-        self.lmin = np.min(self.lmins)
-        self.lmax = np.max(self.lmaxs)
-        if self.lmin < 1:
-            msg = "Input lmin is less than 1."
-            raise ValueError(msg)
-        if self.lmax < self.lmin:
-            msg = "Input lmax is less than lmin."
-            raise ValueError(msg)
+    def _validate_and_derive(self):
+        if len(self.lmins) == 0:
+            raise ValueError("No valid bins (all bins have lmax < 2)")
 
+        for i, (l1, l2) in enumerate(zip(self.lmins, self.lmaxs)):
+            if l1 > l2:
+                raise ValueError(f"Bin {i}: lmin={l1} > lmax={l2}")
+
+        # Check for overlaps (bins must be non-overlapping and sorted)
+        order = np.argsort(self.lmins)
+        self.lmins = self.lmins[order]
+        self.lmaxs = self.lmaxs[order]
+        for i in range(len(self.lmins) - 1):
+            if self.lmins[i + 1] <= self.lmaxs[i]:
+                raise ValueError(
+                    f"Bins {i} and {i + 1} overlap: "
+                    f"[{self.lmins[i]}, {self.lmaxs[i]}] and "
+                    f"[{self.lmins[i + 1]}, {self.lmaxs[i + 1]}]"
+                )
+
+        self.lmin = int(np.min(self.lmins))
+        self.lmax = int(np.max(self.lmaxs))
         self.nbins = len(self.lmins)
         self.lbin = (self.lmins + self.lmaxs) / 2.0
         self.dl = self.lmaxs - self.lmins + 1

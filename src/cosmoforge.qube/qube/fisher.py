@@ -551,10 +551,15 @@ class Fisher(Core):
 
         self.comm.Barrier()
 
-        # Setup binning: from user set_binning() > config delta_ell > default (1)
+        # Binning: set_binning() > config bin_lmins/lmaxs > config delta_ell
         if not hasattr(self, "bins") or self.bins is None:
-            delta_ell = getattr(self.params, "delta_ell", 1)
-            self.set_binning(Bins.fromdeltal(2, self.params.lmax, delta_ell))
+            bin_lmins = getattr(self.params, "bin_lmins", None)
+            bin_lmaxs = getattr(self.params, "bin_lmaxs", None)
+            if bin_lmins is not None and bin_lmaxs is not None:
+                self.set_binning(Bins(bin_lmins, bin_lmaxs))
+            else:
+                delta_ell = getattr(self.params, "delta_ell", 1)
+                self.set_binning(Bins.fromdeltal(2, self.params.lmax, delta_ell))
 
         # Warn if bins don't cover the full ell range
         if self.bins.lmax < self.params.lmax:
