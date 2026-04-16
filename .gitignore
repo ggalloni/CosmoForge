@@ -43,3 +43,4 @@ run_*.py
 **/tests/data/**/output_*.dat
 **/tests/data/**/*.png
 *.png
+/src/cosmoforge.picslike/tests/data/nside8/B/fortran_reference/theory_spectra

@@ -201,6 +201,9 @@ class InputParams:
         self.fwhmarcmin = 440.0
         self.beam_file = "inputs/beam.fits"
         self.lmax = 64
+        self.delta_ell = 1
+        self.bin_lmins = None
+        self.bin_lmaxs = None
         self.outfilefisher = "outputs/fisher.dat"
         self.ordering = 1
 

@@ -24,8 +24,8 @@ def _run_fisher(
     config_type: str = "config",
     compression_method: str | None = None,
     epsilon: float | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Run a Fisher pipeline and return (fisher_matrix, error_bars)."""
+) -> tuple[np.ndarray, np.ndarray, Fisher]:
+    """Run a Fisher pipeline and return (fisher_matrix, error_bars, instance)."""
     config_file = config_resolver(f"tests/data/nside{nside}/{fields}/{config_type}.yaml")
     kwargs = {}
     if compression_method is not None:
@@ -35,12 +35,12 @@ def _run_fisher(
     fisher_matrix = fisher_analyzer.get_fisher_matrix()
     error_bars = fisher_analyzer.get_error_bars()
     os.unlink(config_file)
-    return fisher_matrix, error_bars
+    return fisher_matrix, error_bars, fisher_analyzer
 
 
 def _cached_traditional(
     fields: str, config_resolver, nside: int = 4, config_type: str = "config"
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, Fisher]:
     """Get traditional Fisher, computing only on first call per key."""
     key = f"trad_{nside}_{fields}_{config_type}"
     if key not in _fisher_cache:
@@ -56,7 +56,7 @@ def _cached_compressed(
     nside: int = 4,
     method: str = "harmonic",
     epsilon: float = 1e-10,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, Fisher]:
     """Get compressed Fisher, computing only on first call per key."""
     key = f"comp_{nside}_{method}_{fields}_{epsilon}"
     if key not in _fisher_cache:
@@ -78,16 +78,21 @@ def _cached_compressed(
 @pytest.mark.parametrize("fields", ["T", "QU", "TQU", "TEB"])
 def test_fisher_computation(fields, local_path, config_resolver):
     """Traditional Fisher vs Fortran reference for all field configurations."""
-    fisher_matrix, error_bars = _cached_traditional(fields, config_resolver)
+    fisher_matrix, error_bars, fisher_inst = _cached_traditional(fields, config_resolver)
     assert fisher_matrix is not None
     assert error_bars is not None
+
+    # Fisher is beam-smoothed. Divide out beam smoothing
+    # to compare against raw reference files.
+    beam_smoothing = fisher_inst.beam_smoothing
+    fisher_raw = fisher_matrix / np.outer(beam_smoothing, beam_smoothing)
 
     file = local_path + f"/tests/data/nside4/{fields}/ref_fisher.dat"
     ref = np.loadtxt(file, dtype=np.float64)
 
-    assert fisher_matrix.shape == ref.shape
+    assert fisher_raw.shape == ref.shape
     np.testing.assert_allclose(
-        fisher_matrix,
+        fisher_raw,
         ref,
         atol=1e-3,
         rtol=1e-5,
@@ -98,18 +103,22 @@ def test_fisher_computation(fields, local_path, config_resolver):
 @pytest.mark.parametrize("fields", ["QU"])
 def test_cross_fisher_computation(fields, local_path, config_resolver):
     """Cross-correlation Fisher vs Fortran reference."""
-    fisher_matrix, error_bars = _cached_traditional(
+    fisher_matrix, error_bars, fisher_inst = _cached_traditional(
         fields, config_resolver, config_type="cross_config"
     )
     assert fisher_matrix is not None
     assert error_bars is not None
 
+    # Divide out beam smoothing to compare against raw reference
+    beam_smoothing = fisher_inst.beam_smoothing
+    fisher_raw = fisher_matrix / np.outer(beam_smoothing, beam_smoothing)
+
     file = local_path + f"/tests/data/nside4/{fields}/ref_fisher.dat"
     ref = np.loadtxt(file, dtype=np.float64)
 
-    assert fisher_matrix.shape == ref.shape
+    assert fisher_raw.shape == ref.shape
     np.testing.assert_allclose(
-        fisher_matrix,
+        fisher_raw,
         ref,
         atol=1e-3,
         rtol=1e-5,
@@ -166,7 +175,7 @@ def test_fisher_worker_rank_behavior(mock_mpi, config_resolver):
 
 def test_compressed_harmonic_fisher_T(local_path, config_resolver):
     """Compressed harmonic Fisher for T: shape, PSD, symmetry, and Fortran reference."""
-    fisher_compressed, error_bars = _cached_compressed(
+    fisher_compressed, error_bars, _ = _cached_compressed(
         "T",
         config_resolver,
         method="harmonic",
@@ -211,13 +220,13 @@ def test_compressed_harmonic_fisher_T(local_path, config_resolver):
 def test_pixel_projected_fisher_degradation(local_path, config_resolver):
     """PixelProjected Fisher stays within acceptable degradation vs Harmonic."""
     # Reuses cached harmonic T from test_compressed_harmonic_fisher_T
-    fisher_harmonic, _ = _cached_compressed(
+    fisher_harmonic, _, _ = _cached_compressed(
         "T",
         config_resolver,
         method="harmonic",
         epsilon=1e-10,
     )
-    fisher_pixel_projected, _ = _cached_compressed(
+    fisher_pixel_projected, _, _ = _cached_compressed(
         "T",
         config_resolver,
         method="pixel_projected",
@@ -272,8 +281,8 @@ def test_pixel_projected_fisher_degradation(local_path, config_resolver):
 def test_teb_compression_matches_traditional(local_path, config_resolver):
     """TEB (3 scalar fields) compressed Fisher matches traditional."""
     # Reuses cached traditional TEB from test_fisher_computation[TEB]
-    fisher_traditional, _ = _cached_traditional("TEB", config_resolver)
-    fisher_compressed, _ = _cached_compressed(
+    fisher_traditional, _, _ = _cached_traditional("TEB", config_resolver)
+    fisher_compressed, _, _ = _cached_compressed(
         "TEB",
         config_resolver,
         method="harmonic",
@@ -311,8 +320,8 @@ def test_teb_compression_matches_traditional(local_path, config_resolver):
 def test_compressed_fisher_spin2(fields, local_path, config_resolver):
     """Compressed spin-2 Fisher matches traditional and reference."""
     # Reuses cached traditional from test_fisher_computation[QU/TQU]
-    fisher_traditional, _ = _cached_traditional(fields, config_resolver)
-    fisher_compressed, _ = _cached_compressed(
+    fisher_traditional, _, _ = _cached_traditional(fields, config_resolver)
+    fisher_compressed, _, _ = _cached_compressed(
         fields,
         config_resolver,
         method="harmonic",
@@ -350,21 +359,29 @@ def test_compressed_fisher_spin2(fields, local_path, config_resolver):
         f"Compressed {fields} error bars differ by {max_sigma_diff:.2e}"
     )
 
-    # Match Fortran reference
+    # Match Fortran reference (divide out beam smoothing for raw comparison)
     file = local_path + f"/tests/data/nside4/{fields}/ref_fisher.dat"
     ref = np.loadtxt(file, dtype=np.float64)
-    assert fisher_compressed.shape == ref.shape
+
+    _, _, fisher_inst = _cached_compressed(
+        fields, config_resolver, method="harmonic", epsilon=1e-10
+    )
+    beam_smoothing = fisher_inst.beam_smoothing
+    fisher_comp_raw = fisher_compressed / np.outer(beam_smoothing, beam_smoothing)
+
+    assert fisher_comp_raw.shape == ref.shape
 
     diag_r = np.abs(np.diag(ref))
     scale_r = np.sqrt(np.outer(diag_r, diag_r))
-    norm_diff_r = np.abs(fisher_compressed - ref) / (scale_r + 1e-30)
+    norm_diff_r = np.abs(fisher_comp_raw - ref) / (scale_r + 1e-30)
     assert norm_diff_r.max() < 1e-6, (
         f"Compressed {fields} Fisher vs reference diff "
         f"{norm_diff_r.max():.2e} exceeds 1e-6"
     )
 
+    sigma_comp_raw = np.sqrt(np.diag(np.linalg.inv(fisher_comp_raw)))
     sigma_r = np.sqrt(np.diag(np.linalg.inv(ref)))
-    max_sigma_diff_r = np.max(np.abs(sigma_c - sigma_r) / sigma_r)
+    max_sigma_diff_r = np.max(np.abs(sigma_comp_raw - sigma_r) / sigma_r)
     assert max_sigma_diff_r < 1e-6, (
         f"Compressed {fields} error bars vs reference differ by {max_sigma_diff_r:.2e}"
     )

@@ -37,6 +37,7 @@ import numpy as np
 from mpi4py import MPI
 
 from cosmocore import (
+    Bins,
     Core,
     InputParams,
     compute_signal_matrix,
@@ -206,19 +207,12 @@ class Fisher(Core):
             self.NCov2 = matrix_inverse_symm(self.NCov2)
             write_covmat_reduced(self.params.outinvcovmatfile2, self.NCov2)
 
-    def setup_fisher_matrices(self):
-        """Initialize Fisher matrix and derivative arrays."""
-        self.n_ell = self.params.lmax - 1
-        self.nell = self.params.nspectra * self.n_ell
-
-        self.fisher = np.zeros((self.nell, self.nell))
-        self.derSil = np.zeros_like(self.NCov1)
-        self.derSjl = np.zeros_like(self.NCov1)
-
-        # Fortran order for BLAS performance
-        self.fisher = np.asfortranarray(self.fisher)
-        self.derSil = np.asfortranarray(self.derSil)
-        self.derSjl = np.asfortranarray(self.derSjl)
+    def _build_derivative_matrix(self, ell: int) -> np.ndarray:
+        """Build pixel-space derivative matrix dC/dC_ell for single spectrum."""
+        dC = np.zeros_like(self.NCov1, dtype=np.float64)
+        dC = np.asfortranarray(dC)
+        do_derivative_step(dC, 0, self.npixs, self.params.spins, ell, self.collection)
+        return dC
 
     # =========================================================================
     # Single-Spectrum Computation (Unified API - Compression Agnostic)
@@ -231,122 +225,71 @@ class Fisher(Core):
         )
 
         if self.rank == 0:
-            mode = "compressed (optimized)" if use_compression else "traditional"
+            mode = "compressed" if use_compression else "traditional"
             self.log(f"Starting single-spectrum Fisher computation ({mode})", level=2)
 
         start_time = time.time() if self.rank == 0 else None
 
-        n_ell = self.params.lmax - 1  # ell from 2 to lmax
+        nbins = self.bins.nbins
+        total_elements = nbins * (nbins + 1) // 2
+        elements_per_proc = int(np.ceil(total_elements / self.size))
+
+        if self.rank == 0:
+            self.log(
+                f"Rank {self.rank} will compute ~{elements_per_proc} elements "
+                f"({nbins} bins)",
+                level=2,
+            )
+
+        fisher_local = np.zeros((nbins, nbins))
 
         if use_compression:
-            # Optimized path: use compute_fisher_matrix() which precomputes
-            # V C^{-1} V^T once and reuses for all elements
-            C_ell = self._get_theory_cl_vector()
-
-            if self.rank == 0:
-                # Only rank 0 computes the full matrix (no MPI distribution needed
-                # since the optimized method is already efficient)
-                self.fisher = self.compression_manager.compute_fisher_matrix(
-                    C_ell, ell_min=2, ell_max=self.params.lmax
-                )
-                self.log("-" * 80, level=1)
-                self.log("Fisher matrix computation completed", level=1)
-
-                if start_time is not None:
-                    elapsed = time.time() - start_time
-                    self.log(f"Total computation time: {elapsed:.2f} seconds", level=3)
-
-                if hasattr(self.params, "outfilefisher"):
-                    write_out_matrix(self.params.outfilefisher, self.fisher)
-            else:
-                self.fisher = np.zeros((n_ell, n_ell))
-
-            # Broadcast result to all ranks
-            self.comm.Barrier()
-            self.fisher = self.comm.bcast(self.fisher, root=0)
+            C_ell = self.collection.spectra_manager.get_cls(0, 0, 0)
+            C_inv = self.compression_manager.get_projected_inverse(C_ell)
         else:
-            # Traditional path with MPI distribution
-            total_elements = n_ell * (n_ell + 1) // 2
-            elements_per_proc = int(np.ceil(total_elements / self.size))
-
-            if self.rank == 0:
-                self.log(
-                    f"Rank {self.rank} will compute ~{elements_per_proc} elements",
-                    level=2,
-                )
-
-            # Initialize Fisher matrix
-            fisher_local = np.zeros((n_ell, n_ell))
-
-            # NCov1 is already C^{-1} after prepare_covariance_matrices()
             C_inv = self.NCov1
 
-            # Precompute all derivative matrices
-            dC_matrices = {}
-            for ell in range(2, self.params.lmax + 1):
-                dC = np.zeros_like(self.NCov1)
-                dC = np.asfortranarray(dC, dtype=np.float64)
-                do_derivative_step(
-                    dC,
-                    0,  # spectrum_idx = 0 for single-spectrum
-                    self.npixs,
-                    self.params.spins,
-                    ell,
-                    self.collection,
-                )
-                dC_matrices[ell] = dC
+        # Precompute C⁻¹ dC^b for each bin
+        cinv_times_dcb = {}
+        for bin_idx in range(nbins):
+            dC_b = self.get_binned_derivative_matrix(
+                bin_idx, beam_smoothing=self.beam_smoothing[: self.n_ell]
+            )
+            cinv_times_dcb[bin_idx] = matrix_mult(C_inv, dC_b)
 
-            # Main computation loop over ell pairs
-            counter = 0
-            for i, ell_i in enumerate(range(2, self.params.lmax + 1)):
-                for j, ell_j in enumerate(range(ell_i, self.params.lmax + 1)):
-                    counter += 1
+        # F_{bb'} = (1/2) Tr[(C⁻¹ dC^b)(C⁻¹ dC^{b'})]
+        counter = 0
+        for bi in range(nbins):
+            for bj in range(bi, nbins):
+                counter += 1
+                if not (
+                    counter > self.rank * elements_per_proc
+                    and counter <= (self.rank + 1) * elements_per_proc
+                ):
+                    continue
 
-                    # Check if this element is assigned to current rank
-                    if not (
-                        counter > self.rank * elements_per_proc
-                        and counter <= (self.rank + 1) * elements_per_proc
-                    ):
-                        continue
+                fisher_val = 0.5 * matrix_trace(cinv_times_dcb[bi], cinv_times_dcb[bj])
+                fisher_local[bi, bj] = fisher_val
+                if bi != bj:
+                    fisher_local[bj, bi] = fisher_val
 
-                    # Traditional: F_ij = 0.5 * Tr[C_inv @ dC_i @ C_inv @ dC_j]
-                    # Use matrix_trace(A, B) = Tr(A @ B) which is O(n²) vs O(n³)
-                    dC_i = dC_matrices[ell_i]
-                    dC_j = dC_matrices[ell_j]
-                    Cinv_dCi = matrix_mult(C_inv, dC_i)
-                    Cinv_dCj = matrix_mult(C_inv, dC_j)
-                    fisher_val = 0.5 * matrix_trace(Cinv_dCi, Cinv_dCj)
+        self.comm.Barrier()
+        reduced_fisher = np.zeros_like(fisher_local)
+        self.comm.Reduce(fisher_local, reduced_fisher, op=MPI.SUM, root=0)
 
-                    idx_i = ell_i - 2
-                    idx_j = ell_j - 2
+        if self.rank == 0:
+            self.fisher = reduced_fisher
+            self.log("-" * 80, level=1)
+            self.log("Fisher matrix computation completed", level=1)
 
-                    fisher_local[idx_i, idx_j] = fisher_val
-                    if idx_i != idx_j:
-                        fisher_local[idx_j, idx_i] = fisher_val  # Symmetry
+            if start_time is not None:
+                elapsed = time.time() - start_time
+                self.log(f"Total computation time: {elapsed:.2f} seconds", level=3)
 
-            # Synchronize and reduce
-            self.comm.Barrier()
-            redfisher = np.zeros_like(fisher_local)
-            self.comm.Reduce(fisher_local, redfisher, op=MPI.SUM, root=0)
+            if hasattr(self.params, "outfilefisher"):
+                write_out_matrix(self.params.outfilefisher, self.fisher)
 
-            if self.rank == 0:
-                self.fisher = redfisher
-                self.log("-" * 80, level=1)
-                self.log("Fisher matrix computation completed", level=1)
-
-                if start_time is not None:
-                    elapsed = time.time() - start_time
-                    self.log(f"Total computation time: {elapsed:.2f} seconds", level=3)
-
-                if hasattr(self.params, "outfilefisher"):
-                    write_out_matrix(self.params.outfilefisher, self.fisher)
-
-            self.comm.Barrier()
-
-    def _get_theory_cl_vector(self) -> np.ndarray:
-        """Get theoretical C_ell values from the field collection."""
-        cls = self.collection.spectra_manager.get_cls(0, 0, 0)
-        return cls
+        self.comm.Barrier()
 
     def _build_multi_spectrum_inputs(self):
         """Build C_ell_dict and spectra_list for multi-spectrum compressed Fisher."""
@@ -356,70 +299,51 @@ class Fisher(Core):
     # Multi-Spectrum Computation
     # =========================================================================
 
-    def compute_fisher_element(
-        self,
-        il: int,
-        jl: int,
-        curr_ell_i: int,
-        curr_ell_j: int,
-        spectrum_i: int,
-        spectrum_j: int,
-        appil: int,
-    ) -> int:
-        """Compute a single Fisher matrix element F_ij (traditional method)."""
-        if self.rank == 0:
-            self.log("-" * 80, level=2)
-            spec_i_label = self.collection.spectra_labels[spectrum_i]
-            spec_j_label = self.collection.spectra_labels[spectrum_j]
-            self.log(
-                f"Rank {self.rank} ---> "
-                f"Spec {spec_i_label} l={curr_ell_i} VS "
-                f"Spec {spec_j_label} l={curr_ell_j}",
-                level=2,
-            )
+    def _get_binned_derivative_multi(
+        self, bin_idx: int, spectrum_idx: int, spectra_list=None
+    ) -> np.ndarray:
+        """Compute beam-smoothed binned derivative for multi-spectrum.
 
-        if il != appil:
-            self.derSil.fill(0.0)
-            do_derivative_step(
-                self.derSil,
-                spectrum_i,
-                self.npixs,
-                self.params.spins,
-                curr_ell_i,
-                self.collection,
-            )
+        Handles both pixel-space and compressed paths. Beam smoothing
+        factors b²_ell are absorbed into the binning weights.
+        """
+        use_compression = (
+            hasattr(self, "compression_manager") and self.compression_manager is not None
+        )
 
-            if jl == il:
-                if self.params.do_cross:
-                    temp_mult = matrix_mult(self.derSil, self.NCov1)
-                    Sig_temp = matrix_mult(self.NCov2, temp_mult)
-                else:
-                    temp_mult = matrix_mult(self.derSil, self.NCov1)
-                    Sig_temp = matrix_mult(self.NCov1, temp_mult)
+        n_ell = self.n_ell
+        w_matrix, _ = self.bins._bin_operators()
+        lmin_b = self.bins.lmins[bin_idx]
+        lmax_b = self.bins.lmaxs[bin_idx]
+        beam_offset = spectrum_idx * n_ell
+        dC_b = None
 
-                self.fisher[il, il] = 0.5 * matrix_trace(self.derSil, Sig_temp)
+        for ell in range(lmin_b, lmax_b + 1):
+            weight = w_matrix[bin_idx, ell] * self.beam_smoothing[beam_offset + ell - 2]
 
-            self.derSil = matrix_mult(self.derSil, self.NCov1)
-            if self.params.do_cross:
-                self.derSil = matrix_mult(self.NCov2, self.derSil)
+            if use_compression:
+                comp_i, comp_j, mode = spectra_list[spectrum_idx]
+                dC_ell = self.compression_manager.get_derivative_matrix(
+                    ell, comp_i, comp_j, mode
+                )
             else:
-                self.derSil = matrix_mult(self.NCov1, self.derSil)
+                dC_ell = np.zeros_like(self.NCov1)
+                dC_ell = np.asfortranarray(dC_ell, dtype=np.float64)
+                do_derivative_step(
+                    dC_ell,
+                    spectrum_idx,
+                    self.npixs,
+                    self.params.spins,
+                    ell,
+                    self.collection,
+                )
 
-        if jl != il:
-            self.derSjl.fill(0.0)
-            do_derivative_step(
-                self.derSjl,
-                spectrum_j,
-                self.npixs,
-                self.params.spins,
-                curr_ell_j,
-                self.collection,
-            )
+            if dC_b is None:
+                dC_b = weight * dC_ell
+            else:
+                dC_b += weight * dC_ell
 
-            self.fisher[il, jl] = 0.5 * matrix_trace(self.derSjl, self.derSil)
-            self.fisher[jl, il] = self.fisher[il, jl]
-
-        return il
+        return dC_b
 
     def _compute_multi_spectrum(self):
         """Compute Fisher matrix for multi-spectrum analysis (compression supported)."""
@@ -428,92 +352,97 @@ class Fisher(Core):
         )
 
         if self.rank == 0:
-            mode = "compressed (optimized)" if use_compression else "traditional"
+            mode = "compressed" if use_compression else "traditional"
             self.log(f"Starting multi-spectrum Fisher computation ({mode})", level=2)
 
         start_time = time.time() if self.rank == 0 else None
 
+        nbins = self.bins.nbins
+        nspectra = self.params.nspectra
+        n_params = nspectra * nbins
+
+        total_elements = n_params * (n_params + 1) // 2
+        elements_per_proc = int(np.ceil(total_elements / self.size))
+
+        if self.rank == 0:
+            self.log(
+                f"Rank {self.rank} will compute ~{elements_per_proc} elements "
+                f"({nspectra} spectra x {nbins} bins)",
+                level=2,
+            )
+
+        fisher_local = np.zeros((n_params, n_params))
+
+        spectra_list = None
         if use_compression:
-            # Optimized path: use compute_fisher_matrix()
-            if self.rank == 0:
-                # Build C_ell_dict and spectra_list from field collection
-                C_ell_dict, spectra_list = self._build_multi_spectrum_inputs()
-
-                self.fisher = self.compression_manager.compute_fisher_matrix(
-                    C_ell_dict,
-                    spectra_list,
-                    ell_min=2,
-                    ell_max=self.params.lmax,
-                )
-                self.log("-" * 80, level=1)
-                self.log("Fisher matrix computation completed", level=1)
-
-                if start_time is not None:
-                    elapsed = time.time() - start_time
-                    self.log(f"Total computation time: {elapsed:.2f} seconds", level=3)
-
-                if hasattr(self.params, "outfilefisher"):
-                    write_out_matrix(self.params.outfilefisher, self.fisher)
-            else:
-                self.fisher = np.zeros((self.nell, self.nell))
-
-            # Broadcast result to all ranks
-            self.comm.Barrier()
-            self.fisher = self.comm.bcast(self.fisher, root=0)
+            C_ell_dict, spectra_list = self._build_multi_spectrum_inputs()
+            C_inv = self.compression_manager.get_projected_inverse(C_ell_dict)
         else:
-            # Traditional path with MPI distribution
-            ellperproc = np.ceil((self.nell + 1.0) * self.nell / 2.0 / self.size)
-            self.log(f"Rank {self.rank} will compute {ellperproc} elements", level=2)
+            if self.params.do_cross:
+                C_inv1 = self.NCov1
+                C_inv2 = self.NCov2
+            else:
+                C_inv = self.NCov1
 
-            counter = 0
-            appil = -1
-            count_computed = 0
+        # Precompute binned derivatives and C⁻¹ dC^b products
+        binned_derivatives = {}
+        cinv_times_dcb = {}
+        for param_idx in range(n_params):
+            spectrum_idx = param_idx // nbins
+            bin_idx = param_idx % nbins
+            binned_deriv = self._get_binned_derivative_multi(
+                bin_idx, spectrum_idx, spectra_list
+            )
+            binned_derivatives[param_idx] = binned_deriv
 
-            for il in range(self.nell):
-                spectrum_i = il // self.n_ell
-                curr_ell_i = (il % self.n_ell) + 2
+            if use_compression or not self.params.do_cross:
+                cinv_times_dcb[param_idx] = matrix_mult(C_inv, binned_deriv)
+            else:
+                cinv_times_dcb[param_idx] = matrix_mult(
+                    C_inv2, matrix_mult(binned_deriv, C_inv1)
+                )
 
-                for jl in range(il, self.nell):
-                    spectrum_j = jl // self.n_ell
-                    curr_ell_j = jl % self.n_ell + 2
+        # F_{ij} = (1/2) Tr[(C⁻¹ dC^i)(C⁻¹ dC^j)]
+        counter = 0
+        for param_i in range(n_params):
+            for param_j in range(param_i, n_params):
+                counter += 1
+                if not (
+                    counter > self.rank * elements_per_proc
+                    and counter <= (self.rank + 1) * elements_per_proc
+                ):
+                    continue
 
-                    counter += 1
-
-                    if not (
-                        counter > self.rank * ellperproc
-                        and counter <= (self.rank + 1) * ellperproc
-                    ):
-                        continue
-
-                    count_computed += 1
-                    if self.rank == 0:
-                        self.log(
-                            f"Computed {count_computed} of {int(ellperproc)} elements",
-                            level=2,
-                        )
-
-                    appil = self.compute_fisher_element(
-                        il, jl, curr_ell_i, curr_ell_j, spectrum_i, spectrum_j, appil
+                if use_compression or not self.params.do_cross:
+                    fisher_val = 0.5 * matrix_trace(
+                        cinv_times_dcb[param_i], cinv_times_dcb[param_j]
+                    )
+                else:
+                    fisher_val = 0.5 * matrix_trace(
+                        binned_derivatives[param_j], cinv_times_dcb[param_i]
                     )
 
-            self.comm.Barrier()
+                fisher_local[param_i, param_j] = fisher_val
+                if param_i != param_j:
+                    fisher_local[param_j, param_i] = fisher_val
 
-            redfisher = np.zeros_like(self.fisher)
-            self.comm.Reduce(self.fisher, redfisher, op=MPI.SUM, root=0)
+        self.comm.Barrier()
+        reduced_fisher = np.zeros_like(fisher_local)
+        self.comm.Reduce(fisher_local, reduced_fisher, op=MPI.SUM, root=0)
 
-            if self.rank == 0:
-                self.fisher = redfisher
-                self.log("-" * 80, level=1)
-                self.log("Fisher matrix computation completed", level=1)
+        if self.rank == 0:
+            self.fisher = reduced_fisher
+            self.log("-" * 80, level=1)
+            self.log("Fisher matrix computation completed", level=1)
 
-                if start_time is not None:
-                    elapsed = time.time() - start_time
-                    self.log(f"Total computation time: {elapsed:.2f} seconds", level=3)
+            if start_time is not None:
+                elapsed = time.time() - start_time
+                self.log(f"Total computation time: {elapsed:.2f} seconds", level=3)
 
-                if hasattr(self.params, "outfilefisher"):
-                    write_out_matrix(self.params.outfilefisher, self.fisher)
+            if hasattr(self.params, "outfilefisher"):
+                write_out_matrix(self.params.outfilefisher, self.fisher)
 
-            self.comm.Barrier()
+        self.comm.Barrier()
 
     # =========================================================================
     # Main Entry Points
@@ -622,14 +551,44 @@ class Fisher(Core):
 
         self.comm.Barrier()
 
-        # Setup Fisher matrices dimensions
-        self.n_ell = self.params.lmax - 1
-        self.nell = self.params.nspectra * self.n_ell
-        self.fisher = np.zeros((self.nell, self.nell))
+        # Binning: set_binning() > config bin_lmins/lmaxs > config delta_ell
+        if not hasattr(self, "bins") or self.bins is None:
+            bin_lmins = getattr(self.params, "bin_lmins", None)
+            bin_lmaxs = getattr(self.params, "bin_lmaxs", None)
+            if bin_lmins is not None and bin_lmaxs is not None:
+                self.set_binning(Bins(bin_lmins, bin_lmaxs))
+            else:
+                delta_ell = getattr(self.params, "delta_ell", 1)
+                self.set_binning(Bins.fromdeltal(2, self.params.lmax, delta_ell))
 
-        # For multi-spectrum, also need derivative arrays
-        if self.params.nspectra > 1:
-            self.setup_fisher_matrices()
+        # Warn if bins don't cover the full ell range
+        if self.bins.lmax < self.params.lmax:
+            self.log(
+                f"Binning covers ell up to {self.bins.lmax}, "
+                f"but lmax={self.params.lmax}. "
+                f"Multipoles {self.bins.lmax + 1}..{self.params.lmax} "
+                f"are excluded.",
+                level=1,
+            )
+
+        # Beam smoothing factors b²_ell for each spectrum (product of beam
+        # and pixel window functions). Flat vector: [spec0_ell2, ..., spec0_ellmax,
+        # spec1_ell2, ..., spec1_ellmax, ...].
+        self.n_ell = self.params.lmax - 1
+        smoothing_dict = self.collection.spectra_manager.compute_smoothing_factors(
+            self.collection.beam_manager
+        )
+        self.beam_smoothing = np.zeros(
+            self.params.nspectra * self.n_ell, dtype=np.float64
+        )
+        idx = 0
+        for label in self.collection.spectra_manager.labels:
+            self.beam_smoothing[idx : idx + self.n_ell] = smoothing_dict[label]
+            idx += self.n_ell
+
+        # Setup Fisher matrices dimensions
+        self.nell = self.params.nspectra * self.bins.nbins
+        self.fisher = np.zeros((self.nell, self.nell))
 
         # Compute Fisher matrix
         self.compute()
@@ -641,7 +600,7 @@ class Fisher(Core):
     # =========================================================================
 
     def get_fisher_matrix(self) -> np.ndarray | None:
-        """Retrieve the computed Fisher information matrix."""
+        """Retrieve the beam-smoothed Fisher information matrix."""
         if self.rank == 0:
             return self.fisher
         return None
@@ -658,43 +617,28 @@ class Fisher(Core):
         """
         Retrieve the window matrix for QML power spectrum estimation.
 
-        The window matrix W relates the expected QML estimates to the true
-        power spectrum: <y> = W @ C_true. It encodes the mode coupling induced
-        by partial sky coverage and pixel window effects.
+        The window matrix W relates the expected QML estimates to the
+        beam-smoothed theory spectrum: <q> = W @ C_theory. It encodes
+        the mode coupling induced by partial sky coverage, beam, and
+        pixel window effects.
 
         Returns
         -------
         numpy.ndarray or None
-            Window matrix of shape (nell, nell) where nell = n_spectra * (lmax-1).
-            Returns None for worker processes (rank != 0) or if computation
-            hasn't completed.
+            Window matrix of shape (n_params, n_params) where
+            n_params = n_spectra * n_bins. Returns None for worker
+            processes or if computation hasn't completed.
 
         Notes
         -----
-        The window matrix elements are computed as:
-        W_αβ = (1/2) Tr[C⁻¹ P_α C⁻¹ P_β]
+        The window matrix is the beam-smoothed Fisher matrix:
 
-        where P_α = ∂C/∂C_α is the derivative of the covariance matrix with
-        respect to power spectrum amplitude at multipole α.
+            W_{bb'} = (1/2) Tr[C⁻¹ dC^b C⁻¹ dC^{b'}]
 
-        This is mathematically equivalent to the Fisher matrix before
-        normalization factors (vecmul) are applied. The window matrix is
-        essential for the "convolved" normalization mode in QML estimation,
-        where instead of deconvolving the window function, the theory is
-        convolved with the window for comparison.
+        where dC^b = Sum_ell w_{b,ell} b²_ell dC^ell includes the
+        binning weights and beam smoothing factors.
 
-        Examples
-        --------
-        >>> fisher = Fisher("config.yaml")
-        >>> fisher.run()
-        >>> if fisher.rank == 0:
-        ...     W = fisher.get_window_matrix()
-        ...     # Convolve theory spectrum with window
-        ...     cl_theory_convolved = W @ cl_theory
-
-        See Also
-        --------
-        get_fisher_matrix : Returns the same matrix (Fisher = Window before normalization)
-        Spectra.get_power_spectra : Uses window matrix for 'convolved' mode
+        Used by the "convolved" normalization mode, where instead of
+        deconvolving the window, the theory is convolved for comparison.
         """
         return self.get_fisher_matrix()

@@ -114,7 +114,11 @@ def test_fortran_validation(python_spectra, fortran_data):
     results["signal"] = np.max(rel_diff)
 
     # 4. Fisher diagonal
-    diag_python = np.diag(python_spectra.fisher_instance.fisher)
+    # Fisher is beam-smoothed. Divide out beam smoothing for raw comparison.
+    fisher_python = python_spectra.fisher_instance.fisher
+    beam_smoothing = python_spectra.fisher_instance.beam_smoothing
+    fisher_raw = fisher_python / np.outer(beam_smoothing, beam_smoothing)
+    diag_python = np.diag(fisher_raw)
     diag_fortran = np.diag(fortran_data["fisher"])
     results["fisher_diag"] = np.max(np.abs((diag_python - diag_fortran) / diag_fortran))
 

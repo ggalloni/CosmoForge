@@ -37,13 +37,21 @@ Both methods support MPI parallelization for large-scale analyses and can handle
 - Optimal power spectrum estimation
 - Noise bias correction
 - Cross-correlation support
-- Fisher matrix renormalization
-- Mock data generation capabilities
+- Three output modes: deconvolved, decorrelated, convolved
+- Multipole binning for bandpower estimation
+
+### Multipole Binning
+
+- Native binned QML: Fisher and q-vector computed directly in bin space
+- Configurable via Python API (`Bins` class) or YAML (`delta_ell`, `bin_lmins`/`bin_lmaxs`)
+- Beam smoothing absorbed into binned derivatives for exact normalization
+- Default `delta_ell=1` recovers standard per-multipole estimation
+- Custom non-uniform bins supported
 
 ### Technical Features
 
 - **MPI Parallelization**: Distributed computation across multiple processes
-- **Memory Optimization**: Efficient handling of large covariance matrices
+- **Harmonic Compression**: SMW-based compression for efficient computation
 - **Instrumental Effects**: Beam convolution and pixel window functions
 - **Flexible Configuration**: YAML-based parameter specification
 
@@ -118,6 +126,31 @@ qml = Spectra("config/params.yaml", fisher=fisher)
 qml.run()
 ```
 
+### Binned Power Spectrum Estimation
+
+```python
+from cosmocore import Bins
+from qube import Fisher, Spectra
+
+# Uniform bins of width 5
+bins = Bins.fromdeltal(2, lmax, delta_ell=5)
+
+# Or custom non-uniform bins (both bounds inclusive)
+bins = Bins(lmins=[2, 10, 30], lmaxs=[9, 29, 64])
+
+fisher = Fisher("config/params.yaml")
+fisher.set_binning(bins)
+fisher.run()
+
+# Spectra inherits bins from Fisher
+qml = Spectra("config/params.yaml", fisher=fisher)
+qml.run()
+
+cl_binned = qml.get_power_spectra()      # (nsims, nbins)
+ell_eff = qml.get_effective_ells()        # bin midpoints
+errors = qml.get_error_bars()             # (nbins,)
+```
+
 ## Configuration
 
 QUBE uses YAML configuration files:
@@ -160,6 +193,17 @@ endname2: ".fits"
 outfisherfile: "output/fisher.dat"
 outcovmatfile: "output/covariance.dat"
 outerrfile: "output/errors.dat"
+```
+
+### Binning Configuration
+
+```yaml
+# Uniform bins (simplest)
+delta_ell: 5
+
+# Or custom bins (both bounds inclusive)
+bin_lmins: [2, 10, 30]
+bin_lmaxs: [9, 29, 64]
 ```
 
 ### Beam Configuration
@@ -419,5 +463,6 @@ See the main CosmoForge README for contribution guidelines.
 
 ## References
 
-- Quadratic Maximum Likelihood: Tegmark (1997)
-- Fisher Information: Tegmark et al. (1997)
+- Quadratic Maximum Likelihood: Tegmark (1997), Phys. Rev. D 55, 5895
+- Bandpower estimation: Bond, Jaffe & Knox (1998), Phys. Rev. D 57, 2117
+- Binned QML: Bilbao-Ahedo et al. (2021), arXiv:2104.08528

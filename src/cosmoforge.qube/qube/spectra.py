@@ -57,6 +57,7 @@ from mpi4py import MPI
 
 from cosmocore import (
     BaseCompression,
+    Bins,
     Core,
     FieldCollection,
     do_derivative_step,
@@ -116,11 +117,9 @@ class Spectra(Core):
     qml_noise_bias : numpy.ndarray
         Noise bias estimates for auto-correlation spectra.
     invfisher : numpy.ndarray
-        Inverted Fisher matrix used for final spectrum normalization.
+        Inverse of the beam-smoothed Fisher matrix.
     invCov1, invCov2 : numpy.ndarray
         Inverted covariance matrices for primary and secondary datasets.
-    normalization : numpy.ndarray
-        Normalization factors (vecmul) for spectrum smoothing.
 
     Examples
     --------
@@ -302,6 +301,18 @@ class Spectra(Core):
         if hasattr(self.fisher_instance, "Sig") and self.fisher_instance.Sig is not None:
             self.Sig = self.fisher_instance.Sig
 
+        # Copy binning and beam smoothing if available
+        if (
+            hasattr(self.fisher_instance, "bins")
+            and self.fisher_instance.bins is not None
+        ):
+            self.bins = self.fisher_instance.bins
+        if (
+            hasattr(self.fisher_instance, "beam_smoothing")
+            and self.fisher_instance.beam_smoothing is not None
+        ):
+            self.beam_smoothing = self.fisher_instance.beam_smoothing
+
         # Copy compression manager if available
         if (
             hasattr(self.fisher_instance, "compression_manager")
@@ -417,11 +428,11 @@ class Spectra(Core):
 
     def setup_fisher_inversion(self):
         """
-        Prepare inverted Fisher matrix with normalization for QML estimation.
+        Prepare inverted Fisher matrix for QML estimation.
 
-        Computes smoothing factors (vecmul), applies normalization
-        F'_ij = F_ij * vecmul_i * vecmul_j,
-        inverts the Fisher matrix, and writes results to output files.
+        The Fisher matrix is already beam-smoothed (beam window functions
+        absorbed into derivatives). This method computes F⁻¹, F⁻¹/²,
+        and writes results to output files.
 
         Raises
         ------
@@ -440,34 +451,7 @@ class Spectra(Core):
 
             self.invfisher = fisher_matrix.copy()
 
-            # Compute vecmul (smoothing factors) - this is critical!
-            self.log("Computing smoothing factors and vecmul", level=2)
-            smoothing_factors = self.collection.spectra_manager.compute_smoothing_factors(
-                self.collection.beam_manager
-            )
-
-            # Create vecmul array
-            nell = self.params.nspectra * (self.params.lmax - 1)
-            self.normalization = np.zeros(nell, dtype=np.float64)
-
-            # Fill vecmul array
-            idx = 0
-            for _, spectrum_label in enumerate(self.collection.spectra_manager.labels):
-                if spectrum_label in smoothing_factors:
-                    smooth_factor = smoothing_factors[spectrum_label]
-                    for ell_idx in range(self.params.lmax - 1):
-                        self.normalization[idx] = smooth_factor[ell_idx]
-                        idx += 1
-                else:
-                    raise ValueError(f"No smoothing factors found for {spectrum_label}")
-
-            # Apply vecmul normalization to Fisher matrix
-            self.log("Applying vecmul normalization to Fisher matrix", level=2)
-            self.invfisher = self.invfisher * np.outer(
-                self.normalization, self.normalization
-            )
-
-            # Store normalized Fisher matrix for convolved mode covariance
+            # Store beam-smoothed Fisher for convolved mode covariance
             self.fisher_normalized = self.invfisher.copy()
 
             # Compute F^(-1/2) for decorrelated mode
@@ -491,9 +475,9 @@ class Spectra(Core):
             vec_error_bars = np.sqrt(np.diag(self.invfisher))
 
             # Convert vector to Cl format and write errors
-            n_ell = self.params.lmax - 1
-            nspectra = len(vec_error_bars) // n_ell
-            error_bars = np.zeros((n_ell, nspectra), dtype=np.float64)
+            nbins = self.bins.nbins
+            nspectra = len(vec_error_bars) // nbins
+            error_bars = np.zeros((nbins, nspectra), dtype=np.float64)
             vec_to_cl(vec_error_bars, error_bars)
             writecl(self.params.outerrfile, error_bars)
 
@@ -620,43 +604,13 @@ class Spectra(Core):
         >>> print(f"QML results shape: {spectra.qml_results.shape}")
         >>> print(f"Total parameters: {spectra.qml_results.shape[1]}")
         """
-        nell = self.params.nspectra * (self.params.lmax - 1)
+        nell = self.params.nspectra * self.bins.nbins
 
         # Initialize y vectors for QML estimation
         self.qml_results = np.zeros((self.params.nsims, nell), dtype=np.float64)
 
         if not self.params.do_cross:
             self.qml_noise_bias = np.zeros(nell, dtype=np.float64)
-
-    def compute_e_operator(self, il: int, der_s: np.ndarray) -> np.ndarray:
-        """
-        Compute QML quadratic estimator matrix E_l.
-
-        Parameters
-        ----------
-        il : int
-            Linear multipole index: spectrum_idx = il // (lmax-1), l = (il % (lmax-1)) + 2
-        der_s : np.ndarray
-            Signal covariance derivative ∂S/∂C_l, shape (n_pix, n_pix).
-
-        Returns
-        -------
-        np.ndarray
-            E_l matrix for quadratic estimation: q̂_l = (1/2) * x^T * E_l * x
-
-        Notes
-        -----
-        Auto: E_l = (1/2) * C^{-1} * ∂S/∂C_l * C^{-1}
-        Cross: E_l = (1/2) * C₂^{-1} * ∂S/∂C_l * C₁^{-1}
-        """
-        if self.params.do_cross:
-            # E = 0.5 * invCov2^{-1} * derS * invCov1^{-1}
-            E = 0.5 * matrix_mult(self.invCov2, matrix_mult(der_s, self.invCov1))
-        else:
-            # E = 0.5 * invCov1^{-1} * derS * invCov1^{-1}
-            E = 0.5 * matrix_mult(self.invCov1, matrix_mult(der_s, self.invCov1))
-
-        return E
 
     def compute_qml_spectra(self):
         """
@@ -677,9 +631,57 @@ class Spectra(Core):
         else:
             self._compute_qml_spectra_traditional()
 
-    def _build_multi_spectrum_inputs_spectra(self):
-        """Build C_ell_dict and spectra_list for multi-spectrum compressed QML."""
+    def _build_multi_spectrum_inputs(self):
+        """Build C_ell_dict and spectra_list for multi-spectrum."""
         return self.collection.spectra_manager.build_inputs()
+
+    def _get_binned_derivative(
+        self, bin_idx: int, spectrum_idx: int = 0, spectra_list=None
+    ) -> np.ndarray:
+        """Compute beam-smoothed binned derivative for QML computation.
+
+        Handles pixel-space and compressed paths, single and multi-spectrum.
+        Beam smoothing factors b²_ell are absorbed into the binning weights.
+        """
+        use_compression = (
+            hasattr(self, "compression_manager") and self.compression_manager is not None
+        )
+
+        w_matrix, _ = self.bins._bin_operators()
+        lmin_b = self.bins.lmins[bin_idx]
+        lmax_b = self.bins.lmaxs[bin_idx]
+        n_ell = self.params.lmax - 1
+        beam_offset = spectrum_idx * n_ell
+        dC_b = None
+
+        for ell in range(lmin_b, lmax_b + 1):
+            weight = w_matrix[bin_idx, ell] * self.beam_smoothing[beam_offset + ell - 2]
+
+            if use_compression:
+                cm = self.compression_manager
+                if spectra_list is not None:
+                    comp_i, comp_j, mode = spectra_list[spectrum_idx]
+                    dC_ell = cm.get_derivative_matrix(ell, comp_i, comp_j, mode)
+                else:
+                    dC_ell = cm.get_derivative_matrix(ell)
+            else:
+                ntot = sum(self.collection.n_active)
+                dC_ell = np.zeros((ntot, ntot), dtype=np.float64)
+                do_derivative_step(
+                    dC_ell,
+                    spectrum_idx,
+                    self.npixs,
+                    self.params.spins,
+                    ell,
+                    self.collection,
+                )
+
+            if dC_b is None:
+                dC_b = weight * dC_ell
+            else:
+                dC_b += weight * dC_ell
+
+        return dC_b
 
     def _compute_noise_cov_diag_compressed(
         self, cm, C_ell, C_ell_dict, is_multi_field
@@ -766,8 +768,6 @@ class Spectra(Core):
 
         start_time = time.time()
 
-        n_ell = self.params.lmax - 1
-        nell = self.params.nspectra * n_ell
         cm = self.compression_manager
         n_sims = self.params.nsims
         n_compressed = cm.n_kept
@@ -779,7 +779,7 @@ class Spectra(Core):
 
         # Build C_ell or C_ell_dict depending on multi-field
         if is_multi_field:
-            C_ell_dict, spectra_list = self._build_multi_spectrum_inputs_spectra()
+            C_ell_dict, spectra_list = self._build_multi_spectrum_inputs()
             C_ell = None  # Not used for multi-field
         else:
             C_ell = self.collection.spectra_manager.get_cls(0, 0, 0)
@@ -855,40 +855,38 @@ class Spectra(Core):
                     N_bar = cm.get_compressed_covariance(np.zeros_like(C_ell))
                 noise_cov_w = C_bar_inv @ N_bar @ C_bar_inv
 
-        # Main computation loop - distribute multipoles across processes
+        # Main computation loop - distribute bins across processes
+        nbins = self.bins.nbins
+        nell = self.params.nspectra * nbins
         for il in range(nell):
             if self.rank == il % self.size:
-                spectrum_idx = il // n_ell
-                ell = (il % n_ell) + 2
+                spectrum_idx = il // nbins
+                bin_idx = il % nbins
 
-                # Get compressed derivative matrix E_l
-                if is_multi_field:
-                    comp_i, comp_j, mode = spectra_list[spectrum_idx]
-                    E_l = cm.get_derivative_matrix(ell, comp_i, comp_j, mode)
-                else:
-                    E_l = cm.get_derivative_matrix(ell)
+                # Get binned compressed derivative matrix
+                E_b = self._get_binned_derivative(
+                    bin_idx,
+                    spectrum_idx,
+                    spectra_list if is_multi_field else None,
+                )
 
                 if self.params.do_cross:
-                    # Cross-correlation case
                     for isim in range(n_sims):
                         w1 = maps1_weighted[:, isim]
                         w2 = maps2_weighted[:, isim]
-                        self.qml_results[isim, il] = 0.5 * w2 @ E_l @ w1
+                        self.qml_results[isim, il] = 0.5 * w2 @ E_b @ w1
                 else:
-                    # Auto-correlation case
-                    # Compute noise bias: E[q_l|noise] = 0.5 * Tr[E_l @ Cov(w|noise)]
-                    if cm.method == "harmonic":
-                        # For harmonic, E_l is diagonal - use fast diagonal trace
-                        E_l_diag = np.diag(E_l)
-                        tr_ne = 0.5 * np.sum(E_l_diag * noise_cov_w_diag)
+                    # Noise bias: 0.5 * Tr[E_b @ Cov(w|noise)]
+                    if cm.method == "harmonic" and noise_cov_w_diag is not None:
+                        E_b_diag = np.diag(E_b)
+                        tr_ne = 0.5 * np.sum(E_b_diag * noise_cov_w_diag)
                     else:
-                        # For pixel_projected, E_l is full matrix - use matrix_trace
-                        tr_ne = 0.5 * matrix_trace(E_l, noise_cov_w)
+                        tr_ne = 0.5 * matrix_trace(E_b, noise_cov_w)
                     self.qml_noise_bias[il] = tr_ne
 
                     for isim in range(n_sims):
                         w = maps1_weighted[:, isim]
-                        qml_value = 0.5 * w @ E_l @ w
+                        qml_value = 0.5 * w @ E_b @ w
 
                         if hasattr(self.params, "remove_nb") and self.params.remove_nb:
                             qml_value -= tr_ne
@@ -914,89 +912,67 @@ class Spectra(Core):
         Optimized: Precomputes y = C^{-1} @ d to avoid building full E matrix.
 
         The QML estimator is:
-            q_l = (1/2) * d^T @ C^{-1} @ dC_l @ C^{-1} @ d
-                = (1/2) * y^T @ dC_l @ y   where y = C^{-1} @ d
-
-        This reduces complexity from 2 × O(n³) to 1 × O(n³) per multipole,
-        as we only need C^{-1} @ dC for noise bias (not the full E matrix).
+            q_b = (1/2) * d^T @ C^{-1} @ dC_b @ C^{-1} @ d
+                = (1/2) * y^T @ dC_b @ y   where y = C^{-1} @ d
         """
         if self.rank == 0:
             self.log("Starting QML computation (traditional, optimized)", level=2)
 
         start_time = time.time()
 
-        nell = self.params.nspectra * (self.params.lmax - 1)
-        ntot = sum(self.collection.n_active)
+        nbins = self.bins.nbins
+        nspectra = self.params.nspectra
+        n_params = nspectra * nbins
 
-        # Precompute weighted data: y = C^{-1} @ d for all simulations
-        # This is O(n² × nsims) and avoids rebuilding for each ℓ
-        y1 = matrix_mult(self.invCov1, self.maps1)  # (ntot, nsims)
+        # Precompute weighted data: y = C⁻¹ d for all simulations
+        weighted_maps1 = matrix_mult(self.invCov1, self.maps1)
 
         if self.params.do_cross:
-            y2 = matrix_mult(self.invCov2, self.maps2)  # (ntot, nsims)
+            weighted_maps2 = matrix_mult(self.invCov2, self.maps2)
 
-        # For noise bias: Tr[N @ E] = 0.5 * Tr[N @ C^{-1} @ dC @ C^{-1}]
-        # Using cyclic trace property: = 0.5 * Tr[C^{-1} @ N @ C^{-1} @ dC]
-        # Precompute C^{-1} @ N @ C^{-1} once (O(n³)), then Tr(... @ dC) per ℓ
+        # For noise bias: C⁻¹ N C⁻¹ (precomputed once)
         if not self.params.do_cross:
-            Cinv_N_Cinv = matrix_mult(self.invCov1, matrix_mult(self.NCov1, self.invCov1))
+            cinv_noise_cinv = matrix_mult(
+                self.invCov1, matrix_mult(self.NCov1, self.invCov1)
+            )
 
-        # Allocate derivative matrix
-        der_s = np.zeros((ntot, ntot), dtype=np.float64)
+        for param_idx in range(n_params):
+            if self.rank == param_idx % self.size:
+                spectrum_idx = param_idx // nbins
+                bin_idx = param_idx % nbins
 
-        # Main computation loop - distribute multipoles across processes
-        for il in range(nell):
-            if self.rank == il % self.size:
-                spectrum_idx = il // (self.params.lmax - 1)
-                ell = (il % (self.params.lmax - 1)) + 2
-
-                # Compute derivative matrix dC_l
-                der_s.fill(0.0)
-                do_derivative_step(
-                    der_s,
-                    spectrum_idx,
-                    self.npixs,
-                    self.params.spins,
-                    ell,
-                    self.collection,
-                )
-
-                # Compute dC @ y for all sims at once: O(n² × nsims)
-                dC_y1 = matrix_mult(der_s, y1)
+                binned_deriv = self._get_binned_derivative(bin_idx, spectrum_idx)
+                deriv_times_y1 = matrix_mult(binned_deriv, weighted_maps1)
 
                 if self.params.do_cross:
-                    # Cross-correlation: q_l = 0.5 * y2^T @ dC @ y1
                     for isim in range(self.params.nsims):
-                        self.qml_results[isim, il] = 0.5 * np.dot(
-                            y2[:, isim], dC_y1[:, isim]
+                        self.qml_results[isim, param_idx] = 0.5 * np.dot(
+                            weighted_maps2[:, isim], deriv_times_y1[:, isim]
                         )
                 else:
-                    # Auto-correlation case
-                    # Noise bias: Tr[N @ E] = 0.5 * Tr[C^{-1} @ N @ C^{-1} @ dC]
-                    # Using precomputed Cinv_N_Cinv: Tr(Cinv_N_Cinv @ dC)
-                    tr_ne = 0.5 * matrix_trace(Cinv_N_Cinv, der_s)
-                    self.qml_noise_bias[il] = tr_ne
+                    noise_bias = 0.5 * matrix_trace(cinv_noise_cinv, binned_deriv)
+                    self.qml_noise_bias[param_idx] = noise_bias
 
-                    # QML values: q_l = 0.5 * y^T @ dC @ y
                     for isim in range(self.params.nsims):
-                        qml_value = 0.5 * np.dot(y1[:, isim], dC_y1[:, isim])
-
+                        qml_value = 0.5 * np.dot(
+                            weighted_maps1[:, isim],
+                            deriv_times_y1[:, isim],
+                        )
                         if hasattr(self.params, "remove_nb") and self.params.remove_nb:
-                            qml_value -= tr_ne
+                            qml_value -= noise_bias
 
-                        self.qml_results[isim, il] = qml_value
+                        self.qml_results[isim, param_idx] = qml_value
 
-        # Synchronize all processes
         self.comm.Barrier()
 
         if self.rank == 0:
-            self.log("QML computation done (traditional, optimized)", level=2)
+            self.log("QML computation done (traditional)", level=2)
             self.log(
-                f"QML computation time: {time.time() - start_time:.2f} seconds", level=3
+                f"QML computation time: {time.time() - start_time:.2f} seconds",
+                level=3,
             )
 
-        # Reduce results from all processes
-        self._reduce_qml_results(nell)
+        self._reduce_qml_results(n_params)
 
     def _reduce_qml_results(self, nell: int):
         """Gather and combine QML results from all MPI processes."""
@@ -1068,6 +1044,11 @@ class Spectra(Core):
                 # Load covariance matrices for the case when not reusing Fisher instance
                 self._load_covariance_matrices()
 
+            # Setup binning: Fisher > set_binning() > config > default
+            if not hasattr(self, "bins") or self.bins is None:
+                delta_ell = getattr(self.params, "delta_ell", 1)
+                self.set_binning(Bins.fromdeltal(2, self.params.lmax, delta_ell))
+
             # QML-specific setup
             self.setup_maps()
             self.setup_fisher_inversion()
@@ -1113,12 +1094,15 @@ class Spectra(Core):
         if self.params.do_cross:
             self.maps2 = self.comm.bcast(self.maps2 if self.rank == 0 else None, root=0)
 
-        # Broadcast inverted Fisher matrix and vecmul
+        # Broadcast inverted Fisher matrix
         self.invfisher = self.comm.bcast(
             self.invfisher if self.rank == 0 else None, root=0
         )
-        self.normalization = self.comm.bcast(
-            self.normalization if self.rank == 0 else None, root=0
+
+        # Broadcast binning and beam smoothing
+        self.bins = self.comm.bcast(self.bins if self.rank == 0 else None, root=0)
+        self.beam_smoothing = self.comm.bcast(
+            self.beam_smoothing if self.rank == 0 else None, root=0
         )
 
         # Broadcast normalization mode support matrices
@@ -1131,7 +1115,7 @@ class Spectra(Core):
 
     def _normalize_spectra(self, spectra: np.ndarray) -> np.ndarray:
         """
-        Apply Fisher matrix normalization to raw QML estimates.
+        Apply inverse Fisher to raw QML estimates: Ĉ = F⁻¹ q.
 
         Parameters
         ----------
@@ -1141,30 +1125,11 @@ class Spectra(Core):
         Returns
         -------
         np.ndarray
-            Normalized power spectrum estimates with same shape as input.
-
-        Raises
-        ------
-        ValueError
-            If Fisher inversion or normalization factors not available.
+            Deconvolved power spectrum estimates, same shape as input.
         """
-        if self.invfisher is None or self.normalization is None:
-            raise ValueError("Fisher inversion and normalization must be set up first.")
-
-        normalized_spectra = np.zeros_like(spectra)
-
-        if spectra.ndim == 1:
-            reduced_res_x_normalization = spectra * self.normalization
-            normalized_spectra = np.matmul(reduced_res_x_normalization, self.invfisher)
-            return normalized_spectra
-
-        for field_idx in range(spectra.shape[0]):
-            reduced_res_x_normalization = spectra[field_idx, :] * self.normalization
-            normalized_spectra[field_idx, :] = np.matmul(
-                reduced_res_x_normalization, self.invfisher
-            )
-
-        return normalized_spectra
+        if self.invfisher is None:
+            raise ValueError("Fisher inversion must be set up first.")
+        return spectra @ self.invfisher
 
     def get_power_spectra(
         self, mode: str = "deconvolved"
@@ -1299,7 +1264,7 @@ class Spectra(Core):
 
     def _dl_factor(self) -> np.ndarray:
         """Return the Cl->Dl factor tiled over all spectra."""
-        ell = np.arange(2, self.params.lmax + 1, dtype=np.float64)
+        ell = self.bins.lbin.astype(np.float64)
         return np.tile(ell * (ell + 1) / (2 * np.pi), self.params.nspectra)
 
     def _apply_output_convention(self, result, mode):
@@ -1354,8 +1319,7 @@ class Spectra(Core):
                 "ensure setup_fisher_inversion() was called."
             )
 
-        # Vectorized: broadcast normalization and apply matrix multiplication
-        decorrelated = (self.qml_results * self.normalization) @ self.inv_fisher_sqrt
+        decorrelated = self.qml_results @ self.inv_fisher_sqrt
 
         return decorrelated
 
@@ -1370,26 +1334,43 @@ class Spectra(Core):
         -------
         tuple
             (y, W, convolve_theory_func) where:
-            - y: Raw normalized estimates, shape (nsims, nell)
-            - W: Window matrix, shape (nell, nell)
+            - y: Raw normalized estimates, shape (nsims, n_params)
+            - W: Window matrix, shape (n_params, n_params)
             - convolve_theory_func: Callable to apply W @ theory
-        """
-        # Raw estimates multiplied by normalization
-        y = self.qml_results * self.normalization
 
-        # Window matrix from Fisher instance
+        Notes
+        -----
+        With binning enabled, n_params = nspectra * nbins. The theory
+        input to convolve_theory must be binned (one value per bin),
+        e.g. via bins.bin_spectra(cl_theory, lmin=2).
+        """
+        y = self.qml_results
+
         W = self.fisher_instance.get_window_matrix()
         if W is None:
             raise ValueError("Window matrix not available from Fisher instance.")
 
-        # Apply normalization to window matrix to match y units
-        W_normalized = W * np.outer(self.normalization, self.normalization)
-
         def convolve_theory(cl_theory: np.ndarray) -> np.ndarray:
             """Apply window matrix to theoretical power spectrum."""
-            return W_normalized @ cl_theory
+            return W @ cl_theory
 
-        return (y, W_normalized, convolve_theory)
+        return (y, W, convolve_theory)
+
+    def get_effective_ells(self) -> np.ndarray | None:
+        """
+        Return effective multipole for each bin.
+
+        For unbinned (delta_ell=1), returns integer ells from 2 to lmax.
+        For binned, returns bin midpoints.
+
+        Returns
+        -------
+        np.ndarray or None
+            Effective multipoles, shape (nbins,). None for workers.
+        """
+        if self.rank != 0:
+            return None
+        return self.bins.lbin
 
     def get_noise_bias(self) -> np.ndarray | None:
         """
@@ -1627,15 +1608,11 @@ class Spectra(Core):
         if W is None:
             return None
 
-        # Apply normalization to window matrix
-        W_normalized = W * np.outer(self.normalization, self.normalization)
-
         if self._output_is_dl():
             d = self._dl_factor()
-            # W_Dl = D @ W_Cl @ D^{-1}, input theory is Dl so convert first
-            return d * (W_normalized @ (cl_theory / d))
+            return d * (W @ (cl_theory / d))
 
-        return W_normalized @ cl_theory
+        return W @ cl_theory
 
     def write_power_spectra(
         self,

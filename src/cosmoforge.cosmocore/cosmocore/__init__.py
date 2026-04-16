@@ -57,6 +57,7 @@ from .basics import (
     matrix_trace,
     spec2idx,
 )
+from .bins import Bins
 from .compression import (
     BaseCompression,
     HarmonicCompression,
@@ -138,6 +139,8 @@ __all__ = [
     "SpectraManager",
     "cl_to_vec",
     "vec_to_cl",
+    # bins
+    "Bins",
     # core
     "Core",
     # compression
