@@ -56,14 +56,14 @@ def main():
     spectra = Spectra(CONFIG_FILE)
     spectra.run()
 
-    # Get multipole range - nell is determined by the actual output size
+    # Get multipole range - n_ell is determined by the actual output size
     cl_test = spectra.get_power_spectra(mode="deconvolved")[0]
-    nell = len(cl_test)
+    n_ell = len(cl_test)
     lmin = 2
-    lmax = lmin + nell
+    lmax = lmin + n_ell
     ells = np.arange(lmin, lmax)
 
-    print(f"\nMultipole range: l = {lmin} to {lmax - 1} ({nell} multipoles)")
+    print(f"\nMultipole range: l = {lmin} to {lmax - 1} ({n_ell} multipoles)")
 
     # =========================================================================
     # 1. Compare power spectra in different modes
@@ -109,23 +109,22 @@ def main():
         f"  Diagonal range: "
         f"[{np.min(np.diag(cov_deconv)):.4e}, {np.max(np.diag(cov_deconv)):.4e}]"
     )
-    print(
-        f"  Off-diagonal fraction: "
-        f"{np.sum(np.abs(cov_deconv) > 1e-20) - nell:.0f}/{nell**2 - nell:.0f} non-zero"
-    )
+    off_diag = np.sum(np.abs(cov_deconv) > 1e-20) - n_ell
+    total = n_ell**2 - n_ell
+    print(f"  Off-diagonal fraction: {off_diag:.0f}/{total:.0f} non-zero")
 
     # Check correlation matrix for deconvolved
     diag = np.sqrt(np.diag(cov_deconv))
     corr_deconv = cov_deconv / np.outer(diag, diag)
-    off_diag_corr = corr_deconv[np.triu_indices(nell, k=1)]
+    off_diag_corr = corr_deconv[np.triu_indices(n_ell, k=1)]
     print(f"  Max off-diagonal correlation: {np.max(np.abs(off_diag_corr)):.4f}")
 
     print("\nDecorrelated covariance (Identity):")
     print(f"  Shape: {cov_decorr.shape}")
-    identity_check = np.allclose(cov_decorr, np.eye(nell))
+    identity_check = np.allclose(cov_decorr, np.eye(n_ell))
     print(f"  Is identity matrix: {identity_check}")
     print(
-        f"  Max deviation from identity: {np.max(np.abs(cov_decorr - np.eye(nell))):.2e}"
+        f"  Max deviation from identity: {np.max(np.abs(cov_decorr - np.eye(n_ell))):.2e}"
     )
 
     print("\nConvolved covariance (F):")
@@ -183,8 +182,8 @@ def main():
     print("\nResiduals (y - W@theory):")
     print(f"  Mean: {np.mean(residuals):.4e}")
     print(f"  Std: {np.std(residuals):.4e}")
-    print(f"  Chi-square: {chi2:.2f} (ndof = {nell})")
-    print(f"  Reduced chi-square: {chi2 / nell:.2f}")
+    print(f"  Chi-square: {chi2:.2f} (ndof = {n_ell})")
+    print(f"  Reduced chi-square: {chi2 / n_ell:.2f}")
 
     # =========================================================================
     # 5. Relationship between modes
@@ -215,7 +214,7 @@ def main():
     print("=" * 70)
 
     # Select a few multipoles to display
-    display_ells = [2, 5, 10, 15] if nell > 15 else list(range(2, min(6, lmax)))
+    display_ells = [2, 5, 10, 15] if n_ell > 15 else list(range(2, min(6, lmax)))
     display_idx = [ll - lmin for ll in display_ells if ll < lmax]
 
     print(
@@ -224,7 +223,7 @@ def main():
     )
     print("-" * 75)
     for i, ll in zip(display_idx, display_ells):
-        if i < nell:
+        if i < n_ell:
             print(
                 f"{ll:>5} | {cl_deconv[i]:>14.4e} | {cl_decorr[i]:>14.4e} | "
                 f"{y_mean[i]:>14.4e} | {err_deconv[i]:>12.4e}"
@@ -258,28 +257,27 @@ def main():
     print("\nDeconvolved mode correlation matrix:")
     print("  Diagonal elements: all = 1.0 (by definition)")
     print(
-        f"  Off-diagonal range: [{np.min(corr_deconv[~np.eye(nell, dtype=bool)]):.4f}, "
-        f"{np.max(corr_deconv[~np.eye(nell, dtype=bool)]):.4f}]"
+        f"  Off-diagonal range: [{np.min(corr_deconv[~np.eye(n_ell, dtype=bool)]):.4f}, "
+        f"{np.max(corr_deconv[~np.eye(n_ell, dtype=bool)]):.4f}]"
     )
     print(
         f"  Mean |off-diagonal|: "
-        f"{np.mean(np.abs(corr_deconv[~np.eye(nell, dtype=bool)])):.4f}"
+        f"{np.mean(np.abs(corr_deconv[~np.eye(n_ell, dtype=bool)])):.4f}"
     )
 
     print("\nDecorrelated mode correlation matrix:")
-    print(f"  Is identity: {np.allclose(corr_decorr, np.eye(nell), atol=1e-10)}")
-    print(
-        f"  Max deviation from identity: {np.max(np.abs(corr_decorr - np.eye(nell))):.2e}"
-    )
+    print(f"  Is identity: {np.allclose(corr_decorr, np.eye(n_ell), atol=1e-10)}")
+    max_dev = np.max(np.abs(corr_decorr - np.eye(n_ell)))
+    print(f"  Max deviation from identity: {max_dev:.2e}")
 
     print("\nConvolved mode correlation matrix:")
     print(
-        f"  Off-diagonal range: [{np.min(corr_conv[~np.eye(nell, dtype=bool)]):.4f}, "
-        f"{np.max(corr_conv[~np.eye(nell, dtype=bool)]):.4f}]"
+        f"  Off-diagonal range: [{np.min(corr_conv[~np.eye(n_ell, dtype=bool)]):.4f}, "
+        f"{np.max(corr_conv[~np.eye(n_ell, dtype=bool)]):.4f}]"
     )
     print(
         f"  Mean |off-diagonal|: "
-        f"{np.mean(np.abs(corr_conv[~np.eye(nell, dtype=bool)])):.4f}"
+        f"{np.mean(np.abs(corr_conv[~np.eye(n_ell, dtype=bool)])):.4f}"
     )
 
     # -------------------------------------------------------------------------
@@ -454,7 +452,7 @@ def main():
 
     # Plot as grouped bars
     width = 0.25
-    x = np.arange(nell)
+    x = np.arange(n_ell)
 
     ax4.bar(
         x - width,
@@ -491,7 +489,7 @@ def main():
         f"$\\chi^2_{{\\rm deconv}} = {chi2_deconv_plot:.1f}$\n"
         f"$\\chi^2_{{\\rm decorr}} = {chi2_decorr_plot:.1f}$\n"
         f"$\\chi^2_{{\\rm conv}} = {chi2_conv_plot:.1f}$\n"
-        f"(ndof={nell})",
+        f"(ndof={n_ell})",
         transform=ax4.transAxes,
         ha="right",
         va="top",

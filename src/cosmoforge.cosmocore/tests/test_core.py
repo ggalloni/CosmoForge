@@ -35,11 +35,11 @@ class CoreWithSignal(ConcreteCore):
     """ConcreteCore with signal matrix for testing uncompressed API."""
 
     def _build_signal_matrix(self, C_ell):
-        n = self.NCov1.shape[0]
+        n = self.noise_cov1.shape[0]
         return np.eye(n) * np.sum(C_ell)
 
     def _build_derivative_matrix(self, ell):
-        n = self.NCov1.shape[0]
+        n = self.noise_cov1.shape[0]
         return np.eye(n) * 1.0
 
 
@@ -282,8 +282,8 @@ def test_setup_covariance_matrices():
 
             assert ncov1 is not None
             assert ncov2 is None  # Since do_cross is False
-            assert hasattr(core, "NCov1")
-            assert core.NCov1 is not None
+            assert hasattr(core, "noise_cov1")
+            assert core.noise_cov1 is not None
             mock_read_covmat.assert_called_once()
 
         finally:
@@ -497,10 +497,10 @@ def test_setup_covariance_matrices_with_cross():
 
             assert ncov1 is not None
             assert ncov2 is not None  # Should be set since do_cross is True
-            assert hasattr(core, "NCov1")
-            assert hasattr(core, "NCov2")
-            assert core.NCov1 is not None
-            assert core.NCov2 is not None
+            assert hasattr(core, "noise_cov1")
+            assert hasattr(core, "noise_cov2")
+            assert core.noise_cov1 is not None
+            assert core.noise_cov2 is not None
             assert mock_read_covmat.call_count == 2
 
         finally:
@@ -660,7 +660,7 @@ def test_uncompressed_covariance_api():
     np.random.seed(42)
     n = 10
     core = CoreWithSignal({"nside": 16, "lmax": 5, "spins": [0], "labels": ["T"]})
-    core.NCov1 = np.eye(n) * 0.1
+    core.noise_cov1 = np.eye(n) * 0.1
     C_ell = np.ones(4) * 1e-3
 
     # get_total_covariance
@@ -698,7 +698,7 @@ def test_setup_compression_basic(uniform_sky_setup):
     core = CoreWithSignal(
         {"nside": 16, "lmax": setup["lmax"], "spins": [0], "labels": ["T"]}
     )
-    core.NCov1 = setup["N"]
+    core.noise_cov1 = setup["N"]
     core.theta = (setup["theta"],)
     core.phi = (setup["phi"],)
 

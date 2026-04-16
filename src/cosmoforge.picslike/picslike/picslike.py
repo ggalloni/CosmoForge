@@ -219,11 +219,11 @@ class PICSLike(Core):
         ValueError
             If noise covariance matrices not set up.
         """
-        if self.NCov1 is None:
+        if self.noise_cov1 is None:
             raise ValueError("Covariance matrices must be set up first")
 
-        self.Sig = np.zeros_like(self.NCov1, dtype=np.float64)
-        self.Sig = np.asfortranarray(self.Sig, dtype=np.float64)
+        self.signal_matrix = np.zeros_like(self.noise_cov1, dtype=np.float64)
+        self.signal_matrix = np.asfortranarray(self.signal_matrix, dtype=np.float64)
 
         start_time = time.time() if self.rank == 0 else None
 
@@ -233,7 +233,7 @@ class PICSLike(Core):
         self.collection.set_beams(lmax=self.lmax_signal)
 
         compute_signal_matrix(
-            S=self.Sig,
+            S=self.signal_matrix,
             lmax=self.lmax_signal,
             fields=self.collection,
         )
@@ -241,26 +241,26 @@ class PICSLike(Core):
         if self.rank == 0 and start_time is not None:
             elapsed = time.time() - start_time
             self.log(f"Signal matrix computed in {elapsed:.2f} seconds", level=3)
-            self.log(f"Signal matrix shape: {self.Sig.shape}", level=4)
-            self.log(f"Signal matrix first row: {self.Sig[0, :10]}", level=4)
+            self.log(f"Signal matrix shape: {self.signal_matrix.shape}", level=4)
+            self.log(f"Signal matrix first row: {self.signal_matrix[0, :10]}", level=4)
 
-        return self.Sig
+        return self.signal_matrix
 
     def prepare_covariance_matrix(self):
         """
         Prepare total covariance C = S + N and compute its inverse.
 
-        Modifies self.Sig in-place to form total covariance, then inverts it.
+        Modifies self.signal_matrix in-place to form total covariance, then inverts it.
         """
         # Add noise to signal IN-PLACE to form total covariance.
         # This avoids allocating a separate array (saves n_pix^2 memory).
-        # Safe because self.Sig is recreated fresh for each parameter point.
-        self.Sig += self.NCov1
-        self.Sig = np.asfortranarray(self.Sig)
+        # Safe because self.signal_matrix is recreated fresh for each parameter point.
+        self.signal_matrix += self.noise_cov1
+        self.signal_matrix = np.asfortranarray(self.signal_matrix)
 
         # Alias for clarity in downstream code (e.g., slogdet).
         # This is just a reference, no memory copy.
-        self.total_cov = self.Sig
+        self.total_cov = self.signal_matrix
         self.log(f"Combined covariance matrix shape: {self.total_cov.shape}", level=4)
 
         # Compute inverse covariance matrix
@@ -386,7 +386,9 @@ class PICSLike(Core):
         )
 
         # Broadcast covariance matrices
-        self.NCov1 = self.comm.bcast(self.NCov1 if self.rank == 0 else None, root=0)
+        self.noise_cov1 = self.comm.bcast(
+            self.noise_cov1 if self.rank == 0 else None, root=0
+        )
 
         # Broadcast maps
         self.maps1 = self.comm.bcast(self.maps1 if self.rank == 0 else None, root=0)

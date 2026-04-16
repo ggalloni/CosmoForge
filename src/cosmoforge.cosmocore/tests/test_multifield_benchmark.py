@@ -20,12 +20,12 @@ from cosmocore.basics import matrix_inverse_symm, matrix_mult, matrix_trace
 from cosmocore.compression import HarmonicCompression
 
 
-def build_pixel_space_signal_matrix(V, Lambda_full):
+def build_pixel_space_signal_matrix(V, lambda_matrix):
     """Build full signal matrix S = V^T Λ V."""
-    return V.T @ Lambda_full @ V
+    return V.T @ lambda_matrix @ V
 
 
-def compute_pixel_space_fisher(C_inv, V, Lambda_full, lmax, spectra_list, hc):
+def compute_pixel_space_fisher(C_inv, V, lambda_matrix, lmax, spectra_list, hc):
     """
     Compute Fisher matrix using traditional pixel-space method.
 
@@ -184,13 +184,13 @@ class TestTEBScalarBenchmark:
 
         # Pixel-space Fisher
         V = hc._V
-        Lambda_full = hc._build_lambda_full(setup["C_ell_dict"])
-        S = build_pixel_space_signal_matrix(V, Lambda_full)
+        lambda_matrix = hc._build_lambda_matrix(setup["C_ell_dict"])
+        S = build_pixel_space_signal_matrix(V, lambda_matrix)
         C = setup["N"] + S
         C_inv = matrix_inverse_symm(C.copy())
 
         fisher_pixel = compute_pixel_space_fisher(
-            C_inv, V, Lambda_full, lmax, spectra_list, hc
+            C_inv, V, lambda_matrix, lmax, spectra_list, hc
         )
 
         # Check precision
@@ -242,13 +242,13 @@ class TestTEBScalarBenchmark:
 
         # Pixel-space Fisher
         V = hc._V
-        Lambda_full = hc._build_lambda_full(setup["C_ell_dict"])
-        S = build_pixel_space_signal_matrix(V, Lambda_full)
+        lambda_matrix = hc._build_lambda_matrix(setup["C_ell_dict"])
+        S = build_pixel_space_signal_matrix(V, lambda_matrix)
         C = setup["N"] + S
         C_inv = matrix_inverse_symm(C.copy())
 
         fisher_pixel = compute_pixel_space_fisher(
-            C_inv, V, Lambda_full, lmax, spectra_list, hc
+            C_inv, V, lambda_matrix, lmax, spectra_list, hc
         )
 
         # Precision metrics
@@ -318,8 +318,8 @@ class TestTEBScalarBenchmark:
 
         # Time pixel-space Fisher computation
         V = hc._V
-        Lambda_full = hc._build_lambda_full(setup["C_ell_dict"])
-        S = build_pixel_space_signal_matrix(V, Lambda_full)
+        lambda_matrix = hc._build_lambda_matrix(setup["C_ell_dict"])
+        S = build_pixel_space_signal_matrix(V, lambda_matrix)
         C = setup["N"] + S
 
         t0 = time.perf_counter()
@@ -328,7 +328,7 @@ class TestTEBScalarBenchmark:
 
         t0 = time.perf_counter()
         fisher_pixel = compute_pixel_space_fisher(
-            C_inv, V, Lambda_full, lmax, spectra_list, hc
+            C_inv, V, lambda_matrix, lmax, spectra_list, hc
         )
         pixel_fisher_time = time.perf_counter() - t0
 

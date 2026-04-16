@@ -159,7 +159,7 @@ class TestComputeSignalMatrix:
         signal_matrix = picslike.compute_signal_matrix(param_point)
 
         assert signal_matrix.shape[0] == signal_matrix.shape[1]
-        assert signal_matrix.shape == picslike.NCov1.shape
+        assert signal_matrix.shape == picslike.noise_cov1.shape
 
 
 class TestPrepareCovariance:
@@ -316,7 +316,7 @@ class TestIntegration:
         # Verify setup completed
         assert picslike.parameter_grid is not None
         assert picslike.maps1 is not None
-        assert picslike.NCov1 is not None
+        assert picslike.noise_cov1 is not None
         assert picslike.collection is not None
 
         # Single-point likelihood

@@ -1265,8 +1265,8 @@ class PixelProjectedCompression(BaseCompression):
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
         if isinstance(C_ell, dict):
-            Lambda_full = self._build_lambda_full(C_ell)
-            VU_Lambda = matrix_mult(Lambda_full, self._VU)
+            lambda_matrix = self._build_lambda_matrix(C_ell)
+            VU_Lambda = matrix_mult(lambda_matrix, self._VU)
             U_S_U = matrix_mult(self._VU.T, VU_Lambda)
             return self._U_N_U + U_S_U
 

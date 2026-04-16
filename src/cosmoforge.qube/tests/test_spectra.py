@@ -303,8 +303,10 @@ def test_normalization_modes(fields, local_path, config_resolver):
     assert callable(convolve_func), "convolve_func should be callable"
 
     # Test that window matrix is square
-    nell = cl_deconv.shape[1]
-    assert W.shape == (nell, nell), f"Window matrix should be ({nell}, {nell})"
+    n_params = cl_deconv.shape[1]
+    assert W.shape == (n_params, n_params), (
+        f"Window matrix should be ({n_params}, {n_params})"
+    )
 
     # Test output_convention="Dl" scales results by ell*(ell+1)/(2*pi)
     ell = np.arange(2, qml_analyzer.params.lmax + 1, dtype=np.float64)
@@ -352,21 +354,23 @@ def test_covariance_methods(fields, local_path, config_resolver):
     """Test get_covariance and get_error_bars methods."""
     qml_analyzer = _get_qml_analyzer(fields, config_resolver)
 
-    # Get nell from power spectra shape
+    # Get n_params from power spectra shape
     cl = qml_analyzer.get_power_spectra()
-    nell = cl.shape[1]
+    n_params = cl.shape[1]
 
     # Test deconvolved covariance (should be F^-1)
     cov_deconv = qml_analyzer.get_covariance(mode="deconvolved")
     assert cov_deconv is not None, "Deconvolved covariance should not be None"
-    assert cov_deconv.shape == (nell, nell), "Covariance should be (nell, nell)"
+    assert cov_deconv.shape == (n_params, n_params), (
+        "Covariance should be (n_params, n_params)"
+    )
 
     # Test decorrelated covariance (should be identity)
     cov_decorr = qml_analyzer.get_covariance(mode="decorrelated")
     assert cov_decorr is not None, "Decorrelated covariance should not be None"
     np.testing.assert_allclose(
         cov_decorr,
-        np.eye(nell),
+        np.eye(n_params),
         atol=1e-10,
         err_msg="Decorrelated covariance should be identity",
     )
@@ -374,12 +378,14 @@ def test_covariance_methods(fields, local_path, config_resolver):
     # Test convolved covariance (should be Fisher)
     cov_conv = qml_analyzer.get_covariance(mode="convolved")
     assert cov_conv is not None, "Convolved covariance should not be None"
-    assert cov_conv.shape == (nell, nell), "Convolved covariance should be (nell, nell)"
+    assert cov_conv.shape == (n_params, n_params), (
+        "Convolved covariance should be (n_params, n_params)"
+    )
 
     # Test error bars
     errors_deconv = qml_analyzer.get_error_bars(mode="deconvolved")
     assert errors_deconv is not None, "Deconvolved errors should not be None"
-    assert errors_deconv.shape == (nell,), "Errors should be 1D array"
+    assert errors_deconv.shape == (n_params,), "Errors should be 1D array"
     np.testing.assert_array_equal(
         errors_deconv,
         np.sqrt(np.diag(cov_deconv)),
@@ -390,7 +396,7 @@ def test_covariance_methods(fields, local_path, config_resolver):
     errors_decorr = qml_analyzer.get_error_bars(mode="decorrelated")
     np.testing.assert_allclose(
         errors_decorr,
-        np.ones(nell),
+        np.ones(n_params),
         atol=1e-10,
         err_msg="Decorrelated errors should all be 1.0",
     )
@@ -407,13 +413,15 @@ def test_convolve_theory(local_path, config_resolver):
 
     # Create a mock theory spectrum
     cl = qml_analyzer.get_power_spectra()
-    nell = cl.shape[1]
-    theory = np.ones(nell)  # Simple test theory
+    n_params = cl.shape[1]
+    theory = np.ones(n_params)  # Simple test theory
 
     # Test convolve_theory
     convolved = qml_analyzer.convolve_theory(theory)
     assert convolved is not None, "convolve_theory should return result"
-    assert convolved.shape == (nell,), "Convolved theory should have shape (nell,)"
+    assert convolved.shape == (n_params,), (
+        "Convolved theory should have shape (n_params,)"
+    )
 
     # Compare with convolved mode's helper
     _, W, convolve_func = qml_analyzer.get_power_spectra(mode="convolved")
@@ -473,8 +481,8 @@ def test_chi_squared_equivalence(fields, local_path, config_resolver):
     cov_conv = qml_analyzer.get_covariance(mode="convolved")  # F'
 
     # Arbitrary non-zero theory spectrum
-    nell = cl_deconv.shape[1]
-    cl_theory = np.ones(nell)
+    n_params = cl_deconv.shape[1]
+    cl_theory = np.ones(n_params)
 
     # F'^{1/2} C_theory for decorrelated mode (using F^{1/2} = F^{-1/2} @ F')
     inv_fisher_sqrt = qml_analyzer.inv_fisher_sqrt

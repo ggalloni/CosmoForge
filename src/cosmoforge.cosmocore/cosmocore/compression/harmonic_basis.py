@@ -365,27 +365,29 @@ class HarmonicBasis:
                 Lambda_blocks[(comp_j, comp_i)] = Lambda_diag
         return Lambda_blocks
 
-    def _build_lambda_full(self, C_ell_dict: dict) -> np.ndarray:
+    def _build_lambda_matrix(self, C_ell_dict: dict) -> np.ndarray:
         """Build full Lambda matrix, auto-detecting 2-tuple or 3-tuple keys."""
         first_key = next(iter(C_ell_dict))
         if len(first_key) == 3:
-            return self._build_lambda_full_3tuple(C_ell_dict)
-        return self._build_lambda_full_2tuple(C_ell_dict)
+            return self._build_lambda_matrix_3tuple(C_ell_dict)
+        return self._build_lambda_matrix_2tuple(C_ell_dict)
 
-    def _build_lambda_full_2tuple(
+    def _build_lambda_matrix_2tuple(
         self, C_ell_dict: dict[tuple[int, int], np.ndarray]
     ) -> np.ndarray:
         """Build full Lambda matrix from 2-tuple (comp_i, comp_j) keys."""
         Lambda_blocks = self._build_lambda_blocks(C_ell_dict)
 
-        Lambda_full = np.zeros((self.n_modes_total, self.n_modes_total), dtype=np.float64)
+        lambda_matrix = np.zeros(
+            (self.n_modes_total, self.n_modes_total), dtype=np.float64
+        )
         for (comp_i, comp_j), Lambda_diag in Lambda_blocks.items():
             row_start = self._mode_offsets[comp_i]
             col_start = self._mode_offsets[comp_j]
             for k, val in enumerate(Lambda_diag):
-                Lambda_full[row_start + k, col_start + k] = val
+                lambda_matrix[row_start + k, col_start + k] = val
 
-        return Lambda_full
+        return lambda_matrix
 
     def _build_lambda_block_spin2(
         self,
@@ -420,7 +422,7 @@ class HarmonicBasis:
 
         return Lambda
 
-    def _build_lambda_full_3tuple(
+    def _build_lambda_matrix_3tuple(
         self, C_ell_dict: dict[tuple, np.ndarray]
     ) -> np.ndarray:
         """Build full Lambda matrix handling mixed spin-0/spin-2 components.
@@ -431,7 +433,9 @@ class HarmonicBasis:
         - spin-2 x spin-2: mode 0=EE, 1=BB, 2=EB
         - spin-0 x spin-2: mode 0=TE, 1=TB
         """
-        Lambda_full = np.zeros((self.n_modes_total, self.n_modes_total), dtype=np.float64)
+        lambda_matrix = np.zeros(
+            (self.n_modes_total, self.n_modes_total), dtype=np.float64
+        )
 
         # Group entries by component pair
         pair_entries: dict[tuple[int, int], dict[int, np.ndarray]] = {}
@@ -447,9 +451,9 @@ class HarmonicBasis:
             if spin_i == 0 and spin_j == 0:
                 diag = self._build_lambda_diagonal(mode_dict[0])
                 for k, val in enumerate(diag):
-                    Lambda_full[row_start + k, col_start + k] = val
+                    lambda_matrix[row_start + k, col_start + k] = val
                     if ci != cj:
-                        Lambda_full[col_start + k, row_start + k] = val
+                        lambda_matrix[col_start + k, row_start + k] = val
 
             elif spin_i == 2 and spin_j == 2:
                 C_EE = mode_dict.get(0, np.zeros(self.lmax - 1))
@@ -457,7 +461,7 @@ class HarmonicBasis:
                 C_EB = mode_dict.get(2, None)
                 block = self._build_lambda_block_spin2(C_EE, C_BB, C_EB)
                 n_block = 2 * self._n_modes_base
-                Lambda_full[
+                lambda_matrix[
                     row_start : row_start + n_block,
                     col_start : col_start + n_block,
                 ] = block
@@ -468,8 +472,8 @@ class HarmonicBasis:
                     diag = self._build_lambda_diagonal(C_ell)
                     col_sub = col_start + mode * n_base
                     for k, val in enumerate(diag):
-                        Lambda_full[row_start + k, col_sub + k] = -val
-                        Lambda_full[col_sub + k, row_start + k] = -val
+                        lambda_matrix[row_start + k, col_sub + k] = -val
+                        lambda_matrix[col_sub + k, row_start + k] = -val
 
             elif spin_i == 2 and spin_j == 0:
                 n_base = self._n_modes_base
@@ -477,7 +481,7 @@ class HarmonicBasis:
                     diag = self._build_lambda_diagonal(C_ell)
                     row_sub = row_start + mode * n_base
                     for k, val in enumerate(diag):
-                        Lambda_full[row_sub + k, col_start + k] = -val
-                        Lambda_full[col_start + k, row_sub + k] = -val
+                        lambda_matrix[row_sub + k, col_start + k] = -val
+                        lambda_matrix[col_start + k, row_sub + k] = -val
 
-        return Lambda_full
+        return lambda_matrix

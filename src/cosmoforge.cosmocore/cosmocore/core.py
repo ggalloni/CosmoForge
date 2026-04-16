@@ -285,15 +285,15 @@ class Core(ABC):
         )
 
         shape = (concatenate_pixact.shape[0], concatenate_pixact.shape[0])
-        self.NCov1 = np.empty(shape, dtype=np.float64)
+        self.noise_cov1 = np.empty(shape, dtype=np.float64)
 
-        self.NCov1 = (
+        self.noise_cov1 = (
             read_covmat(
                 self.params.covmatfile1,
                 npix,
                 self.params.nfields,
                 concatenate_pixact,
-                self.NCov1,
+                self.noise_cov1,
             )
             * self.params.calibration**2
         )
@@ -301,19 +301,19 @@ class Core(ABC):
         if hasattr(self.params, "outnoisecovmat1"):
             write_covmat_reduced(
                 self.params.outnoisecovmat1,
-                self.NCov1,
+                self.noise_cov1,
             )
 
-        self.NCov2 = None
+        self.noise_cov2 = None
         if self.params.do_cross:
-            self.NCov2 = np.empty(shape, dtype=np.float64)
-            self.NCov2 = (
+            self.noise_cov2 = np.empty(shape, dtype=np.float64)
+            self.noise_cov2 = (
                 read_covmat(
                     self.params.covmatfile2,
                     npix,
                     self.params.nfields,
                     concatenate_pixact,
-                    self.NCov2,
+                    self.noise_cov2,
                 )
                 * self.params.calibration**2
             )
@@ -321,10 +321,10 @@ class Core(ABC):
             if hasattr(self.params, "outnoisecovmat2"):
                 write_covmat_reduced(
                     self.params.outnoisecovmat2,
-                    self.NCov2,
+                    self.noise_cov2,
                 )
 
-        return self.NCov1, self.NCov2
+        return self.noise_cov1, self.noise_cov2
 
     def setup_cls(self, lmax: int | None = None):
         """
@@ -459,7 +459,7 @@ class Core(ABC):
             raise ValueError(
                 "Geometry must be set up before compression. Call setup_geometry() first."
             )
-        if not hasattr(self, "NCov1") or self.NCov1 is None:
+        if not hasattr(self, "noise_cov1") or self.noise_cov1 is None:
             raise ValueError(
                 "Covariance matrices must be set up before compression. "
                 "Call setup_covariance_matrices() first."
@@ -543,7 +543,7 @@ class Core(ABC):
 
                     from .pixel import compute_signal_matrix as _compute_signal_matrix
 
-                    S_fixed = np.zeros_like(self.NCov1, dtype=np.float64)
+                    S_fixed = np.zeros_like(self.noise_cov1, dtype=np.float64)
                     _compute_signal_matrix(
                         S=S_fixed,
                         lmax=compression_lmax,
@@ -556,8 +556,8 @@ class Core(ABC):
         # Create compression implementation
         self.compression_manager = create_compression(
             method=method,
-            N=self.NCov1,
-            N_inv=matrix_inverse_symm(self.NCov1),
+            N=self.noise_cov1,
+            N_inv=matrix_inverse_symm(self.noise_cov1),
             theta=theta_arr,
             phi=phi_arr,
             lmax=compression_lmax,
@@ -604,7 +604,7 @@ class Core(ABC):
         if hasattr(self, "compression_manager") and self.compression_manager is not None:
             return self.compression_manager.get_compressed_covariance(C_ell)
         else:
-            return self.NCov1 + self._build_signal_matrix(C_ell)
+            return self.noise_cov1 + self._build_signal_matrix(C_ell)
 
     def get_covariance_inverse(self, C_ell: np.ndarray) -> np.ndarray:
         """

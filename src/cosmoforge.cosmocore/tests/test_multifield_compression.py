@@ -536,10 +536,10 @@ class TestMultiFieldIntegration:
         # Now compute pixel-space Fisher for comparison
         # Build full signal matrix S = V^T Λ V
         V = hc._V
-        Lambda_full = hc._build_lambda_full(C_ell_dict)
+        lambda_matrix = hc._build_lambda_matrix(C_ell_dict)
 
         # S = V^T @ Λ @ V
-        S = V.T @ Lambda_full @ V
+        S = V.T @ lambda_matrix @ V
 
         # Full covariance C = N + S
         C = setup["N"] + S

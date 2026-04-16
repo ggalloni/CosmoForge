@@ -97,17 +97,17 @@ def test_fortran_validation(python_spectra, fortran_data):
     results = {}
 
     # 1. NCov (noise covariance)
-    diag_python = np.diag(python_spectra.NCov1)
+    diag_python = np.diag(python_spectra.noise_cov1)
     diag_fortran = np.diag(fortran_data["ncov"])
     results["ncov"] = np.max(np.abs((diag_python - diag_fortran) / diag_fortran))
 
     # 2. invCov (inverse covariance)
-    diag_python = np.diag(python_spectra.invCov1)
+    diag_python = np.diag(python_spectra.inv_cov1)
     diag_fortran = np.diag(fortran_data["invcov"])
     results["invcov"] = np.max(np.abs((diag_python - diag_fortran) / diag_fortran))
 
     # 3. Signal covariance
-    python_signal = python_spectra.fisher_instance.Sig
+    python_signal = python_spectra.fisher_instance.signal_matrix
     fortran_signal = fortran_data["signal"]
     rel_diff = np.abs((python_signal - fortran_signal) / fortran_signal)
     rel_diff = np.where(np.abs(fortran_signal) > 1e-20, rel_diff, 0)

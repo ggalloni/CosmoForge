@@ -70,32 +70,34 @@ def get_signal_covmat(fields, config_resolver, local_path):
     concatenate_pixact = np.concatenate(
         [pixact[i] + i * npix for i in range(len(pixact))]
     )
-    NCov1 = np.empty(
+    noise_cov1 = np.empty(
         (concatenate_pixact.shape[0], concatenate_pixact.shape[0]), dtype=np.float64
     )
     if Par.do_cross:
-        NCov2 = np.empty(
+        noise_cov2 = np.empty(
             (concatenate_pixact.shape[0], concatenate_pixact.shape[0]), dtype=np.float64
         )
 
-    NCov1 = (
-        read_covmat(Par.covmatfile1, npix, Par.nfields, concatenate_pixact, NCov1)
+    noise_cov1 = (
+        read_covmat(Par.covmatfile1, npix, Par.nfields, concatenate_pixact, noise_cov1)
         * Par.calibration**2
     )
     if Par.do_cross:
-        NCov2 = (
-            read_covmat(Par.covmatfile2, npix, Par.nfields, concatenate_pixact, NCov2)
+        noise_cov2 = (
+            read_covmat(
+                Par.covmatfile2, npix, Par.nfields, concatenate_pixact, noise_cov2
+            )
             * Par.calibration**2
         )
 
     collection.set_cls()
     collection.set_beams()
 
-    Sig = np.zeros_like(NCov1, dtype=np.float64)
-    Sig = np.asfortranarray(Sig, dtype=np.float64)
+    signal_matrix = np.zeros_like(noise_cov1, dtype=np.float64)
+    signal_matrix = np.asfortranarray(signal_matrix, dtype=np.float64)
 
     compute_signal_matrix(
-        S=Sig,
+        S=signal_matrix,
         lmax=Par.lmax,
         fields=collection,
     )
@@ -103,7 +105,7 @@ def get_signal_covmat(fields, config_resolver, local_path):
     # Clean up temporary config file
     os.unlink(config_file)
 
-    return Sig
+    return signal_matrix
 
 
 @pytest.mark.parametrize("fields", ["T", "QU", "TQU", "TEB"])
@@ -116,13 +118,13 @@ def test_signal_covmat(local_path, fields, config_resolver):
         (Par.npix * Par.nfields, Par.npix * Par.nfields)
     )
 
-    Sig = get_signal_covmat(fields, config_resolver, local_path)
+    signal_matrix = get_signal_covmat(fields, config_resolver, local_path)
 
     # Clean up temporary config file
     os.unlink(config_file)
 
     np.testing.assert_almost_equal(
-        Sig,
+        signal_matrix,
         ref,
         decimal=5,
         err_msg="TQU Signal covariance matrix does not match reference.",

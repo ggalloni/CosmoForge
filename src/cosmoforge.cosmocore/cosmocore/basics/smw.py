@@ -41,8 +41,8 @@ def smw_inverse(N_inv, V_N_inv, V_Ninv_VT, Lambda_diag, threshold=1e-30):
     K = np.asfortranarray(V_Ninv_VT.copy())
     n = K.shape[0]
     K.flat[:: n + 1] += Lambda_inv_diag
-    K_inv = matrix_inverse_symm(K, overwrite=True)
-    return N_inv - V_N_inv.T @ K_inv @ V_N_inv
+    kernel_inv = matrix_inverse_symm(K, overwrite=True)
+    return N_inv - V_N_inv.T @ kernel_inv @ V_N_inv
 
 
 def smw_logdet(log_det_N, V_Ninv_VT, Lambda_diag, threshold=1e-30):
@@ -136,9 +136,9 @@ def smw_quadratic_form(data, N_inv, V_N_inv, V_Ninv_VT, Lambda_diag, threshold=1
     # Build and solve with K
     K = smw_kernel(V_Ninv_VT, Lambda_diag, threshold)
     L = cholesky_decomposition(K)
-    K_inv_y = lapack.dpotrs(L, y, lower=True)[0]
+    kernel_inv_y = lapack.dpotrs(L, y, lower=True)[0]
 
     # Term 2: y^T @ K^{-1} @ y
-    term2 = float(matrix_mult(y.T, K_inv_y))
+    term2 = float(matrix_mult(y.T, kernel_inv_y))
 
     return term1 - term2

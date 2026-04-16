@@ -89,7 +89,7 @@ class Fisher(Core):
         Computed Fisher information matrix.
     n_ell : int
         Number of multipole moments in analysis (lmax - 1).
-    nell : int
+    n_params : int
         Total number of Fisher matrix parameters (nspectra * n_ell).
 
     Examples
@@ -143,7 +143,7 @@ class Fisher(Core):
         self._compression_config = compression
 
         # Initialize attributes
-        self.Sig = None
+        self.signal_matrix = None
         self._lmax_signal = None
 
     @property
@@ -163,16 +163,16 @@ class Fisher(Core):
 
     def setup_signal_matrix(self) -> np.ndarray:
         """Compute the theoretical signal covariance matrix from power spectra."""
-        if self.NCov1 is None:
+        if self.noise_cov1 is None:
             raise ValueError("Covariance matrices must be set up first")
 
-        self.Sig = np.zeros_like(self.NCov1, dtype=np.float64)
-        self.Sig = np.asfortranarray(self.Sig, dtype=np.float64)
+        self.signal_matrix = np.zeros_like(self.noise_cov1, dtype=np.float64)
+        self.signal_matrix = np.asfortranarray(self.signal_matrix, dtype=np.float64)
 
         start_time = time.time() if self.rank == 0 else None
 
         compute_signal_matrix(
-            S=self.Sig,
+            S=self.signal_matrix,
             lmax=self.lmax_signal,
             fields=self.collection,
         )
@@ -181,35 +181,35 @@ class Fisher(Core):
             elapsed = time.time() - start_time
             self.log(f"Signal matrix computed in {elapsed:.2f} seconds", level=3)
 
-        return self.Sig
+        return self.signal_matrix
 
     def prepare_covariance_matrices(self):
         """Prepare total covariance matrices and compute their inverses."""
-        if self.Sig is None:
+        if self.signal_matrix is None:
             self.setup_signal_matrix()
 
         # Save original noise covariance BEFORE adding signal
-        write_covmat_reduced(self.params.outnoisecovmat1, self.NCov1)
+        write_covmat_reduced(self.params.outnoisecovmat1, self.noise_cov1)
         if self.params.do_cross:
-            write_covmat_reduced(self.params.outnoisecovmat2, self.NCov2)
+            write_covmat_reduced(self.params.outnoisecovmat2, self.noise_cov2)
 
         # Add signal to noise covariance: C = N + S
-        self.NCov1 = self.NCov1 + self.Sig
-        self.NCov1 = np.asfortranarray(self.NCov1)
+        self.noise_cov1 = self.noise_cov1 + self.signal_matrix
+        self.noise_cov1 = np.asfortranarray(self.noise_cov1)
 
         # Compute inverse: C^{-1}
-        self.NCov1 = matrix_inverse_symm(self.NCov1)
-        write_covmat_reduced(self.params.outinvcovmatfile1, self.NCov1)
+        self.noise_cov1 = matrix_inverse_symm(self.noise_cov1)
+        write_covmat_reduced(self.params.outinvcovmatfile1, self.noise_cov1)
 
         if self.params.do_cross:
-            self.NCov2 = self.NCov2 + self.Sig
-            self.NCov2 = np.asfortranarray(self.NCov2)
-            self.NCov2 = matrix_inverse_symm(self.NCov2)
-            write_covmat_reduced(self.params.outinvcovmatfile2, self.NCov2)
+            self.noise_cov2 = self.noise_cov2 + self.signal_matrix
+            self.noise_cov2 = np.asfortranarray(self.noise_cov2)
+            self.noise_cov2 = matrix_inverse_symm(self.noise_cov2)
+            write_covmat_reduced(self.params.outinvcovmatfile2, self.noise_cov2)
 
     def _build_derivative_matrix(self, ell: int) -> np.ndarray:
         """Build pixel-space derivative matrix dC/dC_ell for single spectrum."""
-        dC = np.zeros_like(self.NCov1, dtype=np.float64)
+        dC = np.zeros_like(self.noise_cov1, dtype=np.float64)
         dC = np.asfortranarray(dC)
         do_derivative_step(dC, 0, self.npixs, self.params.spins, ell, self.collection)
         return dC
@@ -247,7 +247,7 @@ class Fisher(Core):
             C_ell = self.collection.spectra_manager.get_cls(0, 0, 0)
             C_inv = self.compression_manager.get_projected_inverse(C_ell)
         else:
-            C_inv = self.NCov1
+            C_inv = self.noise_cov1
 
         # Precompute C⁻¹ dC^b for each bin
         cinv_times_dcb = {}
@@ -327,7 +327,7 @@ class Fisher(Core):
                     ell, comp_i, comp_j, mode
                 )
             else:
-                dC_ell = np.zeros_like(self.NCov1)
+                dC_ell = np.zeros_like(self.noise_cov1)
                 dC_ell = np.asfortranarray(dC_ell, dtype=np.float64)
                 do_derivative_step(
                     dC_ell,
@@ -379,10 +379,10 @@ class Fisher(Core):
             C_inv = self.compression_manager.get_projected_inverse(C_ell_dict)
         else:
             if self.params.do_cross:
-                C_inv1 = self.NCov1
-                C_inv2 = self.NCov2
+                C_inv1 = self.noise_cov1
+                C_inv2 = self.noise_cov2
             else:
-                C_inv = self.NCov1
+                C_inv = self.noise_cov1
 
         # Precompute binned derivatives and C⁻¹ dC^b products
         binned_derivatives = {}
@@ -536,17 +536,21 @@ class Fisher(Core):
         self.point_vectors = self.comm.bcast(
             self.point_vectors if self.rank == 0 else None, root=0
         )
-        self.NCov1 = self.comm.bcast(self.NCov1 if self.rank == 0 else None, root=0)
+        self.noise_cov1 = self.comm.bcast(
+            self.noise_cov1 if self.rank == 0 else None, root=0
+        )
 
         if self._compression_config is not None:
             self.compression_manager = self.comm.bcast(
                 self.compression_manager if self.rank == 0 else None, root=0
             )
         else:
-            self.Sig = self.comm.bcast(self.Sig if self.rank == 0 else None, root=0)
+            self.signal_matrix = self.comm.bcast(
+                self.signal_matrix if self.rank == 0 else None, root=0
+            )
             if self.params.do_cross:
-                self.NCov2 = self.comm.bcast(
-                    self.NCov2 if self.rank == 0 else None, root=0
+                self.noise_cov2 = self.comm.bcast(
+                    self.noise_cov2 if self.rank == 0 else None, root=0
                 )
 
         self.comm.Barrier()
@@ -587,8 +591,8 @@ class Fisher(Core):
             idx += self.n_ell
 
         # Setup Fisher matrices dimensions
-        self.nell = self.params.nspectra * self.bins.nbins
-        self.fisher = np.zeros((self.nell, self.nell))
+        self.n_params = self.params.nspectra * self.bins.nbins
+        self.fisher = np.zeros((self.n_params, self.n_params))
 
         # Compute Fisher matrix
         self.compute()

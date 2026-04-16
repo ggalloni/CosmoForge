@@ -251,7 +251,7 @@ def test_full_fortran_validation(local_path, fortran_ref_path):
     picslike = PICSLike(temp_config.name)
     picslike.run()
 
-    python_noise = picslike.NCov1
+    python_noise = picslike.noise_cov1
     python_chi2 = picslike.likelihood_result.chi_squared_values
     python_loglike = picslike.likelihood_result.log_likelihood_values
 

@@ -245,7 +245,7 @@ class HarmonicCompression(BaseCompression):
 
         # Buffer for K matrix in SMW: (buffer_size, buffer_size)
         self._K_buffer = np.empty((buffer_size, buffer_size), dtype=np.float64, order="F")
-        # Buffer for M @ K_inv @ M product: (buffer_size, buffer_size)
+        # Buffer for M @ kernel_inv @ M product: (buffer_size, buffer_size)
         self._MKM_buffer = np.empty(
             (buffer_size, buffer_size), dtype=np.float64, order="F"
         )
@@ -272,28 +272,28 @@ class HarmonicCompression(BaseCompression):
                 if isinstance(first_val, np.ndarray) and first_val.ndim == 1:
                     # Dict with single entry - use single-field path
                     Lambda_diag = self._build_lambda_diagonal(first_val)
-                    Lambda_inv_diag = np.where(
+                    lambda_inv_diag = np.where(
                         Lambda_diag > 1e-30, 1.0 / Lambda_diag, 1e30
                     )
-                    add_diagonal(self._V_Ninv_VT, Lambda_inv_diag, out=self._K_buffer)
-                    K_inv = matrix_inverse_symm(self._K_buffer, overwrite=True)
+                    add_diagonal(self._V_Ninv_VT, lambda_inv_diag, out=self._K_buffer)
+                    kernel_inv = matrix_inverse_symm(self._K_buffer, overwrite=True)
                     return self._V_Ninv_VT - matrix_mult(
-                        matrix_mult(self._V_Ninv_VT, K_inv), self._V_Ninv_VT
+                        matrix_mult(self._V_Ninv_VT, kernel_inv), self._V_Ninv_VT
                     )
 
             K, _ = self._build_smw_kernel(C_ell)
-            K_inv = matrix_inverse_symm(np.asfortranarray(K), overwrite=True)
+            kernel_inv = matrix_inverse_symm(np.asfortranarray(K), overwrite=True)
             return self._V_Ninv_VT - matrix_mult(
-                matrix_mult(self._V_Ninv_VT, K_inv), self._V_Ninv_VT
+                matrix_mult(self._V_Ninv_VT, kernel_inv), self._V_Ninv_VT
             )
         else:
             # Single-field array path
             Lambda_diag = self._build_lambda_diagonal(C_ell)
-            Lambda_inv_diag = np.where(Lambda_diag > 1e-30, 1.0 / Lambda_diag, 1e30)
-            add_diagonal(self._V_Ninv_VT, Lambda_inv_diag, out=self._K_buffer)
-            K_inv = matrix_inverse_symm(self._K_buffer, overwrite=True)
+            lambda_inv_diag = np.where(Lambda_diag > 1e-30, 1.0 / Lambda_diag, 1e30)
+            add_diagonal(self._V_Ninv_VT, lambda_inv_diag, out=self._K_buffer)
+            kernel_inv = matrix_inverse_symm(self._K_buffer, overwrite=True)
             return self._V_Ninv_VT - matrix_mult(
-                matrix_mult(self._V_Ninv_VT, K_inv), self._V_Ninv_VT
+                matrix_mult(self._V_Ninv_VT, kernel_inv), self._V_Ninv_VT
             )
 
     def get_derivative_matrix(
@@ -351,8 +351,8 @@ class HarmonicCompression(BaseCompression):
                     # Single-key dict: use single-field path
                     Lambda_diag = self._build_lambda_diagonal(first_val)
                     return add_diagonal(self._V_N_VT, Lambda_diag)
-            Lambda_full = self._build_lambda_full(C_ell)
-            return self._V_N_VT + Lambda_full
+            lambda_matrix = self._build_lambda_matrix(C_ell)
+            return self._V_N_VT + lambda_matrix
         else:
             # Single-field array path
             Lambda_diag = self._build_lambda_diagonal(C_ell)
@@ -428,9 +428,9 @@ class HarmonicCompression(BaseCompression):
                     return self.get_weighted_compressed_data(data, first_val)
             y = self._V_N_inv @ data
             K, _ = self._build_smw_kernel(C_ell)
-            K_inv_y = np.linalg.solve(K, y)
-            M_K_inv_y = matrix_mult(self._V_Ninv_VT, K_inv_y)
-            return y - M_K_inv_y
+            kernel_inv_y = np.linalg.solve(K, y)
+            M_kernel_inv_y = matrix_mult(self._V_Ninv_VT, kernel_inv_y)
+            return y - M_kernel_inv_y
 
         # Single-field array path
         del C_c_inv
@@ -438,9 +438,9 @@ class HarmonicCompression(BaseCompression):
         Lambda_diag = self._build_lambda_diagonal(C_ell)
         K = smw_kernel(self._V_Ninv_VT, Lambda_diag)
         L = cholesky_decomposition(K)
-        K_inv_y = cho_solve((L, True), y)
-        M_K_inv_y = matrix_mult(self._V_Ninv_VT, K_inv_y)
-        return y - M_K_inv_y
+        kernel_inv_y = cho_solve((L, True), y)
+        M_kernel_inv_y = matrix_mult(self._V_Ninv_VT, kernel_inv_y)
+        return y - M_kernel_inv_y
 
     def compute_quadratic_form(self, data: np.ndarray, C_ell) -> float:
         """
@@ -467,18 +467,18 @@ class HarmonicCompression(BaseCompression):
         )
 
     def _build_smw_kernel(self, C_ell_dict: dict) -> tuple[np.ndarray, np.ndarray]:
-        """Build K = Lambda_inv + V N^{-1} V^T and return (K, Lambda_full)."""
-        Lambda_full = self._build_lambda_full(C_ell_dict)
-        Lambda_reg = Lambda_full + np.eye(Lambda_full.shape[0]) * 1e-20
-        Lambda_inv = matrix_inverse_symm(np.asfortranarray(Lambda_reg))
-        K = Lambda_inv + self._V_Ninv_VT
-        return K, Lambda_full
+        """Build K = lambda_inv + V N^{-1} V^T and return (K, lambda_matrix)."""
+        lambda_matrix = self._build_lambda_matrix(C_ell_dict)
+        lambda_regularized = lambda_matrix + np.eye(lambda_matrix.shape[0]) * 1e-20
+        lambda_inv = matrix_inverse_symm(np.asfortranarray(lambda_regularized))
+        K = lambda_inv + self._V_Ninv_VT
+        return K, lambda_matrix
 
     def prepare_smw(self, C_ell_dict: dict) -> SMWPrepared:
         """Precompute K Cholesky factor and log determinant for reuse across sims."""
-        K, Lambda_full = self._build_smw_kernel(C_ell_dict)
+        K, lambda_matrix = self._build_smw_kernel(C_ell_dict)
 
-        _, log_det_Lambda = matrix_slogdet_symm(Lambda_full)
+        _, log_det_Lambda = matrix_slogdet_symm(lambda_matrix)
 
         K_chol = cholesky_decomposition(K)
         log_det_K = 2.0 * np.sum(np.log(np.diag(K_chol)))
@@ -491,8 +491,8 @@ class HarmonicCompression(BaseCompression):
         """Compute d^T C^{-1} d using precomputed K Cholesky factor."""
         term1 = float(data.T @ self.N_inv @ data)
         y = self._V_N_inv @ data
-        K_inv_y = cho_solve((K_chol, True), y)
-        term2 = float(y.T @ K_inv_y)
+        kernel_inv_y = cho_solve((K_chol, True), y)
+        term2 = float(y.T @ kernel_inv_y)
         return term1 - term2
 
     def _get_derivative_diagonal(self, ell: int, comp_i: int, comp_j: int) -> np.ndarray:

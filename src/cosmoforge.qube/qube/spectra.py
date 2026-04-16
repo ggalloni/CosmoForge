@@ -118,7 +118,7 @@ class Spectra(Core):
         Noise bias estimates for auto-correlation spectra.
     invfisher : numpy.ndarray
         Inverse of the beam-smoothed Fisher matrix.
-    invCov1, invCov2 : numpy.ndarray
+    inv_cov1, inv_cov2 : numpy.ndarray
         Inverted covariance matrices for primary and secondary datasets.
 
     Examples
@@ -289,17 +289,20 @@ class Spectra(Core):
         ):
             self.point_vectors = self.fisher_instance.point_vectors
         if (
-            hasattr(self.fisher_instance, "NCov1")
-            and self.fisher_instance.NCov1 is not None
+            hasattr(self.fisher_instance, "noise_cov1")
+            and self.fisher_instance.noise_cov1 is not None
         ):
-            self.NCov1 = self.fisher_instance.NCov1
+            self.noise_cov1 = self.fisher_instance.noise_cov1
         if (
-            hasattr(self.fisher_instance, "NCov2")
-            and self.fisher_instance.NCov2 is not None
+            hasattr(self.fisher_instance, "noise_cov2")
+            and self.fisher_instance.noise_cov2 is not None
         ):
-            self.NCov2 = self.fisher_instance.NCov2
-        if hasattr(self.fisher_instance, "Sig") and self.fisher_instance.Sig is not None:
-            self.Sig = self.fisher_instance.Sig
+            self.noise_cov2 = self.fisher_instance.noise_cov2
+        if (
+            hasattr(self.fisher_instance, "signal_matrix")
+            and self.fisher_instance.signal_matrix is not None
+        ):
+            self.signal_matrix = self.fisher_instance.signal_matrix
 
         # Copy binning and beam smoothing if available
         if (
@@ -334,9 +337,9 @@ class Spectra(Core):
         ntot = self.collection.total_active_pixels
 
         # Load inverted covariance matrices
-        self.invCov1 = np.fromfile(self.params.outinvcovmatfile1).reshape(ntot, ntot)
+        self.inv_cov1 = np.fromfile(self.params.outinvcovmatfile1).reshape(ntot, ntot)
         if self.params.do_cross:
-            self.invCov2 = np.fromfile(self.params.outinvcovmatfile2).reshape(ntot, ntot)
+            self.inv_cov2 = np.fromfile(self.params.outinvcovmatfile2).reshape(ntot, ntot)
 
         # Load noise covariance matrices (created by Fisher.run())
         if not os.path.exists(self.params.outnoisecovmat1):
@@ -344,14 +347,14 @@ class Spectra(Core):
                 f"Noise covariance file not found: {self.params.outnoisecovmat1}. "
                 f"Run Fisher analysis first to generate this file."
             )
-        self.NCov1 = np.fromfile(self.params.outnoisecovmat1).reshape(ntot, ntot)
+        self.noise_cov1 = np.fromfile(self.params.outnoisecovmat1).reshape(ntot, ntot)
         if self.params.do_cross:
             if not os.path.exists(self.params.outnoisecovmat2):
                 raise FileNotFoundError(
                     f"Noise covariance file not found: {self.params.outnoisecovmat2}. "
                     f"Run Fisher analysis first to generate this file."
                 )
-            self.NCov2 = np.fromfile(self.params.outnoisecovmat2).reshape(ntot, ntot)
+            self.noise_cov2 = np.fromfile(self.params.outnoisecovmat2).reshape(ntot, ntot)
 
     def _get_fisher(self) -> Fisher:
         """
@@ -493,7 +496,7 @@ class Spectra(Core):
         Parameters
         ----------
         fisher : numpy.ndarray
-            Normalized Fisher information matrix of shape (nell, nell).
+            Normalized Fisher information matrix of shape (n_params, n_params).
             Must be symmetric positive semi-definite.
 
         Notes
@@ -604,13 +607,13 @@ class Spectra(Core):
         >>> print(f"QML results shape: {spectra.qml_results.shape}")
         >>> print(f"Total parameters: {spectra.qml_results.shape[1]}")
         """
-        nell = self.params.nspectra * self.bins.nbins
+        n_params = self.params.nspectra * self.bins.nbins
 
         # Initialize y vectors for QML estimation
-        self.qml_results = np.zeros((self.params.nsims, nell), dtype=np.float64)
+        self.qml_results = np.zeros((self.params.nsims, n_params), dtype=np.float64)
 
         if not self.params.do_cross:
-            self.qml_noise_bias = np.zeros(nell, dtype=np.float64)
+            self.qml_noise_bias = np.zeros(n_params, dtype=np.float64)
 
     def compute_qml_spectra(self):
         """
@@ -700,33 +703,33 @@ class Spectra(Core):
 
         if is_multi_field:
             # Build full Lambda and its inverse (auto-detects key format)
-            Lambda_full = cm._build_lambda_full(C_ell_dict)
-            Lambda_reg = Lambda_full + np.eye(Lambda_full.shape[0]) * 1e-20
-            Lambda_inv = matrix_inverse_symm(np.asfortranarray(Lambda_reg))
+            lambda_matrix = cm._build_lambda_matrix(C_ell_dict)
+            lambda_regularized = lambda_matrix + np.eye(lambda_matrix.shape[0]) * 1e-20
+            lambda_inv = matrix_inverse_symm(np.asfortranarray(lambda_regularized))
 
             M = cm._V_Ninv_VT
-            K = Lambda_inv + M
-            K_inv = matrix_inverse_symm(np.asfortranarray(K))
+            K = lambda_inv + M
+            kernel_inv = matrix_inverse_symm(np.asfortranarray(K))
 
             # V_Cinv = (I - M @ K^{-1}) @ V_Ninv
             n_modes = cm.n_modes_total
-            I_minus_MKinv = np.eye(n_modes) - M @ K_inv
-            V_Cinv = I_minus_MKinv @ cm._V_N_inv
+            I_minus_M_kernel_inv = np.eye(n_modes) - M @ kernel_inv
+            V_Cinv = I_minus_M_kernel_inv @ cm._V_N_inv
         else:
             Lambda_diag = cm._build_lambda_diagonal(C_ell)
-            Lambda_inv_diag = np.where(Lambda_diag > 1e-30, 1.0 / Lambda_diag, 1e30)
+            lambda_inv_diag = np.where(Lambda_diag > 1e-30, 1.0 / Lambda_diag, 1e30)
             M = cm._V_Ninv_VT
-            K = np.diag(Lambda_inv_diag) + M
+            K = np.diag(lambda_inv_diag) + M
 
             try:
                 L = cholesky(K, lower=True)
-                K_inv = cho_solve((L, True), np.eye(K.shape[0]))
+                kernel_inv = cho_solve((L, True), np.eye(K.shape[0]))
             except np.linalg.LinAlgError:
-                K_inv = np.linalg.inv(K)
+                kernel_inv = np.linalg.inv(K)
 
             # V_Cinv = (I - M @ K^{-1}) @ V_Ninv
-            I_minus_MKinv = np.eye(cm.n_modes) - M @ K_inv
-            V_Cinv = I_minus_MKinv @ cm._V_N_inv
+            I_minus_M_kernel_inv = np.eye(cm.n_modes) - M @ kernel_inv
+            V_Cinv = I_minus_M_kernel_inv @ cm._V_N_inv
 
         # For diagonal N, compute noise_cov_w_diag
         if hasattr(cm, "_N_inv_original"):
@@ -788,24 +791,26 @@ class Spectra(Core):
 
         # Compute weighted compressed data for all simulations
         # w = V @ C^{-1} @ d (using SMW formula internally)
-        # For multi-field, precompute K_inv once to avoid repeated matrix inversions
+        # For multi-field, precompute kernel_inv once to avoid repeated matrix inversions
         maps1_weighted = np.zeros((n_compressed, n_sims), dtype=np.float64)
         if is_multi_field:
             if cm.method == "harmonic":
                 # Precompute SMW matrices once
                 from cosmocore.basics import matrix_inverse_symm
 
-                Lambda_full = cm._build_lambda_full(C_ell_dict)
-                Lambda_reg = Lambda_full + np.eye(Lambda_full.shape[0]) * 1e-20
-                Lambda_inv = matrix_inverse_symm(np.asfortranarray(Lambda_reg))
-                K = Lambda_inv + cm._V_Ninv_VT
-                K_inv = matrix_inverse_symm(np.asfortranarray(K))
-                M_K_inv = cm._V_Ninv_VT @ K_inv
+                lambda_matrix = cm._build_lambda_matrix(C_ell_dict)
+                lambda_regularized = (
+                    lambda_matrix + np.eye(lambda_matrix.shape[0]) * 1e-20
+                )
+                lambda_inv = matrix_inverse_symm(np.asfortranarray(lambda_regularized))
+                K = lambda_inv + cm._V_Ninv_VT
+                kernel_inv = matrix_inverse_symm(np.asfortranarray(K))
+                M_kernel_inv = cm._V_Ninv_VT @ kernel_inv
 
                 # Compute weighted data for all sims using precomputed matrices
                 # w = y - M @ K^{-1} @ y where y = V @ N^{-1} @ d
-                Y1 = cm._V_N_inv @ self.maps1  # (n_modes, n_sims)
-                maps1_weighted = Y1 - M_K_inv @ Y1
+                projected_data1 = cm._V_N_inv @ self.maps1  # (n_modes, n_sims)
+                maps1_weighted = projected_data1 - M_kernel_inv @ projected_data1
             else:
                 # pixel_projected: use compressed-space weighted data
                 C_c_inv = cm.get_compressed_inverse(C_ell_dict)
@@ -825,8 +830,8 @@ class Spectra(Core):
             if is_multi_field:
                 if cm.method == "harmonic":
                     # Use precomputed matrices
-                    Y2 = cm._V_N_inv @ self.maps2
-                    maps2_weighted = Y2 - M_K_inv @ Y2
+                    projected_data2 = cm._V_N_inv @ self.maps2
+                    maps2_weighted = projected_data2 - M_kernel_inv @ projected_data2
                 else:
                     d_c2 = cm.compress_data(self.maps2)
                     maps2_weighted = C_c_inv @ d_c2
@@ -857,8 +862,8 @@ class Spectra(Core):
 
         # Main computation loop - distribute bins across processes
         nbins = self.bins.nbins
-        nell = self.params.nspectra * nbins
-        for il in range(nell):
+        n_params = self.params.nspectra * nbins
+        for il in range(n_params):
             if self.rank == il % self.size:
                 spectrum_idx = il // nbins
                 bin_idx = il % nbins
@@ -903,7 +908,7 @@ class Spectra(Core):
             )
 
         # Reduce results from all processes
-        self._reduce_qml_results(nell)
+        self._reduce_qml_results(n_params)
 
     def _compute_qml_spectra_traditional(self):
         """
@@ -925,15 +930,15 @@ class Spectra(Core):
         n_params = nspectra * nbins
 
         # Precompute weighted data: y = C⁻¹ d for all simulations
-        weighted_maps1 = matrix_mult(self.invCov1, self.maps1)
+        weighted_maps1 = matrix_mult(self.inv_cov1, self.maps1)
 
         if self.params.do_cross:
-            weighted_maps2 = matrix_mult(self.invCov2, self.maps2)
+            weighted_maps2 = matrix_mult(self.inv_cov2, self.maps2)
 
         # For noise bias: C⁻¹ N C⁻¹ (precomputed once)
         if not self.params.do_cross:
             cinv_noise_cinv = matrix_mult(
-                self.invCov1, matrix_mult(self.NCov1, self.invCov1)
+                self.inv_cov1, matrix_mult(self.noise_cov1, self.inv_cov1)
             )
 
         for param_idx in range(n_params):
@@ -974,15 +979,15 @@ class Spectra(Core):
 
         self._reduce_qml_results(n_params)
 
-    def _reduce_qml_results(self, nell: int):
+    def _reduce_qml_results(self, n_params: int):
         """Gather and combine QML results from all MPI processes."""
         # Reduce y vectors
-        reduced_qml_results = np.zeros((self.params.nsims, nell), dtype=np.float64)
+        reduced_qml_results = np.zeros((self.params.nsims, n_params), dtype=np.float64)
         self.comm.Reduce(self.qml_results, reduced_qml_results, op=MPI.SUM, root=0)
 
         if not self.params.do_cross:
             # Reduce noise bias
-            reduced_qml_noise_bias = np.zeros(nell, dtype=np.float64)
+            reduced_qml_noise_bias = np.zeros(n_params, dtype=np.float64)
             self.comm.Reduce(
                 self.qml_noise_bias, reduced_qml_noise_bias, op=MPI.SUM, root=0
             )
@@ -1081,12 +1086,16 @@ class Spectra(Core):
         )
 
         # Broadcast covariance matrices
-        self.NCov1 = self.comm.bcast(self.NCov1 if self.rank == 0 else None, root=0)
-        self.invCov1 = self.comm.bcast(self.invCov1 if self.rank == 0 else None, root=0)
+        self.noise_cov1 = self.comm.bcast(
+            self.noise_cov1 if self.rank == 0 else None, root=0
+        )
+        self.inv_cov1 = self.comm.bcast(self.inv_cov1 if self.rank == 0 else None, root=0)
         if self.params.do_cross:
-            self.NCov2 = self.comm.bcast(self.NCov2 if self.rank == 0 else None, root=0)
-            self.invCov2 = self.comm.bcast(
-                self.invCov2 if self.rank == 0 else None, root=0
+            self.noise_cov2 = self.comm.bcast(
+                self.noise_cov2 if self.rank == 0 else None, root=0
+            )
+            self.inv_cov2 = self.comm.bcast(
+                self.inv_cov2 if self.rank == 0 else None, root=0
             )
 
         # Broadcast maps
@@ -1293,7 +1302,7 @@ class Spectra(Core):
         Returns
         -------
         numpy.ndarray
-            Deconvolved power spectrum estimates with shape (nsims, nell).
+            Deconvolved power spectrum estimates with shape (nsims, n_params).
         """
         return self._normalize_spectra(self.qml_results)
 
@@ -1306,7 +1315,7 @@ class Spectra(Core):
         Returns
         -------
         numpy.ndarray
-            Decorrelated power spectrum estimates with shape (nsims, nell).
+            Decorrelated power spectrum estimates with shape (nsims, n_params).
 
         Raises
         ------
@@ -1418,7 +1427,7 @@ class Spectra(Core):
         Returns
         -------
         numpy.ndarray or None
-            Covariance matrix of shape (nell, nell). Returns None for worker
+            Covariance matrix of shape (n_params, n_params). Returns None for worker
             processes (rank != 0) or if matrices are not available.
 
         Raises
@@ -1475,8 +1484,8 @@ class Spectra(Core):
         elif mode == "decorrelated":
             if self.invfisher is None:
                 return None
-            nell = self.invfisher.shape[0]
-            cov = np.eye(nell)
+            n_params = self.invfisher.shape[0]
+            cov = np.eye(n_params)
         else:  # convolved
             if self.fisher_normalized is None:
                 return None
@@ -1506,7 +1515,7 @@ class Spectra(Core):
         Returns
         -------
         numpy.ndarray or None
-            1D array of error bars with shape (nell,). Returns None for
+            1D array of error bars with shape (n_params,). Returns None for
             worker processes (rank != 0) or if covariance not available.
 
         Raises
@@ -1565,13 +1574,13 @@ class Spectra(Core):
         ----------
         cl_theory : numpy.ndarray
             Theoretical power spectrum values. Should be a 1D array with
-            shape (nell,) matching the QML output dimensions. When
+            shape (n_params,) matching the QML output dimensions. When
             ``output_convention="Dl"``, this should be D_ℓ values.
 
         Returns
         -------
         numpy.ndarray or None
-            Window-convolved theoretical spectrum with shape (nell,),
+            Window-convolved theoretical spectrum with shape (n_params,),
             in the same convention as the input. Returns None if window
             matrix is not available.
 

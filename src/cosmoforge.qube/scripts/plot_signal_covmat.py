@@ -67,37 +67,39 @@ def get_signal_covmat(fields, local_path):
     concatenate_pixact = np.concatenate(
         [pixact[i] + i * npix for i in range(len(pixact))]
     )
-    NCov1 = np.empty(
+    noise_cov1 = np.empty(
         (concatenate_pixact.shape[0], concatenate_pixact.shape[0]), dtype=np.float64
     )
     if Par.do_cross:
-        NCov2 = np.empty(
+        noise_cov2 = np.empty(
             (concatenate_pixact.shape[0], concatenate_pixact.shape[0]), dtype=np.float64
         )
 
-    NCov1 = (
-        read_covmat(Par.covmatfile1, npix, Par.nfields, concatenate_pixact, NCov1)
+    noise_cov1 = (
+        read_covmat(Par.covmatfile1, npix, Par.nfields, concatenate_pixact, noise_cov1)
         * Par.calibration**2
     )
     if Par.do_cross:
-        NCov2 = (
-            read_covmat(Par.covmatfile2, npix, Par.nfields, concatenate_pixact, NCov2)
+        noise_cov2 = (
+            read_covmat(
+                Par.covmatfile2, npix, Par.nfields, concatenate_pixact, noise_cov2
+            )
             * Par.calibration**2
         )
 
     collection.set_cls()
     collection.set_beams()
 
-    Sig = np.zeros_like(NCov1, dtype=np.float64)
-    Sig = np.asfortranarray(Sig, dtype=np.float64)
+    signal_matrix = np.zeros_like(noise_cov1, dtype=np.float64)
+    signal_matrix = np.asfortranarray(signal_matrix, dtype=np.float64)
 
     compute_signal_matrix(
-        S=Sig,
+        S=signal_matrix,
         lmax=Par.lmax,
         fields=collection,
     )
 
-    return Sig
+    return signal_matrix
 
 
 def plot_signal_covmat_TQU(local_path, show_fig=False, save_fig=False):
@@ -111,9 +113,9 @@ def plot_signal_covmat_TQU(local_path, show_fig=False, save_fig=False):
 
     ref = np.asfortranarray(ref, dtype=np.float64)
 
-    Sig = get_signal_covmat("TQU", local_path=local_path)
+    signal_matrix = get_signal_covmat("TQU", local_path=local_path)
 
-    diff = np.abs(Sig - ref)
+    diff = np.abs(signal_matrix - ref)
 
     plt.figure(figsize=(8, 6))
     plt.imshow(ref[:npix, :npix], origin="lower")
@@ -121,7 +123,7 @@ def plot_signal_covmat_TQU(local_path, show_fig=False, save_fig=False):
     plt.title("Test Covariance Matrix T")
 
     plt.figure(figsize=(8, 6))
-    plt.imshow(Sig[:npix, :npix], origin="lower")
+    plt.imshow(signal_matrix[:npix, :npix], origin="lower")
     plt.colorbar()
     plt.title("Signal Covariance Matrix T")
 
@@ -140,7 +142,7 @@ def plot_signal_covmat_TQU(local_path, show_fig=False, save_fig=False):
     plt.title("Test Covariance Matrix QU")
 
     plt.figure(figsize=(8, 6))
-    plt.imshow(Sig[npix:, npix:], origin="lower")
+    plt.imshow(signal_matrix[npix:, npix:], origin="lower")
     plt.colorbar()
     plt.title("Signal Covariance Matrix QU")
 
@@ -159,7 +161,7 @@ def plot_signal_covmat_TQU(local_path, show_fig=False, save_fig=False):
     plt.title("Test Covariance Matrix T-QU")
 
     plt.figure(figsize=(8, 6))
-    plt.imshow(Sig[:npix, npix:], origin="lower")
+    plt.imshow(signal_matrix[:npix, npix:], origin="lower")
     plt.colorbar()
     plt.title("Signal Covariance Matrix T-QU")
 
@@ -178,7 +180,7 @@ def plot_signal_covmat_TQU(local_path, show_fig=False, save_fig=False):
     plt.title("Test Covariance Matrix QU-T")
 
     plt.figure(figsize=(8, 6))
-    plt.imshow(Sig[npix:, :npix], origin="lower")
+    plt.imshow(signal_matrix[npix:, :npix], origin="lower")
     plt.colorbar()
     plt.title("Signal Covariance Matrix QU-T")
 
@@ -203,9 +205,9 @@ def plot_signal_covmat_TEB(local_path, show_fig=False, save_fig=False):
 
     ref = np.asfortranarray(ref, dtype=np.float64)
 
-    Sig = get_signal_covmat("TEB", local_path=local_path)
+    signal_matrix = get_signal_covmat("TEB", local_path=local_path)
 
-    diff = np.abs(Sig - ref)
+    diff = np.abs(signal_matrix - ref)
 
     plt.figure(figsize=(8, 6))
     plt.imshow(ref[:npix, :npix], origin="lower")
@@ -213,7 +215,7 @@ def plot_signal_covmat_TEB(local_path, show_fig=False, save_fig=False):
     plt.title("Test Covariance Matrix T")
 
     plt.figure(figsize=(8, 6))
-    plt.imshow(Sig[:npix, :npix], origin="lower")
+    plt.imshow(signal_matrix[:npix, :npix], origin="lower")
     plt.colorbar()
     plt.title("Signal Covariance Matrix T")
 
@@ -232,7 +234,7 @@ def plot_signal_covmat_TEB(local_path, show_fig=False, save_fig=False):
     plt.title("Test Covariance Matrix E")
 
     plt.figure(figsize=(8, 6))
-    plt.imshow(Sig[npix : 2 * npix, npix : 2 * npix], origin="lower")
+    plt.imshow(signal_matrix[npix : 2 * npix, npix : 2 * npix], origin="lower")
     plt.colorbar()
     plt.title("Signal Covariance Matrix E")
 
@@ -251,7 +253,7 @@ def plot_signal_covmat_TEB(local_path, show_fig=False, save_fig=False):
     plt.title("Test Covariance Matrix B")
 
     plt.figure(figsize=(8, 6))
-    plt.imshow(Sig[-npix:, -npix:], origin="lower")
+    plt.imshow(signal_matrix[-npix:, -npix:], origin="lower")
     plt.colorbar()
     plt.title("Signal Covariance Matrix B")
 
@@ -270,7 +272,7 @@ def plot_signal_covmat_TEB(local_path, show_fig=False, save_fig=False):
     plt.title("Test Covariance Matrix EB-T")
 
     plt.figure(figsize=(8, 6))
-    plt.imshow(Sig[npix:, :npix], origin="lower")
+    plt.imshow(signal_matrix[npix:, :npix], origin="lower")
     plt.colorbar()
     plt.title("Signal Covariance Matrix EB-T")
 

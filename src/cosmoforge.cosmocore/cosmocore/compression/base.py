@@ -470,7 +470,7 @@ class BaseCompression(ABC):
     # Delegates to HarmonicBasis
     # =========================================================================
     # These methods forward to self._harmonic_basis so that subclasses and
-    # external code (spectra.py) can keep using self._build_lambda_full() etc.
+    # external code (spectra.py) can keep using self._build_lambda_matrix() etc.
 
     def _build_lambda_diagonal(self, C_ell: np.ndarray) -> np.ndarray:
         """Build Lambda diagonal from C_ell. Delegates to HarmonicBasis."""
@@ -482,21 +482,21 @@ class BaseCompression(ABC):
         """Build Lambda blocks from 2-tuple dict. Delegates to HarmonicBasis."""
         return self._harmonic_basis._build_lambda_blocks(C_ell_dict)
 
-    def _build_lambda_full(self, C_ell_dict: dict) -> np.ndarray:
+    def _build_lambda_matrix(self, C_ell_dict: dict) -> np.ndarray:
         """Build full Lambda matrix (auto-detects key format)."""
-        return self._harmonic_basis._build_lambda_full(C_ell_dict)
+        return self._harmonic_basis._build_lambda_matrix(C_ell_dict)
 
-    def _build_lambda_full_2tuple(
+    def _build_lambda_matrix_2tuple(
         self, C_ell_dict: dict[tuple[int, int], np.ndarray]
     ) -> np.ndarray:
         """Build full Lambda from 2-tuple keys. Delegates to HarmonicBasis."""
-        return self._harmonic_basis._build_lambda_full_2tuple(C_ell_dict)
+        return self._harmonic_basis._build_lambda_matrix_2tuple(C_ell_dict)
 
-    def _build_lambda_full_3tuple(
+    def _build_lambda_matrix_3tuple(
         self, C_ell_dict: dict[tuple, np.ndarray]
     ) -> np.ndarray:
         """Build full Lambda from 3-tuple keys. Delegates to HarmonicBasis."""
-        return self._harmonic_basis._build_lambda_full_3tuple(C_ell_dict)
+        return self._harmonic_basis._build_lambda_matrix_3tuple(C_ell_dict)
 
     def _build_lambda_block_spin2(
         self,

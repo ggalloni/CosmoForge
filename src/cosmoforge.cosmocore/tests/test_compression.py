@@ -635,8 +635,8 @@ class TestPixelProjectedPICSLikeMethods:
         qf_compressed = ppc.compute_quadratic_form(data, C_ell_dict)
 
         # Brute-force in full pixel space
-        Lambda_full = ppc._build_lambda_full_3tuple(C_ell_dict)
-        S = ppc._V.T @ Lambda_full @ ppc._V
+        lambda_matrix = ppc._build_lambda_matrix_3tuple(C_ell_dict)
+        S = ppc._V.T @ lambda_matrix @ ppc._V
         C = N + S
         C_inv = matrix_inverse_symm(C.copy())
         qf_brute = float(data @ C_inv @ data)
