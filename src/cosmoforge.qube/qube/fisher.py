@@ -252,11 +252,11 @@ class Fisher(Core):
             # NCov1 is already C^{-1} after prepare_covariance_matrices()
             C_inv = self.NCov1
 
-        # Precompute C_inv @ dC'_b for each bin (vecmul-weighted)
-        vm = self.vecmul_per_ell[: self.n_ell]  # single spectrum
         Cinv_dC = {}
         for b in range(nbins):
-            dC_b = self.get_binned_derivative_matrix(b, vecmul=vm)
+            dC_b = self.get_binned_derivative_matrix(
+                b, beam_smoothing=self.beam_smoothing[: self.n_ell]
+            )
             Cinv_dC[b] = matrix_mult(C_inv, dC_b)
 
         # Main computation loop over bin pairs
@@ -308,25 +308,24 @@ class Fisher(Core):
     def _get_binned_derivative_multi(
         self, bin_idx: int, spectrum_idx: int, spectra_list=None
     ) -> np.ndarray:
-        """Get vecmul-weighted binned derivative for multi-spectrum.
+        """Compute beam-smoothed binned derivative for multi-spectrum.
 
-        Handles both pixel-space (do_derivative_step) and compressed
-        (cm.get_derivative_matrix with component indices) paths.
-        Vecmul is absorbed into the binning weights.
+        Handles both pixel-space and compressed paths. Beam smoothing
+        factors b²_ell are absorbed into the binning weights.
         """
         use_compression = (
             hasattr(self, "compression_manager") and self.compression_manager is not None
         )
 
         n_ell = self.n_ell
-        P, _ = self.bins._bin_operators()
+        w_matrix, _ = self.bins._bin_operators()
         lmin_b = self.bins.lmins[bin_idx]
         lmax_b = self.bins.lmaxs[bin_idx]
-        vm_offset = spectrum_idx * n_ell
+        beam_offset = spectrum_idx * n_ell
         dC_b = None
 
         for ell in range(lmin_b, lmax_b + 1):
-            w = P[bin_idx, ell] * self.vecmul_per_ell[vm_offset + ell - 2]
+            weight = w_matrix[bin_idx, ell] * self.beam_smoothing[beam_offset + ell - 2]
 
             if use_compression:
                 comp_i, comp_j, mode = spectra_list[spectrum_idx]
@@ -346,9 +345,9 @@ class Fisher(Core):
                 )
 
             if dC_b is None:
-                dC_b = w * dC_ell
+                dC_b = weight * dC_ell
             else:
-                dC_b += w * dC_ell
+                dC_b += weight * dC_ell
 
         return dC_b
 
@@ -572,19 +571,19 @@ class Fisher(Core):
                 level=1,
             )
 
-        # Compute per-ell vecmul (smoothing factors) for all spectra.
-        # Stored as a flat vector of length nspectra * n_ell.
+        # Beam smoothing factors b²_ell for each spectrum (product of beam
+        # and pixel window functions). Flat vector: [spec0_ell2, ..., spec0_ellmax,
+        # spec1_ell2, ..., spec1_ellmax, ...].
         self.n_ell = self.params.lmax - 1
-        smoothing = self.collection.spectra_manager.compute_smoothing_factors(
+        smoothing_dict = self.collection.spectra_manager.compute_smoothing_factors(
             self.collection.beam_manager
         )
-        self.vecmul_per_ell = np.zeros(
+        self.beam_smoothing = np.zeros(
             self.params.nspectra * self.n_ell, dtype=np.float64
         )
         idx = 0
         for label in self.collection.spectra_manager.labels:
-            sf = smoothing[label]
-            self.vecmul_per_ell[idx : idx + self.n_ell] = sf
+            self.beam_smoothing[idx : idx + self.n_ell] = smoothing_dict[label]
             idx += self.n_ell
 
         # Setup Fisher matrices dimensions
@@ -601,7 +600,7 @@ class Fisher(Core):
     # =========================================================================
 
     def get_fisher_matrix(self) -> np.ndarray | None:
-        """Retrieve the computed Fisher information matrix (vecmul-normalized)."""
+        """Retrieve the beam-smoothed Fisher information matrix."""
         if self.rank == 0:
             return self.fisher
         return None
@@ -618,43 +617,28 @@ class Fisher(Core):
         """
         Retrieve the window matrix for QML power spectrum estimation.
 
-        The window matrix W relates the expected QML estimates to the true
-        power spectrum: <y> = W @ C_true. It encodes the mode coupling induced
-        by partial sky coverage and pixel window effects.
+        The window matrix W relates the expected QML estimates to the
+        beam-smoothed theory spectrum: <q> = W @ C_theory. It encodes
+        the mode coupling induced by partial sky coverage, beam, and
+        pixel window effects.
 
         Returns
         -------
         numpy.ndarray or None
-            Window matrix of shape (nell, nell) where nell = n_spectra * (lmax-1).
-            Returns None for worker processes (rank != 0) or if computation
-            hasn't completed.
+            Window matrix of shape (n_params, n_params) where
+            n_params = n_spectra * n_bins. Returns None for worker
+            processes or if computation hasn't completed.
 
         Notes
         -----
-        The window matrix elements are computed as:
-        W_αβ = (1/2) Tr[C⁻¹ P_α C⁻¹ P_β]
+        The window matrix is the beam-smoothed Fisher matrix:
 
-        where P_α = ∂C/∂C_α is the derivative of the covariance matrix with
-        respect to power spectrum amplitude at multipole α.
+            W_{bb'} = (1/2) Tr[C⁻¹ dC^b C⁻¹ dC^{b'}]
 
-        This is mathematically equivalent to the Fisher matrix before
-        normalization factors (vecmul) are applied. The window matrix is
-        essential for the "convolved" normalization mode in QML estimation,
-        where instead of deconvolving the window function, the theory is
-        convolved with the window for comparison.
+        where dC^b = Sum_ell w_{b,ell} b²_ell dC^ell includes the
+        binning weights and beam smoothing factors.
 
-        Examples
-        --------
-        >>> fisher = Fisher("config.yaml")
-        >>> fisher.run()
-        >>> if fisher.rank == 0:
-        ...     W = fisher.get_window_matrix()
-        ...     # Convolve theory spectrum with window
-        ...     cl_theory_convolved = W @ cl_theory
-
-        See Also
-        --------
-        get_fisher_matrix : Returns the same matrix (Fisher = Window before normalization)
-        Spectra.get_power_spectra : Uses window matrix for 'convolved' mode
+        Used by the "convolved" normalization mode, where instead of
+        deconvolving the window, the theory is convolved for comparison.
         """
         return self.get_fisher_matrix()

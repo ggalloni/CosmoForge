@@ -689,35 +689,42 @@ class Core(ABC):
         self.bins = bins
 
     def get_binned_derivative_matrix(
-        self, bin_idx: int, vecmul: np.ndarray | None = None
+        self, bin_idx: int, beam_smoothing: np.ndarray | None = None
     ) -> np.ndarray:
         """
-        Compute binned derivative dC^b = Sum P_{b,ell} * [vm_ell *] dC^ell.
+        Compute binned derivative dC^b = Sum_ell w_{b,ell} b²_ell dC^ell,
 
-        Calls get_derivative_matrix(ell) internally, so works transparently
-        with both pixel-space and compressed paths (single-spectrum).
+        where w_{b,ell} are the binning weights from Bins._bin_operators(),
+        b²_ell is the beam smoothing factor, and dC^ell = dC/dC_ell is
+        the per-multipole derivative matrix.
+
+        When beam_smoothing is provided, beam window functions are
+        absorbed into the binning weights so that the resulting Fisher
+        matrix is in beam-smoothed space. Without it, the derivative
+        is just the weighted sum dC^b = Sum_ell w_{b,ell} dC^ell.
 
         Parameters
         ----------
         bin_idx : int
             Index of the bin.
-        vecmul : np.ndarray or None
-            Per-ell smoothing factors (length n_ell, indexed from ell=2).
-            If provided, weights become P[b,ell] * vm[ell-2].
+        beam_smoothing : np.ndarray or None
+            Per-ell beam smoothing factors b²_ell (length n_ell, starting
+            at ell=2). Product of beam and (optionally) pixel window
+            functions for the two fields in the spectrum.
         """
-        P, _ = self.bins._bin_operators()
+        w_matrix, _ = self.bins._bin_operators()
         lmin_b = self.bins.lmins[bin_idx]
         lmax_b = self.bins.lmaxs[bin_idx]
         dC_b = None
         for ell in range(lmin_b, lmax_b + 1):
             dC_ell = self.get_derivative_matrix(ell)
-            w = P[bin_idx, ell]
-            if vecmul is not None:
-                w *= vecmul[ell - 2]
+            weight = w_matrix[bin_idx, ell]
+            if beam_smoothing is not None:
+                weight *= beam_smoothing[ell - 2]
             if dC_b is None:
-                dC_b = w * dC_ell
+                dC_b = weight * dC_ell
             else:
-                dC_b += w * dC_ell
+                dC_b += weight * dC_ell
         return dC_b
 
     def compute_quadratic_form(self, data: np.ndarray, C_ell) -> float:

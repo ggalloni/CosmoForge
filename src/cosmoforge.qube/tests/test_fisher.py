@@ -82,10 +82,10 @@ def test_fisher_computation(fields, local_path, config_resolver):
     assert fisher_matrix is not None
     assert error_bars is not None
 
-    # Fisher now stores vecmul-normalized matrix. Divide out vecmul
+    # Fisher is beam-smoothed. Divide out beam smoothing
     # to compare against raw reference files.
-    vm = fisher_inst.vecmul_per_ell
-    fisher_raw = fisher_matrix / np.outer(vm, vm)
+    beam_smoothing = fisher_inst.beam_smoothing
+    fisher_raw = fisher_matrix / np.outer(beam_smoothing, beam_smoothing)
 
     file = local_path + f"/tests/data/nside4/{fields}/ref_fisher.dat"
     ref = np.loadtxt(file, dtype=np.float64)
@@ -109,9 +109,9 @@ def test_cross_fisher_computation(fields, local_path, config_resolver):
     assert fisher_matrix is not None
     assert error_bars is not None
 
-    # Divide out vecmul to compare against raw reference
-    vm = fisher_inst.vecmul_per_ell
-    fisher_raw = fisher_matrix / np.outer(vm, vm)
+    # Divide out beam smoothing to compare against raw reference
+    beam_smoothing = fisher_inst.beam_smoothing
+    fisher_raw = fisher_matrix / np.outer(beam_smoothing, beam_smoothing)
 
     file = local_path + f"/tests/data/nside4/{fields}/ref_fisher.dat"
     ref = np.loadtxt(file, dtype=np.float64)
@@ -359,15 +359,15 @@ def test_compressed_fisher_spin2(fields, local_path, config_resolver):
         f"Compressed {fields} error bars differ by {max_sigma_diff:.2e}"
     )
 
-    # Match Fortran reference (divide out vecmul for raw comparison)
+    # Match Fortran reference (divide out beam smoothing for raw comparison)
     file = local_path + f"/tests/data/nside4/{fields}/ref_fisher.dat"
     ref = np.loadtxt(file, dtype=np.float64)
 
     _, _, fisher_inst = _cached_compressed(
         fields, config_resolver, method="harmonic", epsilon=1e-10
     )
-    vm = fisher_inst.vecmul_per_ell
-    fisher_comp_raw = fisher_compressed / np.outer(vm, vm)
+    beam_smoothing = fisher_inst.beam_smoothing
+    fisher_comp_raw = fisher_compressed / np.outer(beam_smoothing, beam_smoothing)
 
     assert fisher_comp_raw.shape == ref.shape
 

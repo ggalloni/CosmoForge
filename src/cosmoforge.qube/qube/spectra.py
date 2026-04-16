@@ -117,11 +117,9 @@ class Spectra(Core):
     qml_noise_bias : numpy.ndarray
         Noise bias estimates for auto-correlation spectra.
     invfisher : numpy.ndarray
-        Inverted Fisher matrix used for final spectrum normalization.
+        Inverse of the beam-smoothed Fisher matrix.
     invCov1, invCov2 : numpy.ndarray
         Inverted covariance matrices for primary and secondary datasets.
-    normalization : numpy.ndarray
-        Normalization factors (vecmul) for spectrum smoothing.
 
     Examples
     --------
@@ -303,17 +301,17 @@ class Spectra(Core):
         if hasattr(self.fisher_instance, "Sig") and self.fisher_instance.Sig is not None:
             self.Sig = self.fisher_instance.Sig
 
-        # Copy binning and vecmul if available
+        # Copy binning and beam smoothing if available
         if (
             hasattr(self.fisher_instance, "bins")
             and self.fisher_instance.bins is not None
         ):
             self.bins = self.fisher_instance.bins
         if (
-            hasattr(self.fisher_instance, "vecmul_per_ell")
-            and self.fisher_instance.vecmul_per_ell is not None
+            hasattr(self.fisher_instance, "beam_smoothing")
+            and self.fisher_instance.beam_smoothing is not None
         ):
-            self.vecmul_per_ell = self.fisher_instance.vecmul_per_ell
+            self.beam_smoothing = self.fisher_instance.beam_smoothing
 
         # Copy compression manager if available
         if (
@@ -430,11 +428,11 @@ class Spectra(Core):
 
     def setup_fisher_inversion(self):
         """
-        Prepare inverted Fisher matrix with normalization for QML estimation.
+        Prepare inverted Fisher matrix for QML estimation.
 
-        Computes smoothing factors (vecmul), applies normalization
-        F'_ij = F_ij * vecmul_i * vecmul_j,
-        inverts the Fisher matrix, and writes results to output files.
+        The Fisher matrix is already beam-smoothed (beam window functions
+        absorbed into derivatives). This method computes F⁻¹, F⁻¹/²,
+        and writes results to output files.
 
         Raises
         ------
@@ -453,13 +451,7 @@ class Spectra(Core):
 
             self.invfisher = fisher_matrix.copy()
 
-            # Vecmul is already absorbed into the derivative matrices
-            # during Fisher/QML computation, so normalization is identity.
-            nbins = self.bins.nbins
-            nell = self.params.nspectra * nbins
-            self.normalization = np.ones(nell, dtype=np.float64)
-
-            # Store normalized Fisher matrix for convolved mode covariance
+            # Store beam-smoothed Fisher for convolved mode covariance
             self.fisher_normalized = self.invfisher.copy()
 
             # Compute F^(-1/2) for decorrelated mode
@@ -483,6 +475,7 @@ class Spectra(Core):
             vec_error_bars = np.sqrt(np.diag(self.invfisher))
 
             # Convert vector to Cl format and write errors
+            nbins = self.bins.nbins
             nspectra = len(vec_error_bars) // nbins
             error_bars = np.zeros((nbins, nspectra), dtype=np.float64)
             vec_to_cl(vec_error_bars, error_bars)
@@ -645,25 +638,24 @@ class Spectra(Core):
     def _get_binned_derivative(
         self, bin_idx: int, spectrum_idx: int = 0, spectra_list=None
     ) -> np.ndarray:
-        """Get vecmul-weighted binned derivative for QML computation.
+        """Compute beam-smoothed binned derivative for QML computation.
 
-        Handles pixel-space (do_derivative_step) and compressed
-        (cm.get_derivative_matrix) paths, single and multi-spectrum.
-        Vecmul is absorbed into the binning weights.
+        Handles pixel-space and compressed paths, single and multi-spectrum.
+        Beam smoothing factors b²_ell are absorbed into the binning weights.
         """
         use_compression = (
             hasattr(self, "compression_manager") and self.compression_manager is not None
         )
 
-        P, _ = self.bins._bin_operators()
+        w_matrix, _ = self.bins._bin_operators()
         lmin_b = self.bins.lmins[bin_idx]
         lmax_b = self.bins.lmaxs[bin_idx]
         n_ell = self.params.lmax - 1
-        vm_offset = spectrum_idx * n_ell
+        beam_offset = spectrum_idx * n_ell
         dC_b = None
 
         for ell in range(lmin_b, lmax_b + 1):
-            w = P[bin_idx, ell] * self.vecmul_per_ell[vm_offset + ell - 2]
+            weight = w_matrix[bin_idx, ell] * self.beam_smoothing[beam_offset + ell - 2]
 
             if use_compression:
                 cm = self.compression_manager
@@ -685,9 +677,9 @@ class Spectra(Core):
                 )
 
             if dC_b is None:
-                dC_b = w * dC_ell
+                dC_b = weight * dC_ell
             else:
-                dC_b += w * dC_ell
+                dC_b += weight * dC_ell
 
         return dC_b
 
@@ -1102,18 +1094,15 @@ class Spectra(Core):
         if self.params.do_cross:
             self.maps2 = self.comm.bcast(self.maps2 if self.rank == 0 else None, root=0)
 
-        # Broadcast inverted Fisher matrix and vecmul
+        # Broadcast inverted Fisher matrix
         self.invfisher = self.comm.bcast(
             self.invfisher if self.rank == 0 else None, root=0
         )
-        self.normalization = self.comm.bcast(
-            self.normalization if self.rank == 0 else None, root=0
-        )
 
-        # Broadcast binning and vecmul
+        # Broadcast binning and beam smoothing
         self.bins = self.comm.bcast(self.bins if self.rank == 0 else None, root=0)
-        self.vecmul_per_ell = self.comm.bcast(
-            self.vecmul_per_ell if self.rank == 0 else None, root=0
+        self.beam_smoothing = self.comm.bcast(
+            self.beam_smoothing if self.rank == 0 else None, root=0
         )
 
         # Broadcast normalization mode support matrices
@@ -1126,7 +1115,10 @@ class Spectra(Core):
 
     def _normalize_spectra(self, spectra: np.ndarray) -> np.ndarray:
         """
-        Apply Fisher matrix normalization to raw QML estimates.
+        Apply inverse Fisher to raw QML estimates: Ĉ = F⁻¹ q.
+
+        Vecmul is already absorbed into the derivatives, so this is
+        a direct matrix multiplication without extra normalization.
 
         Parameters
         ----------
@@ -1136,30 +1128,11 @@ class Spectra(Core):
         Returns
         -------
         np.ndarray
-            Normalized power spectrum estimates with same shape as input.
-
-        Raises
-        ------
-        ValueError
-            If Fisher inversion or normalization factors not available.
+            Deconvolved power spectrum estimates with same shape as input.
         """
-        if self.invfisher is None or self.normalization is None:
-            raise ValueError("Fisher inversion and normalization must be set up first.")
-
-        normalized_spectra = np.zeros_like(spectra)
-
-        if spectra.ndim == 1:
-            reduced_res_x_normalization = spectra * self.normalization
-            normalized_spectra = np.matmul(reduced_res_x_normalization, self.invfisher)
-            return normalized_spectra
-
-        for field_idx in range(spectra.shape[0]):
-            reduced_res_x_normalization = spectra[field_idx, :] * self.normalization
-            normalized_spectra[field_idx, :] = np.matmul(
-                reduced_res_x_normalization, self.invfisher
-            )
-
-        return normalized_spectra
+        if self.invfisher is None:
+            raise ValueError("Fisher inversion must be set up first.")
+        return spectra @ self.invfisher
 
     def get_power_spectra(
         self, mode: str = "deconvolved"
@@ -1349,8 +1322,7 @@ class Spectra(Core):
                 "ensure setup_fisher_inversion() was called."
             )
 
-        # Vectorized: broadcast normalization and apply matrix multiplication
-        decorrelated = (self.qml_results * self.normalization) @ self.inv_fisher_sqrt
+        decorrelated = self.qml_results @ self.inv_fisher_sqrt
 
         return decorrelated
 
@@ -1375,22 +1347,17 @@ class Spectra(Core):
         input to convolve_theory must be binned (one value per bin),
         e.g. via bins.bin_spectra(cl_theory, lmin=2).
         """
-        # Raw estimates multiplied by normalization
-        y = self.qml_results * self.normalization
+        y = self.qml_results
 
-        # Window matrix from Fisher instance
         W = self.fisher_instance.get_window_matrix()
         if W is None:
             raise ValueError("Window matrix not available from Fisher instance.")
 
-        # Apply normalization to window matrix to match y units
-        W_normalized = W * np.outer(self.normalization, self.normalization)
-
         def convolve_theory(cl_theory: np.ndarray) -> np.ndarray:
             """Apply window matrix to theoretical power spectrum."""
-            return W_normalized @ cl_theory
+            return W @ cl_theory
 
-        return (y, W_normalized, convolve_theory)
+        return (y, W, convolve_theory)
 
     def get_effective_ells(self) -> np.ndarray | None:
         """
@@ -1644,15 +1611,11 @@ class Spectra(Core):
         if W is None:
             return None
 
-        # Apply normalization to window matrix
-        W_normalized = W * np.outer(self.normalization, self.normalization)
-
         if self._output_is_dl():
             d = self._dl_factor()
-            # W_Dl = D @ W_Cl @ D^{-1}, input theory is Dl so convert first
-            return d * (W_normalized @ (cl_theory / d))
+            return d * (W @ (cl_theory / d))
 
-        return W_normalized @ cl_theory
+        return W @ cl_theory
 
     def write_power_spectra(
         self,
