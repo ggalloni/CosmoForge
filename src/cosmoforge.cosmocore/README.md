@@ -48,6 +48,10 @@ Both methods support:
 - **`SpectraManager`**: Power spectrum handling and normalization
 - **`BeamManager`**: Instrumental beam function management
 
+### Binning
+
+- **`Bins`**: Multipole binning specification for bandpower estimation. Supports uniform bins (`Bins.fromdeltal`) and custom non-uniform bins. Both bounds are inclusive. Used by QUBE for binned QML estimation.
+
 ### Mathematical Operations
 
 - **Legendre Polynomials**: `legendre_00`, `legendre_02`, `legendre_22`, `legendre_plm`
