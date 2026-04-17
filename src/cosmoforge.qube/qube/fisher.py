@@ -261,15 +261,34 @@ class Fisher(Core):
         else:
             C_inv = self.noise_cov1
 
-        # Precompute C⁻¹ dC^b for each bin
+        # Precompute C⁻¹ dC^b for each bin (cache dC^b for Spectra reuse)
         cinv_times_dcb = {}
+        self._cached_binned_derivatives = {}
+        deriv_start = time.time()
         for bin_idx in range(nbins):
             dC_b = self.get_binned_derivative_matrix(
                 bin_idx, beam_smoothing=self.beam_smoothing[: self.n_ell]
             )
+            self._cached_binned_derivatives[bin_idx] = dC_b
             cinv_times_dcb[bin_idx] = matrix_mult(C_inv, dC_b)
+            if self.rank == 0:
+                elapsed = time.time() - deriv_start
+                self.log(
+                    f"Precomputed C⁻¹ dC^b for bin {bin_idx + 1}/{nbins} "
+                    f"(l=[{self.bins.lmins[bin_idx]}, {self.bins.lmaxs[bin_idx]}]) "
+                    f"[{elapsed:.1f}s]",
+                    level=4,
+                )
+
+        if self.rank == 0:
+            self.log(
+                f"All {nbins} derivative products precomputed in "
+                f"{time.time() - deriv_start:.1f}s",
+                level=3,
+            )
 
         # F_{bb'} = (1/2) Tr[(C⁻¹ dC^b)(C⁻¹ dC^{b'})]
+        trace_start = time.time()
         counter = 0
         for bi in range(nbins):
             for bj in range(bi, nbins):
@@ -284,6 +303,13 @@ class Fisher(Core):
                 fisher_local[bi, bj] = fisher_val
                 if bi != bj:
                     fisher_local[bj, bi] = fisher_val
+
+        if self.rank == 0:
+            self.log(
+                f"Fisher trace computation done in {time.time() - trace_start:.1f}s "
+                f"({total_elements} elements)",
+                level=3,
+            )
 
         self.comm.Barrier()
         reduced_fisher = np.zeros_like(fisher_local)
@@ -397,8 +423,11 @@ class Fisher(Core):
                 C_inv = self.noise_cov1
 
         # Precompute binned derivatives and C⁻¹ dC^b products
+        # (cache derivatives for Spectra reuse)
         binned_derivatives = {}
+        self._cached_binned_derivatives_multi = {}
         cinv_times_dcb = {}
+        deriv_start = time.time()
         for param_idx in range(n_params):
             spectrum_idx = param_idx // nbins
             bin_idx = param_idx % nbins
@@ -406,6 +435,7 @@ class Fisher(Core):
                 bin_idx, spectrum_idx, spectra_list
             )
             binned_derivatives[param_idx] = binned_deriv
+            self._cached_binned_derivatives_multi[(spectrum_idx, bin_idx)] = binned_deriv
 
             if use_compression or not self.params.do_cross:
                 cinv_times_dcb[param_idx] = matrix_mult(C_inv, binned_deriv)
@@ -414,7 +444,25 @@ class Fisher(Core):
                     C_inv2, matrix_mult(binned_deriv, C_inv1)
                 )
 
+            if self.rank == 0:
+                elapsed = time.time() - deriv_start
+                self.log(
+                    f"Precomputed derivative {param_idx + 1}/{n_params} "
+                    f"(spectrum {spectrum_idx}, bin {bin_idx}: "
+                    f"l=[{self.bins.lmins[bin_idx]}, {self.bins.lmaxs[bin_idx]}]) "
+                    f"[{elapsed:.1f}s]",
+                    level=4,
+                )
+
+        if self.rank == 0:
+            self.log(
+                f"All {n_params} derivative products precomputed in "
+                f"{time.time() - deriv_start:.1f}s",
+                level=3,
+            )
+
         # F_{ij} = (1/2) Tr[(C⁻¹ dC^i)(C⁻¹ dC^j)]
+        trace_start = time.time()
         counter = 0
         for param_i in range(n_params):
             for param_j in range(param_i, n_params):
@@ -437,6 +485,13 @@ class Fisher(Core):
                 fisher_local[param_i, param_j] = fisher_val
                 if param_i != param_j:
                     fisher_local[param_j, param_i] = fisher_val
+
+        if self.rank == 0:
+            self.log(
+                f"Fisher trace computation done in {time.time() - trace_start:.1f}s "
+                f"({total_elements} elements)",
+                level=3,
+            )
 
         self.comm.Barrier()
         reduced_fisher = np.zeros_like(fisher_local)
