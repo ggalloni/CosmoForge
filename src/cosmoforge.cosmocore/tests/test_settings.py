@@ -22,7 +22,7 @@ def test_input_params_yaml_reading(tmp_path):
         "calibration": 1.2,
         "feedback": 2,
         "apply_pixwin": False,
-        "ordering": 2,  # NESTED
+        "ordering": "RING",
     }
 
     config_file = tmp_path / "test_config.yaml"
@@ -50,7 +50,7 @@ def test_input_params_yaml_reading(tmp_path):
     assert params.calibration == 1.2
     assert params.feedback == 2
     assert params.apply_pixwin is False
-    assert params.ordering == 2
+    assert params.ordering == "RING"
 
 
 def test_input_params_default_values():
@@ -74,7 +74,7 @@ def test_input_params_default_values():
     assert params.calibration == 1.0
     assert params.fwhmarcmin == 440.0
     assert params.apply_pixwin is True
-    assert params.ordering == 1
+    assert params.ordering == "RING"
 
 
 def test_input_params_update_method():

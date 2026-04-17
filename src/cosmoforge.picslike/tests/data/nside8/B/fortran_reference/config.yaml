@@ -6,7 +6,7 @@ do_cross: false
 
 maskfile: '../tests/data/nside8/B/fortran_reference/mask.fits'
 output_geometry_file: '../tests/data/nside8/B/fortran_reference/geometry.dat'
-ordering: 0
+ordering: RING
 
 inputclfile: '../tests/data/nside8/B/fortran_reference/input_dls.txt'
 input_convention: Dl
@@ -23,7 +23,7 @@ fiducialfile: '../tests/data/nside8/B/fortran_reference/fiducial_dls.txt'
 load_inverted: false
 calibration: 1.0
 
-smoothing_type: 3
+smoothing_type: file
 beam_file: '../tests/data/nside8/B/fortran_reference/beam.fits'
 apply_pixwin: false
 

@@ -6,7 +6,7 @@ do_cross: false
 
 maskfile: '../tests/data/nside8/T/mask.fits'
 output_geometry_file: '../tests/data/nside8/T/geometry.dat'
-ordering: 2
+ordering: RING
 
 inputclfile: '../tests/data/nside8/T/dls.txt'
 covmatfile1: '../tests/data/nside8/T/NCVM1.bin'
@@ -17,7 +17,7 @@ lmax: 32
 load_inverted: false
 calibration: 1.0
 
-smoothing_type: 1
+smoothing_type: gaussian
 fwhmarcmin: 440.0
 apply_pixwin: false
 beam_file: '../scripts/beam_440TP_pixwin16.fits'

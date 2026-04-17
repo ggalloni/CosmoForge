@@ -23,6 +23,7 @@ def test_signal_covmat(data_resolver):
         "labels": ["T", "E", "B"],
         "physical_labels": ["T", "Q", "U"],
         "maskfile": "tmp/mask.fits",
+        "ordering": "NESTED",
     }
 
     # Create temporary mask file
@@ -120,6 +121,7 @@ def test_signal_covmat_multiple_scalar_fields(data_resolver):
         "spins": [0, 0],  # Two scalar fields to trigger T1-T2 cross-correlation
         "labels": ["T1", "T2"],
         "physical_labels": ["T1", "T2"],
+        "ordering": "NESTED",
         "maskfile": "tmp/mask.fits",
     }
 
