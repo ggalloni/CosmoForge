@@ -185,7 +185,7 @@ output_convention: Cl  # "Cl" (default) or "Dl" for QML output
 covmatfile1: "data/noise_cov.bin"
 
 # Beam configuration
-smoothing_type: 1  # Gaussian
+smoothing_type: gaussian
 fwhmarcmin: 5.0
 beam_file: "data/beam.fits"
 ```

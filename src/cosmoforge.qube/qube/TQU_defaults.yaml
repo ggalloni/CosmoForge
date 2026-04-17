@@ -6,7 +6,7 @@ do_cross: false
 
 maskfile: 'inputs/TQU_mask.fits'
 output_geometry_file: 'outputs/TQU_geometry.dat'
-ordering: 2
+ordering: RING
 
 inputclfile: 'inputs/TQU_dls.txt'
 covmatfile1: 'inputs/TQU_NCVM1.bin'
@@ -17,7 +17,7 @@ lmax: 32
 load_inverted: false
 calibration: 1.0
 
-smoothing_type: 3
+smoothing_type: file
 fwhmarcmin: [440.0, 440.0]
 apply_pixwin: false
 beam_file: 'scripts/beam_440TP_pixwin16.fits'

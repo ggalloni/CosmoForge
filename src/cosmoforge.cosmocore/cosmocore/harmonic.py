@@ -540,7 +540,7 @@ class BeamManager:
         self._beam_dict = {}
 
     def compute_beams(
-        self, lmax: int, nside: int, smoothtype: int, fwhmarcmin: float, beam_file: str
+        self, lmax: int, nside: int, smoothtype: str, fwhmarcmin: float, beam_file: str
     ) -> dict[str, np.ndarray]:
         """
         Compute beam functions based on smoothing type.
@@ -551,12 +551,13 @@ class BeamManager:
             Maximum multipole
         nside : int
             HEALPix nside parameter
-        smoothtype : int
-            Type of smoothing (0=none, 1=Gaussian, 2=cosine, 3=file)
+        smoothtype : str
+            Type of smoothing: ``"none"``, ``"gaussian"``, ``"cosine"``,
+            or ``"file"``.
         fwhmarcmin : float
             FWHM in arcminutes for Gaussian beam
         beam_file : str
-            Path to beam file for smoothtype=3
+            Path to beam file for smoothtype="file"
 
         Returns:
         --------
@@ -565,9 +566,9 @@ class BeamManager:
         """
         import healpy as hp
 
-        if smoothtype == 0:
+        if smoothtype == "none":
             beam = np.ones((3, lmax - 1), dtype=np.float64)
-        elif smoothtype == 1:
+        elif smoothtype == "gaussian":
             # fwhmarcmin in arcminutes → fwhm_rad
             beam = np.array(
                 hp.gauss_beam(np.deg2rad(fwhmarcmin / 60.0), lmax=lmax + 1, pol=True)[
@@ -575,10 +576,10 @@ class BeamManager:
                 ],
                 dtype=np.float64,
             ).T
-        elif smoothtype == 2:
+        elif smoothtype == "cosine":
             b = coswinbeam(nside)[2 : lmax + 1]
             beam = np.column_stack([b] * 3).T
-        elif smoothtype == 3:
+        elif smoothtype == "file":
             # Beam file must contain at least 3 columns: T, E, B window functions.
             # Additional columns (e.g., cross-terms like T-E, T-B) are ignored
             # as they are not needed for power spectrum smoothing.
@@ -590,7 +591,7 @@ class BeamManager:
                 )
             beam = np.column_stack([bls[i][2 : lmax + 1] for i in range(3)]).T
         else:
-            raise ValueError(f"Unknown smoothtype={smoothtype}")
+            raise ValueError(f"Unknown smoothtype='{smoothtype}'")
 
         if beam.shape[0] != 3 or beam.shape[1] != lmax - 1:
             raise ValueError(
@@ -618,7 +619,7 @@ class BeamManager:
             Configuration object containing beam parameters including:
             - lmax: Maximum multipole
             - nside: HEALPix resolution parameter
-            - smoothing_type: Type of beam (0=none, 1=Gaussian, 2=cosine, 3=file)
+            - smoothing_type: Type of beam ("none", "gaussian", "cosine", "file")
             - fwhmarcmin: FWHM in arcminutes (for Gaussian beams)
             - beam_file: Path to beam file (for custom beams)
         lmax : int, optional
