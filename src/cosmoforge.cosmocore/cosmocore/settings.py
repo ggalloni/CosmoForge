@@ -194,6 +194,7 @@ class InputParams:
         self.outnoisecovmat2 = "outputs/reducedNCVM2.bin"
         self.calibration = 1.0
         self.load_inverted = False
+        self.load_reduced = False
         self.output_geometry_file = "outputs/geometry.dat"
         self.smoothing_type = 2
         self.apply_pixwin = True

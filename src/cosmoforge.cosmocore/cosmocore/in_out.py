@@ -99,6 +99,30 @@ def read_covmat(covmatfile, npix, nmaps, active, C):
     return C
 
 
+def read_covmat_reduced(covmatfile, C):
+    """
+    Read a pre-reduced covariance matrix from binary file.
+
+    Parameters
+    ----------
+    covmatfile : str
+        Path to binary file containing the reduced covariance matrix
+        (active pixels only).
+    C : numpy.ndarray
+        Output array of shape (n_active, n_active) to store the matrix.
+
+    Returns
+    -------
+    numpy.ndarray
+        Filled covariance matrix C.
+    """
+    ntot = C.shape[0]
+    data = np.fromfile(covmatfile.strip(), dtype=np.float64)
+    data = data.reshape((ntot, ntot))
+    C[:] = data
+    return C
+
+
 def write_covmat_reduced(outcovmatfile, C):
     """
     Write reduced covariance matrix to binary file.
