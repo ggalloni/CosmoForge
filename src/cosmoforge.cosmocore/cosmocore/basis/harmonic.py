@@ -51,6 +51,14 @@ class HarmonicBasis(ComputationBasis):
         Maximum multipole for harmonic expansion.
     beam : numpy.ndarray or None, optional
         Beam window function B_ℓ for ℓ=2 to lmax.
+    compress : bool, optional
+        If True, use m-block compression for K inversion.
+        Approximates K as block-diagonal in azimuthal quantum number |m|,
+        giving ~lmax^2 speedup. Default is False.
+    delta_m : int, optional
+        Bandwidth for m-block coupling. delta_m=0 means block-diagonal
+        (no coupling between different |m|). delta_m=lmax recovers exact
+        result. Default is 0.
 
     Examples
     --------
@@ -66,6 +74,50 @@ class HarmonicBasis(ComputationBasis):
     .. [1] Tegmark, M. "How to measure CMB power spectra without losing information"
        Phys. Rev. D 55, 5895 (1997)
     """
+
+    def __init__(
+        self,
+        N: np.ndarray,
+        N_inv: np.ndarray,
+        theta: np.ndarray | tuple[np.ndarray, ...],
+        phi: np.ndarray | tuple[np.ndarray, ...],
+        lmax: int,
+        beam: np.ndarray | None = None,
+        spins: list[int] | None = None,
+        lswitch_low: int | None = None,
+        lswitch_high: int | None = None,
+        fiducial_C_ell: np.ndarray | None = None,
+        S_fixed: np.ndarray | None = None,
+        compress: bool = False,
+        delta_m: int = 0,
+    ):
+        super().__init__(
+            N=N,
+            N_inv=N_inv,
+            theta=theta,
+            phi=phi,
+            lmax=lmax,
+            beam=beam,
+            spins=spins,
+            lswitch_low=lswitch_low,
+            lswitch_high=lswitch_high,
+            fiducial_C_ell=fiducial_C_ell,
+            S_fixed=S_fixed,
+        )
+        self._compress = compress
+        self._delta_m = delta_m
+
+        if self._compress:
+            # Multi-field + compress not yet supported
+            if self.n_components > 1:
+                raise NotImplementedError(
+                    "m-block compression is only supported for single-field "
+                    "spin-0 configurations. Multi-field support will be added later."
+                )
+            if any(s != 0 for s in self._spins):
+                raise NotImplementedError(
+                    "m-block compression is only supported for spin-0 fields."
+                )
 
     @property
     def method(self) -> str:

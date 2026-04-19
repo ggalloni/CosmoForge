@@ -409,6 +409,8 @@ class Core(ABC):
         C_ell: np.ndarray | None = None,
         lmax: int | None = None,
         use_smw_optimization: bool = True,
+        compress: bool = False,
+        delta_m: int = 0,
     ):
         """
         Create and configure a compression instance for SMW-based operations.
@@ -595,6 +597,8 @@ class Core(ABC):
             lswitch_low=lswitch_low,
             lswitch_high=lswitch_high,
             S_fixed=S_fixed,
+            compress=compress,
+            delta_m=delta_m,
         )
 
         # Build harmonic operator and precompute SMW components
