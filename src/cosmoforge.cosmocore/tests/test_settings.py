@@ -1,5 +1,8 @@
 """Test settings and configuration functionality from cosmocore."""
 
+import warnings
+
+import pytest
 import yaml
 
 from cosmocore import InputParams
@@ -157,3 +160,123 @@ def test_field_expansion_compatibility():
     assert params.physical_labels == ["T", "Q", "U"]
     assert params.nfields == 3
     assert params.nspectra == 6
+
+
+# =========================================================================
+# Ordering normalization tests
+# =========================================================================
+
+
+class TestNormalizeOrdering:
+    """Tests for InputParams._normalize_ordering()."""
+
+    def test_string_ring_case_insensitive(self):
+        assert InputParams._normalize_ordering("RING") == "RING"
+        assert InputParams._normalize_ordering("ring") == "RING"
+        assert InputParams._normalize_ordering("Ring") == "RING"
+        assert InputParams._normalize_ordering(" ring ") == "RING"
+
+    def test_string_nested_case_insensitive(self):
+        assert InputParams._normalize_ordering("NESTED") == "NESTED"
+        assert InputParams._normalize_ordering("nested") == "NESTED"
+        assert InputParams._normalize_ordering("Nested") == "NESTED"
+
+    def test_string_invalid_raises(self):
+        with pytest.raises(ValueError, match="Unknown ordering"):
+            InputParams._normalize_ordering("GALACTIC")
+
+    def test_legacy_int_ring(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            # 0 maps to RING
+            assert InputParams._normalize_ordering(0) == "RING"
+            # Any value != 1 maps to RING
+            assert InputParams._normalize_ordering(2) == "RING"
+
+    def test_legacy_int_nested(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            assert InputParams._normalize_ordering(1) == "NESTED"
+
+    def test_legacy_int_emits_deprecation_warning(self):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            InputParams._normalize_ordering(0)
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "deprecated" in str(w[0].message).lower()
+
+    def test_invalid_type_raises(self):
+        with pytest.raises(TypeError, match="ordering must be str or int"):
+            InputParams._normalize_ordering([1, 2])
+
+    def test_update_normalizes_ordering(self):
+        params = InputParams()
+        params.update({"ordering": "nested"})
+        assert params.ordering == "NESTED"
+
+
+# =========================================================================
+# Smoothing-type normalization tests
+# =========================================================================
+
+
+class TestNormalizeSmoothingType:
+    """Tests for InputParams._normalize_smoothing_type()."""
+
+    @pytest.mark.parametrize(
+        "input_val,expected",
+        [
+            ("none", "none"),
+            ("NONE", "none"),
+            ("None", "none"),
+            ("gaussian", "gaussian"),
+            ("GAUSSIAN", "gaussian"),
+            ("Gaussian", "gaussian"),
+            ("cosine", "cosine"),
+            ("COSINE", "cosine"),
+            ("file", "file"),
+            ("FILE", "file"),
+        ],
+    )
+    def test_string_case_insensitive(self, input_val, expected):
+        assert InputParams._normalize_smoothing_type(input_val) == expected
+
+    def test_string_with_whitespace(self):
+        assert InputParams._normalize_smoothing_type(" cosine ") == "cosine"
+
+    def test_string_invalid_raises(self):
+        with pytest.raises(ValueError, match="Unknown smoothing_type"):
+            InputParams._normalize_smoothing_type("hamming")
+
+    @pytest.mark.parametrize(
+        "int_val,expected",
+        [(0, "none"), (1, "gaussian"), (2, "cosine"), (3, "file")],
+    )
+    def test_legacy_int_codes(self, int_val, expected):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            assert InputParams._normalize_smoothing_type(int_val) == expected
+
+    def test_legacy_int_invalid_raises(self):
+        with pytest.raises(ValueError, match="Unknown smoothing_type"):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                InputParams._normalize_smoothing_type(5)
+
+    def test_legacy_int_emits_deprecation_warning(self):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            InputParams._normalize_smoothing_type(2)
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "deprecated" in str(w[0].message).lower()
+
+    def test_invalid_type_raises(self):
+        with pytest.raises(TypeError, match="smoothing_type must be str or int"):
+            InputParams._normalize_smoothing_type({"type": "cosine"})
+
+    def test_update_normalizes_smoothing_type(self):
+        params = InputParams()
+        params.update({"smoothing_type": "GAUSSIAN"})
+        assert params.smoothing_type == "gaussian"
