@@ -21,19 +21,19 @@ CosmoCore serves as the base layer for all cosmological computations in CosmoFor
 
 ## Key Components
 
-### Compression
+### Computation Basis
 
 Two computation basis methods for efficient Fisher matrix and QML estimation:
 
-- **`HarmonicBasis`** (Tegmark-like): Direct transformation to harmonic space (n_pix -> n_modes). Fast when n_modes << n_pix.
-- **`PixelBasis`** (Gjerlow-like): Pixel-space projector with eigenvalue compression (n_pix -> n_kept). Supports multiple compression bases and per-field threshold tuning.
-- **`create_computation_basis`**: Factory function for creating compression instances by name.
+- **`HarmonicBasis`** (Tegmark-like): Direct transformation to harmonic space (n_pix -> n_modes). Fast when n_modes << n_pix. Supports optional m-block compression (`compress=True`) that approximates K as block-diagonal in azimuthal number m, giving ~lmax^2 speedup.
+- **`PixelBasis`** (Gjerlow-like): Pixel-space projector with eigenvalue truncation (n_pix -> n_kept). Supports multiple basis choices and per-field threshold tuning.
+- **`create_computation_basis`**: Factory function for creating basis instances by name.
 
 Both methods support:
 
 - **Multi-field**: Multiple components with independent sky coverage and noise
 - **Spin-2 polarization**: E/B mode decomposition with spin-weighted spherical harmonics
-- **Per-field eigenspectrum inspection**: `compute_eigenspectrum_per_field()` for choosing compression thresholds, with E/B breakdown for spin-2 fields
+- **Per-field eigenspectrum inspection**: `compute_eigenspectrum_per_field()` for choosing eigenmode thresholds, with E/B breakdown for spin-2 fields
 - **Visualization**: `plot_eigenvalue_spectrum()` and `plot_eigenvalue_comparison()` with per-component subplots
 
 ### Fields
@@ -76,20 +76,20 @@ pip install -e /path/to/CosmoForge
 
 ## Usage
 
-### Compression Workflow
+### Computation Basis Workflow
 
 ```python
 from cosmocore.basis import PixelBasis
 import numpy as np
 
-# Set up compression
+# Set up pixel basis
 ppc = PixelBasis(N, N_inv, theta, phi, lmax=100)
 ppc.setup()
 
 # Inspect per-field eigenspectra to choose thresholds
 fig, axes = ppc.plot_eigenvalue_spectrum(basis="noise_weighted")
 
-# Apply compression with chosen threshold
+# Apply eigenmode truncation with chosen threshold
 ppc.apply_compression(epsilon=1e-4, basis="noise_weighted")
 
 # Compute Fisher matrix
@@ -209,7 +209,7 @@ cosmocore/
 │   ├── geometry.py          #   Rotation angles and coordinate transforms
 │   ├── indexing.py          #   Spectrum index utilities
 │   └── smw.py               #   Sherman-Morrison-Woodbury formula
-└── basis/             # Data compression for Fisher/QML
+└── basis/             # Computation basis for Fisher/QML
     ├── base.py              #   Abstract base class and SMW types
     ├── harmonic_basis.py    #   Harmonic basis builder (V operator, Lambda)
     ├── harmonic.py          #   HarmonicBasis (Tegmark-like)
@@ -238,7 +238,9 @@ def legendre_unified(cos_theta, lmax, pl_00, pl_02, pl_22):
 
 - NumPy/BLAS vectorization for matrix operations
 - Precomputed derivative diagonals for O(l^2) Fisher computation
-- Block-diagonal structure exploited for multi-field compression
+- Block-diagonal structure exploited for multi-field computation
+- M-block compression: block-diagonal K in azimuthal number m for ~lmax^2 speedup
+- Field block-diagonal K: automatic detection and exploitation when fields are independent
 
 ## Testing
 
