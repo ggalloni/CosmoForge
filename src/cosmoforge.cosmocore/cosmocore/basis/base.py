@@ -415,6 +415,82 @@ class ComputationBasis(ABC):
         """
         pass
 
+    # === Field block-diagonal detection ===
+
+    def _detect_field_blocks(
+        self,
+        C_ell_dict: dict,
+    ) -> list[list[int]]:
+        """Detect independent field groups from signal spectra and noise structure.
+
+        When cross-spectra are absent between field groups and noise is
+        independent per field group, K is exactly block-diagonal across
+        field groups.  Inverting each block independently is exact and faster.
+
+        The coupling is determined by the *signal* (Lambda from C_ell_dict)
+        and noise structure, not by which derivatives are requested.
+
+        Parameters
+        ----------
+        C_ell_dict : dict
+            Power spectrum dictionary with 2-tuple ``(comp_i, comp_j)`` or
+            3-tuple ``(comp_i, comp_j, mode)`` keys.  Any cross-component
+            entry couples those components.
+
+        Returns
+        -------
+        list of list of int
+            Groups of component indices that are coupled.  E.g.
+            ``[[0], [1]]`` for two independent fields,
+            ``[[0, 1]]`` for two coupled fields.
+        """
+        if self.n_components <= 1:
+            return [[0]] if self.n_components == 1 else []
+
+        # Build adjacency from C_ell_dict keys (cross-spectra couple components)
+        adj: dict[int, set[int]] = {i: set() for i in range(self.n_components)}
+        for key in C_ell_dict:
+            ci, cj = key[0], key[1]
+            if ci != cj:
+                adj[ci].add(cj)
+                adj[cj].add(ci)
+
+        # Check noise off-diagonal blocks for pairs not already coupled
+        for ci in range(self.n_components):
+            for cj in range(ci + 1, self.n_components):
+                if cj in adj[ci]:
+                    continue  # already coupled by spectra
+                # Extract off-diagonal noise block
+                ri = self._pix_offsets[ci]
+                re = self._pix_offsets[ci + 1]
+                ci_start = self._pix_offsets[cj]
+                ci_end = self._pix_offsets[cj + 1]
+                N_block = self._N[ri:re, ci_start:ci_end]
+                if np.any(np.abs(N_block) > 1e-30):
+                    adj[ci].add(cj)
+                    adj[cj].add(ci)
+
+        # BFS to find connected components
+        visited: set[int] = set()
+        groups: list[list[int]] = []
+        for start in range(self.n_components):
+            if start in visited:
+                continue
+            group: list[int] = []
+            queue = [start]
+            while queue:
+                node = queue.pop(0)
+                if node in visited:
+                    continue
+                visited.add(node)
+                group.append(node)
+                for neighbor in sorted(adj[node]):
+                    if neighbor not in visited:
+                        queue.append(neighbor)
+            groups.append(sorted(group))
+
+        return groups
+
     # === Shared implementations ===
 
     def get_compressed_inverse(self, C_ell) -> np.ndarray:
