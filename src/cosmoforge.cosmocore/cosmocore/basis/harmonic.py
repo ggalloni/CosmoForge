@@ -581,7 +581,64 @@ class HarmonicBasis(ComputationBasis):
 
         return fisher
 
-    def get_projected_inverse(self, C_ell):
+    def _get_projected_inverse_field_blocks(
+        self, C_ell_dict: dict, field_groups: list[list[int]]
+    ) -> np.ndarray:
+        """Compute V C^{-1} V^T exploiting field block-diagonal K.
+
+        When K is block-diagonal across field groups, each group's block
+        can be inverted independently.  The result is assembled into the
+        full ``n_modes_total x n_modes_total`` matrix (with zeros in
+        cross-group blocks).
+
+        Parameters
+        ----------
+        C_ell_dict : dict
+            Power spectrum dictionary (multi-field).
+        field_groups : list of list of int
+            Independent field groups from ``_detect_field_blocks``.
+
+        Returns
+        -------
+        numpy.ndarray
+            Projected inverse of shape ``(n_modes_total, n_modes_total)``.
+        """
+        lambda_matrix = self._build_lambda_matrix(C_ell_dict)
+
+        n_total = self.n_modes_total
+        result = np.zeros((n_total, n_total), dtype=np.float64)
+
+        for group in field_groups:
+            # Collect mode indices for this group
+            mode_indices = []
+            for comp in group:
+                start = self._mode_offsets[comp]
+                end = self._mode_offsets[comp + 1]
+                mode_indices.extend(range(start, end))
+            mode_indices = np.array(mode_indices, dtype=int)
+            ix = np.ix_(mode_indices, mode_indices)
+
+            # Extract sub-blocks of V_Ninv_VT and Lambda
+            M_block = self._V_Ninv_VT[ix]
+            Lambda_block = lambda_matrix[ix]
+
+            # Build K = Lambda_inv + M for this group
+            Lambda_reg = Lambda_block + np.eye(len(mode_indices)) * 1e-20
+            Lambda_inv_block = matrix_inverse_symm(np.asfortranarray(Lambda_reg))
+            K_block = Lambda_inv_block + M_block
+
+            # Invert K for this group
+            K_block_inv = matrix_inverse_symm(np.asfortranarray(K_block), overwrite=True)
+
+            # SMW result for this group: M - M K^{-1} M
+            block_result = M_block - matrix_mult(
+                matrix_mult(M_block, K_block_inv), M_block
+            )
+            result[ix] = block_result
+
+        return result
+
+    def get_projected_inverse(self, C_ell, field_groups=None):
         """
         Compute V C^{-1} V^T efficiently using SMW formula.
 
@@ -589,6 +646,10 @@ class HarmonicBasis(ComputationBasis):
         ----------
         C_ell : numpy.ndarray or dict
             Power spectrum. Can be array (single-field) or dict (multi-field).
+        field_groups : list of list of int or None, optional
+            Independent field groups from ``_detect_field_blocks``.
+            If provided and contains more than one group, exploits
+            field block-diagonal structure for faster K inversion.
 
         Returns
         -------
@@ -618,6 +679,10 @@ class HarmonicBasis(ComputationBasis):
                     return self._V_Ninv_VT - matrix_mult(
                         matrix_mult(self._V_Ninv_VT, kernel_inv), self._V_Ninv_VT
                     )
+
+            # Use field block-diagonal optimization if applicable
+            if field_groups is not None and len(field_groups) > 1:
+                return self._get_projected_inverse_field_blocks(C_ell, field_groups)
 
             K, _ = self._build_smw_kernel(C_ell)
             kernel_inv = matrix_inverse_symm(np.asfortranarray(K), overwrite=True)
@@ -958,7 +1023,9 @@ class HarmonicBasis(ComputationBasis):
         n_spec = len(spectra_list)
         fisher = np.zeros((n_spec * n_ell, n_spec * n_ell))
 
-        V_Cinv_VT = self.get_projected_inverse(C_ell)
+        # Detect field block-diagonal structure for faster K inversion
+        field_groups = self._detect_field_blocks(C_ell)
+        V_Cinv_VT = self.get_projected_inverse(C_ell, field_groups=field_groups)
 
         VCinvVT_E = {}
         for spec_idx, spec_entry in enumerate(spectra_list):
