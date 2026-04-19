@@ -390,16 +390,14 @@ class TestHarmonicBasisValidation:
             "C_ell": C_ell,
         }
 
-    def _build_signal_covariance_direct(self, V, C_ell, lmax):
+    def _build_signal_covariance_direct(self, V, C_ell, lmax, ell_to_modes):
         """Build signal covariance S = V^T Λ V directly."""
         n_modes = V.shape[0]
         Lambda_diag = np.zeros(n_modes)
-        idx = 0
         for ell in range(2, lmax + 1):
-            n_m = 2 * ell + 1
             c_ell_value = C_ell[ell - 2] if ell - 2 < len(C_ell) else 0.0
-            Lambda_diag[idx : idx + n_m] = c_ell_value
-            idx += n_m
+            for idx in ell_to_modes[ell]:
+                Lambda_diag[idx] = c_ell_value
         Lambda = np.diag(Lambda_diag)
         return V.T @ Lambda @ V
 
@@ -420,7 +418,9 @@ class TestHarmonicBasisValidation:
         V = hc._V.copy()
         C_ell = setup["C_ell"]
 
-        S = self._build_signal_covariance_direct(V, C_ell, setup["lmax"])
+        S = self._build_signal_covariance_direct(
+            V, C_ell, setup["lmax"], hc._ell_to_modes
+        )
         C_direct = setup["N"] + S
         C_inv_direct = np.linalg.inv(C_direct)
 
@@ -445,7 +445,9 @@ class TestHarmonicBasisValidation:
         V = hc._V.copy()
         C_ell = setup["C_ell"]
 
-        S = self._build_signal_covariance_direct(V, C_ell, setup["lmax"])
+        S = self._build_signal_covariance_direct(
+            V, C_ell, setup["lmax"], hc._ell_to_modes
+        )
         C_direct = setup["N"] + S
         _, logdet_direct = np.linalg.slogdet(C_direct)
 
@@ -470,7 +472,9 @@ class TestHarmonicBasisValidation:
         V = hc._V.copy()
         C_ell = setup["C_ell"]
 
-        S = self._build_signal_covariance_direct(V, C_ell, setup["lmax"])
+        S = self._build_signal_covariance_direct(
+            V, C_ell, setup["lmax"], hc._ell_to_modes
+        )
         C_full = setup["N"] + S
 
         C_inv_smw = hc.get_inverse(C_ell)
@@ -502,7 +506,9 @@ class TestHarmonicBasisValidation:
         data = np.random.normal(0, 1, setup["n_pix"])
 
         # Direct computation: d^T @ C^{-1} @ d
-        S = self._build_signal_covariance_direct(V, C_ell, setup["lmax"])
+        S = self._build_signal_covariance_direct(
+            V, C_ell, setup["lmax"], hc._ell_to_modes
+        )
         C_direct = setup["N"] + S
         C_inv_direct = np.linalg.inv(C_direct)
         quad_form_direct = float(data.T @ C_inv_direct @ data)

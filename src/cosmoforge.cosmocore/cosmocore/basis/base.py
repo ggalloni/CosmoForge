@@ -255,6 +255,8 @@ class ComputationBasis(ABC):
         self._V_blocks = None
         self._ell_to_modes = None
         self._ell_to_modes_local = None
+        self._m_to_modes = None
+        self._m_to_modes_local = None
         self._derivative_diagonals = None
         self._derivative_diagonals_local = None
         self.n_kept = self.n_modes_total if self.n_components > 1 else self.n_modes
@@ -280,6 +282,8 @@ class ComputationBasis(ABC):
         self._V_blocks = self._harmonic_basis._V_blocks
         self._ell_to_modes = self._harmonic_basis._ell_to_modes
         self._ell_to_modes_local = self._harmonic_basis._ell_to_modes_local
+        self._m_to_modes = self._harmonic_basis._m_to_modes
+        self._m_to_modes_local = self._harmonic_basis._m_to_modes_local
         self._derivative_diagonals = self._harmonic_basis._derivative_diagonals
         self._derivative_diagonals_local = (
             self._harmonic_basis._derivative_diagonals_local
