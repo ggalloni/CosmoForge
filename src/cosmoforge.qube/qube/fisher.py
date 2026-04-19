@@ -111,6 +111,7 @@ class Fisher(Core):
         self,
         params_file: str | None = None,
         compression: dict | None = None,
+        cache_derivatives: bool = True,
         **kwargs,
     ):
         """
@@ -129,6 +130,11 @@ class Fisher(Core):
             - basis : str (for pixel_projected: "harmonic", "noise_weighted", etc.)
             - mode_fraction : float (alternative to epsilon)
 
+        cache_derivatives : bool, optional
+            Whether to cache binned derivative matrices for later reuse
+            (e.g. by Spectra). Default is True. Set to False to reduce
+            memory usage when derivatives are not needed after Fisher
+            computation.
         **kwargs : dict
             Additional keyword arguments passed to Core.
         """
@@ -141,6 +147,9 @@ class Fisher(Core):
 
         # Compression config
         self._compression_config = compression
+
+        # Derivative caching
+        self._cache_derivatives = cache_derivatives
 
         # Initialize attributes
         self.signal_matrix = None
@@ -261,15 +270,17 @@ class Fisher(Core):
         else:
             C_inv = self.noise_cov1
 
-        # Precompute C⁻¹ dC^b for each bin (cache dC^b for Spectra reuse)
+        # Precompute C⁻¹ dC^b for each bin (optionally cache dC^b for Spectra reuse)
         cinv_times_dcb = {}
-        self._cached_binned_derivatives = {}
+        if self._cache_derivatives:
+            self._cached_binned_derivatives = {}
         deriv_start = time.time()
         for bin_idx in range(nbins):
             dC_b = self.get_binned_derivative_matrix(
                 bin_idx, beam_smoothing=self.beam_smoothing[: self.n_ell]
             )
-            self._cached_binned_derivatives[bin_idx] = dC_b
+            if self._cache_derivatives:
+                self._cached_binned_derivatives[bin_idx] = dC_b
             cinv_times_dcb[bin_idx] = matrix_mult(C_inv, dC_b)
             if self.rank == 0:
                 elapsed = time.time() - deriv_start
@@ -423,24 +434,24 @@ class Fisher(Core):
                 C_inv = self.noise_cov1
 
         # Precompute binned derivatives and C⁻¹ dC^b products
-        # (cache derivatives for Spectra reuse)
+        # (optionally cache derivatives for Spectra reuse)
+        # Use (spectrum_idx, bin_idx) keys throughout to avoid duplicate storage
         binned_derivatives = {}
-        self._cached_binned_derivatives_multi = {}
         cinv_times_dcb = {}
         deriv_start = time.time()
         for param_idx in range(n_params):
             spectrum_idx = param_idx // nbins
             bin_idx = param_idx % nbins
+            key = (spectrum_idx, bin_idx)
             binned_deriv = self._get_binned_derivative_multi(
                 bin_idx, spectrum_idx, spectra_list
             )
-            binned_derivatives[param_idx] = binned_deriv
-            self._cached_binned_derivatives_multi[(spectrum_idx, bin_idx)] = binned_deriv
+            binned_derivatives[key] = binned_deriv
 
             if use_compression or not self.params.do_cross:
-                cinv_times_dcb[param_idx] = matrix_mult(C_inv, binned_deriv)
+                cinv_times_dcb[key] = matrix_mult(C_inv, binned_deriv)
             else:
-                cinv_times_dcb[param_idx] = matrix_mult(
+                cinv_times_dcb[key] = matrix_mult(
                     C_inv2, matrix_mult(binned_deriv, C_inv1)
                 )
 
@@ -461,10 +472,15 @@ class Fisher(Core):
                 level=3,
             )
 
+        # Assign cache after precomputation loop (just a reference, no copy)
+        if self._cache_derivatives:
+            self._cached_binned_derivatives_multi = binned_derivatives
+
         # F_{ij} = (1/2) Tr[(C⁻¹ dC^i)(C⁻¹ dC^j)]
         trace_start = time.time()
         counter = 0
         for param_i in range(n_params):
+            key_i = (param_i // nbins, param_i % nbins)
             for param_j in range(param_i, n_params):
                 counter += 1
                 if not (
@@ -473,13 +489,14 @@ class Fisher(Core):
                 ):
                     continue
 
+                key_j = (param_j // nbins, param_j % nbins)
                 if use_compression or not self.params.do_cross:
                     fisher_val = 0.5 * matrix_trace(
-                        cinv_times_dcb[param_i], cinv_times_dcb[param_j]
+                        cinv_times_dcb[key_i], cinv_times_dcb[key_j]
                     )
                 else:
                     fisher_val = 0.5 * matrix_trace(
-                        binned_derivatives[param_j], cinv_times_dcb[param_i]
+                        binned_derivatives[key_j], cinv_times_dcb[key_i]
                     )
 
                 fisher_local[param_i, param_j] = fisher_val
