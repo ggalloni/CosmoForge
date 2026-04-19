@@ -179,7 +179,7 @@ root_filename: "dls"
 
 ```yaml
 # Beam parameters
-smoothing_type: 1  # 0=none, 1=Gaussian, 2=cosine, 3=file
+smoothing_type: gaussian  # none, gaussian, cosine, file
 fwhmarcmin: 5.0
 beam_file: "data/beam.fits"
 apply_pixwin: true

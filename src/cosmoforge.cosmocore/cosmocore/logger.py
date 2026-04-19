@@ -17,20 +17,22 @@ from pathlib import Path
 import healpy as hp
 import numpy as np
 
+# Custom log levels between NOTSET (0) and DEBUG (10).
+# Levels must be > 0 to avoid collision with logging.NOTSET,
+# which has special "no filtering" semantics in Python's logging.
+VERY_VERBOSE = 7
+DEBUG_DETAILS = 4
+ULTRA_VERBOSE = 1
+
 # Feedback to logging level mapping
 FEEDBACK_TO_LOG_LEVEL = {
     0: logging.CRITICAL + 10,  # Silent (above CRITICAL)
     1: logging.INFO,  # Normal output
     2: logging.DEBUG,  # Verbose output
-    3: logging.DEBUG - 5,  # Very verbose (custom level)
-    4: logging.DEBUG - 10,  # Debug details (custom level)
-    5: logging.DEBUG - 15,  # Ultra-verbose (custom level)
+    3: VERY_VERBOSE,  # Very verbose (custom level)
+    4: DEBUG_DETAILS,  # Debug details (custom level)
+    5: ULTRA_VERBOSE,  # Ultra-verbose (custom level)
 }
-
-# Define custom log levels
-VERY_VERBOSE = logging.DEBUG - 5
-DEBUG_DETAILS = logging.DEBUG - 10
-ULTRA_VERBOSE = logging.DEBUG - 15
 
 # Add custom levels to logging
 logging.addLevelName(VERY_VERBOSE, "VERBOSE")

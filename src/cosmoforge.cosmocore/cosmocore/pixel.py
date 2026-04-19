@@ -117,8 +117,8 @@ def compute_pointings(
         Each array has shape (n_active).
     active : numpy.ndarray or tuple
         Active pixel indices for each field.
-    ordering : int
-        HEALPix pixel ordering scheme (0 for RING, 1 for NESTED).
+    ordering : str
+        HEALPix pixel ordering: ``"RING"`` or ``"NESTED"``.
 
     Returns
     -------
@@ -137,7 +137,9 @@ def compute_pointings(
         ntemp = npixs[field_idx]
 
         for i in range(ntemp):
-            theta, phi = hp.pix2ang(nside, active[field_idx, i], nest=(ordering == 1))
+            theta, phi = hp.pix2ang(
+                nside, active[field_idx, i], nest=(ordering == "NESTED")
+            )
             x = np.sin(theta) * np.cos(phi)
             y = np.sin(theta) * np.sin(phi)
             z = np.cos(theta)

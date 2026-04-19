@@ -730,3 +730,49 @@ def test_setup_compression_validation():
     core.phi = (np.array([1.0]),)
     with pytest.raises(ValueError, match="Covariance matrices must be set up"):
         core.setup_compression()
+
+
+def test_setup_covariance_matrices_load_reduced():
+    """Test that load_reduced=True uses read_covmat_reduced and applies calibration."""
+    params = InputParams()
+    params.nside = 32
+    params.lmax = 64
+    params.nfields = 1
+    params.spins = [0]
+    params.labels = ["T"]
+    params.ordering = "RING"
+    params.calibration = 2.0
+    params.do_cross = False
+    params.load_reduced = True
+
+    # Create FITS mask file
+    with tempfile.NamedTemporaryFile(suffix=".fits", delete=False) as mask_file:
+        npix = 12 * params.nside**2
+        mask = np.ones(npix, dtype=np.float64)
+        mask[: npix // 2] = 0.0
+        hp.write_map(mask_file.name, mask, overwrite=True)
+        params.maskfile = mask_file.name
+
+    with (
+        patch("cosmocore.core.read_covmat_reduced") as mock_read_reduced,
+        patch("cosmocore.core.read_covmat") as mock_read_full,
+    ):
+        n_active = int(np.sum(mask > 0.5))
+        mock_cov = np.eye(n_active) * 0.1
+        mock_read_reduced.return_value = mock_cov
+        params.covmatfile1 = "dummy_reduced.dat"
+
+        try:
+            core = ConcreteCore(params)
+            core.setup_fields()
+            core.setup_geometry()
+            ncov1, ncov2 = core.setup_covariance_matrices()
+
+            # read_covmat_reduced should be called, not read_covmat
+            mock_read_reduced.assert_called_once()
+            mock_read_full.assert_not_called()
+
+            # Calibration should be applied (calibration=2.0 -> factor 4.0)
+            np.testing.assert_allclose(np.diag(ncov1), 0.1 * 4.0, rtol=1e-12)
+        finally:
+            Path(params.maskfile).unlink()

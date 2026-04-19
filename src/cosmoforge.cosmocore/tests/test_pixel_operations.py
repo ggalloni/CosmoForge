@@ -20,7 +20,7 @@ def test_compute_pointings():
 
     # Test RING ordering
     result, _, _ = compute_pointings(
-        nside, npixs, point_vectors, theta_vectors, phi_vectors, active_pixels, 0
+        nside, npixs, point_vectors, theta_vectors, phi_vectors, active_pixels, "RING"
     )
 
     # Check that we get normalized unit vectors
@@ -43,7 +43,7 @@ def test_compute_pointings():
         theta_vectors_nested,
         phi_vectors_nested,
         active_pixels,
-        1,
+        "NESTED",
     )
 
     # Should be different from RING (in general)

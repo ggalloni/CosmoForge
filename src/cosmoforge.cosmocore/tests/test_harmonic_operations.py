@@ -205,7 +205,7 @@ def test_beam_manager_beam_computation():
 
     # Test compute_beams method with simple Gaussian beam
     fwhm_arcmin = 5.0
-    smoothtype = 1  # Gaussian beam
+    smoothtype = "gaussian"
 
     try:
         beam_mgr.compute_beams(smoothtype=smoothtype, lmax=lmax, fwhmarcmin=fwhm_arcmin)
@@ -259,7 +259,7 @@ def test_beam_spectra_manager_integration():
 
     try:
         # Compute beams
-        beam_mgr.compute_beams(smoothtype=1, lmax=lmax, fwhmarcmin=5.0)
+        beam_mgr.compute_beams(smoothtype="gaussian", lmax=lmax, fwhmarcmin=5.0)
 
         # Apply beam smoothing to spectra
         beam_mgr.apply_smoothing(spectra_mgr)
@@ -318,10 +318,10 @@ def test_beam_manager_coswin_beam():
     lmax = fields[0].lmax
     nside = fields[0].nside
 
-    # Test smoothtype=2 (cosine window beam)
+    # Test cosine window beam
     try:
         beam_mgr.compute_beams(
-            lmax=lmax, nside=nside, smoothtype=2, fwhmarcmin=5.0, beam_file=""
+            lmax=lmax, nside=nside, smoothtype="cosine", fwhmarcmin=5.0, beam_file=""
         )
 
         # If successful, check that beams were computed
@@ -346,12 +346,12 @@ def test_beam_manager_file_beam():
     lmax = fields[0].lmax
     nside = fields[0].nside
 
-    # Test smoothtype=3 (file input) with invalid file (covers lines 581-583)
+    # Test file beam with invalid file
     try:
         beam_mgr.compute_beams(
             lmax=lmax,
             nside=nside,
-            smoothtype=3,
+            smoothtype="file",
             fwhmarcmin=5.0,
             beam_file="nonexistent_file.txt",
         )
@@ -360,10 +360,10 @@ def test_beam_manager_file_beam():
         # Expected - file doesn't exist or format is wrong
         pass
 
-    # Test invalid smoothtype (covers lines 584-585)
+    # Test invalid smoothtype
     try:
         beam_mgr.compute_beams(
-            lmax=lmax, nside=nside, smoothtype=999, fwhmarcmin=5.0, beam_file=""
+            lmax=lmax, nside=nside, smoothtype="invalid", fwhmarcmin=5.0, beam_file=""
         )
         assert False, "Should have raised ValueError for invalid smoothtype"
     except ValueError as e:
@@ -377,10 +377,10 @@ def test_beam_manager_shape_validation():
     lmax = fields[0].lmax
     nside = fields[0].nside
 
-    # Test smoothtype=0 (unity beam) which should always work
+    # Test no-smoothing (unity beam) which should always work
     try:
         result = beam_mgr.compute_beams(
-            lmax=lmax, nside=nside, smoothtype=0, fwhmarcmin=5.0, beam_file=""
+            lmax=lmax, nside=nside, smoothtype="none", fwhmarcmin=5.0, beam_file=""
         )
 
         # Check that result has expected shape - this exercises the validation

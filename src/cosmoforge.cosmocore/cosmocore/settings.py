@@ -86,8 +86,13 @@ class InputParams:
         Whether to apply smoothing to polarization fields.
     calibration : float
         Overall calibration factor for maps.
-    ordering : int
-        HEALPix map ordering (1=RING, 2=NESTED).
+    load_reduced : bool
+        If True, read noise covariance matrices that have already been reduced
+        to active pixels (via ``read_covmat_reduced``) instead of extracting
+        the active-pixel sub-block from a full-sky covariance (via ``read_covmat``).
+        Default is False.
+    ordering : str
+        HEALPix map ordering: ``"RING"`` or ``"NESTED"``.
     input_convention : str
         Power spectrum convention of input files: ``"Cl"`` (default) or ``"Dl"``.
         When set to ``"Dl"``, input spectra are converted from
@@ -194,8 +199,12 @@ class InputParams:
         self.outnoisecovmat2 = "outputs/reducedNCVM2.bin"
         self.calibration = 1.0
         self.load_inverted = False
+        # When True, noise covariance files are already reduced to active
+        # pixels and can be read directly with read_covmat_reduced(), skipping
+        # the full-sky extraction step performed by read_covmat().
+        self.load_reduced = False
         self.output_geometry_file = "outputs/geometry.dat"
-        self.smoothing_type = 2
+        self.smoothing_type = "cosine"
         self.apply_pixwin = True
         self.smooth_pol = True
         self.fwhmarcmin = 440.0
@@ -205,7 +214,7 @@ class InputParams:
         self.bin_lmins = None
         self.bin_lmaxs = None
         self.outfilefisher = "outputs/fisher.dat"
-        self.ordering = 1
+        self.ordering = "RING"
 
         self.nsims = None
         self.inputmapfile1 = ""
@@ -260,6 +269,76 @@ class InputParams:
         self.auto_idxs = np.array(
             [spec2idx(spec, spec, self.nfields) for spec in range(self.nfields)]
         )
+
+    @staticmethod
+    def _normalize_ordering(value):
+        """Normalize ordering to ``"RING"`` or ``"NESTED"``.
+
+        Accepts strings (case-insensitive) or legacy integer codes.
+        Legacy integers are accepted for backward compatibility:
+        the code convention is 0=RING, 1=NESTED (matching the
+        ``nest`` flag in HEALPix), and existing configs use 2 for RING
+        (where any value != 1 maps to RING).
+        """
+        if isinstance(value, str):
+            canonical = {"ring": "RING", "nested": "NESTED"}
+            key = value.strip().lower()
+            if key not in canonical:
+                raise ValueError(
+                    f"Unknown ordering '{value}'. Must be 'RING' or 'NESTED'."
+                )
+            return canonical[key]
+        if isinstance(value, (int, float)):
+            import warnings
+
+            warnings.warn(
+                f"Integer ordering={value} is deprecated. "
+                "Use 'RING' or 'NESTED' instead.",
+                DeprecationWarning,
+                stacklevel=4,
+            )
+            return "NESTED" if int(value) == 1 else "RING"
+        raise TypeError(f"ordering must be str or int, got {type(value).__name__}")
+
+    @staticmethod
+    def _normalize_smoothing_type(value):
+        """Normalize smoothing_type to a string.
+
+        Accepts strings (case-insensitive) or legacy integer codes
+        (0=none, 1=gaussian, 2=cosine, 3=file).
+        """
+        if isinstance(value, str):
+            canonical = {
+                "none": "none",
+                "gaussian": "gaussian",
+                "cosine": "cosine",
+                "file": "file",
+            }
+            key = value.strip().lower()
+            if key not in canonical:
+                raise ValueError(
+                    f"Unknown smoothing_type '{value}'. "
+                    "Must be 'none', 'gaussian', 'cosine', or 'file'."
+                )
+            return canonical[key]
+        if isinstance(value, (int, float)):
+            import warnings
+
+            int_to_str = {0: "none", 1: "gaussian", 2: "cosine", 3: "file"}
+            iv = int(value)
+            if iv not in int_to_str:
+                raise ValueError(
+                    f"Unknown smoothing_type={iv}. Integer codes: "
+                    "0=none, 1=gaussian, 2=cosine, 3=file."
+                )
+            warnings.warn(
+                f"Integer smoothing_type={iv} is deprecated. "
+                f"Use '{int_to_str[iv]}' instead.",
+                DeprecationWarning,
+                stacklevel=4,
+            )
+            return int_to_str[iv]
+        raise TypeError(f"smoothing_type must be str or int, got {type(value).__name__}")
 
     def _expand_concatenated_fields(self, field_labels):
         """
@@ -332,6 +411,10 @@ class InputParams:
                 if key in ("labels", "physical_labels") and isinstance(value, list):
                     expanded_value = self._expand_concatenated_fields(value)
                     setattr(self, key, expanded_value)
+                elif key == "ordering":
+                    setattr(self, key, self._normalize_ordering(value))
+                elif key == "smoothing_type":
+                    setattr(self, key, self._normalize_smoothing_type(value))
                 else:
                     setattr(self, key, value)
 

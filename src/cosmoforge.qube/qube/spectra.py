@@ -644,6 +644,9 @@ class Spectra(Core):
         """
         Compute binned derivative dC^b = Sum_ell w_{b,ell} b²_ell dC^ell.
 
+        If a Fisher instance with cached derivatives is available, returns
+        the cached result directly, avoiding expensive recomputation.
+
         Parameters
         ----------
         bin_idx : int
@@ -659,6 +662,21 @@ class Spectra(Core):
             Binned derivative matrix, shape (n_pix, n_pix) or
             (n_modes, n_modes) if compression is enabled.
         """
+        # Try to use cached derivatives from Fisher
+        if hasattr(self, "fisher_instance") and self.fisher_instance is not None:
+            fisher = self.fisher_instance
+            # Single-spectrum cache
+            if hasattr(fisher, "_cached_binned_derivatives"):
+                cache = fisher._cached_binned_derivatives
+                if bin_idx in cache:
+                    return cache[bin_idx]
+            # Multi-spectrum cache
+            if hasattr(fisher, "_cached_binned_derivatives_multi"):
+                cache = fisher._cached_binned_derivatives_multi
+                key = (spectrum_idx, bin_idx)
+                if key in cache:
+                    return cache[key]
+
         use_compression = (
             hasattr(self, "compression_manager") and self.compression_manager is not None
         )

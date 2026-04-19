@@ -33,7 +33,14 @@ from .fields import (
     FieldCollection,
     create_field,
 )
-from .in_out import output_geometry, read_covmat, read_mask, readcl, write_covmat_reduced
+from .in_out import (
+    output_geometry,
+    read_covmat,
+    read_covmat_reduced,
+    read_mask,
+    readcl,
+    write_covmat_reduced,
+)
 from .pixel import compute_pointings
 from .settings import InputParams
 
@@ -287,16 +294,25 @@ class Core(ABC):
         shape = (concatenate_pixact.shape[0], concatenate_pixact.shape[0])
         self.noise_cov1 = np.empty(shape, dtype=np.float64)
 
-        self.noise_cov1 = (
-            read_covmat(
-                self.params.covmatfile1,
-                npix,
-                self.params.nfields,
-                concatenate_pixact,
-                self.noise_cov1,
+        if self.params.load_reduced:
+            self.noise_cov1 = (
+                read_covmat_reduced(
+                    self.params.covmatfile1,
+                    self.noise_cov1,
+                )
+                * self.params.calibration**2
             )
-            * self.params.calibration**2
-        )
+        else:
+            self.noise_cov1 = (
+                read_covmat(
+                    self.params.covmatfile1,
+                    npix,
+                    self.params.nfields,
+                    concatenate_pixact,
+                    self.noise_cov1,
+                )
+                * self.params.calibration**2
+            )
 
         if hasattr(self.params, "outnoisecovmat1"):
             write_covmat_reduced(
@@ -307,16 +323,25 @@ class Core(ABC):
         self.noise_cov2 = None
         if self.params.do_cross:
             self.noise_cov2 = np.empty(shape, dtype=np.float64)
-            self.noise_cov2 = (
-                read_covmat(
-                    self.params.covmatfile2,
-                    npix,
-                    self.params.nfields,
-                    concatenate_pixact,
-                    self.noise_cov2,
+            if self.params.load_reduced:
+                self.noise_cov2 = (
+                    read_covmat_reduced(
+                        self.params.covmatfile2,
+                        self.noise_cov2,
+                    )
+                    * self.params.calibration**2
                 )
-                * self.params.calibration**2
-            )
+            else:
+                self.noise_cov2 = (
+                    read_covmat(
+                        self.params.covmatfile2,
+                        npix,
+                        self.params.nfields,
+                        concatenate_pixact,
+                        self.noise_cov2,
+                    )
+                    * self.params.calibration**2
+                )
 
             if hasattr(self.params, "outnoisecovmat2"):
                 write_covmat_reduced(
