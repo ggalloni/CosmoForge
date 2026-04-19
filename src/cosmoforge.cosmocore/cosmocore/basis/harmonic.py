@@ -355,8 +355,8 @@ class HarmonicBasis(ComputationBasis):
     def _get_projected_inverse_mblock(self, C_ell):
         """Compute V C^{-1} V^T block by block using SMW formula.
 
-        For each m-block, constructs K_m = Lambda_m^{-1} + M_m and inverts
-        it independently. The result is stored as a dict of blocks, one per m.
+        For delta_m=0 (block-diagonal): each m-block is independent.
+        Returns dict mapping m -> block matrix.
 
         Parameters
         ----------
@@ -377,18 +377,105 @@ class HarmonicBasis(ComputationBasis):
             M_m = self._vninvvt_blocks[(m, m)]
             lambda_inv_m = lambda_inv_diag[modes]
 
-            # K_m = diag(lambda_inv_m) + M_m
             K_m = M_m.copy()
             K_m[np.diag_indices_from(K_m)] += lambda_inv_m
 
-            # Invert K_m
             K_m_inv = matrix_inverse_symm(np.asfortranarray(K_m), overwrite=True)
 
-            # V C^{-1} V^T block = M_m - M_m @ K_m^{-1} @ M_m
             MKM = M_m @ K_m_inv @ M_m
             result_blocks[m] = M_m - MKM
 
         return result_blocks
+
+    def _get_projected_inverse_mblock_banded(self, C_ell):
+        """Compute full V C^{-1} V^T using banded m-block K.
+
+        Groups m-values into coupled sets within delta_m bandwidth,
+        builds combined K for each group, inverts, and places entries
+        into the full n_modes x n_modes result matrix.
+
+        Parameters
+        ----------
+        C_ell : numpy.ndarray
+            Power spectrum values for ell = 2 to lmax.
+
+        Returns
+        -------
+        numpy.ndarray
+            Full projected inverse matrix (n_modes, n_modes).
+        """
+        Lambda_diag = self._build_lambda_diagonal(C_ell)
+        lambda_inv_diag = np.where(Lambda_diag > 1e-30, 1.0 / Lambda_diag, 1e30)
+
+        m_values = sorted(self._m_to_modes.keys())
+        max_m = max(m_values)
+
+        # Build groups of coupled m-values via BFS
+        assigned = set()
+        groups = []
+        for m in m_values:
+            if m in assigned:
+                continue
+            group = []
+            queue = [m]
+            while queue:
+                current = queue.pop(0)
+                if current in assigned or current not in self._m_to_modes:
+                    continue
+                assigned.add(current)
+                group.append(current)
+                for neighbor in range(
+                    max(0, current - self._delta_m),
+                    min(max_m, current + self._delta_m) + 1,
+                ):
+                    if neighbor not in assigned and neighbor in self._m_to_modes:
+                        queue.append(neighbor)
+            groups.append(sorted(group))
+
+        n = self.n_modes
+        result = np.zeros((n, n), dtype=np.float64)
+
+        for group in groups:
+            # Build combined mode list
+            combined_modes = []
+            group_offsets = {}
+            for mg in group:
+                group_offsets[mg] = len(combined_modes)
+                combined_modes.extend(self._m_to_modes[mg])
+
+            n_combined = len(combined_modes)
+
+            # Assemble combined M matrix
+            M_combined = np.zeros((n_combined, n_combined), dtype=np.float64)
+            for mi in group:
+                oi = group_offsets[mi]
+                ni = len(self._m_to_modes[mi])
+                for mj in group:
+                    if (mi, mj) not in self._vninvvt_blocks:
+                        continue
+                    oj = group_offsets[mj]
+                    nj = len(self._m_to_modes[mj])
+                    M_combined[oi : oi + ni, oj : oj + nj] = self._vninvvt_blocks[
+                        (mi, mj)
+                    ]
+
+            # K = Lambda_inv + M
+            K_combined = M_combined.copy()
+            K_combined[np.diag_indices_from(K_combined)] += lambda_inv_diag[
+                combined_modes
+            ]
+
+            K_combined_inv = matrix_inverse_symm(
+                np.asfortranarray(K_combined), overwrite=True
+            )
+
+            result_combined = M_combined - M_combined @ K_combined_inv @ M_combined
+
+            # Place full combined result into output matrix
+            ix = np.ix_(combined_modes, combined_modes)
+            result[ix] = result_combined
+
+        return result
 
     def _assemble_full_from_blocks(self, blocks):
         """Assemble full matrix from m-block dict (zeros in off-block positions).
@@ -411,6 +498,89 @@ class HarmonicBasis(ComputationBasis):
             result[ix] = block
         return result
 
+    def _compute_fisher_mblock(self, C_ell, ell_min, ell_max):
+        """Compute Fisher matrix using m-block projected inverse.
+
+        For delta_m=0 (block-diagonal), computes Fisher directly from
+        independent m-blocks. For delta_m>0, assembles the full projected
+        inverse from banded blocks and uses the standard Fisher path.
+
+        Parameters
+        ----------
+        C_ell : numpy.ndarray
+            Power spectrum values for ell = 2 to lmax.
+        ell_min : int
+            Minimum multipole.
+        ell_max : int
+            Maximum multipole.
+
+        Returns
+        -------
+        numpy.ndarray
+            Fisher matrix of shape (n_ell, n_ell).
+        """
+        if self._delta_m > 0:
+            # For banded case, cross-block contributions matter for Fisher.
+            # Use full matrix from banded K inversion.
+            V_Cinv_VT = self._get_projected_inverse_mblock_banded(C_ell)
+            return self._compute_fisher_from_full(V_Cinv_VT, ell_min, ell_max)
+
+        # delta_m=0: block-diagonal, each m contributes independently
+        proj_inv_blocks = self._get_projected_inverse_mblock(C_ell)
+
+        n_ell = ell_max - ell_min + 1
+        fisher = np.zeros((n_ell, n_ell))
+
+        for m, block in proj_inv_blocks.items():
+            ell_local = self._mblock_ell_local_indices[m]
+            block_size = block.shape[0]
+
+            # Precompute block * E_diag for each ell in this m-block
+            block_E = {}
+            for ell, local_indices in ell_local.items():
+                if ell < ell_min or ell > ell_max:
+                    continue
+                E_diag_local = np.zeros(block_size)
+                for li in local_indices:
+                    E_diag_local[li] = 1.0
+                block_E[ell] = block * E_diag_local
+
+            # Fisher contribution: 0.5 * Tr[(block * E_i) @ (block * E_j)^T]
+            ells_in_block = sorted(block_E.keys())
+            for ii, ell_i in enumerate(ells_in_block):
+                idx_i = ell_i - ell_min
+                bEi = block_E[ell_i]
+                for ell_j in ells_in_block[ii:]:
+                    idx_j = ell_j - ell_min
+                    bEj = block_E[ell_j]
+                    val = np.sum(bEi * bEj.T)
+                    fisher[idx_i, idx_j] += 0.5 * val
+                    if idx_i != idx_j:
+                        fisher[idx_j, idx_i] += 0.5 * val
+
+        return fisher
+
+    def _compute_fisher_from_full(self, V_Cinv_VT, ell_min, ell_max):
+        """Compute Fisher matrix from full projected inverse (standard path)."""
+        n_ell = ell_max - ell_min + 1
+        fisher = np.zeros((n_ell, n_ell))
+
+        VCinvVT_E = {}
+        for ell in range(ell_min, ell_max + 1):
+            E_diag = self._derivative_diagonals[ell]
+            VCinvVT_E[ell] = V_Cinv_VT * E_diag
+
+        for ell_i in range(ell_min, ell_max + 1):
+            for ell_j in range(ell_i, ell_max + 1):
+                idx_i = ell_i - ell_min
+                idx_j = ell_j - ell_min
+                fisher_val = 0.5 * matrix_trace(VCinvVT_E[ell_i], VCinvVT_E[ell_j])
+                fisher[idx_i, idx_j] = fisher_val
+                if idx_i != idx_j:
+                    fisher[idx_j, idx_i] = fisher_val
+
+        return fisher
+
     def get_projected_inverse(self, C_ell):
         """
         Compute V C^{-1} V^T efficiently using SMW formula.
@@ -427,6 +597,8 @@ class HarmonicBasis(ComputationBasis):
         """
         # M-block compressed path (single-field array only)
         if self._compress and not isinstance(C_ell, dict):
+            if self._delta_m > 0:
+                return self._get_projected_inverse_mblock_banded(C_ell)
             blocks = self._get_projected_inverse_mblock(C_ell)
             return self._assemble_full_from_blocks(blocks)
 
@@ -732,9 +904,12 @@ class HarmonicBasis(ComputationBasis):
                 raise ValueError(
                     "spectra_list should be None for single-field (array) input"
                 )
-            # Call the base compute_fisher_matrix for single-field
             if ell_max is None:
                 ell_max = self.lmax
+
+            # Use m-block Fisher when compress is enabled
+            if self._compress:
+                return self._compute_fisher_mblock(C_ell, ell_min, ell_max)
 
             n_ell = ell_max - ell_min + 1
             fisher = np.zeros((n_ell, n_ell))
