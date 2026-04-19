@@ -57,13 +57,13 @@ from .basics import (
     matrix_trace,
     spec2idx,
 )
-from .bins import Bins
-from .compression import (
-    BaseCompression,
-    HarmonicCompression,
-    PixelProjectedCompression,
-    create_compression,
+from .basis import (
+    ComputationBasis,
+    HarmonicBasis,
+    PixelBasis,
+    create_computation_basis,
 )
+from .bins import Bins
 from .core import Core
 from .fields import (
     BaseField,
@@ -143,11 +143,11 @@ __all__ = [
     "Bins",
     # core
     "Core",
-    # compression
-    "BaseCompression",
-    "HarmonicCompression",
-    "PixelProjectedCompression",
-    "create_compression",
+    # basis
+    "ComputationBasis",
+    "HarmonicBasis",
+    "PixelBasis",
+    "create_computation_basis",
     # fields
     "BaseField",
     "FieldCollection",

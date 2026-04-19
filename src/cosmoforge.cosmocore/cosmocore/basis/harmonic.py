@@ -22,12 +22,12 @@ from ..basics import (
     smw_logdet,
     smw_quadratic_form,
 )
-from .base import BaseCompression, SMWPrepared
+from .base import ComputationBasis, SMWPrepared
 
 
-class HarmonicCompression(BaseCompression):
+class HarmonicBasis(ComputationBasis):
     """
-    Direct harmonic space compression (Tegmark-like).
+    Direct harmonic space computation basis (Tegmark-like).
 
     Transforms directly to n_modes dimensions via V. Fast and efficient
     when n_modes << n_pix. No additional eigenvalue compression.
@@ -51,13 +51,21 @@ class HarmonicCompression(BaseCompression):
         Maximum multipole for harmonic expansion.
     beam : numpy.ndarray or None, optional
         Beam window function B_ℓ for ℓ=2 to lmax.
+    compress : bool, optional
+        If True, use m-block compression for K inversion.
+        Approximates K as block-diagonal in azimuthal quantum number |m|,
+        giving ~lmax^2 speedup. Default is False.
+    delta_m : int, optional
+        Bandwidth for m-block coupling. delta_m=0 means block-diagonal
+        (no coupling between different |m|). delta_m=lmax recovers exact
+        result. Default is 0.
 
     Examples
     --------
     >>> import numpy as np
-    >>> from cosmocore.compression import HarmonicCompression
+    >>> from cosmocore.basis import HarmonicBasis
     >>> N_inv = np.diag(1.0 / noise_variance)
-    >>> hc = HarmonicCompression(N_inv, theta, phi, lmax=100)
+    >>> hc = HarmonicBasis(N_inv, theta, phi, lmax=100)
     >>> hc.setup()
     >>> fisher_element = hc.compute_fisher_element(C_ell, ell_i=10, ell_j=10)
 
@@ -66,6 +74,50 @@ class HarmonicCompression(BaseCompression):
     .. [1] Tegmark, M. "How to measure CMB power spectra without losing information"
        Phys. Rev. D 55, 5895 (1997)
     """
+
+    def __init__(
+        self,
+        N: np.ndarray,
+        N_inv: np.ndarray,
+        theta: np.ndarray | tuple[np.ndarray, ...],
+        phi: np.ndarray | tuple[np.ndarray, ...],
+        lmax: int,
+        beam: np.ndarray | None = None,
+        spins: list[int] | None = None,
+        lswitch_low: int | None = None,
+        lswitch_high: int | None = None,
+        fiducial_C_ell: np.ndarray | None = None,
+        S_fixed: np.ndarray | None = None,
+        compress: bool = False,
+        delta_m: int = 0,
+    ):
+        super().__init__(
+            N=N,
+            N_inv=N_inv,
+            theta=theta,
+            phi=phi,
+            lmax=lmax,
+            beam=beam,
+            spins=spins,
+            lswitch_low=lswitch_low,
+            lswitch_high=lswitch_high,
+            fiducial_C_ell=fiducial_C_ell,
+            S_fixed=S_fixed,
+        )
+        self._compress = compress
+        self._delta_m = delta_m
+
+        if self._compress:
+            # Multi-field + compress not yet supported
+            if self.n_components > 1:
+                raise NotImplementedError(
+                    "m-block compression is only supported for single-field "
+                    "spin-0 configurations. Multi-field support will be added later."
+                )
+            if any(s != 0 for s in self._spins):
+                raise NotImplementedError(
+                    "m-block compression is only supported for spin-0 fields."
+                )
 
     @property
     def method(self) -> str:
@@ -114,6 +166,9 @@ class HarmonicCompression(BaseCompression):
             self._compute_effective_noise()
 
         self._compute_smw_components()
+
+        if self._compress:
+            self._compute_mblock_smw_components()
 
     def _compute_effective_noise(self) -> None:
         """
@@ -250,7 +305,340 @@ class HarmonicCompression(BaseCompression):
             (buffer_size, buffer_size), dtype=np.float64, order="F"
         )
 
-    def get_projected_inverse(self, C_ell):
+    # =================================================================
+    # M-block compression
+    # =================================================================
+
+    def _compute_mblock_smw_components(self) -> None:
+        """Compute block-wise V N^{-1} V^T for m-block compression.
+
+        Instead of storing the full V N^{-1} V^T matrix, stores blocks
+        indexed by (mi, mj) pairs within the delta_m bandwidth.
+        The full V_N_inv is still computed for data projection.
+        """
+        m_to_modes = self._m_to_modes
+        max_m = max(m_to_modes.keys())
+
+        # Block-wise V_m N^{-1} V_{m'}^T
+        self._vninvvt_blocks = {}
+        for mi in sorted(m_to_modes.keys()):
+            V_mi_Ninv = self._V_N_inv[m_to_modes[mi], :]
+            for mj in range(
+                max(0, mi - self._delta_m), min(max_m, mi + self._delta_m) + 1
+            ):
+                if mj not in m_to_modes:
+                    continue
+                V_mj = self._V[m_to_modes[mj], :]
+                block = V_mi_Ninv @ V_mj.T
+                self._vninvvt_blocks[(mi, mj)] = block
+
+        # Build reverse mapping: global mode index -> (m, local_index)
+        self._mode_to_m_local = {}
+        for m, modes in m_to_modes.items():
+            for local_idx, global_idx in enumerate(modes):
+                self._mode_to_m_local[global_idx] = (m, local_idx)
+
+        # Build mapping: for each m-block, which local indices belong to each ell
+        self._mblock_ell_local_indices = {}
+        for m in sorted(m_to_modes.keys()):
+            modes = m_to_modes[m]
+            mode_set = set(modes)
+            mode_to_local = {g: i for i, g in enumerate(modes)}
+            ell_map = {}
+            for ell in range(self._lmin_smw, self._lmax_smw + 1):
+                ell_modes = self._ell_to_modes[ell]
+                local_indices = [mode_to_local[em] for em in ell_modes if em in mode_set]
+                if local_indices:
+                    ell_map[ell] = local_indices
+            self._mblock_ell_local_indices[m] = ell_map
+
+    def _get_projected_inverse_mblock(self, C_ell):
+        """Compute V C^{-1} V^T block by block using SMW formula.
+
+        For delta_m=0 (block-diagonal): each m-block is independent.
+        Returns dict mapping m -> block matrix.
+
+        Parameters
+        ----------
+        C_ell : numpy.ndarray
+            Power spectrum values for ell = 2 to lmax.
+
+        Returns
+        -------
+        dict
+            Mapping from m -> block matrix (V C^{-1} V^T restricted to m).
+        """
+        Lambda_diag = self._build_lambda_diagonal(C_ell)
+        lambda_inv_diag = np.where(Lambda_diag > 1e-30, 1.0 / Lambda_diag, 1e30)
+
+        result_blocks = {}
+        for m in sorted(self._m_to_modes.keys()):
+            modes = self._m_to_modes[m]
+            M_m = self._vninvvt_blocks[(m, m)]
+            lambda_inv_m = lambda_inv_diag[modes]
+
+            K_m = M_m.copy()
+            K_m[np.diag_indices_from(K_m)] += lambda_inv_m
+
+            K_m_inv = matrix_inverse_symm(np.asfortranarray(K_m), overwrite=True)
+
+            MKM = M_m @ K_m_inv @ M_m
+            result_blocks[m] = M_m - MKM
+
+        return result_blocks
+
+    def _get_projected_inverse_mblock_banded(self, C_ell):
+        """Compute full V C^{-1} V^T using banded m-block K.
+
+        Groups m-values into coupled sets within delta_m bandwidth,
+        builds combined K for each group, inverts, and places entries
+        into the full n_modes x n_modes result matrix.
+
+        Parameters
+        ----------
+        C_ell : numpy.ndarray
+            Power spectrum values for ell = 2 to lmax.
+
+        Returns
+        -------
+        numpy.ndarray
+            Full projected inverse matrix (n_modes, n_modes).
+        """
+        Lambda_diag = self._build_lambda_diagonal(C_ell)
+        lambda_inv_diag = np.where(Lambda_diag > 1e-30, 1.0 / Lambda_diag, 1e30)
+
+        m_values = sorted(self._m_to_modes.keys())
+        max_m = max(m_values)
+
+        # Build groups of coupled m-values via BFS
+        assigned = set()
+        groups = []
+        for m in m_values:
+            if m in assigned:
+                continue
+            group = []
+            queue = [m]
+            while queue:
+                current = queue.pop(0)
+                if current in assigned or current not in self._m_to_modes:
+                    continue
+                assigned.add(current)
+                group.append(current)
+                for neighbor in range(
+                    max(0, current - self._delta_m),
+                    min(max_m, current + self._delta_m) + 1,
+                ):
+                    if neighbor not in assigned and neighbor in self._m_to_modes:
+                        queue.append(neighbor)
+            groups.append(sorted(group))
+
+        n = self.n_modes
+        result = np.zeros((n, n), dtype=np.float64)
+
+        for group in groups:
+            # Build combined mode list
+            combined_modes = []
+            group_offsets = {}
+            for mg in group:
+                group_offsets[mg] = len(combined_modes)
+                combined_modes.extend(self._m_to_modes[mg])
+
+            n_combined = len(combined_modes)
+
+            # Assemble combined M matrix
+            M_combined = np.zeros((n_combined, n_combined), dtype=np.float64)
+            for mi in group:
+                oi = group_offsets[mi]
+                ni = len(self._m_to_modes[mi])
+                for mj in group:
+                    if (mi, mj) not in self._vninvvt_blocks:
+                        continue
+                    oj = group_offsets[mj]
+                    nj = len(self._m_to_modes[mj])
+                    M_combined[oi : oi + ni, oj : oj + nj] = self._vninvvt_blocks[
+                        (mi, mj)
+                    ]
+
+            # K = Lambda_inv + M
+            K_combined = M_combined.copy()
+            K_combined[np.diag_indices_from(K_combined)] += lambda_inv_diag[
+                combined_modes
+            ]
+
+            K_combined_inv = matrix_inverse_symm(
+                np.asfortranarray(K_combined), overwrite=True
+            )
+
+            result_combined = M_combined - M_combined @ K_combined_inv @ M_combined
+
+            # Place full combined result into output matrix
+            ix = np.ix_(combined_modes, combined_modes)
+            result[ix] = result_combined
+
+        return result
+
+    def _assemble_full_from_blocks(self, blocks):
+        """Assemble full matrix from m-block dict (zeros in off-block positions).
+
+        Parameters
+        ----------
+        blocks : dict
+            Mapping from m -> block matrix.
+
+        Returns
+        -------
+        numpy.ndarray
+            Full (n_modes, n_modes) matrix with blocks on diagonal.
+        """
+        n = self.n_modes
+        result = np.zeros((n, n), dtype=np.float64)
+        for m, block in blocks.items():
+            modes = self._m_to_modes[m]
+            ix = np.ix_(modes, modes)
+            result[ix] = block
+        return result
+
+    def _compute_fisher_mblock(self, C_ell, ell_min, ell_max):
+        """Compute Fisher matrix using m-block projected inverse.
+
+        For delta_m=0 (block-diagonal), computes Fisher directly from
+        independent m-blocks. For delta_m>0, assembles the full projected
+        inverse from banded blocks and uses the standard Fisher path.
+
+        Parameters
+        ----------
+        C_ell : numpy.ndarray
+            Power spectrum values for ell = 2 to lmax.
+        ell_min : int
+            Minimum multipole.
+        ell_max : int
+            Maximum multipole.
+
+        Returns
+        -------
+        numpy.ndarray
+            Fisher matrix of shape (n_ell, n_ell).
+        """
+        if self._delta_m > 0:
+            # For banded case, cross-block contributions matter for Fisher.
+            # Use full matrix from banded K inversion.
+            V_Cinv_VT = self._get_projected_inverse_mblock_banded(C_ell)
+            return self._compute_fisher_from_full(V_Cinv_VT, ell_min, ell_max)
+
+        # delta_m=0: block-diagonal, each m contributes independently
+        proj_inv_blocks = self._get_projected_inverse_mblock(C_ell)
+
+        n_ell = ell_max - ell_min + 1
+        fisher = np.zeros((n_ell, n_ell))
+
+        for m, block in proj_inv_blocks.items():
+            ell_local = self._mblock_ell_local_indices[m]
+            block_size = block.shape[0]
+
+            # Precompute block * E_diag for each ell in this m-block
+            block_E = {}
+            for ell, local_indices in ell_local.items():
+                if ell < ell_min or ell > ell_max:
+                    continue
+                E_diag_local = np.zeros(block_size)
+                for li in local_indices:
+                    E_diag_local[li] = 1.0
+                block_E[ell] = block * E_diag_local
+
+            # Fisher contribution: 0.5 * Tr[(block * E_i) @ (block * E_j)^T]
+            ells_in_block = sorted(block_E.keys())
+            for ii, ell_i in enumerate(ells_in_block):
+                idx_i = ell_i - ell_min
+                bEi = block_E[ell_i]
+                for ell_j in ells_in_block[ii:]:
+                    idx_j = ell_j - ell_min
+                    bEj = block_E[ell_j]
+                    val = np.sum(bEi * bEj.T)
+                    fisher[idx_i, idx_j] += 0.5 * val
+                    if idx_i != idx_j:
+                        fisher[idx_j, idx_i] += 0.5 * val
+
+        return fisher
+
+    def _compute_fisher_from_full(self, V_Cinv_VT, ell_min, ell_max):
+        """Compute Fisher matrix from full projected inverse (standard path)."""
+        n_ell = ell_max - ell_min + 1
+        fisher = np.zeros((n_ell, n_ell))
+
+        VCinvVT_E = {}
+        for ell in range(ell_min, ell_max + 1):
+            E_diag = self._derivative_diagonals[ell]
+            VCinvVT_E[ell] = V_Cinv_VT * E_diag
+
+        for ell_i in range(ell_min, ell_max + 1):
+            for ell_j in range(ell_i, ell_max + 1):
+                idx_i = ell_i - ell_min
+                idx_j = ell_j - ell_min
+                fisher_val = 0.5 * matrix_trace(VCinvVT_E[ell_i], VCinvVT_E[ell_j])
+                fisher[idx_i, idx_j] = fisher_val
+                if idx_i != idx_j:
+                    fisher[idx_j, idx_i] = fisher_val
+
+        return fisher
+
+    def _get_projected_inverse_field_blocks(
+        self, C_ell_dict: dict, field_groups: list[list[int]]
+    ) -> np.ndarray:
+        """Compute V C^{-1} V^T exploiting field block-diagonal K.
+
+        When K is block-diagonal across field groups, each group's block
+        can be inverted independently.  The result is assembled into the
+        full ``n_modes_total x n_modes_total`` matrix (with zeros in
+        cross-group blocks).
+
+        Parameters
+        ----------
+        C_ell_dict : dict
+            Power spectrum dictionary (multi-field).
+        field_groups : list of list of int
+            Independent field groups from ``_detect_field_blocks``.
+
+        Returns
+        -------
+        numpy.ndarray
+            Projected inverse of shape ``(n_modes_total, n_modes_total)``.
+        """
+        lambda_matrix = self._build_lambda_matrix(C_ell_dict)
+
+        n_total = self.n_modes_total
+        result = np.zeros((n_total, n_total), dtype=np.float64)
+
+        for group in field_groups:
+            # Collect mode indices for this group
+            mode_indices = []
+            for comp in group:
+                start = self._mode_offsets[comp]
+                end = self._mode_offsets[comp + 1]
+                mode_indices.extend(range(start, end))
+            mode_indices = np.array(mode_indices, dtype=int)
+            ix = np.ix_(mode_indices, mode_indices)
+
+            # Extract sub-blocks of V_Ninv_VT and Lambda
+            M_block = self._V_Ninv_VT[ix]
+            Lambda_block = lambda_matrix[ix]
+
+            # Build K = Lambda_inv + M for this group
+            Lambda_reg = Lambda_block + np.eye(len(mode_indices)) * 1e-20
+            Lambda_inv_block = matrix_inverse_symm(np.asfortranarray(Lambda_reg))
+            K_block = Lambda_inv_block + M_block
+
+            # Invert K for this group
+            K_block_inv = matrix_inverse_symm(np.asfortranarray(K_block), overwrite=True)
+
+            # SMW result for this group: M - M K^{-1} M
+            block_result = M_block - matrix_mult(
+                matrix_mult(M_block, K_block_inv), M_block
+            )
+            result[ix] = block_result
+
+        return result
+
+    def get_projected_inverse(self, C_ell, field_groups=None):
         """
         Compute V C^{-1} V^T efficiently using SMW formula.
 
@@ -258,12 +646,23 @@ class HarmonicCompression(BaseCompression):
         ----------
         C_ell : numpy.ndarray or dict
             Power spectrum. Can be array (single-field) or dict (multi-field).
+        field_groups : list of list of int or None, optional
+            Independent field groups from ``_detect_field_blocks``.
+            If provided and contains more than one group, exploits
+            field block-diagonal structure for faster K inversion.
 
         Returns
         -------
         numpy.ndarray
             Projected inverse covariance V C^{-1} V^T.
         """
+        # M-block compressed path (single-field array only)
+        if self._compress and not isinstance(C_ell, dict):
+            if self._delta_m > 0:
+                return self._get_projected_inverse_mblock_banded(C_ell)
+            blocks = self._get_projected_inverse_mblock(C_ell)
+            return self._assemble_full_from_blocks(blocks)
+
         # Handle both array and dict inputs
         if isinstance(C_ell, dict):
             # Multi-field path
@@ -280,6 +679,10 @@ class HarmonicCompression(BaseCompression):
                     return self._V_Ninv_VT - matrix_mult(
                         matrix_mult(self._V_Ninv_VT, kernel_inv), self._V_Ninv_VT
                     )
+
+            # Use field block-diagonal optimization if applicable
+            if field_groups is not None and len(field_groups) > 1:
+                return self._get_projected_inverse_field_blocks(C_ell, field_groups)
 
             K, _ = self._build_smw_kernel(C_ell)
             kernel_inv = matrix_inverse_symm(np.asfortranarray(K), overwrite=True)
@@ -566,9 +969,12 @@ class HarmonicCompression(BaseCompression):
                 raise ValueError(
                     "spectra_list should be None for single-field (array) input"
                 )
-            # Call the base compute_fisher_matrix for single-field
             if ell_max is None:
                 ell_max = self.lmax
+
+            # Use m-block Fisher when compress is enabled
+            if self._compress:
+                return self._compute_fisher_mblock(C_ell, ell_min, ell_max)
 
             n_ell = ell_max - ell_min + 1
             fisher = np.zeros((n_ell, n_ell))
@@ -617,7 +1023,9 @@ class HarmonicCompression(BaseCompression):
         n_spec = len(spectra_list)
         fisher = np.zeros((n_spec * n_ell, n_spec * n_ell))
 
-        V_Cinv_VT = self.get_projected_inverse(C_ell)
+        # Detect field block-diagonal structure for faster K inversion
+        field_groups = self._detect_field_blocks(C_ell)
+        V_Cinv_VT = self.get_projected_inverse(C_ell, field_groups=field_groups)
 
         VCinvVT_E = {}
         for spec_idx, spec_entry in enumerate(spectra_list):

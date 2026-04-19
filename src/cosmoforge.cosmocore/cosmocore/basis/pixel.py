@@ -19,7 +19,7 @@ import numpy as np
 from scipy.linalg import eigh
 
 from ..basics import matrix_inverse_symm, matrix_mult, matrix_trace
-from .base import BaseCompression, SMWPrepared
+from .base import ComputationBasis, SMWPrepared
 
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
@@ -33,7 +33,7 @@ COMPRESSION_BASES = {
 }
 
 
-class PixelProjectedCompression(BaseCompression):
+class PixelBasis(ComputationBasis):
     """
     Pixel-space compression with projector (Gjerløw-like).
 
@@ -45,7 +45,7 @@ class PixelProjectedCompression(BaseCompression):
     - Eigendecomposition of compression matrix to find optimal modes
     - Data compression: d_c = P @ d where P = U^T (n_kept × n_pix)
 
-    This approach is more flexible than HarmonicCompression because it allows
+    This approach is more flexible than HarmonicBasis because it allows
     custom projectors to handle systematics (foreground deprojection, etc.).
 
     Available compression bases (from Gjerløw et al. 2019):
@@ -95,10 +95,10 @@ class PixelProjectedCompression(BaseCompression):
     Examples
     --------
     >>> import numpy as np
-    >>> from cosmocore.compression import PixelProjectedCompression
+    >>> from cosmocore.basis import PixelBasis
     >>> N = np.diag(noise_variance)  # Noise covariance matrix
     >>> N_inv = np.diag(1.0 / noise_variance)
-    >>> ppc = PixelProjectedCompression(N, N_inv, theta, phi, lmax=100)
+    >>> ppc = PixelBasis(N, N_inv, theta, phi, lmax=100)
     >>> ppc.setup()
     >>> # Inspect eigenvalue spectrum to choose threshold
     >>> fig, axes = ppc.plot_eigenvalue_spectrum(basis="noise_weighted")
@@ -479,7 +479,7 @@ class PixelProjectedCompression(BaseCompression):
     @property
     def method(self) -> str:
         """Compression method name."""
-        return "pixel_projected"
+        return "pixel"
 
     @property
     def projector(self) -> np.ndarray:
@@ -827,7 +827,7 @@ class PixelProjectedCompression(BaseCompression):
 
         Examples
         --------
-        >>> ppc = PixelProjectedCompression(N, N_inv, theta, phi, lmax=100)
+        >>> ppc = PixelBasis(N, N_inv, theta, phi, lmax=100)
         >>> ppc.setup()
         >>> fig, axes = ppc.plot_eigenvalue_spectrum(basis="noise_weighted")
         >>> # From the plot, decide threshold (e.g., 1e-4)
@@ -1513,7 +1513,7 @@ class PixelProjectedCompression(BaseCompression):
 
         Examples
         --------
-        >>> PixelProjectedCompression.available_bases()
+        >>> PixelBasis.available_bases()
         {'harmonic': 'P_h = V^T V (pure harmonic projector)',
          'noise_weighted': 'P_h N^{-1} P_h (inverse noise weighting)',
          'total_covariance': 'P_h C^{-1} P_h (full covariance weighting, requires C_ell)',

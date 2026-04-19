@@ -3,7 +3,7 @@ Harmonic basis construction for compression methods.
 
 This module contains the HarmonicBasis class which encapsulates all spherical
 harmonic operator (V), Lambda matrix, and derivative matrix construction logic.
-It is an internal helper used by BaseCompression and its subclasses.
+It is an internal helper used by ComputationBasis and its subclasses.
 """
 
 from __future__ import annotations
@@ -13,18 +13,18 @@ import numpy as np
 from ..basics import legendre_plm, wigner_d_small
 
 
-class HarmonicBasis:
+class HarmonicBasisBuilder:
     """Builds and caches harmonic operator V, Lambda matrices, and derivative matrices.
 
-    This is an internal helper class owned by BaseCompression. It groups all
+    This is an internal helper class owned by ComputationBasis. It groups all
     the spherical harmonic basis construction code that was previously spread
-    across BaseCompression methods.
+    across ComputationBasis methods.
 
     Parameters
     ----------
-    parent : BaseCompression
+    parent : ComputationBasis
         Parent compression instance providing configuration. The following
-        attributes are read (all set during BaseCompression.__init__):
+        attributes are read (all set during ComputationBasis.__init__):
         _theta_tuple, _phi_tuple, _spins, n_components, lmax,
         _lmin_smw, _lmax_smw, _n_modes_base, _n_modes_per_component,
         _n_modes_per_component_list, n_modes, n_modes_total,
@@ -56,13 +56,16 @@ class HarmonicBasis:
         self._V_blocks = None
         self._ell_to_modes = None
         self._ell_to_modes_local = None
+        self._m_to_modes = None
+        self._m_to_modes_local = None
         self._derivative_diagonals = None
         self._derivative_diagonals_local = None
 
     def build(self) -> None:
-        """Build harmonic operator V, ell-mode mapping, and derivative diagonals."""
+        """Build harmonic operator V, mode mappings, and derivative diagonals."""
         self._build_harmonic_operator()
         self._build_ell_mode_mapping()
+        self._build_m_mode_mapping()
         self._precompute_derivative_diagonals()
 
     # =========================================================================
@@ -106,7 +109,12 @@ class HarmonicBasis:
     def _build_harmonic_operator_single(
         self, theta: np.ndarray, phi: np.ndarray
     ) -> np.ndarray:
-        """Build harmonic operator V for a single spin-0 component."""
+        """Build harmonic operator V for a single spin-0 component.
+
+        Modes are grouped by azimuthal quantum number |m|:
+        - m=0 block: one row per ell (ell=lmin..lmax)
+        - |m|>0 blocks: cos rows for all ell, then sin rows for all ell
+        """
         n_pix_comp = len(theta)
         cos_theta = np.cos(theta)
         sin_theta = np.sin(theta)
@@ -129,19 +137,25 @@ class HarmonicBasis:
             legendre_plm(cos_theta[ipix], sin_theta[ipix], plm)
 
             mode_idx = 0
+
+            # m=0 block: one row per ell
             for ell in range(lmin_v, lmax_v + 1):
-                base_idx = mode_idx
+                V[mode_idx, ipix] = plm[ell, 0]
+                mode_idx += 1
 
-                # m = 0
-                V[base_idx + ell, ipix] = plm[ell, 0]
-
-                # m > 0
-                for m in range(1, ell + 1):
-                    base = np.sqrt(2.0) * plm[ell, m]
-                    V[base_idx + ell + m, ipix] = base * cos_mphi[m, ipix]
-                    V[base_idx + ell - m, ipix] = base * sin_mphi[m, ipix]
-
-                mode_idx += 2 * ell + 1
+            # |m|>0 blocks
+            for abs_m in range(1, lmax_v + 1):
+                ell_start = max(abs_m, lmin_v)
+                # cos(|m|*phi) rows for all ell
+                for ell in range(ell_start, lmax_v + 1):
+                    base = np.sqrt(2.0) * plm[ell, abs_m]
+                    V[mode_idx, ipix] = base * cos_mphi[abs_m, ipix]
+                    mode_idx += 1
+                # sin(|m|*phi) rows for all ell
+                for ell in range(ell_start, lmax_v + 1):
+                    base = np.sqrt(2.0) * plm[ell, abs_m]
+                    V[mode_idx, ipix] = base * sin_mphi[abs_m, ipix]
+                    mode_idx += 1
 
         return V
 
@@ -152,6 +166,10 @@ class HarmonicBasis:
 
         V maps (Q, U) pixel data to (E, B) mode coefficients using
         spin-weighted spherical harmonics.
+
+        Modes are grouped by azimuthal quantum number |m|:
+        - m=0 block: one row per ell
+        - |m|>0 blocks: cos rows for all ell, then sin rows for all ell
 
         Returns V of shape (2 * n_modes, 2 * n_pix) where:
         - Rows 0:n_modes are E modes, rows n_modes:2*n_modes are B modes
@@ -180,47 +198,57 @@ class HarmonicBasis:
             sin_th = sin_theta[ipix]
 
             mode_idx = 0
+
+            # m=0 block: one row per ell
             for ell in range(lmin_v, lmax_v + 1):
                 scale_ell = np.sqrt((2 * ell + 1) / (4 * np.pi))
+                d_plus2 = wigner_d_small(ell, 0, 2, cos_th, sin_th)
+                d_minus2 = wigner_d_small(ell, 0, -2, cos_th, sin_th)
+                D_plus = d_minus2 + d_plus2
+                scale = scale_ell * 0.5
 
-                for m in range(-ell, ell + 1):
-                    abs_m = abs(m)
+                V[mode_idx, ipix] = scale * D_plus
+                V[mode_idx, n_pix + ipix] = 0.0
+                V[n_modes + mode_idx, ipix] = 0.0
+                V[n_modes + mode_idx, n_pix + ipix] = scale * D_plus
+                mode_idx += 1
 
+            # |m|>0 blocks
+            for abs_m in range(1, lmax_v + 1):
+                ell_start = max(abs_m, lmin_v)
+
+                # cos(|m|*phi) rows (corresponds to m>0 in old code)
+                for ell in range(ell_start, lmax_v + 1):
+                    scale_ell = np.sqrt((2 * ell + 1) / (4 * np.pi))
                     d_plus2 = wigner_d_small(ell, abs_m, 2, cos_th, sin_th)
                     d_minus2 = wigner_d_small(ell, abs_m, -2, cos_th, sin_th)
-
                     D_plus = d_minus2 + d_plus2
                     D_minus = d_minus2 - d_plus2
+                    scale = scale_ell * np.sqrt(2.0) * 0.5
+                    cm = cos_mphi[abs_m, ipix]
+                    sm = sin_mphi[abs_m, ipix]
 
-                    if m == 0:
-                        scale = scale_ell * 0.5
+                    V[mode_idx, ipix] = scale * D_plus * cm
+                    V[mode_idx, n_pix + ipix] = scale * D_minus * sm
+                    V[n_modes + mode_idx, ipix] = -scale * D_minus * sm
+                    V[n_modes + mode_idx, n_pix + ipix] = scale * D_plus * cm
+                    mode_idx += 1
 
-                        V[mode_idx, ipix] = scale * D_plus
-                        V[mode_idx, n_pix + ipix] = 0.0
+                # sin(|m|*phi) rows (corresponds to m<0 in old code)
+                for ell in range(ell_start, lmax_v + 1):
+                    scale_ell = np.sqrt((2 * ell + 1) / (4 * np.pi))
+                    d_plus2 = wigner_d_small(ell, abs_m, 2, cos_th, sin_th)
+                    d_minus2 = wigner_d_small(ell, abs_m, -2, cos_th, sin_th)
+                    D_plus = d_minus2 + d_plus2
+                    D_minus = d_minus2 - d_plus2
+                    scale = scale_ell * np.sqrt(2.0) * 0.5
+                    cm = cos_mphi[abs_m, ipix]
+                    sm = sin_mphi[abs_m, ipix]
 
-                        V[n_modes + mode_idx, ipix] = 0.0
-                        V[n_modes + mode_idx, n_pix + ipix] = scale * D_plus
-                    elif m > 0:
-                        scale = scale_ell * np.sqrt(2.0) * 0.5
-                        cm = cos_mphi[m, ipix]
-                        sm = sin_mphi[m, ipix]
-
-                        V[mode_idx, ipix] = scale * D_plus * cm
-                        V[mode_idx, n_pix + ipix] = scale * D_minus * sm
-
-                        V[n_modes + mode_idx, ipix] = -scale * D_minus * sm
-                        V[n_modes + mode_idx, n_pix + ipix] = scale * D_plus * cm
-                    else:  # m < 0
-                        scale = scale_ell * np.sqrt(2.0) * 0.5
-                        cm = cos_mphi[abs_m, ipix]
-                        sm = sin_mphi[abs_m, ipix]
-
-                        V[mode_idx, ipix] = scale * D_plus * sm
-                        V[mode_idx, n_pix + ipix] = -scale * D_minus * cm
-
-                        V[n_modes + mode_idx, ipix] = scale * D_minus * cm
-                        V[n_modes + mode_idx, n_pix + ipix] = scale * D_plus * sm
-
+                    V[mode_idx, ipix] = scale * D_plus * sm
+                    V[mode_idx, n_pix + ipix] = -scale * D_minus * cm
+                    V[n_modes + mode_idx, ipix] = scale * D_minus * cm
+                    V[n_modes + mode_idx, n_pix + ipix] = scale * D_plus * sm
                     mode_idx += 1
 
         return V
@@ -230,18 +258,71 @@ class HarmonicBasis:
     # =========================================================================
 
     def _build_ell_mode_mapping(self) -> None:
-        """Build mapping from multipole ell to mode indices."""
+        """Build mapping from multipole ell to mode indices.
+
+        With m-ordered modes, each ell's modes are scattered across m-blocks:
+        - One mode in the m=0 block (at position ell-lmin within the block)
+        - For each |m| from 1 to ell: two modes (cos and sin rows)
+        """
         self._ell_to_modes_local = {}
-        mode_idx = 0
-        for ell in range(self._lmin_smw, self._lmax_smw + 1):
-            n_m = 2 * ell + 1
-            self._ell_to_modes_local[ell] = list(range(mode_idx, mode_idx + n_m))
-            mode_idx += n_m
+        lmin_v = self._lmin_smw
+        lmax_v = self._lmax_smw
+
+        for ell in range(lmin_v, lmax_v + 1):
+            modes = []
+            # m=0: position within m=0 block
+            modes.append(ell - lmin_v)
+
+            # |m|>0: find position within each |m| block
+            block_offset = lmax_v - lmin_v + 1  # size of m=0 block
+            for abs_m in range(1, ell + 1):
+                ell_start = max(abs_m, lmin_v)
+                n_ell_m = lmax_v - ell_start + 1
+                pos_in_block = ell - ell_start
+                # cos row
+                modes.append(block_offset + pos_in_block)
+                # sin row
+                modes.append(block_offset + n_ell_m + pos_in_block)
+                block_offset += 2 * n_ell_m
+
+            self._ell_to_modes_local[ell] = modes
 
         if self.n_components == 1:
             self._ell_to_modes = self._ell_to_modes_local
         else:
             self._ell_to_modes = self._ell_to_modes_local
+
+    def _build_m_mode_mapping(self) -> None:
+        """Build mapping from azimuthal quantum number |m| to mode indices.
+
+        With m-ordered modes, each |m| block is contiguous:
+        - m=0 block: one row per ell (lmin..lmax)
+        - |m|>0 blocks: cos rows for all ell, then sin rows
+        """
+        self._m_to_modes_local = {}
+        mode_idx = 0
+        lmin_v = self._lmin_smw
+        lmax_v = self._lmax_smw
+
+        # m=0 block
+        n_ell_m0 = lmax_v - lmin_v + 1
+        self._m_to_modes_local[0] = list(range(mode_idx, mode_idx + n_ell_m0))
+        mode_idx += n_ell_m0
+
+        # |m|>0 blocks
+        for abs_m in range(1, lmax_v + 1):
+            ell_start = max(abs_m, lmin_v)
+            n_ell_m = lmax_v - ell_start + 1
+            if n_ell_m <= 0:
+                continue
+            block_size = 2 * n_ell_m  # cos + sin
+            self._m_to_modes_local[abs_m] = list(range(mode_idx, mode_idx + block_size))
+            mode_idx += block_size
+
+        if self.n_components == 1:
+            self._m_to_modes = self._m_to_modes_local
+        else:
+            self._m_to_modes = self._m_to_modes_local
 
     def _precompute_derivative_diagonals(self) -> None:
         """Precompute derivative matrix diagonals E_ell for multipoles in SMW range."""
@@ -342,15 +423,16 @@ class HarmonicBasis:
         """Build Lambda diagonal from C_ell values in the (ell,m) basis.
 
         The input C_ell values are assumed to already include all normalization
-        factors and beam smoothing from SpectraManager.
+        factors and beam smoothing from SpectraManager. Uses _ell_to_modes_local
+        to place values at the correct mode indices for the current ordering.
         """
+        if self._ell_to_modes_local is None:
+            self._build_ell_mode_mapping()
         Lambda_diag = np.zeros(self.n_modes)
-        idx = 0
         for ell in range(self._lmin_smw, self._lmax_smw + 1):
-            n_m = 2 * ell + 1
             c_ell_value = C_ell[ell - 2] if ell - 2 < len(C_ell) else 0.0
-            Lambda_diag[idx : idx + n_m] = c_ell_value
-            idx += n_m
+            for idx in self._ell_to_modes_local[ell]:
+                Lambda_diag[idx] = c_ell_value
         return Lambda_diag
 
     def _build_lambda_blocks(
@@ -400,25 +482,26 @@ class HarmonicBasis:
         For polarization, Lambda has 2x2 block structure at each (ell,m):
             Lambda_{ell,m} = | C_ell^EE  C_ell^EB |
                              | C_ell^EB  C_ell^BB |
+
+        Uses _ell_to_modes_local for correct mode index placement.
         """
+        if self._ell_to_modes_local is None:
+            self._build_ell_mode_mapping()
         n = self._n_modes_base
         Lambda = np.zeros((2 * n, 2 * n), dtype=np.float64)
 
-        idx = 0
         for ell in range(self._lmin_smw, self._lmax_smw + 1):
-            n_m = 2 * ell + 1
             c_ee = C_ell_EE[ell - 2] if ell - 2 < len(C_ell_EE) else 0.0
             c_bb = C_ell_BB[ell - 2] if ell - 2 < len(C_ell_BB) else 0.0
             c_eb = 0.0
             if C_ell_EB is not None and ell - 2 < len(C_ell_EB):
                 c_eb = C_ell_EB[ell - 2]
 
-            for _ in range(n_m):
+            for idx in self._ell_to_modes_local[ell]:
                 Lambda[idx, idx] = c_ee  # E-E block
                 Lambda[n + idx, n + idx] = c_bb  # B-B block
                 Lambda[idx, n + idx] = c_eb  # E-B block
                 Lambda[n + idx, idx] = c_eb  # B-E block
-                idx += 1
 
         return Lambda
 

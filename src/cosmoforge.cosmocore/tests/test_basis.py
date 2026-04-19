@@ -1,6 +1,6 @@
 """
-Tests for create_compression, compute_fisher_matrix, per-field thresholds,
-and PICSLike-compatible methods on PixelProjectedCompression.
+Tests for create_computation_basis, compute_fisher_matrix, per-field thresholds,
+and PICSLike-compatible methods on PixelBasis.
 """
 
 import numpy as np
@@ -9,14 +9,14 @@ from numpy.testing import assert_allclose
 
 
 class TestCreateCompression:
-    """Tests for the create_compression factory function."""
+    """Tests for the create_computation_basis factory function."""
 
     def test_harmonic_method(self, uniform_sky_setup):
-        """Test create_compression with harmonic method."""
-        from cosmocore.compression import create_compression
+        """Test create_computation_basis with harmonic method."""
+        from cosmocore.basis import create_computation_basis
 
         setup = uniform_sky_setup
-        cm = create_compression(
+        cm = create_computation_basis(
             method="harmonic",
             N=setup["N"],
             N_inv=setup["N_inv"],
@@ -31,13 +31,13 @@ class TestCreateCompression:
         assert cm.n_modes > 0
         assert cm.n_kept == cm.n_modes  # Harmonic keeps all modes
 
-    def test_pixel_projected_method(self, uniform_sky_setup):
-        """Test create_compression with pixel_projected method."""
-        from cosmocore.compression import create_compression
+    def test_pixel_method(self, uniform_sky_setup):
+        """Test create_computation_basis with pixel method."""
+        from cosmocore.basis import create_computation_basis
 
         setup = uniform_sky_setup
-        cm = create_compression(
-            method="pixel_projected",
+        cm = create_computation_basis(
+            method="pixel",
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -48,18 +48,18 @@ class TestCreateCompression:
 
         cm.setup()
 
-        assert cm.method == "pixel_projected"
+        assert cm.method == "pixel"
         assert cm.n_kept > 0
         assert cm.n_kept <= setup["n_pix"]
 
     def test_unknown_method_raises(self, uniform_sky_setup):
         """Test that unknown method raises error."""
-        from cosmocore.compression import create_compression
+        from cosmocore.basis import create_computation_basis
 
         setup = uniform_sky_setup
 
-        with pytest.raises(ValueError, match="Unknown compression method"):
-            create_compression(
+        with pytest.raises(ValueError, match="Unknown computation basis method"):
+            create_computation_basis(
                 method="invalid",
                 N=setup["N"],
                 N_inv=setup["N_inv"],
@@ -69,15 +69,15 @@ class TestCreateCompression:
             )
 
     def test_facade_delegates_correctly(self, uniform_sky_setup):
-        """Test that create_compression returns correct implementation."""
-        from cosmocore.compression import HarmonicCompression, create_compression
+        """Test that create_computation_basis returns correct implementation."""
+        from cosmocore.basis import HarmonicBasis, create_computation_basis
 
         setup = uniform_sky_setup
         n_ell = setup["lmax"] - 1
         C_ell = np.ones(n_ell) * 1e-6
 
         # Create both directly and via factory
-        cm = create_compression(
+        cm = create_computation_basis(
             method="harmonic",
             N=setup["N"],
             N_inv=setup["N_inv"],
@@ -87,7 +87,7 @@ class TestCreateCompression:
         )
         cm.setup()
 
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -105,13 +105,13 @@ class TestCreateCompression:
 
     def test_fisher_matrix_via_facade(self, uniform_sky_setup):
         """Test Fisher matrix computation via factory."""
-        from cosmocore.compression import create_compression
+        from cosmocore.basis import create_computation_basis
 
         setup = uniform_sky_setup
         n_ell = setup["lmax"] - 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        cm = create_compression(
+        cm = create_computation_basis(
             method="harmonic",
             N=setup["N"],
             N_inv=setup["N_inv"],
@@ -126,16 +126,16 @@ class TestCreateCompression:
         F_33 = fisher[3 - 2, 3 - 2]  # ell=3 is index 1
         assert F_33 > 0  # Diagonal should be positive
 
-    def test_pixel_projected_with_basis(self, uniform_sky_setup):
-        """Test pixel_projected with different basis."""
-        from cosmocore.compression import create_compression
+    def test_pixel_with_basis(self, uniform_sky_setup):
+        """Test pixel with different basis."""
+        from cosmocore.basis import create_computation_basis
 
         setup = uniform_sky_setup
         n_ell = setup["lmax"] - 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        cm = create_compression(
-            method="pixel_projected",
+        cm = create_computation_basis(
+            method="pixel",
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -156,14 +156,14 @@ class TestComputeFisherMatrix:
 
     def test_fisher_matrix_shape(self, uniform_sky_setup):
         """Test that compute_fisher_matrix returns correct shape."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = uniform_sky_setup
         lmax = setup["lmax"]
         n_ell = lmax - 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -178,14 +178,14 @@ class TestComputeFisherMatrix:
 
     def test_fisher_matrix_symmetric(self, uniform_sky_setup):
         """Test that compute_fisher_matrix produces symmetric result."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = uniform_sky_setup
         lmax = setup["lmax"]
         n_ell = lmax - 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -200,14 +200,14 @@ class TestComputeFisherMatrix:
 
     def test_fisher_matrix_positive_semidefinite(self, uniform_sky_setup):
         """Test that compute_fisher_matrix produces positive semi-definite matrix."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = uniform_sky_setup
         lmax = setup["lmax"]
         n_ell = lmax - 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -223,15 +223,15 @@ class TestComputeFisherMatrix:
         assert np.all(eigenvalues >= -1e-10)
 
     def test_fisher_matrix_via_manager(self, uniform_sky_setup):
-        """Test compute_fisher_matrix via create_compression factory."""
-        from cosmocore.compression import create_compression
+        """Test compute_fisher_matrix via create_computation_basis factory."""
+        from cosmocore.basis import create_computation_basis
 
         setup = uniform_sky_setup
         lmax = setup["lmax"]
         n_ell = lmax - 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        cm = create_compression(
+        cm = create_computation_basis(
             method="harmonic",
             N=setup["N"],
             N_inv=setup["N_inv"],
@@ -246,16 +246,16 @@ class TestComputeFisherMatrix:
         assert fisher.shape == (n_ell, n_ell)
         assert_allclose(fisher, fisher.T, rtol=1e-10)
 
-    def test_pixel_projected_fisher_matrix(self, uniform_sky_setup):
-        """Test compute_fisher_matrix with PixelProjectedCompression."""
-        from cosmocore.compression import PixelProjectedCompression
+    def test_pixel_fisher_matrix(self, uniform_sky_setup):
+        """Test compute_fisher_matrix with PixelBasis."""
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
         lmax = setup["lmax"]
         n_ell = lmax - 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -292,7 +292,7 @@ class TestPerFieldThreshold:
 
     def test_single_epsilon_backward_compatible(self):
         """Single float epsilon produces same results as per-field broadcast."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         np.random.seed(42)
         n_pix = 30
@@ -303,7 +303,7 @@ class TestPerFieldThreshold:
         N_inv = np.eye(n_pix) * 100.0
 
         # Scalar epsilon
-        ppc1 = PixelProjectedCompression(
+        ppc1 = PixelBasis(
             N,
             N_inv,
             theta,
@@ -315,7 +315,7 @@ class TestPerFieldThreshold:
         ppc1.setup()
 
         # List epsilon (1-element)
-        ppc2 = PixelProjectedCompression(
+        ppc2 = PixelBasis(
             N,
             N_inv,
             theta,
@@ -336,7 +336,7 @@ class TestPerFieldThreshold:
 
     def test_per_field_list_epsilon(self):
         """Two spin-0 fields with different epsilons → different n_kept per field."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         np.random.seed(42)
         n_pix_a = 25
@@ -350,7 +350,7 @@ class TestPerFieldThreshold:
         N_inv = np.eye(total_pix) * 100.0
 
         # Tight threshold for field 0, loose for field 1
-        ppc_split = PixelProjectedCompression(
+        ppc_split = PixelBasis(
             N,
             N_inv,
             (theta_a, theta_b),
@@ -362,7 +362,7 @@ class TestPerFieldThreshold:
         ppc_split.setup()
 
         # Uniform threshold
-        ppc_uniform = PixelProjectedCompression(
+        ppc_uniform = PixelBasis(
             N,
             N_inv,
             (theta_a, theta_b),
@@ -378,7 +378,7 @@ class TestPerFieldThreshold:
 
     def test_spin2_tuple_epsilon_eb_split(self):
         """Spin-2 field with tuple epsilon uses E/B split thresholding."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         np.random.seed(42)
         n_pix = 20
@@ -389,7 +389,7 @@ class TestPerFieldThreshold:
         N_inv = np.eye(2 * n_pix) * 100.0
 
         # Tight E threshold, loose B threshold → keep more B modes
-        ppc_split = PixelProjectedCompression(
+        ppc_split = PixelBasis(
             N,
             N_inv,
             theta,
@@ -401,7 +401,7 @@ class TestPerFieldThreshold:
         ppc_split.setup()
 
         # Uniform scalar → same threshold for both E and B
-        ppc_uniform = PixelProjectedCompression(
+        ppc_uniform = PixelBasis(
             N,
             N_inv,
             theta,
@@ -430,7 +430,7 @@ class TestPerFieldThreshold:
 
     def test_spin2_eb_split_vs_single(self):
         """E/B split with tight thresholds converges to single-threshold result."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         np.random.seed(42)
         n_pix = 25
@@ -443,7 +443,7 @@ class TestPerFieldThreshold:
         eps = 1e-10  # Very tight → keeps essentially all modes
 
         # Scalar
-        ppc_scalar = PixelProjectedCompression(
+        ppc_scalar = PixelBasis(
             N,
             N_inv,
             theta,
@@ -455,7 +455,7 @@ class TestPerFieldThreshold:
         ppc_scalar.setup()
 
         # Tuple with same value for both E and B
-        ppc_tuple = PixelProjectedCompression(
+        ppc_tuple = PixelBasis(
             N,
             N_inv,
             theta,
@@ -492,7 +492,7 @@ class TestPerFieldThreshold:
 
     def test_tqu_per_field_mixed(self):
         """T(spin-0) + QU(spin-2) with per-field list including tuple."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         np.random.seed(42)
         n_pix_t = 15
@@ -506,7 +506,7 @@ class TestPerFieldThreshold:
         N_inv = np.eye(total_pix) * 100.0
 
         # T: scalar epsilon, QU: E/B split tuple
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N,
             N_inv,
             (theta_t, theta_p),
@@ -535,7 +535,7 @@ class TestPerFieldThreshold:
 
     def test_invalid_tuple_for_spin0_raises(self):
         """Tuple epsilon for spin-0 field should raise ValueError."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         np.random.seed(42)
         n_pix = 20
@@ -546,7 +546,7 @@ class TestPerFieldThreshold:
         N_inv = np.eye(n_pix) * 100.0
 
         with pytest.raises(ValueError, match="tuple.*E/B split.*spin.*not 2"):
-            PixelProjectedCompression(
+            PixelBasis(
                 N,
                 N_inv,
                 theta,
@@ -558,7 +558,7 @@ class TestPerFieldThreshold:
 
     def test_invalid_list_length_raises(self):
         """Epsilon list with wrong length should raise ValueError."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         np.random.seed(42)
         n_pix = 20
@@ -569,7 +569,7 @@ class TestPerFieldThreshold:
         N_inv = np.eye(n_pix) * 100.0
 
         with pytest.raises(ValueError, match="list length.*must match"):
-            PixelProjectedCompression(
+            PixelBasis(
                 N,
                 N_inv,
                 theta,
@@ -586,7 +586,7 @@ class TestPerFieldThreshold:
 
 
 class TestPixelProjectedPICSLikeMethods:
-    """Tests for PICSLike-compatible methods on PixelProjectedCompression."""
+    """Tests for PICSLike-compatible methods on PixelBasis."""
 
     @staticmethod
     def _spiral(n, offset=0):
@@ -598,13 +598,13 @@ class TestPixelProjectedPICSLikeMethods:
 
     def _make_spin2_setup(self, n_pix=20, lmax=5, epsilon=1e-6):
         """Create a spin-2 PixelProjected setup and return (ppc, C_ell_dict)."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         theta, phi = self._spiral(n_pix)
         N = np.eye(2 * n_pix) * 0.01
         N_inv = np.eye(2 * n_pix) * 100.0
 
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N,
             N_inv,
             theta,
@@ -695,7 +695,7 @@ class TestPixelProjectedPICSLikeMethods:
         Aggressive single threshold kills B modes;
         E/B split with loose B threshold retains them.
         """
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         np.random.seed(42)
         n_pix = 25
@@ -706,7 +706,7 @@ class TestPixelProjectedPICSLikeMethods:
         N_inv = np.eye(2 * n_pix) * 100.0
 
         # Aggressive single threshold (E signal >> B → kills B modes)
-        ppc_aggressive = PixelProjectedCompression(
+        ppc_aggressive = PixelBasis(
             N,
             N_inv,
             theta,
@@ -718,7 +718,7 @@ class TestPixelProjectedPICSLikeMethods:
         ppc_aggressive.setup()
 
         # E/B split: same aggressive E but loose B
-        ppc_split = PixelProjectedCompression(
+        ppc_split = PixelBasis(
             N,
             N_inv,
             theta,

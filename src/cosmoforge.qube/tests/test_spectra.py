@@ -227,7 +227,7 @@ def test_teb_compressed_spectra_matches_traditional(local_path, config_resolver)
 # =============================================================================
 
 
-def test_pixel_projected_spectra_degradation(local_path, config_resolver):
+def test_pixel_spectra_degradation(local_path, config_resolver):
     """PixelProjected spectra stays within acceptable degradation vs Harmonic."""
     # Reuses cached harmonic T from test_compressed_spectra_T
     spectra_harmonic, noise_harmonic = _get_compressed_spectra(
@@ -239,7 +239,7 @@ def test_pixel_projected_spectra_degradation(local_path, config_resolver):
     spectra_pp, noise_pp = _get_compressed_spectra(
         "T",
         config_resolver,
-        method="pixel_projected",
+        method="pixel",
         epsilon=1e-6,
     )
 

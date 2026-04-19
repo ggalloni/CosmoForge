@@ -217,7 +217,7 @@ def test_compressed_harmonic_fisher_T(local_path, config_resolver):
 # =============================================================================
 
 
-def test_pixel_projected_fisher_degradation(local_path, config_resolver):
+def test_pixel_fisher_degradation(local_path, config_resolver):
     """PixelProjected Fisher stays within acceptable degradation vs Harmonic."""
     # Reuses cached harmonic T from test_compressed_harmonic_fisher_T
     fisher_harmonic, _, _ = _cached_compressed(
@@ -226,29 +226,29 @@ def test_pixel_projected_fisher_degradation(local_path, config_resolver):
         method="harmonic",
         epsilon=1e-10,
     )
-    fisher_pixel_projected, _, _ = _cached_compressed(
+    fisher_pixel, _, _ = _cached_compressed(
         "T",
         config_resolver,
-        method="pixel_projected",
+        method="pixel",
         epsilon=1e-6,
     )
 
-    assert fisher_pixel_projected.shape == fisher_harmonic.shape
+    assert fisher_pixel.shape == fisher_harmonic.shape
 
     # Symmetry + PSD
     np.testing.assert_allclose(
-        fisher_pixel_projected,
-        fisher_pixel_projected.T,
+        fisher_pixel,
+        fisher_pixel.T,
         rtol=1e-10,
     )
-    eigenvalues = np.linalg.eigvalsh(fisher_pixel_projected)
+    eigenvalues = np.linalg.eigvalsh(fisher_pixel)
     assert np.all(eigenvalues > -1e-10)
 
     # Error bar degradation < 15%
     fisher_harm_inv = np.linalg.pinv(fisher_harmonic)
-    fisher_pp_inv = np.linalg.pinv(fisher_pixel_projected)
+    fisher_p_inv = np.linalg.pinv(fisher_pixel)
     sigma_harm = np.sqrt(np.maximum(np.diag(fisher_harm_inv), 0))
-    sigma_pp = np.sqrt(np.maximum(np.diag(fisher_pp_inv), 0))
+    sigma_pp = np.sqrt(np.maximum(np.diag(fisher_p_inv), 0))
 
     valid = sigma_harm > 1e-15
     if np.any(valid):
@@ -260,11 +260,11 @@ def test_pixel_projected_fisher_degradation(local_path, config_resolver):
 
     # Fisher diagonal values < 20%
     diag_harm = np.diag(fisher_harmonic)
-    diag_pp = np.diag(fisher_pixel_projected)
+    diag_p = np.diag(fisher_pixel)
     valid_diag = np.abs(diag_harm) > 1e-15
     if np.any(valid_diag):
         diag_diff = (
-            np.abs(diag_pp[valid_diag] - diag_harm[valid_diag]) / diag_harm[valid_diag]
+            np.abs(diag_p[valid_diag] - diag_harm[valid_diag]) / diag_harm[valid_diag]
         )
         max_diag_diff = np.max(diag_diff) * 100
         assert max_diag_diff < 20, (

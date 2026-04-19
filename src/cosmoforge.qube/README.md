@@ -51,7 +51,7 @@ Both methods support MPI parallelization for large-scale analyses and can handle
 ### Technical Features
 
 - **MPI Parallelization**: Distributed computation across multiple processes
-- **Harmonic Compression**: SMW-based compression for efficient computation
+- **Computation Basis**: Harmonic and pixel basis with optional m-block compression and automatic field block-diagonal optimization
 - **Instrumental Effects**: Beam convolution and pixel window functions
 - **Flexible Configuration**: YAML-based parameter specification
 

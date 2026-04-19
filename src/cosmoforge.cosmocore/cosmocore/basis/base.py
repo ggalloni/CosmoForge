@@ -19,7 +19,7 @@ class SMWPrepared(NamedTuple):
     Parameters
     ----------
     factor : numpy.ndarray
-        K Cholesky factor (harmonic) or C_c_inv (pixel_projected).
+        K Cholesky factor (harmonic) or C_c_inv (pixel).
     reserved : None
         Unused, kept for API symmetry.
     logdet : float
@@ -36,10 +36,10 @@ from ..basics import (
     matrix_slogdet_symm,
     matrix_trace,
 )
-from .harmonic_basis import HarmonicBasis
+from .harmonic_basis import HarmonicBasisBuilder
 
 
-class BaseCompression(ABC):
+class ComputationBasis(ABC):
     """
     Abstract base class for compression methods.
 
@@ -248,13 +248,15 @@ class BaseCompression(ABC):
             self._mode_offsets.append(self._mode_offsets[-1] + n)
 
         # Harmonic basis helper (V, Lambda, derivative construction)
-        self._harmonic_basis = HarmonicBasis(self)
+        self._harmonic_basis = HarmonicBasisBuilder(self)
 
         # To be set by _build_basis() during setup()
         self._V = None
         self._V_blocks = None
         self._ell_to_modes = None
         self._ell_to_modes_local = None
+        self._m_to_modes = None
+        self._m_to_modes_local = None
         self._derivative_diagonals = None
         self._derivative_diagonals_local = None
         self.n_kept = self.n_modes_total if self.n_components > 1 else self.n_modes
@@ -280,6 +282,8 @@ class BaseCompression(ABC):
         self._V_blocks = self._harmonic_basis._V_blocks
         self._ell_to_modes = self._harmonic_basis._ell_to_modes
         self._ell_to_modes_local = self._harmonic_basis._ell_to_modes_local
+        self._m_to_modes = self._harmonic_basis._m_to_modes
+        self._m_to_modes_local = self._harmonic_basis._m_to_modes_local
         self._derivative_diagonals = self._harmonic_basis._derivative_diagonals
         self._derivative_diagonals_local = (
             self._harmonic_basis._derivative_diagonals_local
@@ -288,7 +292,7 @@ class BaseCompression(ABC):
     @property
     @abstractmethod
     def method(self) -> str:
-        """Compression method name: "harmonic" or "pixel_projected"."""
+        """Computation basis method name: "harmonic" or "pixel"."""
         pass
 
     @property
@@ -298,8 +302,8 @@ class BaseCompression(ABC):
         Get the projection matrix that maps pixel space to compressed space.
 
         This is the fundamental operator that defines the compression:
-        - HarmonicCompression: V (n_modes × n_pix)
-        - PixelProjectedCompression: U^T (n_kept × n_pix)
+        - HarmonicBasis: V (n_modes × n_pix)
+        - PixelBasis: U^T (n_kept × n_pix)
 
         Returns
         -------
@@ -314,8 +318,8 @@ class BaseCompression(ABC):
         """
         Size of the compressed space (number of rows in projector).
 
-        - HarmonicCompression: n_modes
-        - PixelProjectedCompression: n_kept
+        - HarmonicBasis: n_modes
+        - PixelBasis: n_kept
 
         Returns
         -------
@@ -373,8 +377,8 @@ class BaseCompression(ABC):
         """
         Compute covariance matrix in the compressed space.
 
-        - HarmonicCompression: C̄ = V @ N @ V^T + Λ
-        - PixelProjectedCompression: C_c = U^T @ C @ U
+        - HarmonicBasis: C̄ = V @ N @ V^T + Λ
+        - PixelBasis: C_c = U^T @ C @ U
 
         Parameters
         ----------
@@ -402,7 +406,7 @@ class BaseCompression(ABC):
         C_ell : numpy.ndarray or dict
             Power spectrum (array for single-field, dict for multi-field).
         C_c_inv : numpy.ndarray, optional
-            Precomputed compressed inverse (pixel_projected only).
+            Precomputed compressed inverse (pixel only).
 
         Returns
         -------
@@ -410,6 +414,82 @@ class BaseCompression(ABC):
             Weighted compressed data of shape (n_compressed,) or (n_compressed, n_sims).
         """
         pass
+
+    # === Field block-diagonal detection ===
+
+    def _detect_field_blocks(
+        self,
+        C_ell_dict: dict,
+    ) -> list[list[int]]:
+        """Detect independent field groups from signal spectra and noise structure.
+
+        When cross-spectra are absent between field groups and noise is
+        independent per field group, K is exactly block-diagonal across
+        field groups.  Inverting each block independently is exact and faster.
+
+        The coupling is determined by the *signal* (Lambda from C_ell_dict)
+        and noise structure, not by which derivatives are requested.
+
+        Parameters
+        ----------
+        C_ell_dict : dict
+            Power spectrum dictionary with 2-tuple ``(comp_i, comp_j)`` or
+            3-tuple ``(comp_i, comp_j, mode)`` keys.  Any cross-component
+            entry couples those components.
+
+        Returns
+        -------
+        list of list of int
+            Groups of component indices that are coupled.  E.g.
+            ``[[0], [1]]`` for two independent fields,
+            ``[[0, 1]]`` for two coupled fields.
+        """
+        if self.n_components <= 1:
+            return [[0]] if self.n_components == 1 else []
+
+        # Build adjacency from C_ell_dict keys (cross-spectra couple components)
+        adj: dict[int, set[int]] = {i: set() for i in range(self.n_components)}
+        for key in C_ell_dict:
+            ci, cj = key[0], key[1]
+            if ci != cj:
+                adj[ci].add(cj)
+                adj[cj].add(ci)
+
+        # Check noise off-diagonal blocks for pairs not already coupled
+        for ci in range(self.n_components):
+            for cj in range(ci + 1, self.n_components):
+                if cj in adj[ci]:
+                    continue  # already coupled by spectra
+                # Extract off-diagonal noise block
+                ri = self._pix_offsets[ci]
+                re = self._pix_offsets[ci + 1]
+                ci_start = self._pix_offsets[cj]
+                ci_end = self._pix_offsets[cj + 1]
+                N_block = self._N[ri:re, ci_start:ci_end]
+                if np.any(np.abs(N_block) > 1e-30):
+                    adj[ci].add(cj)
+                    adj[cj].add(ci)
+
+        # BFS to find connected components
+        visited: set[int] = set()
+        groups: list[list[int]] = []
+        for start in range(self.n_components):
+            if start in visited:
+                continue
+            group: list[int] = []
+            queue = [start]
+            while queue:
+                node = queue.pop(0)
+                if node in visited:
+                    continue
+                visited.add(node)
+                group.append(node)
+                for neighbor in sorted(adj[node]):
+                    if neighbor not in visited:
+                        queue.append(neighbor)
+            groups.append(sorted(group))
+
+        return groups
 
     # === Shared implementations ===
 
@@ -455,7 +535,7 @@ class BaseCompression(ABC):
         Get best available log determinant of full covariance.
 
         For harmonic compression, returns exact log|C| via SMW formula.
-        For pixel_projected, returns log|C_compressed| (approximation).
+        For pixel, returns log|C_compressed| (approximation).
 
         Subclasses may override to provide exact computation.
 
@@ -606,8 +686,8 @@ class BaseCompression(ABC):
         Project pixel data to compressed representation: d_c = P @ d.
 
         Uses the compression-specific projector P:
-        - HarmonicCompression: P = V (n_modes × n_pix)
-        - PixelProjectedCompression: P = U^T (n_kept × n_pix)
+        - HarmonicBasis: P = V (n_modes × n_pix)
+        - PixelBasis: P = U^T (n_kept × n_pix)
 
         Parameters
         ----------

@@ -14,11 +14,11 @@ class TestMultiFieldCompressionInitialization:
     """Tests for multi-field compression initialization."""
 
     def test_multi_field_initialization(self, two_scalar_field_setup):
-        """Test that HarmonicCompression initializes correctly with tuple inputs."""
-        from cosmocore.compression import HarmonicCompression
+        """Test that HarmonicBasis initializes correctly with tuple inputs."""
+        from cosmocore.basis import HarmonicBasis
 
         setup = two_scalar_field_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -37,10 +37,10 @@ class TestMultiFieldCompressionInitialization:
 
     def test_single_field_backward_compatibility(self, simple_compression_setup):
         """Test that single array input still works (backward compatibility)."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = simple_compression_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],  # 1D array, not tuple
@@ -59,10 +59,10 @@ class TestMultiFieldVBlockStructure:
 
     def test_multi_field_v_shape(self, two_scalar_field_setup):
         """Test that V has correct block-diagonal shape."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = two_scalar_field_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -85,10 +85,10 @@ class TestMultiFieldVBlockStructure:
 
     def test_multi_field_v_block_diagonal(self, two_scalar_field_setup):
         """Test that V has block-diagonal structure."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = two_scalar_field_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -124,10 +124,10 @@ class TestMultiFieldCompressedOperations:
 
     def test_multi_field_compressed_covariance_with_dict(self, two_scalar_field_setup):
         """Test compressed covariance with C_ell_dict for multi-field."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = two_scalar_field_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -154,10 +154,10 @@ class TestMultiFieldCompressedOperations:
 
     def test_multi_field_compressed_covariance_symmetric(self, two_scalar_field_setup):
         """Test compressed covariance is symmetric for multi-field."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = two_scalar_field_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -183,10 +183,10 @@ class TestMultiFieldFisher:
 
     def test_multi_field_fisher_shape(self, two_scalar_field_setup):
         """Test Fisher matrix shape for multi-field with spectra dict."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = two_scalar_field_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -212,10 +212,10 @@ class TestMultiFieldFisher:
 
     def test_multi_field_fisher_symmetric(self, two_scalar_field_setup):
         """Test Fisher matrix is symmetric for multi-field."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = two_scalar_field_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -238,10 +238,10 @@ class TestMultiFieldFisher:
 
     def test_multi_field_fisher_positive_diagonal(self, two_scalar_field_setup):
         """Test Fisher matrix has positive diagonal for multi-field."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = two_scalar_field_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -265,14 +265,14 @@ class TestMultiFieldFisher:
 
 
 class TestMultiFieldManager:
-    """Tests for multi-field via create_compression factory."""
+    """Tests for multi-field via create_computation_basis factory."""
 
     def test_manager_multi_field(self, two_scalar_field_setup):
-        """Test create_compression with multi-field input."""
-        from cosmocore.compression import create_compression
+        """Test create_computation_basis with multi-field input."""
+        from cosmocore.basis import create_computation_basis
 
         setup = two_scalar_field_setup
-        cm = create_compression(
+        cm = create_computation_basis(
             method="harmonic",
             N=setup["N"],
             N_inv=setup["N_inv"],
@@ -286,8 +286,8 @@ class TestMultiFieldManager:
         assert cm.n_kept > 0
 
     def test_manager_multi_field_fisher(self, two_scalar_field_setup):
-        """Test Fisher computation via create_compression with multi-field dict."""
-        from cosmocore.compression import create_compression
+        """Test Fisher computation via create_computation_basis with multi-field dict."""
+        from cosmocore.basis import create_computation_basis
 
         setup = two_scalar_field_setup
         n_ell = setup["lmax"] - 1
@@ -298,7 +298,7 @@ class TestMultiFieldManager:
         }
         spectra_list = [(0, 0), (1, 1), (0, 1)]
 
-        cm = create_compression(
+        cm = create_computation_basis(
             method="harmonic",
             N=setup["N"],
             N_inv=setup["N_inv"],
@@ -327,10 +327,10 @@ class TestMultiFieldIntegration:
         self, three_scalar_field_realistic_setup
     ):
         """Test that 3-field Fisher has positive diagonal for all spectra."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = three_scalar_field_realistic_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -361,10 +361,10 @@ class TestMultiFieldIntegration:
         self, three_scalar_field_realistic_setup
     ):
         """Test Fisher for auto-spectra only (simpler case)."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = three_scalar_field_realistic_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -396,12 +396,12 @@ class TestMultiFieldIntegration:
         Test that extracting a single field from multi-field setup gives
         results consistent with single-field compression.
         """
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = three_scalar_field_realistic_setup
 
         # Multi-field setup
-        hc_multi = HarmonicCompression(
+        hc_multi = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -417,7 +417,7 @@ class TestMultiFieldIntegration:
         theta_single = setup["theta"][0]
         phi_single = setup["phi"][0]
 
-        hc_single = HarmonicCompression(
+        hc_single = HarmonicBasis(
             N=N_single,
             N_inv=N_inv_single,
             theta=theta_single,
@@ -451,10 +451,10 @@ class TestMultiFieldIntegration:
         self, three_scalar_field_realistic_setup
     ):
         """Test that multi-field compressed covariance is positive definite."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = three_scalar_field_realistic_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -474,10 +474,10 @@ class TestMultiFieldIntegration:
 
     def test_n_components_correct(self, three_scalar_field_realistic_setup):
         """Test that n_components is correctly detected."""
-        from cosmocore.compression import create_compression
+        from cosmocore.basis import create_computation_basis
 
         setup = three_scalar_field_realistic_setup
-        cm = create_compression(
+        cm = create_computation_basis(
             method="harmonic",
             N=setup["N"],
             N_inv=setup["N_inv"],
@@ -502,7 +502,7 @@ class TestMultiFieldIntegration:
         For the multi-field case with block-diagonal structure.
         """
         from cosmocore.basics import matrix_inverse_symm, matrix_mult, matrix_trace
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = two_scalar_field_setup
         lmax = setup["lmax"]
@@ -518,7 +518,7 @@ class TestMultiFieldIntegration:
         }
 
         # Setup compression
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],

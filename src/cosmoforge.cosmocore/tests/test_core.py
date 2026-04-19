@@ -692,8 +692,8 @@ def test_uncompressed_covariance_api():
     np.testing.assert_allclose(qf_d, qf_expected, atol=1e-12)
 
 
-def test_setup_compression_basic(uniform_sky_setup):
-    """Test setup_compression creates a compression manager."""
+def test_setup_computation_basis_basic(uniform_sky_setup):
+    """Test setup_computation_basis creates a basis manager."""
     setup = uniform_sky_setup
     core = CoreWithSignal(
         {"nside": 16, "lmax": setup["lmax"], "spins": [0], "labels": ["T"]}
@@ -703,15 +703,15 @@ def test_setup_compression_basic(uniform_sky_setup):
     core.phi = (setup["phi"],)
 
     # Harmonic compression
-    cm = core.setup_compression(
+    cm = core.setup_computation_basis(
         method="harmonic", lmax=setup["lmax"], use_smw_optimization=False
     )
     assert cm is not None
-    assert core.compression_manager is cm
+    assert core.basis_manager is cm
 
     # Pixel-projected compression
-    cm2 = core.setup_compression(
-        method="pixel_projected",
+    cm2 = core.setup_computation_basis(
+        method="pixel",
         lmax=setup["lmax"],
         use_smw_optimization=False,
         epsilon=1e-4,
@@ -719,17 +719,17 @@ def test_setup_compression_basic(uniform_sky_setup):
     assert cm2 is not None
 
 
-def test_setup_compression_validation():
-    """Test setup_compression raises errors for missing prerequisites."""
+def test_setup_computation_basis_validation():
+    """Test setup_computation_basis raises errors for missing prerequisites."""
     core = CoreWithSignal({"nside": 16, "lmax": 5, "spins": [0], "labels": ["T"]})
 
     with pytest.raises(ValueError, match="Geometry must be set up"):
-        core.setup_compression()
+        core.setup_computation_basis()
 
     core.theta = (np.array([1.0]),)
     core.phi = (np.array([1.0]),)
     with pytest.raises(ValueError, match="Covariance matrices must be set up"):
-        core.setup_compression()
+        core.setup_computation_basis()
 
 
 def test_setup_covariance_matrices_load_reduced():

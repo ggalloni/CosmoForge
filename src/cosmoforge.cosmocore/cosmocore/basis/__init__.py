@@ -1,18 +1,18 @@
 """
-Compression methods for CMB Fisher matrix computation.
+Computation basis methods for CMB Fisher matrix computation.
 
-This module provides two compression approaches:
+This module provides two computation basis approaches:
 
-1. **HarmonicCompression** (Tegmark-like): Direct transformation to harmonic space
+1. **HarmonicBasis** (Tegmark-like): Direct transformation to harmonic space
    (n_pix → n_modes). Fast and efficient when n_modes << n_pix.
 
-2. **PixelProjectedCompression** (Gjerløw-like): Pixel-space projector with
+2. **PixelBasis** (Gjerløw-like): Pixel-space projector with
    eigenvalue compression (n_pix → n_kept). More flexible, handles systematics
    through custom projectors.
 
-Use **create_compression** factory function to create compression instances.
+Use **create_computation_basis** factory function to create basis instances.
 
-Available compression bases for PixelProjectedCompression:
+Available compression bases for PixelBasis:
 
 - **harmonic**: P_h = V^T V (pure harmonic projector)
 - **noise_weighted**: P_h N^{-1} P_h (inverse noise weighting)
@@ -33,17 +33,17 @@ import inspect
 
 import numpy as np
 
-from .base import BaseCompression, SMWPrepared
-from .harmonic import HarmonicCompression
-from .pixel_projected import COMPRESSION_BASES, PixelProjectedCompression
+from .base import ComputationBasis, SMWPrepared
+from .harmonic import HarmonicBasis
+from .pixel import COMPRESSION_BASES, PixelBasis
 
-_COMPRESSION_CLASSES: dict[str, type[BaseCompression]] = {
-    "harmonic": HarmonicCompression,
-    "pixel_projected": PixelProjectedCompression,
+_BASIS_CLASSES: dict[str, type[ComputationBasis]] = {
+    "harmonic": HarmonicBasis,
+    "pixel": PixelBasis,
 }
 
 
-def create_compression(
+def create_computation_basis(
     method: str,
     N: np.ndarray,
     N_inv: np.ndarray,
@@ -51,14 +51,14 @@ def create_compression(
     phi: np.ndarray,
     lmax: int,
     **kwargs,
-) -> BaseCompression:
+) -> ComputationBasis:
     """
-    Factory function to create the appropriate compression implementation.
+    Factory function to create the appropriate computation basis implementation.
 
     Parameters
     ----------
     method : str
-        Compression method: "harmonic" or "pixel_projected".
+        Computation basis method: "harmonic" or "pixel".
     N : numpy.ndarray
         Noise covariance matrix.
     N_inv : numpy.ndarray
@@ -70,21 +70,21 @@ def create_compression(
     lmax : int
         Maximum multipole for harmonic expansion.
     **kwargs
-        Additional keyword arguments passed to the compression constructor
+        Additional keyword arguments passed to the basis constructor
         (beam, spins, basis, C_ell, epsilon, mode_fraction, etc.).
         Arguments not accepted by the chosen class are silently ignored.
 
     Returns
     -------
-    BaseCompression
-        Configured compression instance (not yet set up — call .setup()).
+    ComputationBasis
+        Configured basis instance (not yet set up — call .setup()).
     """
-    if method not in _COMPRESSION_CLASSES:
+    if method not in _BASIS_CLASSES:
         raise ValueError(
-            f"Unknown compression method '{method}'. "
-            f"Available: {list(_COMPRESSION_CLASSES)}"
+            f"Unknown computation basis method '{method}'. "
+            f"Available: {list(_BASIS_CLASSES)}"
         )
-    cls = _COMPRESSION_CLASSES[method]
+    cls = _BASIS_CLASSES[method]
     # Filter kwargs to only those accepted by the target class
     sig = inspect.signature(cls.__init__)
     accepted = {
@@ -97,10 +97,10 @@ def create_compression(
 
 
 __all__ = [
-    "BaseCompression",
+    "ComputationBasis",
     "COMPRESSION_BASES",
-    "HarmonicCompression",
-    "PixelProjectedCompression",
+    "HarmonicBasis",
+    "PixelBasis",
     "SMWPrepared",
-    "create_compression",
+    "create_computation_basis",
 ]
