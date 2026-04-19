@@ -19,7 +19,7 @@ class SMWPrepared(NamedTuple):
     Parameters
     ----------
     factor : numpy.ndarray
-        K Cholesky factor (harmonic) or C_c_inv (pixel_projected).
+        K Cholesky factor (harmonic) or C_c_inv (pixel).
     reserved : None
         Unused, kept for API symmetry.
     logdet : float
@@ -36,10 +36,10 @@ from ..basics import (
     matrix_slogdet_symm,
     matrix_trace,
 )
-from .harmonic_basis import HarmonicBasis
+from .harmonic_basis import HarmonicBasisBuilder
 
 
-class BaseCompression(ABC):
+class ComputationBasis(ABC):
     """
     Abstract base class for compression methods.
 
@@ -248,7 +248,7 @@ class BaseCompression(ABC):
             self._mode_offsets.append(self._mode_offsets[-1] + n)
 
         # Harmonic basis helper (V, Lambda, derivative construction)
-        self._harmonic_basis = HarmonicBasis(self)
+        self._harmonic_basis = HarmonicBasisBuilder(self)
 
         # To be set by _build_basis() during setup()
         self._V = None
@@ -288,7 +288,7 @@ class BaseCompression(ABC):
     @property
     @abstractmethod
     def method(self) -> str:
-        """Compression method name: "harmonic" or "pixel_projected"."""
+        """Computation basis method name: "harmonic" or "pixel"."""
         pass
 
     @property
@@ -298,8 +298,8 @@ class BaseCompression(ABC):
         Get the projection matrix that maps pixel space to compressed space.
 
         This is the fundamental operator that defines the compression:
-        - HarmonicCompression: V (n_modes × n_pix)
-        - PixelProjectedCompression: U^T (n_kept × n_pix)
+        - HarmonicBasis: V (n_modes × n_pix)
+        - PixelBasis: U^T (n_kept × n_pix)
 
         Returns
         -------
@@ -314,8 +314,8 @@ class BaseCompression(ABC):
         """
         Size of the compressed space (number of rows in projector).
 
-        - HarmonicCompression: n_modes
-        - PixelProjectedCompression: n_kept
+        - HarmonicBasis: n_modes
+        - PixelBasis: n_kept
 
         Returns
         -------
@@ -373,8 +373,8 @@ class BaseCompression(ABC):
         """
         Compute covariance matrix in the compressed space.
 
-        - HarmonicCompression: C̄ = V @ N @ V^T + Λ
-        - PixelProjectedCompression: C_c = U^T @ C @ U
+        - HarmonicBasis: C̄ = V @ N @ V^T + Λ
+        - PixelBasis: C_c = U^T @ C @ U
 
         Parameters
         ----------
@@ -402,7 +402,7 @@ class BaseCompression(ABC):
         C_ell : numpy.ndarray or dict
             Power spectrum (array for single-field, dict for multi-field).
         C_c_inv : numpy.ndarray, optional
-            Precomputed compressed inverse (pixel_projected only).
+            Precomputed compressed inverse (pixel only).
 
         Returns
         -------
@@ -455,7 +455,7 @@ class BaseCompression(ABC):
         Get best available log determinant of full covariance.
 
         For harmonic compression, returns exact log|C| via SMW formula.
-        For pixel_projected, returns log|C_compressed| (approximation).
+        For pixel, returns log|C_compressed| (approximation).
 
         Subclasses may override to provide exact computation.
 
@@ -606,8 +606,8 @@ class BaseCompression(ABC):
         Project pixel data to compressed representation: d_c = P @ d.
 
         Uses the compression-specific projector P:
-        - HarmonicCompression: P = V (n_modes × n_pix)
-        - PixelProjectedCompression: P = U^T (n_kept × n_pix)
+        - HarmonicBasis: P = V (n_modes × n_pix)
+        - PixelBasis: P = U^T (n_kept × n_pix)
 
         Parameters
         ----------

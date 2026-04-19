@@ -27,7 +27,7 @@ import healpy as hp
 import numpy as np
 
 from .basics import matrix_inverse_symm, matrix_slogdet_symm
-from .compression import create_compression
+from .basis import create_computation_basis
 from .fields import (
     BaseField,
     FieldCollection,
@@ -399,7 +399,7 @@ class Core(ABC):
             raise ValueError("Fields must be set up before Cls and beams")
         self.collection.set_beams(lmax=lmax)
 
-    def setup_compression(
+    def setup_computation_basis(
         self,
         method: str = "harmonic",
         epsilon: float | list[float | tuple[float, float]] | None = 1e-6,
@@ -428,7 +428,7 @@ class Core(ABC):
         method : str, default "harmonic"
             Compression method to use:
             - "harmonic": Tegmark-style direct harmonic transformation
-            - "pixel_projected": Gjerløw-style pixel-space projector
+            - "pixel": Gjerløw-style pixel-space projector
         epsilon : float or None, optional
             Eigenvalue threshold for mode compression. Modes with eigenvalue
             < epsilon * max_eigenvalue are discarded. Default is 1e-6.
@@ -444,7 +444,7 @@ class Core(ABC):
             If None and beams have been set up via setup_beams(), the first
             field's beam is automatically extracted from the beam manager.
         basis : str, default "noise_weighted"
-            Compression basis for pixel_projected method. Options:
+            Compression basis for pixel method. Options:
             "harmonic", "noise_weighted", "total_covariance", "snr".
         C_ell : numpy.ndarray or None, optional
             Power spectrum for bases that require it ("total_covariance", "snr").
@@ -455,7 +455,7 @@ class Core(ABC):
 
         Returns
         -------
-        BaseCompression
+        ComputationBasis
             Configured compression instance ready for use.
 
         Raises
@@ -470,11 +470,11 @@ class Core(ABC):
         >>> core.setup_geometry()
         >>> core.setup_covariance_matrices()
         >>> core.setup_beams()
-        >>> # Harmonic compression (default)
-        >>> cm = core.setup_compression(method="harmonic")
-        >>> # Pixel-projected with SNR basis
-        >>> cm = core.setup_compression(
-        ...     method="pixel_projected",
+        >>> # Harmonic basis (default)
+        >>> cm = core.setup_computation_basis(method="harmonic")
+        >>> # Pixel basis with SNR basis
+        >>> cm = core.setup_computation_basis(
+        ...     method="pixel",
         ...     basis="snr",
         ...     C_ell=C_ell,
         ...     epsilon=1e-4,
@@ -503,7 +503,7 @@ class Core(ABC):
         if beam is not None and len(beam) > expected_beam_len:
             beam = beam[:expected_beam_len]
 
-        # Pass theta/phi as tuples (BaseCompression handles normalization)
+        # Pass theta/phi as tuples (ComputationBasis handles normalization)
         theta_arr = self.theta
         phi_arr = self.phi
 
@@ -579,7 +579,7 @@ class Core(ABC):
                     self.collection.spectra_manager._cls_dict = original_spectra_smoothed
 
         # Create compression implementation
-        self.compression_manager = create_compression(
+        self.basis_manager = create_computation_basis(
             method=method,
             N=self.noise_cov1,
             N_inv=matrix_inverse_symm(self.noise_cov1),
@@ -598,9 +598,9 @@ class Core(ABC):
         )
 
         # Build harmonic operator and precompute SMW components
-        self.compression_manager.setup()
+        self.basis_manager.setup()
 
-        return self.compression_manager
+        return self.basis_manager
 
     # =========================================================================
     # Unified Covariance API
@@ -626,8 +626,8 @@ class Core(ABC):
         numpy.ndarray
             Total covariance matrix (compressed or full).
         """
-        if hasattr(self, "compression_manager") and self.compression_manager is not None:
-            return self.compression_manager.get_compressed_covariance(C_ell)
+        if hasattr(self, "basis_manager") and self.basis_manager is not None:
+            return self.basis_manager.get_compressed_covariance(C_ell)
         else:
             return self.noise_cov1 + self._build_signal_matrix(C_ell)
 
@@ -648,8 +648,8 @@ class Core(ABC):
         numpy.ndarray
             Inverse covariance matrix (compressed or full).
         """
-        if hasattr(self, "compression_manager") and self.compression_manager is not None:
-            return self.compression_manager.get_compressed_inverse(C_ell)
+        if hasattr(self, "basis_manager") and self.basis_manager is not None:
+            return self.basis_manager.get_compressed_inverse(C_ell)
         else:
             return matrix_inverse_symm(self.get_total_covariance(C_ell), overwrite=True)
 
@@ -670,8 +670,8 @@ class Core(ABC):
         float
             Log determinant of covariance matrix.
         """
-        if hasattr(self, "compression_manager") and self.compression_manager is not None:
-            return self.compression_manager.get_full_logdet(C_ell)
+        if hasattr(self, "basis_manager") and self.basis_manager is not None:
+            return self.basis_manager.get_full_logdet(C_ell)
         else:
             if isinstance(C_ell, dict):
                 C_ell_arr = C_ell.get((0, 0, 0), next(iter(C_ell.values())))
@@ -697,8 +697,8 @@ class Core(ABC):
         numpy.ndarray
             Derivative matrix dC/dC_ell.
         """
-        if hasattr(self, "compression_manager") and self.compression_manager is not None:
-            return self.compression_manager.get_derivative_matrix(ell)
+        if hasattr(self, "basis_manager") and self.basis_manager is not None:
+            return self.basis_manager.get_derivative_matrix(ell)
         else:
             return self._build_derivative_matrix(ell)
 
@@ -771,8 +771,8 @@ class Core(ABC):
         float
             Quadratic form value d^T C^{-1} d.
         """
-        if hasattr(self, "compression_manager") and self.compression_manager is not None:
-            return self.compression_manager.compute_quadratic_form(data, C_ell)
+        if hasattr(self, "basis_manager") and self.basis_manager is not None:
+            return self.basis_manager.compute_quadratic_form(data, C_ell)
         else:
             if isinstance(C_ell, dict):
                 C_ell_arr = C_ell.get((0, 0, 0), next(iter(C_ell.values())))

@@ -56,8 +56,8 @@ import numpy as np
 from mpi4py import MPI
 
 from cosmocore import (
-    BaseCompression,
     Bins,
+    ComputationBasis,
     Core,
     FieldCollection,
     do_derivative_step,
@@ -318,14 +318,12 @@ class Spectra(Core):
 
         # Copy compression manager if available
         if (
-            hasattr(self.fisher_instance, "compression_manager")
-            and self.fisher_instance.compression_manager is not None
+            hasattr(self.fisher_instance, "basis_manager")
+            and self.fisher_instance.basis_manager is not None
         ):
-            self.compression_manager: BaseCompression = (
-                self.fisher_instance.compression_manager
-            )
+            self.basis_manager: ComputationBasis = self.fisher_instance.basis_manager
         else:
-            self.compression_manager = None
+            self.basis_manager = None
 
         # Load covariance matrices
         self._load_covariance_matrices()
@@ -622,11 +620,11 @@ class Spectra(Core):
         Distributes multipole computations across MPI processes (round-robin).
         For each multipole: computes signal derivative, E-operator, and
         quadratic estimates for all simulations. Selects compressed or
-        traditional method based on compression_manager availability.
+        traditional method based on basis_manager availability.
         """
         # Check if we should use compressed computation
         use_compression = (
-            hasattr(self, "compression_manager") and self.compression_manager is not None
+            hasattr(self, "basis_manager") and self.basis_manager is not None
         )
 
         if use_compression:
@@ -678,7 +676,7 @@ class Spectra(Core):
                     return cache[key]
 
         use_compression = (
-            hasattr(self, "compression_manager") and self.compression_manager is not None
+            hasattr(self, "basis_manager") and self.basis_manager is not None
         )
 
         w_matrix, _ = self.bins._bin_operators()
@@ -692,7 +690,7 @@ class Spectra(Core):
             weight = w_matrix[bin_idx, ell] * self.beam_smoothing[beam_offset + ell - 2]
 
             if use_compression:
-                cm = self.compression_manager
+                cm = self.basis_manager
                 if spectra_list is not None:
                     comp_i, comp_j, mode = spectra_list[spectrum_idx]
                     dC_ell = cm.get_derivative_matrix(ell, comp_i, comp_j, mode)
@@ -802,7 +800,7 @@ class Spectra(Core):
 
         start_time = time.time()
 
-        cm = self.compression_manager
+        cm = self.basis_manager
         n_sims = self.params.nsims
         n_compressed = cm.n_kept
 
@@ -843,13 +841,13 @@ class Spectra(Core):
                 projected_data1 = cm._V_N_inv @ self.maps1  # (n_modes, n_sims)
                 maps1_weighted = projected_data1 - M_kernel_inv @ projected_data1
             else:
-                # pixel_projected: use compressed-space weighted data
+                # pixel: use compressed-space weighted data
                 C_c_inv = cm.get_compressed_inverse(C_ell_dict)
                 d_c = cm.compress_data(self.maps1)
                 maps1_weighted = C_c_inv @ d_c
         else:
             C_c_inv = None
-            if cm.method == "pixel_projected":
+            if cm.method == "pixel":
                 C_c_inv = cm.get_compressed_inverse(C_ell)
             for isim in range(n_sims):
                 maps1_weighted[:, isim] = cm.get_weighted_compressed_data(
@@ -881,7 +879,7 @@ class Spectra(Core):
                     cm, C_ell, C_ell_dict, is_multi_field
                 )
             else:
-                # For pixel_projected: use compressed quantities
+                # For pixel: use compressed quantities
                 if is_multi_field:
                     C_bar_inv = cm.get_compressed_inverse(C_ell_dict)
                     zero_dict = {k: np.zeros_like(v) for k, v in C_ell_dict.items()}

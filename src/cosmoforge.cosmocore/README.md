@@ -6,14 +6,14 @@
 
 > [CosmoCore Documentation](https://ggalloni.github.io/CosmoForge/api/cosmocore.html) | [API Reference](https://ggalloni.github.io/CosmoForge/api/cosmocore/basics.html) | [Main Documentation](https://ggalloni.github.io/CosmoForge/)
 
-CosmoCore is the foundational package of CosmoForge, providing core functionality for the analysis of spin-0 and spin-2 fields on the sphere, including field management, compression methods, matrix operations, I/O utilities, and spherical harmonic operations.
+CosmoCore is the foundational package of CosmoForge, providing core functionality for the analysis of spin-0 and spin-2 fields on the sphere, including field management, computation basis methods, matrix operations, I/O utilities, and spherical harmonic operations.
 
 ## Overview
 
 CosmoCore serves as the base layer for all cosmological computations in CosmoForge. It provides:
 
 - **Field Management**: Scalar (spin-0) and tensor (spin-2) field handling with HEALPix integration
-- **Compression**: Harmonic and pixel-projected compression for Fisher matrix computation, with multi-field and spin-2 support
+- **Basis**: Harmonic and pixel computation basis for Fisher matrix computation, with multi-field and spin-2 support
 - **Matrix Operations**: Optimized LAPACK-based linear algebra with Numba acceleration
 - **Harmonic Analysis**: Power spectrum management, beam handling, and spherical harmonic transforms
 - **Pixel Operations**: Signal matrix computation and HEALPix pixel-based operations
@@ -23,11 +23,11 @@ CosmoCore serves as the base layer for all cosmological computations in CosmoFor
 
 ### Compression
 
-Two compression methods for efficient Fisher matrix and QML estimation:
+Two computation basis methods for efficient Fisher matrix and QML estimation:
 
-- **`HarmonicCompression`** (Tegmark-like): Direct transformation to harmonic space (n_pix -> n_modes). Fast when n_modes << n_pix.
-- **`PixelProjectedCompression`** (Gjerlow-like): Pixel-space projector with eigenvalue compression (n_pix -> n_kept). Supports multiple compression bases and per-field threshold tuning.
-- **`create_compression`**: Factory function for creating compression instances by name.
+- **`HarmonicBasis`** (Tegmark-like): Direct transformation to harmonic space (n_pix -> n_modes). Fast when n_modes << n_pix.
+- **`PixelBasis`** (Gjerlow-like): Pixel-space projector with eigenvalue compression (n_pix -> n_kept). Supports multiple compression bases and per-field threshold tuning.
+- **`create_computation_basis`**: Factory function for creating compression instances by name.
 
 Both methods support:
 
@@ -79,11 +79,11 @@ pip install -e /path/to/CosmoForge
 ### Compression Workflow
 
 ```python
-from cosmocore.compression import PixelProjectedCompression
+from cosmocore.basis import PixelBasis
 import numpy as np
 
 # Set up compression
-ppc = PixelProjectedCompression(N, N_inv, theta, phi, lmax=100)
+ppc = PixelBasis(N, N_inv, theta, phi, lmax=100)
 ppc.setup()
 
 # Inspect per-field eigenspectra to choose thresholds
@@ -99,10 +99,10 @@ fisher = ppc.compute_fisher_matrix(C_ell)
 ### Multi-Field with Spin-2 Polarization
 
 ```python
-from cosmocore.compression import PixelProjectedCompression
+from cosmocore.basis import PixelBasis
 
 # T (spin-0) + QU (spin-2) setup
-ppc = PixelProjectedCompression(
+ppc = PixelBasis(
     N, N_inv,
     theta=(theta_t, theta_p),
     phi=(phi_t, phi_p),
@@ -209,11 +209,11 @@ cosmocore/
 │   ├── geometry.py          #   Rotation angles and coordinate transforms
 │   ├── indexing.py          #   Spectrum index utilities
 │   └── smw.py               #   Sherman-Morrison-Woodbury formula
-└── compression/             # Data compression for Fisher/QML
+└── basis/             # Data compression for Fisher/QML
     ├── base.py              #   Abstract base class and SMW types
     ├── harmonic_basis.py    #   Harmonic basis builder (V operator, Lambda)
-    ├── harmonic.py          #   HarmonicCompression (Tegmark-like)
-    └── pixel_projected.py   #   PixelProjectedCompression (Gjerlow-like)
+    ├── harmonic.py          #   HarmonicBasis (Tegmark-like)
+    └── pixel.py             #   PixelBasis (Gjerlow-like)
 ```
 
 ## Performance Features

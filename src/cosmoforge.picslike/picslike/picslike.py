@@ -501,7 +501,7 @@ class PICSLike(Core):
         """Compute chi-squared and log-likelihood for a single parameter point."""
         # Check if compression is enabled
         use_compression = (
-            hasattr(self, "compression_manager") and self.compression_manager is not None
+            hasattr(self, "basis_manager") and self.basis_manager is not None
         )
 
         if use_compression:
@@ -532,21 +532,19 @@ class PICSLike(Core):
                 self.log(f"C_ell_dict set for parameters: {param_point}", level=3)
 
                 # Precompute K Cholesky and logdet ONCE for this parameter point
-                K_chol, _, logdet = self.compression_manager.prepare_smw(C_ell_dict)
+                K_chol, _, logdet = self.basis_manager.prepare_smw(C_ell_dict)
 
                 chi_squared = []
                 for sim_idx in range(self.params.nsims):
                     if self.params.do_cross:
                         d1 = self.maps1[:, sim_idx]
                         d2 = self.maps2[:, sim_idx]
-                        d1_compressed = self.compression_manager.compress_data(d1)
-                        d2_compressed = self.compression_manager.compress_data(d2)
-                        C_c_inv = self.compression_manager.get_compressed_inverse(
-                            C_ell_dict
-                        )
+                        d1_compressed = self.basis_manager.compress_data(d1)
+                        d2_compressed = self.basis_manager.compress_data(d2)
+                        C_c_inv = self.basis_manager.get_compressed_inverse(C_ell_dict)
                         chi_sq = float(d1_compressed.T @ C_c_inv @ d2_compressed)
                     else:
-                        chi_sq = self.compression_manager.quadratic_form_from_prepared(
+                        chi_sq = self.basis_manager.quadratic_form_from_prepared(
                             self.maps1[:, sim_idx], K_chol
                         )
                     chi_squared.append(chi_sq)
@@ -562,9 +560,9 @@ class PICSLike(Core):
                     if self.params.do_cross:
                         d1 = self.maps1[:, sim_idx]
                         d2 = self.maps2[:, sim_idx]
-                        d1_compressed = self.compression_manager.compress_data(d1)
-                        d2_compressed = self.compression_manager.compress_data(d2)
-                        C_inv = self.compression_manager.get_compressed_inverse(C_ell)
+                        d1_compressed = self.basis_manager.compress_data(d1)
+                        d2_compressed = self.basis_manager.compress_data(d2)
+                        C_inv = self.basis_manager.get_compressed_inverse(C_ell)
                         chi_sq = float(d1_compressed.T @ C_inv @ d2_compressed)
                     else:
                         chi_sq = self.compute_quadratic_form(
@@ -771,7 +769,7 @@ class PICSLike(Core):
             # Setup compression if configured
             if self._compression_config is not None:
                 compression_config = self._compression_config
-                self.setup_compression(
+                self.setup_computation_basis(
                     method=compression_config.get("method", "harmonic"),
                     epsilon=compression_config.get("epsilon"),
                     mode_fraction=compression_config.get("mode_fraction"),

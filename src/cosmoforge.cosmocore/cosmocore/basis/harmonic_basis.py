@@ -3,7 +3,7 @@ Harmonic basis construction for compression methods.
 
 This module contains the HarmonicBasis class which encapsulates all spherical
 harmonic operator (V), Lambda matrix, and derivative matrix construction logic.
-It is an internal helper used by BaseCompression and its subclasses.
+It is an internal helper used by ComputationBasis and its subclasses.
 """
 
 from __future__ import annotations
@@ -13,18 +13,18 @@ import numpy as np
 from ..basics import legendre_plm, wigner_d_small
 
 
-class HarmonicBasis:
+class HarmonicBasisBuilder:
     """Builds and caches harmonic operator V, Lambda matrices, and derivative matrices.
 
-    This is an internal helper class owned by BaseCompression. It groups all
+    This is an internal helper class owned by ComputationBasis. It groups all
     the spherical harmonic basis construction code that was previously spread
-    across BaseCompression methods.
+    across ComputationBasis methods.
 
     Parameters
     ----------
-    parent : BaseCompression
+    parent : ComputationBasis
         Parent compression instance providing configuration. The following
-        attributes are read (all set during BaseCompression.__init__):
+        attributes are read (all set during ComputationBasis.__init__):
         _theta_tuple, _phi_tuple, _spins, n_components, lmax,
         _lmin_smw, _lmax_smw, _n_modes_base, _n_modes_per_component,
         _n_modes_per_component_list, n_modes, n_modes_total,

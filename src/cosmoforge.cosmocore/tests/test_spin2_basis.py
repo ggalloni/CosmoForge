@@ -3,7 +3,7 @@ Tests for spin-2 polarization compression (Phase 2).
 
 Tests for spin-weighted harmonic operators, Lambda matrices, derivatives,
 Fisher matrices, and benchmarks comparing compressed vs pixel-space computation
-for both HarmonicCompression and PixelProjectedCompression with spin-2 support.
+for both HarmonicBasis and PixelBasis with spin-2 support.
 """
 
 import numpy as np
@@ -16,7 +16,7 @@ class TestSpin2HarmonicOperator:
 
     def test_spin2_v_matrix_shape(self):
         """V for spin-2 should have shape (2*n_modes, 2*n_pix)."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         np.random.seed(42)
         n_pix = 20
@@ -28,7 +28,7 @@ class TestSpin2HarmonicOperator:
         N = np.eye(2 * n_pix) * 0.01
         N_inv = np.eye(2 * n_pix) * 100.0
 
-        hc = HarmonicCompression(N, N_inv, theta, phi, lmax, spins=[2])
+        hc = HarmonicBasis(N, N_inv, theta, phi, lmax, spins=[2])
         hc.setup()
 
         n_modes_base = (lmax + 1) ** 2 - 4
@@ -41,7 +41,7 @@ class TestSpin2HarmonicOperator:
 
     def test_spin2_v_matrix_nonzero(self):
         """V for spin-2 should have non-zero entries."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         np.random.seed(42)
         n_pix = 20
@@ -52,7 +52,7 @@ class TestSpin2HarmonicOperator:
         N = np.eye(2 * n_pix) * 0.01
         N_inv = np.eye(2 * n_pix) * 100.0
 
-        hc = HarmonicCompression(N, N_inv, theta, phi, lmax, spins=[2])
+        hc = HarmonicBasis(N, N_inv, theta, phi, lmax, spins=[2])
         hc.setup()
 
         # Both E and B blocks should have non-zero entries
@@ -65,7 +65,7 @@ class TestSpin2HarmonicOperator:
 
     def test_spin2_dimensions_tracking(self):
         """Check that spin-2 component dimensions are tracked correctly."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         np.random.seed(42)
         n_pix = 20
@@ -76,7 +76,7 @@ class TestSpin2HarmonicOperator:
         N = np.eye(2 * n_pix) * 0.01
         N_inv = np.eye(2 * n_pix) * 100.0
 
-        hc = HarmonicCompression(N, N_inv, theta, phi, lmax, spins=[2])
+        hc = HarmonicBasis(N, N_inv, theta, phi, lmax, spins=[2])
 
         n_modes_base = (lmax + 1) ** 2 - 4
 
@@ -88,7 +88,7 @@ class TestSpin2HarmonicOperator:
 
     def test_spins_validation(self):
         """Test that invalid spins are rejected."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         np.random.seed(42)
         n_pix = 10
@@ -100,10 +100,10 @@ class TestSpin2HarmonicOperator:
         N_inv = np.eye(n_pix) * 100.0
 
         with pytest.raises(ValueError, match="Spin must be 0"):
-            HarmonicCompression(N, N_inv, theta, phi, lmax, spins=[1])
+            HarmonicBasis(N, N_inv, theta, phi, lmax, spins=[1])
 
         with pytest.raises(ValueError, match="spins list length"):
-            HarmonicCompression(N, N_inv, theta, phi, lmax, spins=[0, 2])
+            HarmonicBasis(N, N_inv, theta, phi, lmax, spins=[0, 2])
 
 
 class TestSpin2Lambda:
@@ -111,7 +111,7 @@ class TestSpin2Lambda:
 
     def test_lambda_block_spin2_shape(self):
         """Lambda for spin-2 auto-correlation should be (2*n_modes, 2*n_modes)."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         np.random.seed(42)
         n_pix = 20
@@ -122,7 +122,7 @@ class TestSpin2Lambda:
         N = np.eye(2 * n_pix) * 0.01
         N_inv = np.eye(2 * n_pix) * 100.0
 
-        hc = HarmonicCompression(N, N_inv, theta, phi, lmax, spins=[2])
+        hc = HarmonicBasis(N, N_inv, theta, phi, lmax, spins=[2])
 
         n_modes_base = (lmax + 1) ** 2 - 4
         C_ell = np.ones(lmax - 1) * 1e-3
@@ -133,7 +133,7 @@ class TestSpin2Lambda:
 
     def test_lambda_block_spin2_structure(self):
         """Lambda EE/BB diagonals and EB off-diagonals should be correctly placed."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         np.random.seed(42)
         n_pix = 20
@@ -144,7 +144,7 @@ class TestSpin2Lambda:
         N = np.eye(2 * n_pix) * 0.01
         N_inv = np.eye(2 * n_pix) * 100.0
 
-        hc = HarmonicCompression(N, N_inv, theta, phi, lmax, spins=[2])
+        hc = HarmonicBasis(N, N_inv, theta, phi, lmax, spins=[2])
 
         n = hc._n_modes_base
         C_EE = np.ones(lmax - 1) * 2.0
@@ -166,7 +166,7 @@ class TestSpin2Lambda:
 
     def test_lambda_full_with_spins_teb(self):
         """Test full Lambda assembly for T+E/B (spin-0 + spin-2)."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         np.random.seed(42)
         n_pix_t = 15
@@ -182,7 +182,7 @@ class TestSpin2Lambda:
         N = np.eye(total_pix) * 0.01
         N_inv = np.eye(total_pix) * 100.0
 
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N, N_inv, (theta_t, theta_p), (phi_t, phi_p), lmax, spins=[0, 2]
         )
         hc.setup()
@@ -222,7 +222,7 @@ class TestSpin2Derivatives:
 
     def test_derivative_ee_structure(self):
         """EE derivative should only fill E×E sub-block."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         np.random.seed(42)
         n_pix_t = 10
@@ -237,7 +237,7 @@ class TestSpin2Derivatives:
         N = np.eye(total_pix) * 0.01
         N_inv = np.eye(total_pix) * 100.0
 
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N, N_inv, (theta_t, theta_p), (phi_t, phi_p), lmax, spins=[0, 2]
         )
         hc.setup()
@@ -271,7 +271,7 @@ class TestSpin2Derivatives:
 
     def test_derivative_te_structure(self):
         """TE derivative should fill T×E and E×T sub-blocks."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         np.random.seed(42)
         n_pix_t = 10
@@ -286,7 +286,7 @@ class TestSpin2Derivatives:
         N = np.eye(total_pix) * 0.01
         N_inv = np.eye(total_pix) * 100.0
 
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N, N_inv, (theta_t, theta_p), (phi_t, phi_p), lmax, spins=[0, 2]
         )
         hc.setup()
@@ -310,7 +310,7 @@ class TestSpin2Fisher:
 
     def test_fisher_with_spins_shape(self):
         """Fisher matrix should have correct shape for TEB spectra."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         np.random.seed(42)
         n_pix_t = 15
@@ -325,7 +325,7 @@ class TestSpin2Fisher:
         N = np.eye(total_pix) * 0.01
         N_inv = np.eye(total_pix) * 100.0
 
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N, N_inv, (theta_t, theta_p), (phi_t, phi_p), lmax, spins=[0, 2]
         )
         hc.setup()
@@ -356,7 +356,7 @@ class TestSpin2Fisher:
 
     def test_fisher_with_spins_symmetric(self):
         """Fisher matrix should be symmetric."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         np.random.seed(42)
         n_pix_t = 15
@@ -371,7 +371,7 @@ class TestSpin2Fisher:
         N = np.eye(total_pix) * 0.01
         N_inv = np.eye(total_pix) * 100.0
 
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N, N_inv, (theta_t, theta_p), (phi_t, phi_p), lmax, spins=[0, 2]
         )
         hc.setup()
@@ -394,7 +394,7 @@ class TestSpin2Fisher:
 
     def test_fisher_with_spins_positive_diagonal(self):
         """Fisher diagonal elements should be positive."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         np.random.seed(42)
         n_pix = 20
@@ -405,7 +405,7 @@ class TestSpin2Fisher:
         N = np.eye(2 * n_pix) * 0.01
         N_inv = np.eye(2 * n_pix) * 100.0
 
-        hc = HarmonicCompression(N, N_inv, theta, phi, lmax, spins=[2])
+        hc = HarmonicBasis(N, N_inv, theta, phi, lmax, spins=[2])
         hc.setup()
 
         C_ell_dict = {
@@ -485,7 +485,7 @@ class TestSpin2Benchmark:
         import time
 
         from cosmocore.basics import matrix_inverse_symm
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         np.random.seed(42)
         n_pix = 120  # 240 total (Q+U) >> 90 modes
@@ -500,7 +500,7 @@ class TestSpin2Benchmark:
         N = np.eye(2 * n_pix) * noise_level
         N_inv = np.eye(2 * n_pix) / noise_level
 
-        hc = HarmonicCompression(N, N_inv, theta, phi, lmax, spins=[2])
+        hc = HarmonicBasis(N, N_inv, theta, phi, lmax, spins=[2])
         hc.setup()
 
         n_modes_total = hc.n_modes_total
@@ -576,7 +576,7 @@ class TestSpin2Benchmark:
         import time
 
         from cosmocore.basics import matrix_inverse_symm
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         np.random.seed(42)
         n_pix_t = 50
@@ -600,7 +600,7 @@ class TestSpin2Benchmark:
         N[n_pix_t:, n_pix_t:] *= 5e-3
         N_inv = np.linalg.inv(N)
 
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N, N_inv, (theta_t, theta_p), (phi_t, phi_p), lmax, spins=[0, 2]
         )
         hc.setup()
@@ -681,11 +681,11 @@ class TestSpin2Benchmark:
 
 
 class TestPixelProjectedSpin2:
-    """Tests for PixelProjectedCompression with spin-2 support."""
+    """Tests for PixelBasis with spin-2 support."""
 
     def test_spin2_v_matrix_shape(self):
         """V for spin-2 PixelProjected should have correct shape."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         np.random.seed(42)
         n_pix = 20
@@ -696,7 +696,7 @@ class TestPixelProjectedSpin2:
         N = np.eye(2 * n_pix) * 0.01
         N_inv = np.eye(2 * n_pix) * 100.0
 
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N,
             N_inv,
             theta,
@@ -715,7 +715,7 @@ class TestPixelProjectedSpin2:
 
     def test_spin2_compressed_covariance_shape(self):
         """Compressed covariance should have shape (n_kept, n_kept)."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         np.random.seed(42)
         n_pix = 20
@@ -726,7 +726,7 @@ class TestPixelProjectedSpin2:
         N = np.eye(2 * n_pix) * 0.01
         N_inv = np.eye(2 * n_pix) * 100.0
 
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N,
             N_inv,
             theta,
@@ -749,7 +749,7 @@ class TestPixelProjectedSpin2:
 
     def test_spin2_fisher_shape_and_symmetry(self):
         """Fisher matrix should have correct shape and be symmetric."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         np.random.seed(42)
         n_pix = 20
@@ -760,7 +760,7 @@ class TestPixelProjectedSpin2:
         N = np.eye(2 * n_pix) * 0.01
         N_inv = np.eye(2 * n_pix) * 100.0
 
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N,
             N_inv,
             theta,
@@ -788,7 +788,7 @@ class TestPixelProjectedSpin2:
 
     def test_spin2_tqu_fisher_shape(self):
         """TQU PixelProjected Fisher should have correct shape."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         np.random.seed(42)
         n_pix_t = 15
@@ -803,7 +803,7 @@ class TestPixelProjectedSpin2:
         N = np.eye(total_pix) * 0.01
         N_inv = np.eye(total_pix) * 100.0
 
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N,
             N_inv,
             (theta_t, theta_p),
@@ -838,7 +838,7 @@ class TestPixelProjectedSpin2:
 
     def test_spin2_weighted_data_shape(self):
         """Weighted compressed data should have shape (n_kept,)."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         np.random.seed(42)
         n_pix = 20
@@ -849,7 +849,7 @@ class TestPixelProjectedSpin2:
         N = np.eye(2 * n_pix) * 0.01
         N_inv = np.eye(2 * n_pix) * 100.0
 
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N,
             N_inv,
             theta,
@@ -870,8 +870,8 @@ class TestPixelProjectedSpin2:
         assert w.shape == (ppc.n_kept,)
 
     def test_spin2_manager_delegates(self):
-        """create_compression should produce working spin-2 PixelProjected."""
-        from cosmocore.compression import create_compression
+        """create_computation_basis should produce working spin-2 PixelProjected."""
+        from cosmocore.basis import create_computation_basis
 
         np.random.seed(42)
         n_pix = 20
@@ -882,8 +882,8 @@ class TestPixelProjectedSpin2:
         N = np.eye(2 * n_pix) * 0.01
         N_inv = np.eye(2 * n_pix) * 100.0
 
-        cm = create_compression(
-            method="pixel_projected",
+        cm = create_computation_basis(
+            method="pixel",
             N=N,
             N_inv=N_inv,
             theta=theta,
@@ -1018,7 +1018,7 @@ class TestPixelProjectedSpin2Benchmark:
     """
     Benchmark: PixelProjected spin-2 compressed Fisher vs pixel-space computation.
 
-    Verifies that PixelProjectedCompression with eigenvalue compression produces
+    Verifies that PixelBasis with eigenvalue compression produces
     results close to the traditional pixel-space Fisher computation.
     Note: PixelProjected is an approximation (unlike Harmonic which is exact),
     so tolerances are relaxed.
@@ -1029,7 +1029,7 @@ class TestPixelProjectedSpin2Benchmark:
         QU-only: PixelProjected compressed EE/BB Fisher vs pixel-space.
         """
         from cosmocore.basics import matrix_inverse_symm
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         np.random.seed(42)
         n_pix = 60
@@ -1044,7 +1044,7 @@ class TestPixelProjectedSpin2Benchmark:
         N_inv = np.eye(2 * n_pix) / noise_level
 
         # Keep all modes (no truncation) for most accurate comparison
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N,
             N_inv,
             theta,
@@ -1112,7 +1112,7 @@ class TestPixelProjectedSpin2Benchmark:
         TQU: PixelProjected compressed Fisher vs pixel-space.
         """
         from cosmocore.basics import matrix_inverse_symm
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         np.random.seed(42)
         n_pix_t = 30
@@ -1135,7 +1135,7 @@ class TestPixelProjectedSpin2Benchmark:
         N[n_pix_t:, n_pix_t:] *= 5e-3
         N_inv = np.linalg.inv(N)
 
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N,
             N_inv,
             (theta_t, theta_p),

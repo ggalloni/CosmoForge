@@ -438,11 +438,11 @@ class TestCompressedLikelihood:
         picslike_compressed.setup_covariance_matrices()
         picslike_compressed.setup_cls(lmax=picslike_compressed.lmax_signal)
         picslike_compressed.setup_beams(lmax=picslike_compressed.lmax_signal)
-        picslike_compressed.setup_compression(method="harmonic")
+        picslike_compressed.setup_computation_basis(method="harmonic")
         picslike_compressed.setup_maps()
 
         # Verify compression was set up
-        assert picslike_compressed.compression_manager is not None
+        assert picslike_compressed.basis_manager is not None
 
         # Compute likelihood at a single point for comparison
         param_point = list(picslike_standard.parameter_grid.grid_points)[0]
@@ -532,11 +532,11 @@ class TestCompressedLikelihood:
         picslike_compressed.setup_covariance_matrices()
         picslike_compressed.setup_cls(lmax=picslike_compressed.lmax_signal)
         picslike_compressed.setup_beams(lmax=picslike_compressed.lmax_signal)
-        picslike_compressed.setup_compression(method="harmonic")
+        picslike_compressed.setup_computation_basis(method="harmonic")
         picslike_compressed.setup_maps()
 
-        assert picslike_compressed.compression_manager is not None
-        assert picslike_compressed.compression_manager._use_switch_optimization
+        assert picslike_compressed.basis_manager is not None
+        assert picslike_compressed.basis_manager._use_switch_optimization
 
         param_point = list(picslike_standard.parameter_grid.grid_points)[1]
 

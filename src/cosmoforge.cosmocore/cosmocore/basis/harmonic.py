@@ -22,12 +22,12 @@ from ..basics import (
     smw_logdet,
     smw_quadratic_form,
 )
-from .base import BaseCompression, SMWPrepared
+from .base import ComputationBasis, SMWPrepared
 
 
-class HarmonicCompression(BaseCompression):
+class HarmonicBasis(ComputationBasis):
     """
-    Direct harmonic space compression (Tegmark-like).
+    Direct harmonic space computation basis (Tegmark-like).
 
     Transforms directly to n_modes dimensions via V. Fast and efficient
     when n_modes << n_pix. No additional eigenvalue compression.
@@ -55,9 +55,9 @@ class HarmonicCompression(BaseCompression):
     Examples
     --------
     >>> import numpy as np
-    >>> from cosmocore.compression import HarmonicCompression
+    >>> from cosmocore.basis import HarmonicBasis
     >>> N_inv = np.diag(1.0 / noise_variance)
-    >>> hc = HarmonicCompression(N_inv, theta, phi, lmax=100)
+    >>> hc = HarmonicBasis(N_inv, theta, phi, lmax=100)
     >>> hc.setup()
     >>> fisher_element = hc.compute_fisher_element(C_ell, ell_i=10, ell_j=10)
 

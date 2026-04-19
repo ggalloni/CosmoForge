@@ -17,7 +17,7 @@ import pytest
 from numpy.testing import assert_allclose
 
 from cosmocore.basics import matrix_inverse_symm, matrix_mult, matrix_trace
-from cosmocore.compression import HarmonicCompression
+from cosmocore.basis import HarmonicBasis
 
 
 def build_pixel_space_signal_matrix(V, lambda_matrix):
@@ -165,7 +165,7 @@ class TestTEBScalarBenchmark:
         lmax = setup["lmax"]
 
         # Setup compression
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -223,7 +223,7 @@ class TestTEBScalarBenchmark:
         setup = teb_scalar_setup
         lmax = setup["lmax"]
 
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -294,7 +294,7 @@ class TestTEBScalarBenchmark:
         setup = teb_scalar_setup
         lmax = setup["lmax"]
 
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -358,7 +358,7 @@ class TestTEBScalarBenchmark:
         setup = teb_scalar_setup
         lmax = setup["lmax"]
 
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],

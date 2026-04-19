@@ -1,5 +1,5 @@
 """
-Tests for PixelProjectedCompression class.
+Tests for PixelBasis class.
 
 Tests for the Gjerlow-like pixel-projected compression approach,
 including cross-validation tests comparing both methods.
@@ -10,15 +10,15 @@ import pytest
 from numpy.testing import assert_allclose
 
 
-class TestPixelProjectedCompressionInitialization:
-    """Tests for PixelProjectedCompression initialization."""
+class TestPixelBasisInitialization:
+    """Tests for PixelBasis initialization."""
 
     def test_basic_initialization(self, simple_compression_setup):
-        """Test that PixelProjectedCompression initializes correctly."""
-        from cosmocore.compression import PixelProjectedCompression
+        """Test that PixelBasis initializes correctly."""
+        from cosmocore.basis import PixelBasis
 
         setup = simple_compression_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -32,15 +32,15 @@ class TestPixelProjectedCompressionInitialization:
         assert ppc.n_kept == setup["n_pix"]
 
 
-class TestPixelProjectedCompressionSetup:
-    """Tests for PixelProjectedCompression setup operations."""
+class TestPixelBasisSetup:
+    """Tests for PixelBasis setup operations."""
 
     def test_setup_creates_required_matrices(self, simple_compression_setup):
         """Test that setup() creates all required matrices."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = simple_compression_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -64,10 +64,10 @@ class TestPixelProjectedCompressionSetup:
 
     def test_projector_is_symmetric(self, simple_compression_setup):
         """Test that P_h is symmetric."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = simple_compression_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -83,15 +83,15 @@ class TestPixelProjectedCompressionSetup:
         assert_allclose(P_h, P_h.T, rtol=1e-10)
 
 
-class TestPixelProjectedCompressionApply:
-    """Tests for PixelProjectedCompression compression application."""
+class TestPixelBasisApply:
+    """Tests for PixelBasis compression application."""
 
     def test_apply_compression_reduces_modes(self, simple_compression_setup):
         """Test that apply_compression reduces the number of modes."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = simple_compression_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -109,10 +109,10 @@ class TestPixelProjectedCompressionApply:
 
     def test_compression_creates_eigenvectors(self, simple_compression_setup):
         """Test that compression creates eigenvectors."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = simple_compression_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -129,10 +129,10 @@ class TestPixelProjectedCompressionApply:
 
     def test_mode_fraction_compression(self, simple_compression_setup):
         """Test compression by specifying mode fraction."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = simple_compression_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -149,10 +149,10 @@ class TestPixelProjectedCompressionApply:
 
     def test_mode_fraction_mutual_exclusivity(self, simple_compression_setup):
         """Test that epsilon and mode_fraction are mutually exclusive."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = simple_compression_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -166,10 +166,10 @@ class TestPixelProjectedCompressionApply:
 
     def test_mode_fraction_validation(self, simple_compression_setup):
         """Test mode_fraction validation for invalid values."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = simple_compression_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -185,15 +185,15 @@ class TestPixelProjectedCompressionApply:
             ppc.apply_compression(mode_fraction=-0.1)
 
 
-class TestPixelProjectedCompressionOperations:
-    """Tests for PixelProjectedCompression compressed-space operations."""
+class TestPixelBasisOperations:
+    """Tests for PixelBasis compressed-space operations."""
 
     def test_compress_data(self, uniform_sky_setup):
         """Test data compression."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -211,10 +211,10 @@ class TestPixelProjectedCompressionOperations:
 
     def test_compressed_covariance_shape(self, uniform_sky_setup):
         """Test compressed covariance has correct shape."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -234,10 +234,10 @@ class TestPixelProjectedCompressionOperations:
 
     def test_compressed_covariance_symmetric(self, uniform_sky_setup):
         """Test compressed covariance is symmetric."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -258,10 +258,10 @@ class TestPixelProjectedCompressionOperations:
 
     def test_compressed_inverse_is_inverse(self, uniform_sky_setup):
         """Test that compressed inverse is actually the inverse."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -284,15 +284,15 @@ class TestPixelProjectedCompressionOperations:
         assert_allclose(product, identity, rtol=1e-8, atol=1e-10)
 
 
-class TestPixelProjectedCompressionFisher:
-    """Tests for PixelProjectedCompression Fisher matrix computation."""
+class TestPixelBasisFisher:
+    """Tests for PixelBasis Fisher matrix computation."""
 
     def test_fisher_matrix_positive_diagonal(self, uniform_sky_setup):
         """Test Fisher diagonal elements are positive using compute_fisher_matrix."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -313,10 +313,10 @@ class TestPixelProjectedCompressionFisher:
 
     def test_fisher_matrix_symmetric(self, uniform_sky_setup):
         """Test Fisher matrix is symmetric using compute_fisher_matrix."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -341,7 +341,7 @@ class TestPixelProjectedCompressionFisher:
 
 
 class TestCompressionCrossValidation:
-    """Tests comparing HarmonicCompression and PixelProjectedCompression."""
+    """Tests comparing HarmonicBasis and PixelBasis."""
 
     @pytest.fixture
     def cross_validation_setup(self):
@@ -374,14 +374,14 @@ class TestCompressionCrossValidation:
 
     def test_both_methods_produce_positive_fisher(self, cross_validation_setup):
         """Test that both methods produce positive semi-definite Fisher matrices."""
-        from cosmocore.compression import HarmonicCompression, PixelProjectedCompression
+        from cosmocore.basis import HarmonicBasis, PixelBasis
 
         setup = cross_validation_setup
         C_ell = setup["C_ell"]
         lmax = setup["lmax"]
 
-        # HarmonicCompression
-        hc = HarmonicCompression(
+        # HarmonicBasis
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -391,8 +391,8 @@ class TestCompressionCrossValidation:
         hc.setup()
         fisher_hc = hc.compute_fisher_matrix(C_ell)
 
-        # PixelProjectedCompression
-        ppc = PixelProjectedCompression(
+        # PixelBasis
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -416,17 +416,17 @@ class TestCompressionCrossValidation:
 
     def test_full_compression_approaches_harmonic(self, cross_validation_setup):
         """
-        Test that PixelProjectedCompression with full modes
-        approaches HarmonicCompression.
+        Test that PixelBasis with full modes
+        approaches HarmonicBasis.
         """
-        from cosmocore.compression import HarmonicCompression, PixelProjectedCompression
+        from cosmocore.basis import HarmonicBasis, PixelBasis
 
         setup = cross_validation_setup
         C_ell = setup["C_ell"]
         lmax = setup["lmax"]
 
-        # HarmonicCompression
-        hc = HarmonicCompression(
+        # HarmonicBasis
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -436,8 +436,8 @@ class TestCompressionCrossValidation:
         hc.setup()
         fisher_hc = hc.compute_fisher_matrix(C_ell)
 
-        # PixelProjectedCompression with minimal compression (keep most modes)
-        ppc = PixelProjectedCompression(
+        # PixelBasis with minimal compression (keep most modes)
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -466,14 +466,14 @@ class TestCompressionCrossValidation:
             assert 0.1 < ratio < 10, f"Fisher ratio at ell={ell}: {ratio}"
 
 
-class TestPixelProjectedCompressionBases:
+class TestPixelBasisBases:
     """Tests for different compression basis presets."""
 
     def test_available_bases_classmethod(self):
         """Test that available_bases returns all basis options."""
-        from cosmocore.compression import COMPRESSION_BASES, PixelProjectedCompression
+        from cosmocore.basis import COMPRESSION_BASES, PixelBasis
 
-        bases = PixelProjectedCompression.available_bases()
+        bases = PixelBasis.available_bases()
 
         assert "harmonic" in bases
         assert "noise_weighted" in bases
@@ -483,10 +483,10 @@ class TestPixelProjectedCompressionBases:
 
     def test_harmonic_basis(self, uniform_sky_setup):
         """Test compression with pure harmonic basis."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -504,10 +504,10 @@ class TestPixelProjectedCompressionBases:
 
     def test_noise_weighted_basis(self, uniform_sky_setup):
         """Test compression with noise-weighted basis (default)."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -523,13 +523,13 @@ class TestPixelProjectedCompressionBases:
 
     def test_total_covariance_basis(self, uniform_sky_setup):
         """Test compression with total covariance basis."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
         n_ell = setup["lmax"] - 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -545,13 +545,13 @@ class TestPixelProjectedCompressionBases:
 
     def test_snr_basis(self, uniform_sky_setup):
         """Test compression with SNR basis."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
         n_ell = setup["lmax"] - 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -567,10 +567,10 @@ class TestPixelProjectedCompressionBases:
 
     def test_total_covariance_requires_cell(self, uniform_sky_setup):
         """Test that total_covariance basis requires C_ell."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -585,10 +585,10 @@ class TestPixelProjectedCompressionBases:
 
     def test_snr_requires_cell(self, uniform_sky_setup):
         """Test that snr basis requires C_ell."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -603,10 +603,10 @@ class TestPixelProjectedCompressionBases:
 
     def test_unknown_basis_raises(self, uniform_sky_setup):
         """Test that unknown basis raises error."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -621,7 +621,7 @@ class TestPixelProjectedCompressionBases:
 
     def test_different_bases_give_different_results(self, uniform_sky_setup):
         """Test that different bases lead to different mode selections."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
         n_ell = setup["lmax"] - 1
@@ -629,7 +629,7 @@ class TestPixelProjectedCompressionBases:
 
         results = {}
         for basis in ["harmonic", "noise_weighted", "total_covariance", "snr"]:
-            ppc = PixelProjectedCompression(
+            ppc = PixelBasis(
                 N=setup["N"],
                 N_inv=setup["N_inv"],
                 theta=setup["theta"],
@@ -649,15 +649,15 @@ class TestPixelProjectedCompressionBases:
         assert len(unique_counts) >= 1  # At minimum, they're all valid
 
 
-class TestPixelProjectedCompressionEigenspectrum:
+class TestPixelBasisEigenspectrum:
     """Tests for eigenvalue spectrum computation and plotting."""
 
     def test_compute_eigenspectrum_shape(self, uniform_sky_setup):
         """Test eigenspectrum returns correct shapes."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -673,10 +673,10 @@ class TestPixelProjectedCompressionEigenspectrum:
 
     def test_eigenspectrum_normalized_max_is_one(self, uniform_sky_setup):
         """Test normalized eigenvalues have max value of 1."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -691,10 +691,10 @@ class TestPixelProjectedCompressionEigenspectrum:
 
     def test_eigenspectrum_sorted_descending(self, uniform_sky_setup):
         """Test eigenvalues are sorted in descending order."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -710,13 +710,13 @@ class TestPixelProjectedCompressionEigenspectrum:
 
     def test_eigenspectrum_all_bases(self, uniform_sky_setup):
         """Test eigenspectrum can be computed for all bases."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
         n_ell = setup["lmax"] - 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -742,10 +742,10 @@ class TestPixelProjectedCompressionEigenspectrum:
         matplotlib.use("Agg")  # Non-interactive backend for testing
         import matplotlib.pyplot as plt
 
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -768,13 +768,13 @@ class TestPixelProjectedCompressionEigenspectrum:
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
         n_ell = setup["lmax"] - 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -795,10 +795,10 @@ class TestPixelProjectedCompressionEigenspectrum:
 
     def test_eigenspectrum_requires_cell_for_certain_bases(self, uniform_sky_setup):
         """Test that compute_eigenspectrum raises error when C_ell missing."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -819,10 +819,10 @@ class TestComputeEigenspectrumPerField:
 
     def test_single_field_returns_length_one(self, uniform_sky_setup):
         """Single-field returns a list of length 1 with correct keys."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -845,10 +845,10 @@ class TestComputeEigenspectrumPerField:
 
     def test_multi_field_returns_correct_length(self, two_scalar_field_setup):
         """Multi-field returns list of length n_components."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = two_scalar_field_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -869,7 +869,7 @@ class TestComputeEigenspectrumPerField:
 
     def test_spin2_field_has_eb_keys(self):
         """Spin-2 field has E/B eigenvalue keys."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         np.random.seed(42)
         n_pix = 20
@@ -880,7 +880,7 @@ class TestComputeEigenspectrumPerField:
         N = np.eye(2 * n_pix) * 0.01
         N_inv = np.eye(2 * n_pix) * 100.0
 
-        ppc = PixelProjectedCompression(N, N_inv, theta, phi, lmax, spins=[2])
+        ppc = PixelBasis(N, N_inv, theta, phi, lmax, spins=[2])
         ppc.setup()
 
         result = ppc.compute_eigenspectrum_per_field(basis="noise_weighted")
@@ -897,13 +897,13 @@ class TestComputeEigenspectrumPerField:
 
     def test_total_covariance_basis_single_field(self, uniform_sky_setup):
         """total_covariance basis works when C_ell is provided."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
         n_ell = setup["lmax"] - 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -921,7 +921,7 @@ class TestComputeEigenspectrumPerField:
 
     def test_total_covariance_basis_multi_field(self, two_scalar_field_setup):
         """total_covariance basis works with dict C_ell for multi-field."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = two_scalar_field_setup
         lmax = setup["lmax"]
@@ -932,7 +932,7 @@ class TestComputeEigenspectrumPerField:
             (0, 1): np.ones(n_ell) * 0.3e-5,
         }
 
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -951,10 +951,10 @@ class TestComputeEigenspectrumPerField:
 
     def test_unknown_basis_raises(self, uniform_sky_setup):
         """Unknown basis raises ValueError with available list."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -977,10 +977,10 @@ class TestPlotMultiField:
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = two_scalar_field_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -1001,7 +1001,7 @@ class TestPlotMultiField:
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         np.random.seed(42)
         n_pix = 20
@@ -1012,7 +1012,7 @@ class TestPlotMultiField:
         N = np.eye(2 * n_pix) * 0.01
         N_inv = np.eye(2 * n_pix) * 100.0
 
-        ppc = PixelProjectedCompression(N, N_inv, theta, phi, lmax, spins=[2])
+        ppc = PixelBasis(N, N_inv, theta, phi, lmax, spins=[2])
         ppc.setup()
 
         fig, axes = ppc.plot_eigenvalue_spectrum(
@@ -1034,10 +1034,10 @@ class TestPlotMultiField:
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = two_scalar_field_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -1069,10 +1069,10 @@ class TestPPCOperationChain:
 
     def test_single_field_full_chain(self, uniform_sky_setup):
         """Cover single-field: properties, derivative, weighted data, qf, logdet, SMW."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -1118,11 +1118,11 @@ class TestPPCOperationChain:
 
     def test_multi_field_dict_operations(self, two_scalar_field_setup):
         """Cover multi-field dict paths: covariance, derivative, Fisher, weighted data."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = two_scalar_field_setup
         lmax = setup["lmax"]
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -1168,10 +1168,10 @@ class TestPPCOperationChain:
 
     def test_default_compression_no_threshold(self, uniform_sky_setup):
         """apply_compression with neither epsilon nor mode_fraction."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -1184,10 +1184,10 @@ class TestPPCOperationChain:
 
     def test_runtime_errors_before_compression(self, uniform_sky_setup):
         """Operations before apply_compression raise RuntimeError."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -1218,10 +1218,10 @@ class TestPPCOperationChain:
 
     def test_spectra_list_required_for_dict(self, uniform_sky_setup):
         """compute_fisher_matrix with dict C_ell requires spectra_list."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -1237,10 +1237,10 @@ class TestPPCOperationChain:
 
     def test_spectra_list_none_for_array(self, uniform_sky_setup):
         """compute_fisher_matrix with array C_ell rejects spectra_list."""
-        from cosmocore.compression import PixelProjectedCompression
+        from cosmocore.basis import PixelBasis
 
         setup = uniform_sky_setup
-        ppc = PixelProjectedCompression(
+        ppc = PixelBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],

@@ -125,9 +125,9 @@ class Fisher(Core):
             Compression configuration dictionary. Only supported for
             single-spectrum (temperature-only) analyses. Options:
 
-            - method : str ("harmonic" or "pixel_projected")
+            - method : str ("harmonic" or "pixel")
             - epsilon : float (eigenvalue threshold)
-            - basis : str (for pixel_projected: "harmonic", "noise_weighted", etc.)
+            - basis : str (for pixel: "harmonic", "noise_weighted", etc.)
             - mode_fraction : float (alternative to epsilon)
 
         cache_derivatives : bool, optional
@@ -242,7 +242,7 @@ class Fisher(Core):
     def _compute_single_spectrum(self):
         """Compute Fisher matrix for single-spectrum analysis (compression agnostic)."""
         use_compression = (
-            hasattr(self, "compression_manager") and self.compression_manager is not None
+            hasattr(self, "basis_manager") and self.basis_manager is not None
         )
 
         if self.rank == 0:
@@ -266,7 +266,7 @@ class Fisher(Core):
 
         if use_compression:
             C_ell = self.collection.spectra_manager.get_cls(0, 0, 0)
-            C_inv = self.compression_manager.get_projected_inverse(C_ell)
+            C_inv = self.basis_manager.get_projected_inverse(C_ell)
         else:
             C_inv = self.noise_cov1
 
@@ -357,7 +357,7 @@ class Fisher(Core):
         factors b²_ell are absorbed into the binning weights.
         """
         use_compression = (
-            hasattr(self, "compression_manager") and self.compression_manager is not None
+            hasattr(self, "basis_manager") and self.basis_manager is not None
         )
 
         n_ell = self.n_ell
@@ -372,7 +372,7 @@ class Fisher(Core):
 
             if use_compression:
                 comp_i, comp_j, mode = spectra_list[spectrum_idx]
-                dC_ell = self.compression_manager.get_derivative_matrix(
+                dC_ell = self.basis_manager.get_derivative_matrix(
                     ell, comp_i, comp_j, mode
                 )
             else:
@@ -397,7 +397,7 @@ class Fisher(Core):
     def _compute_multi_spectrum(self):
         """Compute Fisher matrix for multi-spectrum analysis (compression supported)."""
         use_compression = (
-            hasattr(self, "compression_manager") and self.compression_manager is not None
+            hasattr(self, "basis_manager") and self.basis_manager is not None
         )
 
         if self.rank == 0:
@@ -425,7 +425,7 @@ class Fisher(Core):
         spectra_list = None
         if use_compression:
             C_ell_dict, spectra_list = self._build_multi_spectrum_inputs()
-            C_inv = self.compression_manager.get_projected_inverse(C_ell_dict)
+            C_inv = self.basis_manager.get_projected_inverse(C_ell_dict)
         else:
             if self.params.do_cross:
                 C_inv1 = self.noise_cov1
@@ -578,7 +578,7 @@ class Fisher(Core):
             # Setup compression if configured (spin-0 fields only for Phase 1)
             if self._compression_config is not None:
                 config = self._compression_config
-                self.setup_compression(
+                self.setup_computation_basis(
                     method=config.get("method", "harmonic"),
                     lmax=config.get("lmax"),
                     epsilon=config.get("epsilon"),
@@ -587,8 +587,8 @@ class Fisher(Core):
                     C_ell=config.get("C_ell"),
                 )
                 self.log(
-                    f"Compression enabled: {self.compression_manager.n_kept} modes "
-                    f"({self.compression_manager.compression_ratio:.1%})",
+                    f"Compression enabled: {self.basis_manager.n_kept} modes "
+                    f"({self.basis_manager.compression_ratio:.1%})",
                     level=2,
                 )
                 # Also prepare covariance matrices for Spectra compatibility
@@ -622,8 +622,8 @@ class Fisher(Core):
         )
 
         if self._compression_config is not None:
-            self.compression_manager = self.comm.bcast(
-                self.compression_manager if self.rank == 0 else None, root=0
+            self.basis_manager = self.comm.bcast(
+                self.basis_manager if self.rank == 0 else None, root=0
             )
         else:
             self.signal_matrix = self.comm.bcast(

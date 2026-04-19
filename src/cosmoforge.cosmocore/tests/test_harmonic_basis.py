@@ -1,5 +1,5 @@
 """
-Tests for HarmonicCompression class.
+Tests for HarmonicBasis class.
 
 Tests for the Tegmark-like harmonic compression approach.
 """
@@ -9,15 +9,15 @@ import pytest
 from numpy.testing import assert_allclose
 
 
-class TestHarmonicCompressionInitialization:
-    """Tests for HarmonicCompression initialization."""
+class TestHarmonicBasisInitialization:
+    """Tests for HarmonicBasis initialization."""
 
     def test_basic_initialization(self, simple_compression_setup):
-        """Test that HarmonicCompression initializes correctly."""
-        from cosmocore.compression import HarmonicCompression
+        """Test that HarmonicBasis initializes correctly."""
+        from cosmocore.basis import HarmonicBasis
 
         setup = simple_compression_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -30,10 +30,10 @@ class TestHarmonicCompressionInitialization:
 
     def test_mode_count(self, simple_compression_setup):
         """Test that n_modes is computed correctly."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = simple_compression_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -46,15 +46,15 @@ class TestHarmonicCompressionInitialization:
         assert hc.n_modes == expected_n_modes
 
 
-class TestHarmonicCompressionSetup:
-    """Tests for HarmonicCompression setup operations."""
+class TestHarmonicBasisSetup:
+    """Tests for HarmonicBasis setup operations."""
 
     def test_setup_creates_required_matrices(self, simple_compression_setup):
         """Test that setup() creates all required matrices."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = simple_compression_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -80,10 +80,10 @@ class TestHarmonicCompressionSetup:
 
     def test_ell_to_mode_mapping_correct(self, simple_compression_setup):
         """Test that ell-to-mode mapping has correct counts."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = simple_compression_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -99,10 +99,10 @@ class TestHarmonicCompressionSetup:
 
     def test_smw_matrices_symmetric(self, simple_compression_setup):
         """Test that SMW matrices are symmetric."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = simple_compression_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -116,15 +116,15 @@ class TestHarmonicCompressionSetup:
         assert_allclose(hc._V_N_VT, hc._V_N_VT.T, rtol=1e-10)
 
 
-class TestHarmonicCompressionOperations:
-    """Tests for HarmonicCompression compressed-space operations."""
+class TestHarmonicBasisOperations:
+    """Tests for HarmonicBasis compressed-space operations."""
 
     def test_compress_data(self, uniform_sky_setup):
         """Test data compression to harmonic space."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = uniform_sky_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -141,10 +141,10 @@ class TestHarmonicCompressionOperations:
 
     def test_compressed_covariance_shape(self, uniform_sky_setup):
         """Test compressed covariance has correct shape."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = uniform_sky_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -163,10 +163,10 @@ class TestHarmonicCompressionOperations:
 
     def test_compressed_covariance_symmetric(self, uniform_sky_setup):
         """Test compressed covariance is symmetric."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = uniform_sky_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -185,10 +185,10 @@ class TestHarmonicCompressionOperations:
 
     def test_compressed_inverse_is_inverse(self, uniform_sky_setup):
         """Test that compressed inverse is actually the inverse."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = uniform_sky_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -212,10 +212,10 @@ class TestHarmonicCompressionOperations:
 
     def test_compressed_logdet_positive_definite(self, uniform_sky_setup):
         """Test log determinant computation for positive definite matrix."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = uniform_sky_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -239,15 +239,15 @@ class TestHarmonicCompressionOperations:
         assert_allclose(logdet, logdet_np, rtol=1e-8)
 
 
-class TestHarmonicCompressionFisher:
-    """Tests for HarmonicCompression Fisher matrix computation."""
+class TestHarmonicBasisFisher:
+    """Tests for HarmonicBasis Fisher matrix computation."""
 
     def test_fisher_matrix_positive_diagonal(self, uniform_sky_setup):
         """Test Fisher diagonal elements are positive using compute_fisher_matrix."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = uniform_sky_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -267,10 +267,10 @@ class TestHarmonicCompressionFisher:
 
     def test_fisher_matrix_symmetric(self, uniform_sky_setup):
         """Test Fisher matrix is symmetric using compute_fisher_matrix."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = uniform_sky_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -288,15 +288,15 @@ class TestHarmonicCompressionFisher:
         assert_allclose(fisher, fisher.T, rtol=1e-10)
 
 
-class TestHarmonicCompressionPixelSpace:
-    """Tests for HarmonicCompression full pixel-space SMW operations."""
+class TestHarmonicBasisPixelSpace:
+    """Tests for HarmonicBasis full pixel-space SMW operations."""
 
     def test_smw_inverse_shape(self, simple_compression_setup):
         """Test SMW inverse has correct shape."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = simple_compression_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -315,10 +315,10 @@ class TestHarmonicCompressionPixelSpace:
 
     def test_smw_inverse_symmetric(self, simple_compression_setup):
         """Test SMW inverse is symmetric."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = simple_compression_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -337,10 +337,10 @@ class TestHarmonicCompressionPixelSpace:
 
     def test_smw_logdet_finite(self, simple_compression_setup):
         """Test SMW log determinant is finite."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = simple_compression_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -358,8 +358,8 @@ class TestHarmonicCompressionPixelSpace:
         assert np.isfinite(logdet)
 
 
-class TestHarmonicCompressionValidation:
-    """Validation tests for HarmonicCompression against direct computation."""
+class TestHarmonicBasisValidation:
+    """Validation tests for HarmonicBasis against direct computation."""
 
     @pytest.fixture
     def validation_setup(self):
@@ -405,10 +405,10 @@ class TestHarmonicCompressionValidation:
 
     def test_smw_inverse_matches_direct(self, validation_setup):
         """Test that SMW inverse matches direct matrix inverse."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = validation_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -430,10 +430,10 @@ class TestHarmonicCompressionValidation:
 
     def test_smw_logdet_matches_direct(self, validation_setup):
         """Test that SMW log-determinant matches direct computation."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = validation_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -455,10 +455,10 @@ class TestHarmonicCompressionValidation:
 
     def test_smw_inverse_is_actual_inverse(self, validation_setup):
         """Test that SMW inverse times full covariance gives identity."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = validation_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -482,10 +482,10 @@ class TestHarmonicCompressionValidation:
 
     def test_smw_quadratic_form_matches_direct(self, validation_setup):
         """Test that SMW quadratic form matches direct computation."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = validation_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -513,12 +513,12 @@ class TestHarmonicCompressionValidation:
         assert_allclose(quad_form_smw, quad_form_direct, rtol=1e-8)
 
 
-class TestHarmonicCompressionBeam:
-    """Tests for beam window function support in HarmonicCompression."""
+class TestHarmonicBasisBeam:
+    """Tests for beam window function support in HarmonicBasis."""
 
     def test_beam_initialization(self, simple_compression_setup):
         """Test that beam can be provided during initialization."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = simple_compression_setup
         lmax = setup["lmax"]
@@ -528,7 +528,7 @@ class TestHarmonicCompressionBeam:
         sigma = fwhm_rad / np.sqrt(8 * np.log(2))
         beam = np.exp(-0.5 * ell * (ell + 1) * sigma**2)
 
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -543,7 +543,7 @@ class TestHarmonicCompressionBeam:
 
     def test_beam_validation_wrong_length(self, simple_compression_setup):
         """Test that incorrect beam length raises an error."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = simple_compression_setup
         lmax = setup["lmax"]
@@ -551,7 +551,7 @@ class TestHarmonicCompressionBeam:
         wrong_beam = np.ones(lmax + 5)
 
         with pytest.raises(ValueError, match="Beam must have length"):
-            HarmonicCompression(
+            HarmonicBasis(
                 N=setup["N"],
                 N_inv=setup["N_inv"],
                 theta=setup["theta"],
@@ -562,7 +562,7 @@ class TestHarmonicCompressionBeam:
 
     def test_unit_beam_no_effect(self, simple_compression_setup):
         """Test that unit beam produces same result as no beam."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = simple_compression_setup
         lmax = setup["lmax"]
@@ -570,7 +570,7 @@ class TestHarmonicCompressionBeam:
         beam = np.ones(lmax - 1)
         C_ell = np.ones(lmax - 1) * 1e-5
 
-        hc_no_beam = HarmonicCompression(
+        hc_no_beam = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -579,7 +579,7 @@ class TestHarmonicCompressionBeam:
         )
         hc_no_beam.setup()
 
-        hc_unit_beam = HarmonicCompression(
+        hc_unit_beam = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -597,7 +597,7 @@ class TestHarmonicCompressionBeam:
 
 
 # =============================================================================
-# Coverage-focused tests for untested HarmonicCompression operations
+# Coverage-focused tests for untested HarmonicBasis operations
 # =============================================================================
 
 
@@ -606,10 +606,10 @@ class TestHarmonicDictOperations:
 
     def test_single_field_weighted_data_and_qf(self, uniform_sky_setup):
         """Cover get_weighted_compressed_data and compute_quadratic_form (array)."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = uniform_sky_setup
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -636,11 +636,11 @@ class TestHarmonicDictOperations:
 
     def test_multi_field_weighted_data_qf_logdet(self, two_scalar_field_setup):
         """Cover dict paths: weighted data, quadratic form, logdet, prepare_smw."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = two_scalar_field_setup
         lmax = setup["lmax"]
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
@@ -683,11 +683,11 @@ class TestHarmonicDictOperations:
 
     def test_single_entry_dict_fast_paths(self, uniform_sky_setup):
         """Cover single-entry dict fast paths in projected_inverse, covariance, Fisher."""
-        from cosmocore.compression import HarmonicCompression
+        from cosmocore.basis import HarmonicBasis
 
         setup = uniform_sky_setup
         lmax = setup["lmax"]
-        hc = HarmonicCompression(
+        hc = HarmonicBasis(
             N=setup["N"],
             N_inv=setup["N_inv"],
             theta=setup["theta"],
