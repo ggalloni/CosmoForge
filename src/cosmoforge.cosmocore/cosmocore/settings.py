@@ -86,6 +86,11 @@ class InputParams:
         Whether to apply smoothing to polarization fields.
     calibration : float
         Overall calibration factor for maps.
+    load_reduced : bool
+        If True, read noise covariance matrices that have already been reduced
+        to active pixels (via ``read_covmat_reduced``) instead of extracting
+        the active-pixel sub-block from a full-sky covariance (via ``read_covmat``).
+        Default is False.
     ordering : str
         HEALPix map ordering: ``"RING"`` or ``"NESTED"``.
     input_convention : str
@@ -194,6 +199,9 @@ class InputParams:
         self.outnoisecovmat2 = "outputs/reducedNCVM2.bin"
         self.calibration = 1.0
         self.load_inverted = False
+        # When True, noise covariance files are already reduced to active
+        # pixels and can be read directly with read_covmat_reduced(), skipping
+        # the full-sky extraction step performed by read_covmat().
         self.load_reduced = False
         self.output_geometry_file = "outputs/geometry.dat"
         self.smoothing_type = "cosine"
