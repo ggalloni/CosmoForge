@@ -167,6 +167,9 @@ class HarmonicBasis(ComputationBasis):
 
         self._compute_smw_components()
 
+        if self._compress:
+            self._compute_mblock_smw_components()
+
     def _compute_effective_noise(self) -> None:
         """
         Compute effective noise N_eff = N + S_fixed for switch optimization.
@@ -302,6 +305,112 @@ class HarmonicBasis(ComputationBasis):
             (buffer_size, buffer_size), dtype=np.float64, order="F"
         )
 
+    # =================================================================
+    # M-block compression
+    # =================================================================
+
+    def _compute_mblock_smw_components(self) -> None:
+        """Compute block-wise V N^{-1} V^T for m-block compression.
+
+        Instead of storing the full V N^{-1} V^T matrix, stores blocks
+        indexed by (mi, mj) pairs within the delta_m bandwidth.
+        The full V_N_inv is still computed for data projection.
+        """
+        m_to_modes = self._m_to_modes
+        max_m = max(m_to_modes.keys())
+
+        # Block-wise V_m N^{-1} V_{m'}^T
+        self._vninvvt_blocks = {}
+        for mi in sorted(m_to_modes.keys()):
+            V_mi_Ninv = self._V_N_inv[m_to_modes[mi], :]
+            for mj in range(
+                max(0, mi - self._delta_m), min(max_m, mi + self._delta_m) + 1
+            ):
+                if mj not in m_to_modes:
+                    continue
+                V_mj = self._V[m_to_modes[mj], :]
+                block = V_mi_Ninv @ V_mj.T
+                self._vninvvt_blocks[(mi, mj)] = block
+
+        # Build reverse mapping: global mode index -> (m, local_index)
+        self._mode_to_m_local = {}
+        for m, modes in m_to_modes.items():
+            for local_idx, global_idx in enumerate(modes):
+                self._mode_to_m_local[global_idx] = (m, local_idx)
+
+        # Build mapping: for each m-block, which local indices belong to each ell
+        self._mblock_ell_local_indices = {}
+        for m in sorted(m_to_modes.keys()):
+            modes = m_to_modes[m]
+            mode_set = set(modes)
+            mode_to_local = {g: i for i, g in enumerate(modes)}
+            ell_map = {}
+            for ell in range(self._lmin_smw, self._lmax_smw + 1):
+                ell_modes = self._ell_to_modes[ell]
+                local_indices = [mode_to_local[em] for em in ell_modes if em in mode_set]
+                if local_indices:
+                    ell_map[ell] = local_indices
+            self._mblock_ell_local_indices[m] = ell_map
+
+    def _get_projected_inverse_mblock(self, C_ell):
+        """Compute V C^{-1} V^T block by block using SMW formula.
+
+        For each m-block, constructs K_m = Lambda_m^{-1} + M_m and inverts
+        it independently. The result is stored as a dict of blocks, one per m.
+
+        Parameters
+        ----------
+        C_ell : numpy.ndarray
+            Power spectrum values for ell = 2 to lmax.
+
+        Returns
+        -------
+        dict
+            Mapping from m -> block matrix (V C^{-1} V^T restricted to m).
+        """
+        Lambda_diag = self._build_lambda_diagonal(C_ell)
+        lambda_inv_diag = np.where(Lambda_diag > 1e-30, 1.0 / Lambda_diag, 1e30)
+
+        result_blocks = {}
+        for m in sorted(self._m_to_modes.keys()):
+            modes = self._m_to_modes[m]
+            M_m = self._vninvvt_blocks[(m, m)]
+            lambda_inv_m = lambda_inv_diag[modes]
+
+            # K_m = diag(lambda_inv_m) + M_m
+            K_m = M_m.copy()
+            K_m[np.diag_indices_from(K_m)] += lambda_inv_m
+
+            # Invert K_m
+            K_m_inv = matrix_inverse_symm(np.asfortranarray(K_m), overwrite=True)
+
+            # V C^{-1} V^T block = M_m - M_m @ K_m^{-1} @ M_m
+            MKM = M_m @ K_m_inv @ M_m
+            result_blocks[m] = M_m - MKM
+
+        return result_blocks
+
+    def _assemble_full_from_blocks(self, blocks):
+        """Assemble full matrix from m-block dict (zeros in off-block positions).
+
+        Parameters
+        ----------
+        blocks : dict
+            Mapping from m -> block matrix.
+
+        Returns
+        -------
+        numpy.ndarray
+            Full (n_modes, n_modes) matrix with blocks on diagonal.
+        """
+        n = self.n_modes
+        result = np.zeros((n, n), dtype=np.float64)
+        for m, block in blocks.items():
+            modes = self._m_to_modes[m]
+            ix = np.ix_(modes, modes)
+            result[ix] = block
+        return result
+
     def get_projected_inverse(self, C_ell):
         """
         Compute V C^{-1} V^T efficiently using SMW formula.
@@ -316,6 +425,11 @@ class HarmonicBasis(ComputationBasis):
         numpy.ndarray
             Projected inverse covariance V C^{-1} V^T.
         """
+        # M-block compressed path (single-field array only)
+        if self._compress and not isinstance(C_ell, dict):
+            blocks = self._get_projected_inverse_mblock(C_ell)
+            return self._assemble_full_from_blocks(blocks)
+
         # Handle both array and dict inputs
         if isinstance(C_ell, dict):
             # Multi-field path
