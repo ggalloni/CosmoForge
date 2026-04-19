@@ -117,7 +117,19 @@ def read_covmat_reduced(covmatfile, C):
         Filled covariance matrix C.
     """
     ntot = C.shape[0]
-    data = np.fromfile(covmatfile.strip(), dtype=np.float64)
+    filepath = covmatfile.strip()
+    data = np.fromfile(filepath, dtype=np.float64)
+    expected_size = ntot * ntot
+
+    if data.size != expected_size:
+        expected_bytes = expected_size * data.dtype.itemsize
+        actual_bytes = data.size * data.dtype.itemsize
+        raise ValueError(
+            f"Invalid reduced covariance matrix size in '{filepath}': "
+            f"expected {expected_size} float64 values "
+            f"({expected_bytes} bytes) for shape ({ntot}, {ntot}), "
+            f"but found {data.size} values ({actual_bytes} bytes)."
+        )
     data = data.reshape((ntot, ntot))
     C[:] = data
     return C
