@@ -124,7 +124,6 @@ class LikelihoodResult:
         self.chi_squared_values = deepcopy(chi_squared_values)
         self.log_likelihood_values = deepcopy(log_likelihood_values)
 
-        # Compute likelihood values (with numerical stability)
         self.likelihood_values = self._compute_likelihood_values()
 
     def _compute_likelihood_values(self) -> np.ndarray:
@@ -264,7 +263,6 @@ class LikelihoodResult:
         param_index = self.parameter_grid.parameter_names.index(parameter_name)
         param_values = self.parameter_grid.parameter_ranges[parameter_name]
 
-        # Initialize marginalized likelihood array
         marginalized = np.zeros(len(param_values))
 
         # Sum likelihood over all other parameters
