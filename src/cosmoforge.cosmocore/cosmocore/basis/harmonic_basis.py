@@ -1,16 +1,118 @@
 """
-Harmonic basis construction for compression methods.
+Harmonic basis construction for computation basis methods.
 
-This module contains the HarmonicBasis class which encapsulates all spherical
-harmonic operator (V), Lambda matrix, and derivative matrix construction logic.
-It is an internal helper used by ComputationBasis and its subclasses.
+This module contains the HarmonicBasisBuilder class which encapsulates all
+spherical harmonic operator (V), Lambda matrix, and derivative matrix
+construction logic. It is an internal helper used by ComputationBasis and
+its subclasses.
 """
 
 from __future__ import annotations
 
 import numpy as np
+from numba import njit, prange
 
 from ..basics import legendre_plm, wigner_d_small
+
+
+@njit(parallel=True, cache=True)
+def _fill_V_spin0(V, cos_theta, sin_theta, cos_mphi, sin_mphi, lmin_v, lmax_v):
+    """Fill V matrix for spin-0 in parallel over pixels."""
+    lmax = lmax_v
+    n_pix = len(cos_theta)
+    sqrt2 = np.sqrt(2.0)
+
+    for ipix in prange(n_pix):
+        plm_local = np.zeros((lmax + 1, lmax + 1), dtype=np.float64)
+        legendre_plm(cos_theta[ipix], sin_theta[ipix], plm_local)
+
+        mode_idx = 0
+
+        # m=0 block
+        for ell in range(lmin_v, lmax_v + 1):
+            V[mode_idx, ipix] = plm_local[ell, 0]
+            mode_idx += 1
+
+        # |m|>0 blocks
+        for abs_m in range(1, lmax_v + 1):
+            ell_start = abs_m if abs_m > lmin_v else lmin_v
+            # cos rows
+            for ell in range(ell_start, lmax_v + 1):
+                base = sqrt2 * plm_local[ell, abs_m]
+                V[mode_idx, ipix] = base * cos_mphi[abs_m, ipix]
+                mode_idx += 1
+            # sin rows
+            for ell in range(ell_start, lmax_v + 1):
+                base = sqrt2 * plm_local[ell, abs_m]
+                V[mode_idx, ipix] = base * sin_mphi[abs_m, ipix]
+                mode_idx += 1
+
+
+@njit(parallel=True, cache=True)
+def _fill_V_spin2(
+    V, cos_theta, sin_theta, cos_mphi, sin_mphi, lmin_v, lmax_v, n_modes, n_pix
+):
+    """Fill V matrix for spin-2 in parallel over pixels."""
+    sqrt2 = np.sqrt(2.0)
+    pi4 = 4.0 * np.pi
+
+    for ipix in prange(n_pix):
+        cos_th = cos_theta[ipix]
+        sin_th = sin_theta[ipix]
+
+        mode_idx = 0
+
+        # m=0 block
+        for ell in range(lmin_v, lmax_v + 1):
+            scale_ell = np.sqrt((2 * ell + 1) / pi4)
+            d_plus2 = wigner_d_small(ell, 0, 2, cos_th, sin_th)
+            d_minus2 = wigner_d_small(ell, 0, -2, cos_th, sin_th)
+            D_plus = d_minus2 + d_plus2
+            scale = scale_ell * 0.5
+
+            V[mode_idx, ipix] = scale * D_plus
+            V[mode_idx, n_pix + ipix] = 0.0
+            V[n_modes + mode_idx, ipix] = 0.0
+            V[n_modes + mode_idx, n_pix + ipix] = scale * D_plus
+            mode_idx += 1
+
+        # |m|>0 blocks
+        for abs_m in range(1, lmax_v + 1):
+            ell_start = abs_m if abs_m > lmin_v else lmin_v
+
+            # cos rows
+            for ell in range(ell_start, lmax_v + 1):
+                scale_ell = np.sqrt((2 * ell + 1) / pi4)
+                d_plus2 = wigner_d_small(ell, abs_m, 2, cos_th, sin_th)
+                d_minus2 = wigner_d_small(ell, abs_m, -2, cos_th, sin_th)
+                D_plus = d_minus2 + d_plus2
+                D_minus = d_minus2 - d_plus2
+                scale = scale_ell * sqrt2 * 0.5
+                cm = cos_mphi[abs_m, ipix]
+                sm = sin_mphi[abs_m, ipix]
+
+                V[mode_idx, ipix] = scale * D_plus * cm
+                V[mode_idx, n_pix + ipix] = scale * D_minus * sm
+                V[n_modes + mode_idx, ipix] = -scale * D_minus * sm
+                V[n_modes + mode_idx, n_pix + ipix] = scale * D_plus * cm
+                mode_idx += 1
+
+            # sin rows
+            for ell in range(ell_start, lmax_v + 1):
+                scale_ell = np.sqrt((2 * ell + 1) / pi4)
+                d_plus2 = wigner_d_small(ell, abs_m, 2, cos_th, sin_th)
+                d_minus2 = wigner_d_small(ell, abs_m, -2, cos_th, sin_th)
+                D_plus = d_minus2 + d_plus2
+                D_minus = d_minus2 - d_plus2
+                scale = scale_ell * sqrt2 * 0.5
+                cm = cos_mphi[abs_m, ipix]
+                sm = sin_mphi[abs_m, ipix]
+
+                V[mode_idx, ipix] = scale * D_plus * sm
+                V[mode_idx, n_pix + ipix] = -scale * D_minus * cm
+                V[n_modes + mode_idx, ipix] = scale * D_minus * cm
+                V[n_modes + mode_idx, n_pix + ipix] = scale * D_plus * sm
+                mode_idx += 1
 
 
 class HarmonicBasisBuilder:
@@ -23,7 +125,7 @@ class HarmonicBasisBuilder:
     Parameters
     ----------
     parent : ComputationBasis
-        Parent compression instance providing configuration. The following
+        Parent computation basis instance providing configuration. The following
         attributes are read (all set during ComputationBasis.__init__):
         _theta_tuple, _phi_tuple, _spins, n_components, lmax,
         _lmin_smw, _lmax_smw, _n_modes_base, _n_modes_per_component,
@@ -114,6 +216,8 @@ class HarmonicBasisBuilder:
         Modes are grouped by azimuthal quantum number |m|:
         - m=0 block: one row per ell (ell=lmin..lmax)
         - |m|>0 blocks: cos rows for all ell, then sin rows for all ell
+
+        Pixel loop is parallelized via Numba prange.
         """
         n_pix_comp = len(theta)
         cos_theta = np.cos(theta)
@@ -127,35 +231,10 @@ class HarmonicBasisBuilder:
         cos_mphi = np.zeros((lmax_v + 1, n_pix_comp), dtype=np.float64)
         sin_mphi = np.zeros((lmax_v + 1, n_pix_comp), dtype=np.float64)
         for m in range(lmax_v + 1):
-            for ipix in range(n_pix_comp):
-                cos_mphi[m, ipix] = np.cos(m * phi[ipix])
-                sin_mphi[m, ipix] = np.sin(m * phi[ipix])
+            cos_mphi[m, :] = np.cos(m * phi)
+            sin_mphi[m, :] = np.sin(m * phi)
 
-        plm = np.zeros((self.lmax + 1, self.lmax + 1), dtype=np.float64)
-
-        for ipix in range(n_pix_comp):
-            legendre_plm(cos_theta[ipix], sin_theta[ipix], plm)
-
-            mode_idx = 0
-
-            # m=0 block: one row per ell
-            for ell in range(lmin_v, lmax_v + 1):
-                V[mode_idx, ipix] = plm[ell, 0]
-                mode_idx += 1
-
-            # |m|>0 blocks
-            for abs_m in range(1, lmax_v + 1):
-                ell_start = max(abs_m, lmin_v)
-                # cos(|m|*phi) rows for all ell
-                for ell in range(ell_start, lmax_v + 1):
-                    base = np.sqrt(2.0) * plm[ell, abs_m]
-                    V[mode_idx, ipix] = base * cos_mphi[abs_m, ipix]
-                    mode_idx += 1
-                # sin(|m|*phi) rows for all ell
-                for ell in range(ell_start, lmax_v + 1):
-                    base = np.sqrt(2.0) * plm[ell, abs_m]
-                    V[mode_idx, ipix] = base * sin_mphi[abs_m, ipix]
-                    mode_idx += 1
+        _fill_V_spin0(V, cos_theta, sin_theta, cos_mphi, sin_mphi, lmin_v, lmax_v)
 
         return V
 
@@ -174,6 +253,8 @@ class HarmonicBasisBuilder:
         Returns V of shape (2 * n_modes, 2 * n_pix) where:
         - Rows 0:n_modes are E modes, rows n_modes:2*n_modes are B modes
         - Cols 0:n_pix are Q pixels, cols n_pix:2*n_pix are U pixels
+
+        Pixel loop is parallelized via Numba prange.
         """
         n_pix = len(theta)
         n_modes = self._n_modes_base
@@ -189,67 +270,12 @@ class HarmonicBasisBuilder:
         cos_mphi = np.zeros((lmax_v + 1, n_pix), dtype=np.float64)
         sin_mphi = np.zeros((lmax_v + 1, n_pix), dtype=np.float64)
         for m in range(lmax_v + 1):
-            for ipix in range(n_pix):
-                cos_mphi[m, ipix] = np.cos(m * phi[ipix])
-                sin_mphi[m, ipix] = np.sin(m * phi[ipix])
+            cos_mphi[m, :] = np.cos(m * phi)
+            sin_mphi[m, :] = np.sin(m * phi)
 
-        for ipix in range(n_pix):
-            cos_th = cos_theta[ipix]
-            sin_th = sin_theta[ipix]
-
-            mode_idx = 0
-
-            # m=0 block: one row per ell
-            for ell in range(lmin_v, lmax_v + 1):
-                scale_ell = np.sqrt((2 * ell + 1) / (4 * np.pi))
-                d_plus2 = wigner_d_small(ell, 0, 2, cos_th, sin_th)
-                d_minus2 = wigner_d_small(ell, 0, -2, cos_th, sin_th)
-                D_plus = d_minus2 + d_plus2
-                scale = scale_ell * 0.5
-
-                V[mode_idx, ipix] = scale * D_plus
-                V[mode_idx, n_pix + ipix] = 0.0
-                V[n_modes + mode_idx, ipix] = 0.0
-                V[n_modes + mode_idx, n_pix + ipix] = scale * D_plus
-                mode_idx += 1
-
-            # |m|>0 blocks
-            for abs_m in range(1, lmax_v + 1):
-                ell_start = max(abs_m, lmin_v)
-
-                # cos(|m|*phi) rows (corresponds to m>0 in old code)
-                for ell in range(ell_start, lmax_v + 1):
-                    scale_ell = np.sqrt((2 * ell + 1) / (4 * np.pi))
-                    d_plus2 = wigner_d_small(ell, abs_m, 2, cos_th, sin_th)
-                    d_minus2 = wigner_d_small(ell, abs_m, -2, cos_th, sin_th)
-                    D_plus = d_minus2 + d_plus2
-                    D_minus = d_minus2 - d_plus2
-                    scale = scale_ell * np.sqrt(2.0) * 0.5
-                    cm = cos_mphi[abs_m, ipix]
-                    sm = sin_mphi[abs_m, ipix]
-
-                    V[mode_idx, ipix] = scale * D_plus * cm
-                    V[mode_idx, n_pix + ipix] = scale * D_minus * sm
-                    V[n_modes + mode_idx, ipix] = -scale * D_minus * sm
-                    V[n_modes + mode_idx, n_pix + ipix] = scale * D_plus * cm
-                    mode_idx += 1
-
-                # sin(|m|*phi) rows (corresponds to m<0 in old code)
-                for ell in range(ell_start, lmax_v + 1):
-                    scale_ell = np.sqrt((2 * ell + 1) / (4 * np.pi))
-                    d_plus2 = wigner_d_small(ell, abs_m, 2, cos_th, sin_th)
-                    d_minus2 = wigner_d_small(ell, abs_m, -2, cos_th, sin_th)
-                    D_plus = d_minus2 + d_plus2
-                    D_minus = d_minus2 - d_plus2
-                    scale = scale_ell * np.sqrt(2.0) * 0.5
-                    cm = cos_mphi[abs_m, ipix]
-                    sm = sin_mphi[abs_m, ipix]
-
-                    V[mode_idx, ipix] = scale * D_plus * sm
-                    V[mode_idx, n_pix + ipix] = -scale * D_minus * cm
-                    V[n_modes + mode_idx, ipix] = scale * D_minus * cm
-                    V[n_modes + mode_idx, n_pix + ipix] = scale * D_plus * sm
-                    mode_idx += 1
+        _fill_V_spin2(
+            V, cos_theta, sin_theta, cos_mphi, sin_mphi, lmin_v, lmax_v, n_modes, n_pix
+        )
 
         return V
 

@@ -1,7 +1,7 @@
 """
-Harmonic compression (Tegmark-like) for CMB Fisher matrix computation.
+Harmonic computation basis (Tegmark-like) for CMB Fisher matrix computation.
 
-This module implements direct harmonic space compression where data is
+This module implements direct harmonic space projection where data is
 transformed directly to n_modes dimensions via the harmonic operator V.
 """
 
@@ -22,7 +22,13 @@ from ..basics import (
     smw_logdet,
     smw_quadratic_form,
 )
-from .base import ComputationBasis, SMWPrepared
+from .base import (
+    _LAMBDA_INV_CAP,
+    _LAMBDA_ZERO_THRESHOLD,
+    _MATRIX_REGULARIZATION,
+    ComputationBasis,
+    SMWPrepared,
+)
 
 
 class HarmonicBasis(ComputationBasis):
@@ -30,11 +36,11 @@ class HarmonicBasis(ComputationBasis):
     Direct harmonic space computation basis (Tegmark-like).
 
     Transforms directly to n_modes dimensions via V. Fast and efficient
-    when n_modes << n_pix. No additional eigenvalue compression.
+    when n_modes << n_pix. No additional eigenvalue truncation.
 
     The key operations are:
-    - Data compression: d̄ = P @ d where P = V
-    - Compressed covariance: C̄ = V N V^T + Λ
+    - Data projection: d̄ = P @ d where P = V
+    - Projected covariance: C̄ = V N V^T + Λ
     - Projected inverse: V C^{-1} V^T = M - M K^{-1} M (via SMW)
 
     Parameters
@@ -121,24 +127,20 @@ class HarmonicBasis(ComputationBasis):
 
     @property
     def method(self) -> str:
-        """Compression method name."""
+        """Computation basis name."""
         return "harmonic"
 
     @property
     def projector(self) -> np.ndarray:
-        """
-        Get the projection matrix V (n_modes × n_pix).
-
-        Maps pixel space to harmonic mode space.
-        """
+        """Projection matrix V (n_modes × n_pix)."""
         return self._V
 
     @property
     def n_compressed(self) -> int:
         """
-        Size of compressed space (n_modes_total for multi-field, n_modes for single).
+        Size of compressed space (n_modes_total, including spin-2 E+B doubling).
         """
-        return self.n_modes_total if self.n_components > 1 else self.n_modes
+        return self.n_modes_total
 
     def setup(self) -> None:
         """
@@ -306,6 +308,61 @@ class HarmonicBasis(ComputationBasis):
         )
 
     # =================================================================
+    # SMW helpers
+    # =================================================================
+
+    def _smw_projected_inverse(
+        self,
+        M: np.ndarray,
+        *,
+        lambda_inv_diag: np.ndarray | None = None,
+        lambda_inv_matrix: np.ndarray | None = None,
+        K: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """Compute M - M @ K^{-1} @ M where K = Lambda^{-1} + M.
+
+        Parameters
+        ----------
+        M : numpy.ndarray
+            V @ N^{-1} @ V^T (or a sub-block of it).
+        lambda_inv_diag : numpy.ndarray or None
+            Diagonal of Lambda^{-1}. Builds K = diag(lambda_inv) + M.
+        lambda_inv_matrix : numpy.ndarray or None
+            Full Lambda^{-1} matrix. Builds K = lambda_inv_matrix + M.
+        K : numpy.ndarray or None
+            Prebuilt K matrix (skips K construction).
+        """
+        if K is None:
+            if lambda_inv_diag is not None:
+                K = M.copy()
+                K[np.diag_indices_from(K)] += lambda_inv_diag
+            else:
+                K = lambda_inv_matrix + M
+        kernel_inv = matrix_inverse_symm(np.asfortranarray(K), overwrite=True)
+        return M - matrix_mult(matrix_mult(M, kernel_inv), M)
+
+    def _normalize_c_ell(self, C_ell):
+        """Normalize C_ell input to canonical form.
+
+        Returns (c_ell_array, c_ell_dict, is_single_field).
+        Single-component spin-0 dicts with a single 1D entry are unwrapped.
+        """
+        if not isinstance(C_ell, dict):
+            return C_ell, None, True
+        if self.n_components == 1 and self._spins[0] == 0:
+            first_val = next(iter(C_ell.values()))
+            if isinstance(first_val, np.ndarray) and first_val.ndim == 1:
+                return first_val, None, True
+        return None, C_ell, False
+
+    def _lambda_inv_diag_from_array(self, C_ell: np.ndarray) -> np.ndarray:
+        """Build Lambda^{-1} diagonal from single-field C_ell array."""
+        Lambda_diag = self._build_lambda_diagonal(C_ell)
+        return np.where(
+            Lambda_diag > _LAMBDA_ZERO_THRESHOLD, 1.0 / Lambda_diag, _LAMBDA_INV_CAP
+        )
+
+    # =================================================================
     # M-block compression
     # =================================================================
 
@@ -368,22 +425,15 @@ class HarmonicBasis(ComputationBasis):
         dict
             Mapping from m -> block matrix (V C^{-1} V^T restricted to m).
         """
-        Lambda_diag = self._build_lambda_diagonal(C_ell)
-        lambda_inv_diag = np.where(Lambda_diag > 1e-30, 1.0 / Lambda_diag, 1e30)
+        lambda_inv_diag = self._lambda_inv_diag_from_array(C_ell)
 
         result_blocks = {}
         for m in sorted(self._m_to_modes.keys()):
             modes = self._m_to_modes[m]
             M_m = self._vninvvt_blocks[(m, m)]
-            lambda_inv_m = lambda_inv_diag[modes]
-
-            K_m = M_m.copy()
-            K_m[np.diag_indices_from(K_m)] += lambda_inv_m
-
-            K_m_inv = matrix_inverse_symm(np.asfortranarray(K_m), overwrite=True)
-
-            MKM = M_m @ K_m_inv @ M_m
-            result_blocks[m] = M_m - MKM
+            result_blocks[m] = self._smw_projected_inverse(
+                M_m, lambda_inv_diag=lambda_inv_diag[modes]
+            )
 
         return result_blocks
 
@@ -404,8 +454,7 @@ class HarmonicBasis(ComputationBasis):
         numpy.ndarray
             Full projected inverse matrix (n_modes, n_modes).
         """
-        Lambda_diag = self._build_lambda_diagonal(C_ell)
-        lambda_inv_diag = np.where(Lambda_diag > 1e-30, 1.0 / Lambda_diag, 1e30)
+        lambda_inv_diag = self._lambda_inv_diag_from_array(C_ell)
 
         m_values = sorted(self._m_to_modes.keys())
         max_m = max(m_values)
@@ -459,19 +508,11 @@ class HarmonicBasis(ComputationBasis):
                         (mi, mj)
                     ]
 
-            # K = Lambda_inv + M
-            K_combined = M_combined.copy()
-            K_combined[np.diag_indices_from(K_combined)] += lambda_inv_diag[
-                combined_modes
-            ]
-
-            K_combined_inv = matrix_inverse_symm(
-                np.asfortranarray(K_combined), overwrite=True
+            result_combined = self._smw_projected_inverse(
+                M_combined, lambda_inv_diag=lambda_inv_diag[combined_modes]
             )
 
-            result_combined = M_combined - M_combined @ K_combined_inv @ M_combined
-
-            # Place full combined result into output matrix
+            # Place combined result into output matrix
             ix = np.ix_(combined_modes, combined_modes)
             result[ix] = result_combined
 
@@ -545,15 +586,15 @@ class HarmonicBasis(ComputationBasis):
                     E_diag_local[li] = 1.0
                 block_E[ell] = block * E_diag_local
 
-            # Fisher contribution: 0.5 * Tr[(block * E_i) @ (block * E_j)^T]
+            # F_{ij} += 0.5 * Tr[(block * E_i)(block * E_j)^T]
             ells_in_block = sorted(block_E.keys())
             for ii, ell_i in enumerate(ells_in_block):
                 idx_i = ell_i - ell_min
-                bEi = block_E[ell_i]
+                block_deriv_i = block_E[ell_i]
                 for ell_j in ells_in_block[ii:]:
                     idx_j = ell_j - ell_min
-                    bEj = block_E[ell_j]
-                    val = np.sum(bEi * bEj.T)
+                    block_deriv_j = block_E[ell_j]
+                    val = np.sum(block_deriv_i * block_deriv_j.T)
                     fisher[idx_i, idx_j] += 0.5 * val
                     if idx_i != idx_j:
                         fisher[idx_j, idx_i] += 0.5 * val
@@ -618,23 +659,15 @@ class HarmonicBasis(ComputationBasis):
             mode_indices = np.array(mode_indices, dtype=int)
             ix = np.ix_(mode_indices, mode_indices)
 
-            # Extract sub-blocks of V_Ninv_VT and Lambda
             M_block = self._V_Ninv_VT[ix]
             Lambda_block = lambda_matrix[ix]
 
-            # Build K = Lambda_inv + M for this group
-            Lambda_reg = Lambda_block + np.eye(len(mode_indices)) * 1e-20
+            Lambda_reg = Lambda_block + np.eye(len(mode_indices)) * _MATRIX_REGULARIZATION
             Lambda_inv_block = matrix_inverse_symm(np.asfortranarray(Lambda_reg))
-            K_block = Lambda_inv_block + M_block
 
-            # Invert K for this group
-            K_block_inv = matrix_inverse_symm(np.asfortranarray(K_block), overwrite=True)
-
-            # SMW result for this group: M - M K^{-1} M
-            block_result = M_block - matrix_mult(
-                matrix_mult(M_block, K_block_inv), M_block
+            result[ix] = self._smw_projected_inverse(
+                M_block, lambda_inv_matrix=Lambda_inv_block
             )
-            result[ix] = block_result
 
         return result
 
@@ -656,48 +689,28 @@ class HarmonicBasis(ComputationBasis):
         numpy.ndarray
             Projected inverse covariance V C^{-1} V^T.
         """
-        # M-block compressed path (single-field array only)
-        if self._compress and not isinstance(C_ell, dict):
+        c_ell_arr, c_ell_dict, is_single = self._normalize_c_ell(C_ell)
+
+        # M-block compressed path (single-field only)
+        if self._compress and is_single:
             if self._delta_m > 0:
-                return self._get_projected_inverse_mblock_banded(C_ell)
-            blocks = self._get_projected_inverse_mblock(C_ell)
+                return self._get_projected_inverse_mblock_banded(c_ell_arr)
+            blocks = self._get_projected_inverse_mblock(c_ell_arr)
             return self._assemble_full_from_blocks(blocks)
 
-        # Handle both array and dict inputs
-        if isinstance(C_ell, dict):
-            # Multi-field path
-            if self.n_components == 1 and self._spins[0] == 0:
-                first_val = next(iter(C_ell.values()))
-                if isinstance(first_val, np.ndarray) and first_val.ndim == 1:
-                    # Dict with single entry - use single-field path
-                    Lambda_diag = self._build_lambda_diagonal(first_val)
-                    lambda_inv_diag = np.where(
-                        Lambda_diag > 1e-30, 1.0 / Lambda_diag, 1e30
-                    )
-                    add_diagonal(self._V_Ninv_VT, lambda_inv_diag, out=self._K_buffer)
-                    kernel_inv = matrix_inverse_symm(self._K_buffer, overwrite=True)
-                    return self._V_Ninv_VT - matrix_mult(
-                        matrix_mult(self._V_Ninv_VT, kernel_inv), self._V_Ninv_VT
-                    )
-
-            # Use field block-diagonal optimization if applicable
-            if field_groups is not None and len(field_groups) > 1:
-                return self._get_projected_inverse_field_blocks(C_ell, field_groups)
-
-            K, _ = self._build_smw_kernel(C_ell)
-            kernel_inv = matrix_inverse_symm(np.asfortranarray(K), overwrite=True)
-            return self._V_Ninv_VT - matrix_mult(
-                matrix_mult(self._V_Ninv_VT, kernel_inv), self._V_Ninv_VT
-            )
-        else:
-            # Single-field array path
-            Lambda_diag = self._build_lambda_diagonal(C_ell)
-            lambda_inv_diag = np.where(Lambda_diag > 1e-30, 1.0 / Lambda_diag, 1e30)
+        if is_single:
+            lambda_inv_diag = self._lambda_inv_diag_from_array(c_ell_arr)
             add_diagonal(self._V_Ninv_VT, lambda_inv_diag, out=self._K_buffer)
-            kernel_inv = matrix_inverse_symm(self._K_buffer, overwrite=True)
-            return self._V_Ninv_VT - matrix_mult(
-                matrix_mult(self._V_Ninv_VT, kernel_inv), self._V_Ninv_VT
+            return self._smw_projected_inverse(
+                self._V_Ninv_VT, lambda_inv_diag=lambda_inv_diag
             )
+
+        # Multi-field dict path
+        if field_groups is not None and len(field_groups) > 1:
+            return self._get_projected_inverse_field_blocks(c_ell_dict, field_groups)
+
+        K, _ = self._build_smw_kernel(c_ell_dict)
+        return self._smw_projected_inverse(self._V_Ninv_VT, K=K)
 
     def get_derivative_matrix(
         self,
@@ -745,21 +758,12 @@ class HarmonicBasis(ComputationBasis):
         numpy.ndarray
             Compressed covariance matrix.
         """
-        # Handle both array (single-field) and dict (multi-field) inputs
-        if isinstance(C_ell, dict):
-            # Multi-field path
-            if self.n_components == 1 and self._spins[0] == 0:
-                first_val = next(iter(C_ell.values()))
-                if isinstance(first_val, np.ndarray) and first_val.ndim == 1:
-                    # Single-key dict: use single-field path
-                    Lambda_diag = self._build_lambda_diagonal(first_val)
-                    return add_diagonal(self._V_N_VT, Lambda_diag)
-            lambda_matrix = self._build_lambda_matrix(C_ell)
-            return self._V_N_VT + lambda_matrix
-        else:
-            # Single-field array path
-            Lambda_diag = self._build_lambda_diagonal(C_ell)
+        c_ell_arr, c_ell_dict, is_single = self._normalize_c_ell(C_ell)
+        if is_single:
+            Lambda_diag = self._build_lambda_diagonal(c_ell_arr)
             return add_diagonal(self._V_N_VT, Lambda_diag)
+        lambda_matrix = self._build_lambda_matrix(c_ell_dict)
+        return self._V_N_VT + lambda_matrix
 
     # === Full pixel-space operations (if needed) ===
 
@@ -794,10 +798,11 @@ class HarmonicBasis(ComputationBasis):
         float
             Log determinant of the full covariance matrix.
         """
-        if isinstance(C_ell, dict):
-            _, _, logdet = self.prepare_smw(C_ell)
+        c_ell_arr, c_ell_dict, is_single = self._normalize_c_ell(C_ell)
+        if not is_single:
+            _, logdet = self.prepare_smw(c_ell_dict)
             return logdet
-        Lambda_diag = self._build_lambda_diagonal(C_ell)
+        Lambda_diag = self._build_lambda_diagonal(c_ell_arr)
         return smw_logdet(self._log_det_N, self._V_Ninv_VT, Lambda_diag)
 
     def get_full_logdet(self, C_ell) -> float:
@@ -824,26 +829,18 @@ class HarmonicBasis(ComputationBasis):
         numpy.ndarray
             Weighted compressed data vector w = V C^{-1} d.
         """
-        if isinstance(C_ell, dict):
-            if self.n_components == 1 and self._spins[0] == 0:
-                first_val = next(iter(C_ell.values()))
-                if isinstance(first_val, np.ndarray) and first_val.ndim == 1:
-                    return self.get_weighted_compressed_data(data, first_val)
-            y = self._V_N_inv @ data
-            K, _ = self._build_smw_kernel(C_ell)
-            kernel_inv_y = np.linalg.solve(K, y)
-            M_kernel_inv_y = matrix_mult(self._V_Ninv_VT, kernel_inv_y)
-            return y - M_kernel_inv_y
+        c_ell_arr, c_ell_dict, is_single = self._normalize_c_ell(C_ell)
 
-        # Single-field array path
-        del C_c_inv
         y = self._V_N_inv @ data
-        Lambda_diag = self._build_lambda_diagonal(C_ell)
-        K = smw_kernel(self._V_Ninv_VT, Lambda_diag)
+        if is_single:
+            Lambda_diag = self._build_lambda_diagonal(c_ell_arr)
+            K = smw_kernel(self._V_Ninv_VT, Lambda_diag)
+        else:
+            K, _ = self._build_smw_kernel(c_ell_dict)
+
         L = cholesky_decomposition(K)
         kernel_inv_y = cho_solve((L, True), y)
-        M_kernel_inv_y = matrix_mult(self._V_Ninv_VT, kernel_inv_y)
-        return y - M_kernel_inv_y
+        return y - matrix_mult(self._V_Ninv_VT, kernel_inv_y)
 
     def compute_quadratic_form(self, data: np.ndarray, C_ell) -> float:
         """
@@ -861,10 +858,11 @@ class HarmonicBasis(ComputationBasis):
         float
             Quadratic form value d^T C^{-1} d.
         """
-        if isinstance(C_ell, dict):
-            K_chol, _, _ = self.prepare_smw(C_ell)
+        c_ell_arr, c_ell_dict, is_single = self._normalize_c_ell(C_ell)
+        if not is_single:
+            K_chol, _ = self.prepare_smw(c_ell_dict)
             return self.quadratic_form_from_prepared(data, K_chol)
-        Lambda_diag = self._build_lambda_diagonal(C_ell)
+        Lambda_diag = self._build_lambda_diagonal(c_ell_arr)
         return smw_quadratic_form(
             data, self.N_inv, self._V_N_inv, self._V_Ninv_VT, Lambda_diag
         )
@@ -872,7 +870,9 @@ class HarmonicBasis(ComputationBasis):
     def _build_smw_kernel(self, C_ell_dict: dict) -> tuple[np.ndarray, np.ndarray]:
         """Build K = lambda_inv + V N^{-1} V^T and return (K, lambda_matrix)."""
         lambda_matrix = self._build_lambda_matrix(C_ell_dict)
-        lambda_regularized = lambda_matrix + np.eye(lambda_matrix.shape[0]) * 1e-20
+        lambda_regularized = (
+            lambda_matrix + np.eye(lambda_matrix.shape[0]) * _MATRIX_REGULARIZATION
+        )
         lambda_inv = matrix_inverse_symm(np.asfortranarray(lambda_regularized))
         K = lambda_inv + self._V_Ninv_VT
         return K, lambda_matrix
@@ -888,7 +888,7 @@ class HarmonicBasis(ComputationBasis):
 
         logdet = self._log_det_N + log_det_Lambda + log_det_K
 
-        return SMWPrepared(K_chol, None, logdet)
+        return SMWPrepared(K_chol, logdet)
 
     def quadratic_form_from_prepared(self, data: np.ndarray, K_chol: np.ndarray) -> float:
         """Compute d^T C^{-1} d using precomputed K Cholesky factor."""
@@ -898,11 +898,15 @@ class HarmonicBasis(ComputationBasis):
         term2 = float(y.T @ kernel_inv_y)
         return term1 - term2
 
-    def _get_derivative_diagonal(self, ell: int, comp_i: int, comp_j: int) -> np.ndarray:
+    def _get_derivative_diagonal(
+        self, ell: int, comp_i: int = 0, comp_j: int = 0, mode: int = 0
+    ) -> np.ndarray:
         """
-        Get derivative diagonal for spectrum (comp_i, comp_j) at multipole ell.
+        Get derivative diagonal for auto-spectrum (comp_i, comp_j, mode).
 
-        Returns the diagonal of E_ℓ^{ij} for efficient matrix operations.
+        Only valid for auto-spectra (comp_i == comp_j) where the derivative
+        matrix is diagonal. For spin-2 auto-spectra, ``mode`` selects EE (0)
+        or BB (1); EB (mode=2) is NOT diagonal and must not use this method.
 
         Parameters
         ----------
@@ -911,27 +915,37 @@ class HarmonicBasis(ComputationBasis):
         comp_i : int
             First component index.
         comp_j : int
-            Second component index.
+            Second component index (must equal comp_i).
+        mode : int
+            Spin mode: 0=TT/EE, 1=BB. Only used for spin-2 components.
 
         Returns
         -------
         numpy.ndarray
-            Diagonal of derivative matrix, shape (n_modes_total,).
+            Diagonal of derivative matrix, shape (n_kept,).
         """
-        if self.n_components == 1:
+        spin = self._spins[comp_i]
+        local_mode_indices = self._ell_to_modes_local[ell]
+
+        # Single-component spin-0: use precomputed diagonal directly
+        if self.n_components == 1 and spin == 0:
             return self._derivative_diagonals[ell]
 
         E_diag = np.zeros(self.n_modes_total, dtype=np.float64)
 
-        local_mode_indices = self._ell_to_modes_local[ell]
+        offset = self._mode_offsets[comp_i] if self.n_components > 1 else 0
 
-        # For auto-spectrum (i == j): diagonal block
-        if comp_i == comp_j:
-            row_offset = self._mode_offsets[comp_i]
-            for local_idx in local_mode_indices:
-                E_diag[row_offset + local_idx] = 1.0
-        # For cross-spectrum: off-diagonal blocks (not supported in diagonal form)
-        # Cross-spectrum derivatives are not purely diagonal in the full matrix
+        if spin == 0:
+            for idx in local_mode_indices:
+                E_diag[offset + idx] = 1.0
+        elif spin == 2:
+            n_base = self._n_modes_base
+            if mode == 0:  # EE
+                for idx in local_mode_indices:
+                    E_diag[offset + idx] = 1.0
+            elif mode == 1:  # BB
+                for idx in local_mode_indices:
+                    E_diag[offset + n_base + idx] = 1.0
 
         return E_diag
 
@@ -963,58 +977,45 @@ class HarmonicBasis(ComputationBasis):
         numpy.ndarray
             Fisher matrix.
         """
-        # Handle single-field array input (original behavior)
-        if not isinstance(C_ell, dict):
-            if spectra_list is not None:
+        c_ell_arr, c_ell_dict, is_single = self._normalize_c_ell(C_ell)
+
+        # Single-field path
+        if is_single:
+            if spectra_list is not None and not (len(spectra_list) == 1 and is_single):
                 raise ValueError(
                     "spectra_list should be None for single-field (array) input"
                 )
             if ell_max is None:
                 ell_max = self.lmax
 
-            # Use m-block Fisher when compress is enabled
             if self._compress:
-                return self._compute_fisher_mblock(C_ell, ell_min, ell_max)
+                return self._compute_fisher_mblock(c_ell_arr, ell_min, ell_max)
 
             n_ell = ell_max - ell_min + 1
             fisher = np.zeros((n_ell, n_ell))
 
-            # Precompute V C^{-1} V^T ONCE
-            V_Cinv_VT = self.get_projected_inverse(C_ell)
+            V_Cinv_VT = self.get_projected_inverse(c_ell_arr)
 
-            # Exploit diagonal structure: (V C^{-1} V^T) @ diag(E) = V_Cinv_VT * E
-            # This is O(n²) instead of O(n³) for each ell
+            # (V C⁻¹ V^T) @ diag(E) = V_Cinv_VT * E  [O(n²) column scaling]
             VCinvVT_E = {}
             for ell in range(ell_min, ell_max + 1):
-                E_diag = self._derivative_diagonals[ell]
-                # Column scaling by broadcasting: (n_modes, n_modes) * (n_modes,)
-                VCinvVT_E[ell] = V_Cinv_VT * E_diag
+                VCinvVT_E[ell] = V_Cinv_VT * self._derivative_diagonals[ell]
 
-            # Compute Fisher elements using precomputed products
-            # Use optimized matrix_trace which is O(n²) instead of
-            # np.trace(A @ B) which is O(n³)
+            # F_ij = 0.5 * Tr[A_i @ A_j]
             for ell_i in range(ell_min, ell_max + 1):
                 for ell_j in range(ell_i, ell_max + 1):
-                    # F_ij = 0.5 * Tr[A_i @ A_j] where A_k = V_Cinv_VT * E_k
-
                     idx_i = ell_i - ell_min
                     idx_j = ell_j - ell_min
-
                     fisher_val = 0.5 * matrix_trace(VCinvVT_E[ell_i], VCinvVT_E[ell_j])
                     fisher[idx_i, idx_j] = fisher_val
                     if idx_i != idx_j:
-                        fisher[idx_j, idx_i] = fisher_val  # Symmetry
+                        fisher[idx_j, idx_i] = fisher_val
 
             return fisher
 
-        # Multi-field dict input
+        # Multi-field dict path
         if spectra_list is None:
             raise ValueError("spectra_list is required for multi-field (dict) input")
-
-        if self.n_components == 1 and self._spins[0] == 0 and len(spectra_list) == 1:
-            first_val = next(iter(C_ell.values()))
-            if isinstance(first_val, np.ndarray) and first_val.ndim == 1:
-                return self.compute_fisher_matrix(first_val, None, ell_min, ell_max)
 
         if ell_max is None:
             ell_max = self.lmax
@@ -1023,9 +1024,8 @@ class HarmonicBasis(ComputationBasis):
         n_spec = len(spectra_list)
         fisher = np.zeros((n_spec * n_ell, n_spec * n_ell))
 
-        # Detect field block-diagonal structure for faster K inversion
-        field_groups = self._detect_field_blocks(C_ell)
-        V_Cinv_VT = self.get_projected_inverse(C_ell, field_groups=field_groups)
+        field_groups = self._detect_field_blocks(c_ell_dict)
+        V_Cinv_VT = self.get_projected_inverse(c_ell_dict, field_groups=field_groups)
 
         VCinvVT_E = {}
         for spec_idx, spec_entry in enumerate(spectra_list):

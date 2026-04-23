@@ -204,7 +204,7 @@ class Core(ABC):
         This method:
         1. Extracts active pixel counts from each field
         2. Computes 3D pointing vectors for each active pixel
-        3. Computes theta (colatitude) and phi (longitude) for compression support
+        3. Computes theta (colatitude) and phi (longitude) for computation basis
         4. Sets pointing vectors in the field collection
         5. Optionally outputs geometry data to file
 
@@ -413,13 +413,13 @@ class Core(ABC):
         delta_m: int = 0,
     ):
         """
-        Create and configure a compression instance for SMW-based operations.
+        Create and configure a computation basis for SMW-based operations.
 
-        This method sets up the Sherman-Morrison-Woodbury compression framework
-        for efficient covariance matrix operations. It requires that geometry
+        This method sets up the Sherman-Morrison-Woodbury framework for
+        efficient covariance matrix operations. It requires that geometry
         and covariance matrices have already been set up.
 
-        For harmonic compression, this method automatically enables SMW
+        For the harmonic basis, this method automatically enables SMW
         optimization: signal from multipoles ℓ > params.lmax is absorbed into
         an effective noise term, reducing the harmonic subspace dimension from
         (4*nside+1)² - 4 modes to (params.lmax+1)² - 4 modes while preserving
@@ -428,16 +428,15 @@ class Core(ABC):
         Parameters
         ----------
         method : str, default "harmonic"
-            Compression method to use:
+            Computation basis to use:
             - "harmonic": Tegmark-style direct harmonic transformation
-            - "pixel": Gjerløw-style pixel-space projector
+            - "pixel": Gjerløw-style pixel-space projector with eigenvalue truncation
         epsilon : float or None, optional
-            Eigenvalue threshold for mode compression. Modes with eigenvalue
+            Eigenvalue threshold for pixel basis. Modes with eigenvalue
             < epsilon * max_eigenvalue are discarded. Default is 1e-6.
         lmax : int or None, optional
             Maximum multipole for harmonic expansion. If None, defaults to
             4 * nside to match the traditional signal matrix computation.
-            Mutually exclusive with mode_fraction.
         mode_fraction : float or None, optional
             Fraction of modes to keep (between 0 and 1). Keeps the top modes
             ordered by eigenvalue. Mutually exclusive with epsilon.
@@ -446,19 +445,18 @@ class Core(ABC):
             If None and beams have been set up via setup_beams(), the first
             field's beam is automatically extracted from the beam manager.
         basis : str, default "noise_weighted"
-            Compression basis for pixel method. Options:
+            Eigenvalue basis for pixel method. Options:
             "harmonic", "noise_weighted", "total_covariance", "snr".
         C_ell : numpy.ndarray or None, optional
             Power spectrum for bases that require it ("total_covariance", "snr").
         use_smw_optimization : bool, default True
-            For harmonic compression, whether to use the SMW optimization that
-            absorbs high-ℓ signal (ℓ > params.lmax) into effective noise. This
-            reduces computation while preserving accuracy for estimated multipoles.
+            For harmonic basis, whether to absorb high-ℓ signal (ℓ > params.lmax)
+            into effective noise. Reduces computation while preserving accuracy.
 
         Returns
         -------
         ComputationBasis
-            Configured compression instance ready for use.
+            Configured computation basis instance.
 
         Raises
         ------
@@ -484,15 +482,16 @@ class Core(ABC):
         """
         if not hasattr(self, "theta") or self.theta is None:
             raise ValueError(
-                "Geometry must be set up before compression. Call setup_geometry() first."
+                "Geometry must be set up before computation basis. "
+                "Call setup_geometry() first."
             )
         if not hasattr(self, "noise_cov1") or self.noise_cov1 is None:
             raise ValueError(
-                "Covariance matrices must be set up before compression. "
+                "Covariance matrices must be set up before computation basis. "
                 "Call setup_covariance_matrices() first."
             )
 
-        compression_lmax = lmax if lmax is not None else 4 * self.params.nside
+        basis_lmax = lmax if lmax is not None else 4 * self.params.nside
 
         # Extract beam from field collection if not provided
         if beam is None and hasattr(self, "collection") and self.collection is not None:
@@ -500,8 +499,8 @@ class Core(ABC):
             first_label = self.collection.fields[0].labels[0]
             beam = beam_dict[first_label]
 
-        # Truncate beam to match compression_lmax (beam is for ell=2 to lmax)
-        expected_beam_len = compression_lmax - 1
+        # Truncate beam to match basis_lmax (beam is for ell=2 to lmax)
+        expected_beam_len = basis_lmax - 1
         if beam is not None and len(beam) > expected_beam_len:
             beam = beam[:expected_beam_len]
 
@@ -509,7 +508,7 @@ class Core(ABC):
         theta_arr = self.theta
         phi_arr = self.phi
 
-        # Extract spin information from field collection for compression
+        # Extract spin information from field collection
         spins = None
         if hasattr(self, "collection") and self.collection is not None:
             spins = [field.spin for field in self.collection.fields]
@@ -531,7 +530,7 @@ class Core(ABC):
             else:
                 # Automatic (QML): use params.lmax as subspace limit
                 params_lmax = getattr(self.params, "lmax", None)
-                if params_lmax is not None and params_lmax < compression_lmax:
+                if params_lmax is not None and params_lmax < basis_lmax:
                     lswitch_low = 2
                     lswitch_high = params_lmax
                     fiducial_file = getattr(self.params, "inputclfile", None)
@@ -539,20 +538,20 @@ class Core(ABC):
                     fiducial_file = None
 
             # Compute S_fixed for ℓ > lswitch_high
-            if lswitch_high is not None and lswitch_high < compression_lmax:
+            if lswitch_high is not None and lswitch_high < basis_lmax:
                 has_coll = hasattr(self, "collection") and self.collection is not None
                 if fiducial_file is not None and has_coll:
                     fiducial_spectrum = readcl(
                         inputclfile=fiducial_file.strip(),
                         Params=self.params,
-                        lmax=compression_lmax,
+                        lmax=basis_lmax,
                     )
 
                     # Zero for ℓ ≤ lswitch_high, fiducial for ℓ > lswitch_high
                     fixed_spectra = {}
                     for key, cl_array in fiducial_spectrum.items():
                         cl_fixed = np.zeros_like(cl_array)
-                        for ell in range(lswitch_high + 1, compression_lmax + 1):
+                        for ell in range(lswitch_high + 1, basis_lmax + 1):
                             if ell - 2 < len(cl_array):
                                 cl_fixed[ell - 2] = cl_array[ell - 2]
                         fixed_spectra[key] = cl_fixed
@@ -563,9 +562,9 @@ class Core(ABC):
                         for k, v in self.collection.spectra_manager._cls_dict.items()
                     }
 
-                    self.collection.set_cls(fixed_spectra, lmax=compression_lmax)
+                    self.collection.set_cls(fixed_spectra, lmax=basis_lmax)
                     self.collection.beam_manager.apply_smoothing(
-                        self.collection.spectra_manager, lmax=compression_lmax
+                        self.collection.spectra_manager, lmax=basis_lmax
                     )
 
                     from .pixel import compute_signal_matrix as _compute_signal_matrix
@@ -573,21 +572,21 @@ class Core(ABC):
                     S_fixed = np.zeros_like(self.noise_cov1, dtype=np.float64)
                     _compute_signal_matrix(
                         S=S_fixed,
-                        lmax=compression_lmax,
+                        lmax=basis_lmax,
                         fields=self.collection,
                     )
 
                     # Restore original spectra (already smoothed - don't re-apply beam)
                     self.collection.spectra_manager._cls_dict = original_spectra_smoothed
 
-        # Create compression implementation
+        # Create computation basis
         self.basis_manager = create_computation_basis(
             method=method,
             N=self.noise_cov1,
             N_inv=matrix_inverse_symm(self.noise_cov1),
             theta=theta_arr,
             phi=phi_arr,
-            lmax=compression_lmax,
+            lmax=basis_lmax,
             beam=beam,
             spins=spins,
             basis=basis,
@@ -609,15 +608,15 @@ class Core(ABC):
     # =========================================================================
     # Unified Covariance API
     # =========================================================================
-    # These methods provide a compression-agnostic interface. Subclasses use
-    # these methods without knowing whether compression is enabled.
+    # These methods provide a basis-agnostic interface. Subclasses use
+    # these methods without knowing whether a computation basis is enabled.
     # =========================================================================
 
     def get_total_covariance(self, C_ell: np.ndarray) -> np.ndarray:
         """
         Get total covariance matrix C = N + S.
 
-        If compression is enabled, returns the compressed covariance.
+        If a computation basis is enabled, returns the projected covariance.
         Otherwise, returns the full pixel-space covariance.
 
         Parameters
@@ -639,7 +638,7 @@ class Core(ABC):
         """
         Get inverse covariance matrix C^{-1}.
 
-        If compression is enabled, returns the compressed inverse.
+        If a computation basis is enabled, returns the projected inverse.
         Otherwise, computes the full inverse.
 
         Parameters
@@ -661,7 +660,7 @@ class Core(ABC):
         """
         Get log determinant of covariance matrix log|C|.
 
-        If compression is enabled, uses SMW formula for correct result.
+        If a computation basis is enabled, uses SMW formula for exact result.
         Otherwise, computes directly.
 
         Parameters
@@ -684,27 +683,38 @@ class Core(ABC):
             _, logdet = matrix_slogdet_symm(self.get_total_covariance(C_ell_arr))
             return logdet
 
-    def get_derivative_matrix(self, ell: int) -> np.ndarray:
+    def get_derivative_matrix(
+        self,
+        ell: int,
+        spectrum_idx: int = 0,
+        comp_i: int | None = None,
+        comp_j: int | None = None,
+        mode: int = 0,
+    ) -> np.ndarray:
         """
         Get derivative matrix dC/dC_ell.
 
-        If compression is enabled, returns compressed derivative.
+        If a computation basis is enabled, returns the projected derivative.
         Otherwise, returns full pixel-space derivative.
 
         Parameters
         ----------
         ell : int
             Multipole for derivative.
-
-        Returns
-        -------
-        numpy.ndarray
-            Derivative matrix dC/dC_ell.
+        spectrum_idx : int
+            Spectrum index for pixel-space multi-spectrum. Ignored when
+            a computation basis is enabled (use comp_i/comp_j/mode instead).
+        comp_i, comp_j : int or None
+            Component indices for compressed multi-field. None uses
+            single-field path.
+        mode : int
+            Spin mode (0=TT/EE/TE, 1=BB/TB, 2=EB).
         """
         if hasattr(self, "basis_manager") and self.basis_manager is not None:
-            return self.basis_manager.get_derivative_matrix(ell)
-        else:
-            return self._build_derivative_matrix(ell)
+            return self.basis_manager.get_derivative_matrix(
+                ell, comp_i=comp_i, comp_j=comp_j, mode=mode
+            )
+        return self._build_derivative_matrix(ell, spectrum_idx=spectrum_idx)
 
     def set_binning(self, bins) -> None:
         """
@@ -718,7 +728,13 @@ class Core(ABC):
         self.bins = bins
 
     def get_binned_derivative_matrix(
-        self, bin_idx: int, beam_smoothing: np.ndarray | None = None
+        self,
+        bin_idx: int,
+        beam_smoothing: np.ndarray | None = None,
+        spectrum_idx: int = 0,
+        comp_i: int | None = None,
+        comp_j: int | None = None,
+        mode: int = 0,
     ) -> np.ndarray:
         """
         Compute binned derivative dC^b = Sum_ell w_{b,ell} b²_ell dC^ell,
@@ -740,13 +756,25 @@ class Core(ABC):
             Per-ell beam smoothing factors b²_ell (length n_ell, starting
             at ell=2). Product of beam and (optionally) pixel window
             functions for the two fields in the spectrum.
+        spectrum_idx : int
+            Spectrum index for pixel-space multi-spectrum.
+        comp_i, comp_j : int or None
+            Component indices for compressed multi-field.
+        mode : int
+            Spin mode (0=TT/EE/TE, 1=BB/TB, 2=EB).
         """
         w_matrix, _ = self.bins._bin_operators()
         lmin_b = self.bins.lmins[bin_idx]
         lmax_b = self.bins.lmaxs[bin_idx]
         dC_b = None
         for ell in range(lmin_b, lmax_b + 1):
-            dC_ell = self.get_derivative_matrix(ell)
+            dC_ell = self.get_derivative_matrix(
+                ell,
+                spectrum_idx=spectrum_idx,
+                comp_i=comp_i,
+                comp_j=comp_j,
+                mode=mode,
+            )
             weight = w_matrix[bin_idx, ell]
             if beam_smoothing is not None:
                 weight *= beam_smoothing[ell - 2]
@@ -760,7 +788,7 @@ class Core(ABC):
         """
         Compute quadratic form d^T C^{-1} d.
 
-        If compression is enabled, uses efficient SMW-based computation.
+        If a computation basis is enabled, uses efficient SMW-based computation.
         Otherwise, computes directly with full matrices.
 
         Parameters
@@ -789,7 +817,7 @@ class Core(ABC):
         """Build signal covariance matrix. Subclasses must override."""
         raise NotImplementedError("Subclasses must implement _build_signal_matrix")
 
-    def _build_derivative_matrix(self, ell: int) -> np.ndarray:
+    def _build_derivative_matrix(self, ell: int, spectrum_idx: int = 0) -> np.ndarray:
         """Build derivative matrix dC/dC_ell. Subclasses must override."""
         raise NotImplementedError("Subclasses must implement _build_derivative_matrix")
 

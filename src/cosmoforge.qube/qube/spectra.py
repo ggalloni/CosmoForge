@@ -57,9 +57,7 @@ from mpi4py import MPI
 
 from cosmocore import (
     Bins,
-    ComputationBasis,
     Core,
-    FieldCollection,
     do_derivative_step,
     matrix_inverse_symm,
     matrix_mult,
@@ -190,7 +188,7 @@ class Spectra(Core):
             Pre-computed Fisher instance. If provided, reuses computed components
             (covariance matrices, geometry, field collections) for efficiency.
         compression : dict, optional
-            Compression configuration (method, epsilon, basis, mode_fraction).
+            Computation basis configuration (method, epsilon, basis, mode_fraction).
         **kwargs : dict
             Additional arguments passed to Core.
 
@@ -209,8 +207,8 @@ class Spectra(Core):
         self.rank = self.comm.Get_rank()
         self.size = self.comm.Get_size()
 
-        # Store compression config for Fisher creation
-        self._compression_config = compression
+        # Store computation basis config for Fisher creation
+        self._basis_config = compression
 
         # Initialize Fisher matrix or compute it
         if fisher is not None:
@@ -267,65 +265,26 @@ class Spectra(Core):
 
     def _reuse_fisher_components(self):
         """Copy computational components from a pre-computed Fisher instance."""
-        # Copy already computed variables from Fisher instance
-        if (
-            hasattr(self.fisher_instance, "collection")
-            and self.fisher_instance.collection is not None
-        ):
-            self.collection: FieldCollection = self.fisher_instance.collection
-        if (
-            hasattr(self.fisher_instance, "npixs")
-            and self.fisher_instance.npixs is not None
-        ):
-            self.npixs = self.fisher_instance.npixs
-        if (
-            hasattr(self.fisher_instance, "pixact")
-            and self.fisher_instance.pixact is not None
-        ):
-            self.pixact = self.fisher_instance.pixact
-        if (
-            hasattr(self.fisher_instance, "point_vectors")
-            and self.fisher_instance.point_vectors is not None
-        ):
-            self.point_vectors = self.fisher_instance.point_vectors
-        if (
-            hasattr(self.fisher_instance, "noise_cov1")
-            and self.fisher_instance.noise_cov1 is not None
-        ):
-            self.noise_cov1 = self.fisher_instance.noise_cov1
-        if (
-            hasattr(self.fisher_instance, "noise_cov2")
-            and self.fisher_instance.noise_cov2 is not None
-        ):
-            self.noise_cov2 = self.fisher_instance.noise_cov2
-        if (
-            hasattr(self.fisher_instance, "signal_matrix")
-            and self.fisher_instance.signal_matrix is not None
-        ):
-            self.signal_matrix = self.fisher_instance.signal_matrix
+        attrs = [
+            "collection",
+            "npixs",
+            "pixact",
+            "point_vectors",
+            "noise_cov1",
+            "noise_cov2",
+            "signal_matrix",
+            "bins",
+            "beam_smoothing",
+            "basis_manager",
+        ]
+        for attr in attrs:
+            val = getattr(self.fisher_instance, attr, None)
+            if val is not None:
+                setattr(self, attr, val)
 
-        # Copy binning and beam smoothing if available
-        if (
-            hasattr(self.fisher_instance, "bins")
-            and self.fisher_instance.bins is not None
-        ):
-            self.bins = self.fisher_instance.bins
-        if (
-            hasattr(self.fisher_instance, "beam_smoothing")
-            and self.fisher_instance.beam_smoothing is not None
-        ):
-            self.beam_smoothing = self.fisher_instance.beam_smoothing
-
-        # Copy compression manager if available
-        if (
-            hasattr(self.fisher_instance, "basis_manager")
-            and self.fisher_instance.basis_manager is not None
-        ):
-            self.basis_manager: ComputationBasis = self.fisher_instance.basis_manager
-        else:
+        if not hasattr(self, "basis_manager"):
             self.basis_manager = None
 
-        # Load covariance matrices
         self._load_covariance_matrices()
 
     def _load_covariance_matrices(self):
@@ -368,7 +327,7 @@ class Spectra(Core):
 
         start_time = time.time()
 
-        fisher = Fisher(self.params, compression=self._compression_config)
+        fisher = Fisher(self.params, compression=self._basis_config)
         fisher.run()
 
         if self.rank == 0:
@@ -623,11 +582,9 @@ class Spectra(Core):
         traditional method based on basis_manager availability.
         """
         # Check if we should use compressed computation
-        use_compression = (
-            hasattr(self, "basis_manager") and self.basis_manager is not None
-        )
+        use_basis = hasattr(self, "basis_manager") and self.basis_manager is not None
 
-        if use_compression:
+        if use_basis:
             self._compute_qml_spectra_compressed()
         else:
             self._compute_qml_spectra_traditional()
@@ -658,26 +615,16 @@ class Spectra(Core):
         -------
         numpy.ndarray
             Binned derivative matrix, shape (n_pix, n_pix) or
-            (n_modes, n_modes) if compression is enabled.
+            (n_modes, n_modes) if a computation basis is enabled.
         """
-        # Try to use cached derivatives from Fisher
         if hasattr(self, "fisher_instance") and self.fisher_instance is not None:
-            fisher = self.fisher_instance
-            # Single-spectrum cache
-            if hasattr(fisher, "_cached_binned_derivatives"):
-                cache = fisher._cached_binned_derivatives
-                if bin_idx in cache:
-                    return cache[bin_idx]
-            # Multi-spectrum cache
-            if hasattr(fisher, "_cached_binned_derivatives_multi"):
-                cache = fisher._cached_binned_derivatives_multi
+            cache = getattr(self.fisher_instance, "_cached_binned_derivatives", None)
+            if cache is not None:
                 key = (spectrum_idx, bin_idx)
                 if key in cache:
                     return cache[key]
 
-        use_compression = (
-            hasattr(self, "basis_manager") and self.basis_manager is not None
-        )
+        use_basis = hasattr(self, "basis_manager") and self.basis_manager is not None
 
         w_matrix, _ = self.bins._bin_operators()
         lmin_b = self.bins.lmins[bin_idx]
@@ -689,13 +636,13 @@ class Spectra(Core):
         for ell in range(lmin_b, lmax_b + 1):
             weight = w_matrix[bin_idx, ell] * self.beam_smoothing[beam_offset + ell - 2]
 
-            if use_compression:
-                cm = self.basis_manager
+            if use_basis:
+                bm = self.basis_manager
                 if spectra_list is not None:
                     comp_i, comp_j, mode = spectra_list[spectrum_idx]
-                    dC_ell = cm.get_derivative_matrix(ell, comp_i, comp_j, mode)
+                    dC_ell = bm.get_derivative_matrix(ell, comp_i, comp_j, mode)
                 else:
-                    dC_ell = cm.get_derivative_matrix(ell)
+                    dC_ell = bm.get_derivative_matrix(ell)
             else:
                 ntot = sum(self.collection.n_active)
                 dC_ell = np.zeros((ntot, ntot), dtype=np.float64)
@@ -715,60 +662,53 @@ class Spectra(Core):
 
         return dC_b
 
-    def _compute_noise_cov_diag_compressed(
-        self, cm, C_ell, C_ell_dict, is_multi_field
+    def _compute_noise_cov_compressed(
+        self,
+        bm,
+        C_ell,
+        C_ell_dict,
+        is_multi_field,
+        *,
+        full_matrix=False,
+        kernel_inv=None,
     ) -> np.ndarray:
         """
-        Compute diagonal of noise covariance in compressed space.
+        Compute noise covariance in compressed space.
 
-        For harmonic compression:
-            Cov(w|noise) = V @ C^{-1} @ N @ C^{-1} @ V^T
+        Cov(w|noise) = V C^{-1} N C^{-1} V^T
 
-        Returns the diagonal for efficient trace computation.
+        Parameters
+        ----------
+        full_matrix : bool
+            If False, return only the diagonal. If True, return the full matrix
+            (needed when non-diagonal derivatives like EB/TE/TB are present).
+        kernel_inv : np.ndarray or None
+            Precomputed (Λ⁻¹ + M)⁻¹. If None, computed via basis_manager.
         """
-        from scipy.linalg import cho_solve, cholesky
+        if kernel_inv is None:
+            if is_multi_field:
+                K, _ = bm._build_smw_kernel(C_ell_dict)
+            else:
+                from cosmocore.basics import smw_kernel
 
-        from cosmocore.basics import matrix_inverse_symm
-
-        if is_multi_field:
-            # Build full Lambda and its inverse (auto-detects key format)
-            lambda_matrix = cm._build_lambda_matrix(C_ell_dict)
-            lambda_regularized = lambda_matrix + np.eye(lambda_matrix.shape[0]) * 1e-20
-            lambda_inv = matrix_inverse_symm(np.asfortranarray(lambda_regularized))
-
-            M = cm._V_Ninv_VT
-            K = lambda_inv + M
+                Lambda_diag = bm._build_lambda_diagonal(C_ell)
+                K = smw_kernel(bm._V_Ninv_VT, Lambda_diag)
             kernel_inv = matrix_inverse_symm(np.asfortranarray(K))
 
-            # V_Cinv = (I - M @ K^{-1}) @ V_Ninv
-            n_modes = cm.n_modes_total
-            I_minus_M_kernel_inv = np.eye(n_modes) - M @ kernel_inv
-            V_Cinv = I_minus_M_kernel_inv @ cm._V_N_inv
+        # V_Cinv = (I - M K^{-1}) V N^{-1}
+        M_kernel_inv = bm._V_Ninv_VT @ kernel_inv
+        n = kernel_inv.shape[0]
+        V_Cinv = (np.eye(n) - M_kernel_inv) @ bm._V_N_inv
+
+        # Cov(w|noise) = V_Cinv N V_Cinv^T = W W^T where W = V_Cinv sqrt(N)
+        if hasattr(bm, "_N_inv_original"):
+            noise_var = 1.0 / np.diag(bm._N_inv_original)
         else:
-            Lambda_diag = cm._build_lambda_diagonal(C_ell)
-            lambda_inv_diag = np.where(Lambda_diag > 1e-30, 1.0 / Lambda_diag, 1e30)
-            M = cm._V_Ninv_VT
-            K = np.diag(lambda_inv_diag) + M
+            noise_var = 1.0 / np.diag(bm.N_inv)
+        W = V_Cinv * np.sqrt(noise_var)[np.newaxis, :]
 
-            try:
-                L = cholesky(K, lower=True)
-                kernel_inv = cho_solve((L, True), np.eye(K.shape[0]))
-            except np.linalg.LinAlgError:
-                kernel_inv = np.linalg.inv(K)
-
-            # V_Cinv = (I - M @ K^{-1}) @ V_Ninv
-            I_minus_M_kernel_inv = np.eye(cm.n_modes) - M @ kernel_inv
-            V_Cinv = I_minus_M_kernel_inv @ cm._V_N_inv
-
-        # For diagonal N, compute noise_cov_w_diag
-        if hasattr(cm, "_N_inv_original"):
-            noise_var = 1.0 / np.diag(cm._N_inv_original)
-        else:
-            noise_var = 1.0 / np.diag(cm.N_inv)
-        sqrt_noise = np.sqrt(noise_var)
-        W = V_Cinv * sqrt_noise[np.newaxis, :]
-
-        # Diagonal of Cov(w|noise) = sum over columns of W^2
+        if full_matrix:
+            return W @ W.T
         return np.sum(W**2, axis=1)
 
     def _compute_qml_spectra_compressed(self):
@@ -793,21 +733,21 @@ class Spectra(Core):
                 = (1/2) * (V C^{-1} d)^T @ E_l @ (V C^{-1} d)
                 = (1/2) * w^T @ E_l @ w
 
-        Supports both single-field and multi-field compression.
+        Supports both single-field and multi-field configurations.
         """
         if self.rank == 0:
             self.log("Starting QML computation (compressed)", level=2)
 
         start_time = time.time()
 
-        cm = self.basis_manager
+        bm = self.basis_manager
         n_sims = self.params.nsims
-        n_compressed = cm.n_kept
+        n_compressed = bm.n_kept
 
         # Multi-field path is needed when >1 components or spin-2 (spin-2 has
         # multiple spectra EE/BB/EB even for a single field)
         has_spin2 = any(f.spin == 2 for f in self.collection.fields)
-        is_multi_field = cm.n_components > 1 or has_spin2
+        is_multi_field = bm.n_components > 1 or has_spin2
 
         # Build C_ell or C_ell_dict depending on multi-field
         if is_multi_field:
@@ -820,53 +760,46 @@ class Spectra(Core):
 
         # Compute weighted compressed data for all simulations
         # w = V @ C^{-1} @ d (using SMW formula internally)
-        # For multi-field, precompute kernel_inv once to avoid repeated matrix inversions
+        # For multi-field harmonic, precompute kernel_inv once — reused for
+        # data weighting, cross-correlation weighting, and noise bias.
+        smw_kernel_inv = None
         maps1_weighted = np.zeros((n_compressed, n_sims), dtype=np.float64)
         if is_multi_field:
-            if cm.method == "harmonic":
-                # Precompute SMW matrices once
-                from cosmocore.basics import matrix_inverse_symm
+            if bm.method == "harmonic":
+                K, _ = bm._build_smw_kernel(C_ell_dict)
+                smw_kernel_inv = matrix_inverse_symm(np.asfortranarray(K))
+                M_kernel_inv = bm._V_Ninv_VT @ smw_kernel_inv
 
-                lambda_matrix = cm._build_lambda_matrix(C_ell_dict)
-                lambda_regularized = (
-                    lambda_matrix + np.eye(lambda_matrix.shape[0]) * 1e-20
-                )
-                lambda_inv = matrix_inverse_symm(np.asfortranarray(lambda_regularized))
-                K = lambda_inv + cm._V_Ninv_VT
-                kernel_inv = matrix_inverse_symm(np.asfortranarray(K))
-                M_kernel_inv = cm._V_Ninv_VT @ kernel_inv
-
-                # Compute weighted data for all sims using precomputed matrices
-                # w = y - M @ K^{-1} @ y where y = V @ N^{-1} @ d
-                projected_data1 = cm._V_N_inv @ self.maps1  # (n_modes, n_sims)
+                # w = y - M K^{-1} y where y = V N^{-1} d
+                projected_data1 = bm._V_N_inv @ self.maps1
                 maps1_weighted = projected_data1 - M_kernel_inv @ projected_data1
             else:
                 # pixel: use compressed-space weighted data
-                C_c_inv = cm.get_compressed_inverse(C_ell_dict)
-                d_c = cm.compress_data(self.maps1)
+                C_c_inv = bm.get_compressed_inverse(C_ell_dict)
+                d_c = bm.compress_data(self.maps1)
                 maps1_weighted = C_c_inv @ d_c
         else:
             C_c_inv = None
-            if cm.method == "pixel":
-                C_c_inv = cm.get_compressed_inverse(C_ell)
+            if bm.method == "pixel":
+                C_c_inv = bm.get_compressed_inverse(C_ell)
             for isim in range(n_sims):
-                maps1_weighted[:, isim] = cm.get_weighted_compressed_data(
+                maps1_weighted[:, isim] = bm.get_weighted_compressed_data(
                     self.maps1[:, isim], C_ell, C_c_inv=C_c_inv
                 )
 
         if self.params.do_cross:
             maps2_weighted = np.zeros((n_compressed, n_sims), dtype=np.float64)
             if is_multi_field:
-                if cm.method == "harmonic":
+                if bm.method == "harmonic":
                     # Use precomputed matrices
-                    projected_data2 = cm._V_N_inv @ self.maps2
+                    projected_data2 = bm._V_N_inv @ self.maps2
                     maps2_weighted = projected_data2 - M_kernel_inv @ projected_data2
                 else:
-                    d_c2 = cm.compress_data(self.maps2)
+                    d_c2 = bm.compress_data(self.maps2)
                     maps2_weighted = C_c_inv @ d_c2
             else:
                 for isim in range(n_sims):
-                    maps2_weighted[:, isim] = cm.get_weighted_compressed_data(
+                    maps2_weighted[:, isim] = bm.get_weighted_compressed_data(
                         self.maps2[:, isim], C_ell, C_c_inv=C_c_inv
                     )
 
@@ -874,19 +807,38 @@ class Spectra(Core):
         noise_cov_w_diag = None
         noise_cov_w = None
         if not self.params.do_cross:
-            if cm.method == "harmonic":
-                noise_cov_w_diag = self._compute_noise_cov_diag_compressed(
-                    cm, C_ell, C_ell_dict, is_multi_field
-                )
+            if bm.method == "harmonic":
+                # Non-diagonal derivatives (cross-field spin-0, EB, TE, TB)
+                # need the full noise covariance for correct Tr[E_b @ Cov].
+                # Only single-spectrum (pure TT/EE/BB) can use diagonal alone.
+                need_full = self.params.nspectra > 1
+                if need_full:
+                    noise_cov_w = self._compute_noise_cov_compressed(
+                        bm,
+                        C_ell,
+                        C_ell_dict,
+                        is_multi_field,
+                        full_matrix=True,
+                        kernel_inv=smw_kernel_inv,
+                    )
+                    noise_cov_w_diag = np.diag(noise_cov_w)
+                else:
+                    noise_cov_w_diag = self._compute_noise_cov_compressed(
+                        bm,
+                        C_ell,
+                        C_ell_dict,
+                        is_multi_field,
+                        kernel_inv=smw_kernel_inv,
+                    )
             else:
                 # For pixel: use compressed quantities
                 if is_multi_field:
-                    C_bar_inv = cm.get_compressed_inverse(C_ell_dict)
+                    C_bar_inv = bm.get_compressed_inverse(C_ell_dict)
                     zero_dict = {k: np.zeros_like(v) for k, v in C_ell_dict.items()}
-                    N_bar = cm.get_compressed_covariance(zero_dict)
+                    N_bar = bm.get_compressed_covariance(zero_dict)
                 else:
-                    C_bar_inv = cm.get_compressed_inverse(C_ell)
-                    N_bar = cm.get_compressed_covariance(np.zeros_like(C_ell))
+                    C_bar_inv = bm.get_compressed_inverse(C_ell)
+                    N_bar = bm.get_compressed_covariance(np.zeros_like(C_ell))
                 noise_cov_w = C_bar_inv @ N_bar @ C_bar_inv
 
         # Main computation loop - distribute bins across processes
@@ -897,35 +849,44 @@ class Spectra(Core):
                 spectrum_idx = il // nbins
                 bin_idx = il % nbins
 
-                # Get binned compressed derivative matrix
+                # Get binned derivative: 1D diagonal vector (harmonic auto-
+                # spectra) or 2D dense matrix (cross-spectra / pixel-space).
                 E_b = self._get_binned_derivative(
                     bin_idx,
                     spectrum_idx,
                     spectra_list if is_multi_field else None,
                 )
 
+                # Exploit diagonal structure when available:
+                # diag * maps is O(n × n_sims) vs dense @ maps O(n² × n_sims)
+                is_diag = E_b.ndim == 1
+                if is_diag:
+                    E_b_times_w1 = E_b[:, np.newaxis] * maps1_weighted
+                else:
+                    E_b_times_w1 = E_b @ maps1_weighted  # (n_modes, n_sims)
+
                 if self.params.do_cross:
-                    for isim in range(n_sims):
-                        w1 = maps1_weighted[:, isim]
-                        w2 = maps2_weighted[:, isim]
-                        self.qml_results[isim, il] = 0.5 * w2 @ E_b @ w1
+                    # q = 0.5 * w2^T @ E_b @ w1 for all sims
+                    self.qml_results[:, il] = 0.5 * np.sum(
+                        maps2_weighted * E_b_times_w1, axis=0
+                    )
                 else:
                     # Noise bias: 0.5 * Tr[E_b @ Cov(w|noise)]
-                    if cm.method == "harmonic" and noise_cov_w_diag is not None:
-                        E_b_diag = np.diag(E_b)
-                        tr_ne = 0.5 * np.sum(E_b_diag * noise_cov_w_diag)
+                    if is_diag and noise_cov_w_diag is not None:
+                        tr_ne = 0.5 * np.sum(E_b * noise_cov_w_diag)
+                    elif is_diag:
+                        tr_ne = 0.5 * np.sum(E_b * np.diag(noise_cov_w))
                     else:
                         tr_ne = 0.5 * matrix_trace(E_b, noise_cov_w)
                     self.qml_noise_bias[il] = tr_ne
 
-                    for isim in range(n_sims):
-                        w = maps1_weighted[:, isim]
-                        qml_value = 0.5 * w @ E_b @ w
+                    # q = 0.5 * w^T @ E_b @ w for all sims
+                    qml_values = 0.5 * np.sum(maps1_weighted * E_b_times_w1, axis=0)
 
-                        if hasattr(self.params, "remove_nb") and self.params.remove_nb:
-                            qml_value -= tr_ne
+                    if hasattr(self.params, "remove_nb") and self.params.remove_nb:
+                        qml_values -= tr_ne
 
-                        self.qml_results[isim, il] = qml_value
+                    self.qml_results[:, il] = qml_values
 
         # Synchronize all processes
         self.comm.Barrier()
@@ -979,23 +940,18 @@ class Spectra(Core):
                 deriv_times_y1 = matrix_mult(binned_deriv, weighted_maps1)
 
                 if self.params.do_cross:
-                    for isim in range(self.params.nsims):
-                        self.qml_results[isim, param_idx] = 0.5 * np.dot(
-                            weighted_maps2[:, isim], deriv_times_y1[:, isim]
-                        )
+                    self.qml_results[:, param_idx] = 0.5 * np.sum(
+                        weighted_maps2 * deriv_times_y1, axis=0
+                    )
                 else:
                     noise_bias = 0.5 * matrix_trace(cinv_noise_cinv, binned_deriv)
                     self.qml_noise_bias[param_idx] = noise_bias
 
-                    for isim in range(self.params.nsims):
-                        qml_value = 0.5 * np.dot(
-                            weighted_maps1[:, isim],
-                            deriv_times_y1[:, isim],
-                        )
-                        if hasattr(self.params, "remove_nb") and self.params.remove_nb:
-                            qml_value -= noise_bias
+                    qml_values = 0.5 * np.sum(weighted_maps1 * deriv_times_y1, axis=0)
+                    if hasattr(self.params, "remove_nb") and self.params.remove_nb:
+                        qml_values -= noise_bias
 
-                        self.qml_results[isim, param_idx] = qml_value
+                    self.qml_results[:, param_idx] = qml_values
 
         self.comm.Barrier()
 

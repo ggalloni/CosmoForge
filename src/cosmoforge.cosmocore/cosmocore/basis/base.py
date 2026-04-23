@@ -1,8 +1,8 @@
 """
-Base class for compression methods.
+Base class for computation basis methods.
 
 This module provides the abstract base class that defines the interface
-for all compression methods used in CMB Fisher matrix computation.
+for all computation basis methods used in CMB Fisher matrix computation.
 """
 
 from __future__ import annotations
@@ -12,6 +12,11 @@ from typing import NamedTuple
 
 import numpy as np
 
+# Regularization thresholds for numerical stability
+_LAMBDA_ZERO_THRESHOLD = 1e-30  # Below this, Lambda eigenvalue treated as zero
+_LAMBDA_INV_CAP = 1e30  # Cap for 1/Lambda when Lambda ≈ 0
+_MATRIX_REGULARIZATION = 1e-20  # Tikhonov regularization for matrix inversion
+
 
 class SMWPrepared(NamedTuple):
     """Pre-computed quantities for SMW-based likelihood evaluation.
@@ -20,30 +25,26 @@ class SMWPrepared(NamedTuple):
     ----------
     factor : numpy.ndarray
         K Cholesky factor (harmonic) or C_c_inv (pixel).
-    reserved : None
-        Unused, kept for API symmetry.
     logdet : float
         log|C| (full covariance log-determinant).
     """
 
     factor: np.ndarray
-    reserved: None
     logdet: float
 
 
 from ..basics import (
     matrix_mult,
     matrix_slogdet_symm,
-    matrix_trace,
 )
 from .harmonic_basis import HarmonicBasisBuilder
 
 
 class ComputationBasis(ABC):
     """
-    Abstract base class for compression methods.
+    Abstract base class for computation basis methods.
 
-    This class defines the interface for compression methods and provides
+    This class defines the interface for computation basis methods and provides
     shared implementations for spherical harmonic evaluation and ell-to-mode
     mapping.
 
@@ -101,7 +102,7 @@ class ComputationBasis(ABC):
         S_fixed: np.ndarray | None = None,
     ):
         """
-        Initialize compression base class.
+        Initialize computation basis.
 
         Parameters
         ----------
@@ -249,50 +250,59 @@ class ComputationBasis(ABC):
 
         # Harmonic basis helper (V, Lambda, derivative construction)
         self._harmonic_basis = HarmonicBasisBuilder(self)
-
-        # To be set by _build_basis() during setup()
-        self._V = None
-        self._V_blocks = None
-        self._ell_to_modes = None
-        self._ell_to_modes_local = None
-        self._m_to_modes = None
-        self._m_to_modes_local = None
-        self._derivative_diagonals = None
-        self._derivative_diagonals_local = None
-        self.n_kept = self.n_modes_total if self.n_components > 1 else self.n_modes
+        self.n_kept = self.n_modes_total
 
     @abstractmethod
     def setup(self) -> None:
         """
-        Initialize compression-specific components.
+        Initialize basis-specific components.
 
         Must be called after initialization before using any other methods.
         """
         pass
 
     def _build_basis(self) -> None:
-        """Build harmonic basis and copy results to self.
-
-        Calls HarmonicBasis.build() then copies output attributes back so that
-        subclasses and external code can access them via self._V, self._V_blocks,
-        self._derivative_diagonals, etc.
-        """
+        """Build harmonic operator V, mode mappings, and derivative diagonals."""
         self._harmonic_basis.build()
-        self._V = self._harmonic_basis._V
-        self._V_blocks = self._harmonic_basis._V_blocks
-        self._ell_to_modes = self._harmonic_basis._ell_to_modes
-        self._ell_to_modes_local = self._harmonic_basis._ell_to_modes_local
-        self._m_to_modes = self._harmonic_basis._m_to_modes
-        self._m_to_modes_local = self._harmonic_basis._m_to_modes_local
-        self._derivative_diagonals = self._harmonic_basis._derivative_diagonals
-        self._derivative_diagonals_local = (
-            self._harmonic_basis._derivative_diagonals_local
-        )
+
+    # Properties delegating to _harmonic_basis (avoids copy-back)
+
+    @property
+    def _V(self):
+        return self._harmonic_basis._V
+
+    @property
+    def _V_blocks(self):
+        return self._harmonic_basis._V_blocks
+
+    @property
+    def _ell_to_modes(self):
+        return self._harmonic_basis._ell_to_modes
+
+    @property
+    def _ell_to_modes_local(self):
+        return self._harmonic_basis._ell_to_modes_local
+
+    @property
+    def _m_to_modes(self):
+        return self._harmonic_basis._m_to_modes
+
+    @property
+    def _m_to_modes_local(self):
+        return self._harmonic_basis._m_to_modes_local
+
+    @property
+    def _derivative_diagonals(self):
+        return self._harmonic_basis._derivative_diagonals
+
+    @property
+    def _derivative_diagonals_local(self):
+        return self._harmonic_basis._derivative_diagonals_local
 
     @property
     @abstractmethod
     def method(self) -> str:
-        """Computation basis method name: "harmonic" or "pixel"."""
+        """Computation basis name: "harmonic" or "pixel"."""
         pass
 
     @property
@@ -447,7 +457,6 @@ class ComputationBasis(ABC):
         if self.n_components <= 1:
             return [[0]] if self.n_components == 1 else []
 
-        # Build adjacency from C_ell_dict keys (cross-spectra couple components)
         adj: dict[int, set[int]] = {i: set() for i in range(self.n_components)}
         for key in C_ell_dict:
             ci, cj = key[0], key[1]
@@ -455,22 +464,19 @@ class ComputationBasis(ABC):
                 adj[ci].add(cj)
                 adj[cj].add(ci)
 
-        # Check noise off-diagonal blocks for pairs not already coupled
         for ci in range(self.n_components):
             for cj in range(ci + 1, self.n_components):
                 if cj in adj[ci]:
-                    continue  # already coupled by spectra
-                # Extract off-diagonal noise block
+                    continue
                 ri = self._pix_offsets[ci]
                 re = self._pix_offsets[ci + 1]
                 ci_start = self._pix_offsets[cj]
                 ci_end = self._pix_offsets[cj + 1]
                 N_block = self._N[ri:re, ci_start:ci_end]
-                if np.any(np.abs(N_block) > 1e-30):
+                if np.any(np.abs(N_block) > _LAMBDA_ZERO_THRESHOLD):
                     adj[ci].add(cj)
                     adj[cj].add(ci)
 
-        # BFS to find connected components
         visited: set[int] = set()
         groups: list[list[int]] = []
         for start in range(self.n_components):
@@ -600,86 +606,6 @@ class ComputationBasis(ABC):
     def _precompute_derivative_diagonals(self) -> None:
         """Precompute derivative diagonals. Delegates to HarmonicBasis."""
         self._harmonic_basis._precompute_derivative_diagonals()
-        self._derivative_diagonals = self._harmonic_basis._derivative_diagonals
-        self._derivative_diagonals_local = (
-            self._harmonic_basis._derivative_diagonals_local
-        )
-
-    def compute_fisher_matrix(
-        self,
-        C_ell: np.ndarray,
-        ell_min: int = 2,
-        ell_max: int | None = None,
-    ) -> np.ndarray:
-        """
-        Compute full Fisher matrix efficiently with precomputed projected inverse.
-
-        This method precomputes V C^{-1} V^T once and reuses it for all Fisher
-        elements, providing O(ℓ²) speedup over calling compute_fisher_element()
-        in a loop.
-
-        The Fisher matrix element is:
-            F_ij = (1/2) Tr[(V C^{-1} V^T) E_i (V C^{-1} V^T) E_j]
-
-        Parameters
-        ----------
-        C_ell : numpy.ndarray
-            Power spectrum values for ell = 2 to lmax.
-        ell_min : int, default 2
-            Minimum multipole to include in Fisher matrix.
-        ell_max : int or None, optional
-            Maximum multipole. If None, uses self.lmax.
-
-        Returns
-        -------
-        numpy.ndarray
-            Fisher matrix of shape (n_ell, n_ell) where n_ell = ell_max - ell_min + 1.
-            Index [i, j] corresponds to ell_i = ell_min + i, ell_j = ell_min + j.
-
-        Notes
-        -----
-        This implements the efficient Fisher computation from Gjerløw et al. (2015),
-        Section 6.3, where V^T C^{-1} V is precomputed once:
-
-            F_{bb'} = ½ tr[(V^T C^{-1} V) I_b (V^T C^{-1} V) I_{b'}]
-
-        References
-        ----------
-        .. [1] Gjerløw, E., et al. (2015). "Optimized Large-Scale CMB Likelihood
-           and Quadratic Maximum Likelihood Power Spectrum Estimation."
-        """
-        if ell_max is None:
-            ell_max = self.lmax
-
-        n_ell = ell_max - ell_min + 1
-        fisher = np.zeros((n_ell, n_ell))
-
-        # Precompute V C^{-1} V^T ONCE (the key optimization)
-        V_Cinv_VT = self.get_projected_inverse(C_ell)
-
-        # Precompute (V C^{-1} V^T) @ E_ℓ for all ℓ
-        # This avoids redundant matrix multiplications
-        VCinvVT_E = {}
-        for ell in range(ell_min, ell_max + 1):
-            E_ell = self.get_derivative_matrix(ell)
-            VCinvVT_E[ell] = matrix_mult(V_Cinv_VT, E_ell)
-
-        # Compute Fisher elements using precomputed products
-        # Use optimized matrix_trace which is O(n²) instead of np.trace(A @ B)
-        # which is O(n³)
-        for ell_i in range(ell_min, ell_max + 1):
-            for ell_j in range(ell_i, ell_max + 1):
-                # F_ij = 0.5 * Tr[(V C^{-1} V^T @ E_i) @ (V C^{-1} V^T @ E_j)]
-                fisher_val = 0.5 * matrix_trace(VCinvVT_E[ell_i], VCinvVT_E[ell_j])
-
-                idx_i = ell_i - ell_min
-                idx_j = ell_j - ell_min
-
-                fisher[idx_i, idx_j] = fisher_val
-                if idx_i != idx_j:
-                    fisher[idx_j, idx_i] = fisher_val  # Symmetry
-
-        return fisher
 
     def compress_data(self, data: np.ndarray) -> np.ndarray:
         """
@@ -722,4 +648,4 @@ class ComputationBasis(ABC):
         float
             Compression ratio (1.0 means no compression).
         """
-        return self.n_kept / self.n_modes
+        return self.n_kept / self.n_modes_total

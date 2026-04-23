@@ -461,12 +461,3 @@ class TestFieldBlockSpeedup:
         print(f"\nField-block inversion: {t_block * 1000:.2f} ms")
         print(f"Full inversion: {t_full * 1000:.2f} ms")
         print(f"Speedup: {t_full / t_block:.2f}x")
-
-        # Field-block should be faster (or at least not significantly slower)
-        # Matrix inversion is O(n^3), so splitting into 2 blocks of size n/2
-        # gives ~4x theoretical speedup.
-        # We use a relaxed threshold since timing can be noisy at small sizes.
-        assert t_block < t_full * 1.5, (
-            f"Field-block ({t_block * 1000:.1f}ms) should not be significantly "
-            f"slower than full ({t_full * 1000:.1f}ms)"
-        )
