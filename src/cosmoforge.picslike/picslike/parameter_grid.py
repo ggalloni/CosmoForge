@@ -161,7 +161,6 @@ class ParameterGrid:
         if not self.parameter_ranges:
             return []
 
-        # Get parameter values in the order of parameter_names
         param_values = [self.parameter_ranges[name] for name in self.parameter_names]
 
         # Generate Cartesian product of all parameter ranges

@@ -38,7 +38,7 @@ class CoreWithSignal(ConcreteCore):
         n = self.noise_cov1.shape[0]
         return np.eye(n) * np.sum(C_ell)
 
-    def _build_derivative_matrix(self, ell):
+    def _build_derivative_matrix(self, ell, spectrum_idx=0):
         n = self.noise_cov1.shape[0]
         return np.eye(n) * 1.0
 

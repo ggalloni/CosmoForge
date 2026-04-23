@@ -1111,7 +1111,7 @@ class TestPPCOperationChain:
 
         # Prepare SMW and reuse
         C_ell_dict = {(0, 0, 0): C_ell}
-        C_c_inv, _, logdet_smw = ppc.prepare_smw(C_ell_dict)
+        C_c_inv, logdet_smw = ppc.prepare_smw(C_ell_dict)
         assert C_c_inv.shape == (ppc.n_kept, ppc.n_kept)
         qf2 = ppc.quadratic_form_from_prepared(data, C_c_inv)
         assert qf2 > 0

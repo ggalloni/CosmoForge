@@ -388,24 +388,28 @@ def write_out_matrix(outfilematrix, matrix):
 
 def read_maps(maps, filename, pixact, field_labels, calibration: float = 1.0):
     """
-    Read map data from FITS files.
+    Read map data from files.
 
-    Supports two formats:
-    1. Multi-simulation format: HDUs named "SIM_XXX" with FIELDS header
-    2. Simple HEALPix format: Standard HEALPix file (for single simulation)
+    Supports three formats:
+    1. Numpy format (.npy): 3D array of shape (n_fields, n_pix, n_sims).
+       The first ``len(field_labels)`` entries along axis 0 are assumed to
+       be ordered exactly as ``field_labels``.
+    2. Multi-simulation FITS: HDUs named "SIM_XXX" with FIELDS header.
+    3. Simple HEALPix FITS: Standard HEALPix file (for single simulation).
 
     Parameters
     ----------
     maps : numpy.ndarray
         Output array of shape (n_total_active, n_sims) to store map data.
     filename : str
-        Path to FITS file containing simulation data.
+        Path to data file (.npy or .fits).
     pixact : list of numpy.ndarray
         List of active pixel indices for each field.
     field_labels : list of str
         Labels identifying which fields to read from each simulation.
         These should be individual field names (e.g., ["T", "Q", "U"]).
-        Field expansion is handled at the parameter level.
+        For numpy format, the first ``len(field_labels)`` entries in the
+        file are assumed to match this ordering exactly.
     calibration : float, optional
         Calibration factor to multiply all map values. Default is 1.0.
 
@@ -418,67 +422,103 @@ def read_maps(maps, filename, pixact, field_labels, calibration: float = 1.0):
 
     Notes
     -----
-    For multi-simulation format:
+    For numpy format:
+    - File must contain a 3D array of shape (n_fields, n_pix, n_sims)
+    - Fields are ordered to match the config's ``physical_labels``
+    - No header metadata; field ordering is determined by convention
+
+    For multi-simulation FITS:
     - Each HDU named "SIM_XXX" contains one simulation
     - HDU headers contain "FIELDS" keyword describing field organization
-    - Supports both comma-separated ("T,Q,U") and concatenated ("TQU") header formats
 
     For simple HEALPix format (nsims=1):
     - Reads directly using healpy
     - Field mapping: T=0, Q=1, U=2, E=1, B=2
 
     Applies calibration factor to all loaded data.
-    Field expansion (e.g., "QU" -> ["Q", "U"]) is handled at InputParams level.
     """
     assert maps.shape[0] == sum(len(p) for p in pixact), "maps array has incorrect shape"
     nsims = maps.shape[1]
 
-    # Ensure we have the right number of labels
     if len(field_labels) != len(pixact):
         raise ValueError(
             f"Mismatch between pixact length ({len(pixact)}) and "
             f"field labels ({len(field_labels)}): {field_labels}"
         )
 
+    if filename.endswith(".npy"):
+        _read_maps_numpy(maps, filename, pixact, nsims)
+    else:
+        _read_maps_fits(maps, filename, pixact, field_labels, nsims)
+
+    maps *= calibration
+
+
+def _read_maps_numpy(maps, filename, pixact, nsims):
+    """Read maps from numpy .npy file (n_fields, n_pix, n_sims)."""
+    all_data = np.load(filename)
+
+    n_fields = len(pixact)
+    if all_data.ndim != 3:
+        raise ValueError(
+            f"Numpy map file must be 3D (n_fields, n_pix, n_sims), "
+            f"got shape {all_data.shape}"
+        )
+    if all_data.shape[0] < n_fields:
+        raise ValueError(
+            f"Numpy map file has {all_data.shape[0]} fields, need at least {n_fields}"
+        )
+    if all_data.shape[2] != nsims:
+        raise ValueError(f"Numpy map file has {all_data.shape[2]} sims, expected {nsims}")
+
+    pixact_int = [p.astype(int) for p in pixact]
+    counter = 0
+    for field_idx in range(n_fields):
+        pixels = pixact_int[field_idx]
+        n_active = pixels.size
+        maps[counter : counter + n_active, :] = all_data[field_idx][pixels, :]
+        counter += n_active
+
+
+def _read_maps_fits(maps, filename, pixact, field_labels, nsims):
+    """Read maps from FITS file (multi-sim or simple HEALPix)."""
+    pixact_int = [p.astype(int) for p in pixact]
+
     with fits.open(filename) as hdul:
-        # Check if this is multi-simulation format (has SIM_XXX extensions)
         has_sim_format = "SIM_000" in hdul
 
         if has_sim_format:
-            # Multi-simulation format
+            # Cache field indices from first sim (same for all sims)
+            field_indices = []
+            for field_idx in range(len(pixact)):
+                label = field_labels[field_idx]
+                field_indices.append(get_field_index(hdul["SIM_000"], label))
+
+            # Precompute output offsets
+            offsets = []
+            counter = 0
+            for field_idx in range(len(pixact)):
+                offsets.append(counter)
+                counter += pixact_int[field_idx].size
+
+            # Read all sims
             for isim in range(nsims):
                 sim_data = hdul[f"SIM_{isim:03d}"].data
 
-                counter = 0
                 for field_idx in range(len(pixact)):
-                    label = field_labels[field_idx]
-                    field_index = get_field_index(hdul[f"SIM_{isim:03d}"], label)
-
-                    pixels = pixact[field_idx].astype(int)
-
-                    if len(pixels) > 0 and (
-                        pixels.min() < 0 or pixels.max() >= sim_data.shape[1]
-                    ):
-                        raise ValueError(
-                            f"Pixel indices out of bounds for field {field_idx}"
-                        )
-
+                    pixels = pixact_int[field_idx]
                     n_active = pixels.size
-                    maps[counter : counter + n_active, isim] = sim_data[field_index][
-                        pixels
-                    ]
-                    counter += n_active
+                    maps[offsets[field_idx] : offsets[field_idx] + n_active, isim] = (
+                        sim_data[field_indices[field_idx]][pixels]
+                    )
         else:
-            # Simple HEALPix format - use healpy to read
             if nsims != 1:
                 raise ValueError(
                     f"Simple HEALPix format only supports nsims=1, got nsims={nsims}"
                 )
 
-            # Field index mapping for standard HEALPix files
             field_index_map = {"T": 0, "Q": 1, "U": 2, "E": 1, "B": 2}
 
-            # Read all fields from HEALPix file
             all_maps = hp.read_map(filename, field=None)
             if all_maps.ndim == 1:
                 all_maps = all_maps.reshape(1, -1)
@@ -498,12 +538,10 @@ def read_maps(maps, filename, pixact, field_labels, calibration: float = 1.0):
                         f"with {all_maps.shape[0]} fields"
                     )
 
-                pixels = pixact[field_idx].astype(int)
+                pixels = pixact_int[field_idx]
                 n_active = pixels.size
                 maps[counter : counter + n_active, 0] = all_maps[map_idx][pixels]
                 counter += n_active
-
-    maps *= calibration
 
 
 def get_field_index(hdu, field_name):

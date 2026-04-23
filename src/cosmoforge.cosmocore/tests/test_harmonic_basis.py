@@ -682,7 +682,7 @@ class TestHarmonicDictOperations:
         assert_allclose(logdet, logdet2)
 
         # prepare_smw and quadratic_form_from_prepared
-        K_chol, _, logdet_smw = hc.prepare_smw(C_ell_dict)
+        K_chol, logdet_smw = hc.prepare_smw(C_ell_dict)
         assert isinstance(logdet_smw, float)
         qf2 = hc.quadratic_form_from_prepared(data, K_chol)
         assert_allclose(qf, qf2, rtol=1e-8)

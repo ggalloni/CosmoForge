@@ -59,6 +59,7 @@ from typing import Any
 
 import numpy as np
 from mpi4py import MPI
+from scipy.linalg import cho_solve
 
 from cosmocore import (
     Core,
@@ -163,20 +164,18 @@ class PICSLike(Core):
         params_file : str, optional
             Path to YAML configuration file.
         compression : dict, optional
-            Compression configuration (method, epsilon, basis, mode_fraction).
+            Computation basis configuration (method, epsilon, basis, mode_fraction).
         **kwargs : Any
             Additional arguments passed to Core.
         """
         # Initialize parent Core class
         super().__init__(params=params_file, **kwargs)
 
-        # Initialize MPI communication
         self.comm = MPI.COMM_WORLD
         self.rank = self.comm.Get_rank()
         self.size = self.comm.Get_size()
 
-        # Store compression config
-        self._compression_config = compression
+        self._basis_config = compression
 
         # Initialize attributes
         self.maps1 = None
@@ -263,7 +262,6 @@ class PICSLike(Core):
         self.total_cov = self.signal_matrix
         self.log(f"Combined covariance matrix shape: {self.total_cov.shape}", level=4)
 
-        # Compute inverse covariance matrix
         self.inv_cov = matrix_inverse_symm(self.total_cov)
         self.log("Computed inverse of primary covariance matrix", level=4)
 
@@ -457,7 +455,6 @@ class PICSLike(Core):
             # Store the collection of results
             self.simulation_results = simulation_results
 
-            # Compute mean likelihood result for plotting
             self.likelihood_result = self._compute_mean_likelihood_result(
                 simulation_results
             )
@@ -488,7 +485,6 @@ class PICSLike(Core):
             mean_chi2[i] = np.mean(chi2_values)
             mean_log_like[i] = np.mean(log_like_values)
 
-        # Create mean LikelihoodResult
         mean_result = LikelihoodResult(
             parameter_grid=simulation_results[0].parameter_grid,
             chi_squared_values=mean_chi2,
@@ -498,91 +494,71 @@ class PICSLike(Core):
         return mean_result
 
     def _compute_likelihood_point(self, param_point: tuple) -> tuple[float, float]:
-        """Compute chi-squared and log-likelihood for a single parameter point."""
-        # Check if compression is enabled
-        use_compression = (
-            hasattr(self, "basis_manager") and self.basis_manager is not None
-        )
+        """
+        Compute chi-squared and log-likelihood for a single parameter point.
 
-        if use_compression:
-            # Compressed path: use SMW formula - O(n_modes³) instead of O(N_pix³)
-            # Key optimization: we DON'T compute the full signal matrix!
-            # Instead, we work directly with C_ell in harmonic space.
+        ln L = -0.5 * (d^T C^{-1} d + ln|C|)
 
-            # Get spectrum for this parameter point and set up C_ell
-            # Note: Only the signal spectrum changes between parameter points.
+        When a computation basis is enabled, uses SMW formula in harmonic
+        space — O(n_modes³) instead of O(n_pix³). Quadratic forms are
+        batched across simulations for efficiency.
+        """
+        use_basis = hasattr(self, "basis_manager") and self.basis_manager is not None
+
+        if use_basis:
+            bm = self.basis_manager
+
+            # Only the signal spectrum changes between parameter points.
             # Beams are loaded once during setup (setup_beams), but smoothing
             # must be re-applied after each set_cls call.
             spectra_dict = self.parameter_grid.get_spectrum(param_point)
             self.collection.set_cls(spectra_dict, lmax=self.lmax_signal)
-
-            # Apply beam smoothing to the new spectra
-            # This is much faster than set_beams() which re-reads beam files
             self.collection.beam_manager.apply_smoothing(
                 self.collection.spectra_manager, lmax=self.lmax_signal
             )
 
-            # Detect if we need the multi-field path (>1 components or spin-2)
             has_spin2 = any(f.spin == 2 for f in self.collection.fields)
             is_multi_field = len(self.collection.fields) > 1 or has_spin2
 
             if is_multi_field:
-                # Multi-field/spin-2 path: use full Lambda matrix
                 C_ell_dict = self._build_c_ell_dict()
-                self.log(f"C_ell_dict set for parameters: {param_point}", level=3)
-
-                # Precompute K Cholesky and logdet ONCE for this parameter point
-                K_chol, _, logdet = self.basis_manager.prepare_smw(C_ell_dict)
-
-                chi_squared = []
-                for sim_idx in range(self.params.nsims):
-                    if self.params.do_cross:
-                        d1 = self.maps1[:, sim_idx]
-                        d2 = self.maps2[:, sim_idx]
-                        d1_compressed = self.basis_manager.compress_data(d1)
-                        d2_compressed = self.basis_manager.compress_data(d2)
-                        C_c_inv = self.basis_manager.get_compressed_inverse(C_ell_dict)
-                        chi_sq = float(d1_compressed.T @ C_c_inv @ d2_compressed)
-                    else:
-                        chi_sq = self.basis_manager.quadratic_form_from_prepared(
-                            self.maps1[:, sim_idx], K_chol
-                        )
-                    chi_squared.append(chi_sq)
-
-                chi_squared = np.array(chi_squared)
+                C_ell_input = C_ell_dict
             else:
-                # Single-field path (existing code)
-                C_ell = self.collection.spectra_manager.get_cls(0, 0, 0)
-                self.log(f"C_ell set for parameters: {param_point}", level=3)
+                C_ell_input = self.collection.spectra_manager.get_cls(0, 0, 0)
 
-                chi_squared = []
-                for sim_idx in range(self.params.nsims):
-                    if self.params.do_cross:
-                        d1 = self.maps1[:, sim_idx]
-                        d2 = self.maps2[:, sim_idx]
-                        d1_compressed = self.basis_manager.compress_data(d1)
-                        d2_compressed = self.basis_manager.compress_data(d2)
-                        C_inv = self.basis_manager.get_compressed_inverse(C_ell)
-                        chi_sq = float(d1_compressed.T @ C_inv @ d2_compressed)
-                    else:
-                        chi_sq = self.compute_quadratic_form(
-                            self.maps1[:, sim_idx], C_ell
-                        )
-                    chi_squared.append(chi_sq)
+            self.log(f"C_ell set for parameters: {param_point}", level=3)
 
-                chi_squared = np.array(chi_squared)
-                logdet = self.get_covariance_logdet(C_ell)
+            if self.params.do_cross:
+                C_c_inv = bm.get_compressed_inverse(C_ell_input)
+                d1_c = bm.compress_data(self.maps1)
+                d2_c = bm.compress_data(self.maps2)
+                # Batch: χ²_n = d1_c[:,n]^T @ C_c_inv @ d2_c[:,n]
+                chi_squared = np.einsum("in,ij,jn->n", d1_c, C_c_inv, d2_c)
+            else:
+                K_chol, logdet = bm.prepare_smw(
+                    C_ell_dict if is_multi_field else {(0, 0, 0): C_ell_input}
+                )
+                # Batch SMW quadratic form across simulations:
+                # χ²_n = d_n^T N^{-1} d_n - y_n^T K^{-1} y_n
+                # where y = V N^{-1} d
+                term1 = np.einsum("in,ij,jn->n", self.maps1, bm.N_inv, self.maps1)
+                projected = bm._V_N_inv @ self.maps1
+                kernel_inv_y = cho_solve((K_chol, True), projected)
+                term2 = np.einsum("in,in->n", projected, kernel_inv_y)
+                chi_squared = term1 - term2
 
-            self.log(f"Log-determinant of covariance (compressed): {logdet:.2f}", level=3)
+            if not self.params.do_cross:
+                pass  # logdet already set by prepare_smw
+            else:
+                logdet = bm.get_logdet(C_ell_input)
+
+            self.log(f"Log-determinant (basis): {logdet:.2f}", level=3)
         else:
-            # Non-compressed path: compute full signal matrix
             self.compute_signal_matrix(param_point)
             self.log(f"Signal matrix computed for parameters: {param_point}", level=3)
-            # Non-compressed path: use existing direct matrix operations
             self.prepare_covariance_matrix()
             self.log("Total covariance matrix prepared and inverted", level=3)
 
-            # Compute chi-squared: d^T * C^-1 * d (without logdet)
             if self.params.do_cross:
                 chi_squared = np.einsum(
                     "in,ij,jn->n", self.maps1, self.inv_cov, self.maps2
@@ -592,12 +568,10 @@ class PICSLike(Core):
                     "in,ij,jn->n", self.maps1, self.inv_cov, self.maps1
                 )
 
-            # Get log-determinant for likelihood computation
             logdet = np.linalg.slogdet(self.total_cov)[1]
-            self.log(f"Log-determinant of covariance: {logdet:.2f}", level=3)
+            self.log(f"Log-determinant: {logdet:.2f}", level=3)
 
-        # Standard Gaussian log-likelihood: -0.5 * (χ² + log|C|)
-        # (ignoring constant n*log(2π) term)
+        # ln L = -0.5 * (χ² + ln|C|)
         log_likelihood = -0.5 * (chi_squared + logdet)
 
         return chi_squared, log_likelihood
@@ -766,17 +740,16 @@ class PICSLike(Core):
             self.setup_cls(lmax=self.lmax_signal)
             self.setup_beams(lmax=self.lmax_signal)
 
-            # Setup compression if configured
-            if self._compression_config is not None:
-                compression_config = self._compression_config
+            if self._basis_config is not None:
+                config = self._basis_config
                 self.setup_computation_basis(
-                    method=compression_config.get("method", "harmonic"),
-                    epsilon=compression_config.get("epsilon"),
-                    mode_fraction=compression_config.get("mode_fraction"),
-                    basis=compression_config.get("basis", "noise_weighted"),
-                    C_ell=compression_config.get("C_ell"),
+                    method=config.get("method", "harmonic"),
+                    epsilon=config.get("epsilon"),
+                    mode_fraction=config.get("mode_fraction"),
+                    basis=config.get("basis", "noise_weighted"),
+                    C_ell=config.get("C_ell"),
                 )
-                self.log("Compression manager setup completed", level=3)
+                self.log("Computation basis setup completed", level=3)
 
             if self.maps1 is None:
                 self.setup_maps()

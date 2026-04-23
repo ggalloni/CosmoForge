@@ -53,7 +53,7 @@ References
 
 import healpy as hp
 import numpy as np
-from numba import njit
+from numba import njit, prange
 
 from .basics import (
     get_rotation_angle,
@@ -153,7 +153,7 @@ def compute_pointings(
     return point_vectors, theta_vectors, phi_vectors
 
 
-@njit(cache=True)
+@njit
 def compute_00_contribution(cl, S_slice, vec1, vec2, legendre, mode, remove_dipole=False):
     """
     Compute spin-0 x spin-0 field contribution to signal matrix.
@@ -179,6 +179,8 @@ def compute_00_contribution(cl, S_slice, vec1, vec2, legendre, mode, remove_dipo
     Uses Legendre polynomials to compute angular correlations. The dipole
     removal is applied for temperature-temperature correlations to handle
     coordinate system effects.
+
+    The outer pixel loop uses prange for thread-level parallelism.
     """
     npix = S_slice.shape[0]
     if mode == 0:
@@ -189,22 +191,51 @@ def compute_00_contribution(cl, S_slice, vec1, vec2, legendre, mode, remove_dipo
         for i in range(npix):
             S_slice[i, i] = entry
 
-        for i in range(npix):
-            for j in range(i + 1, npix):
-                x = vec1[j] @ vec2[i].T
-                legendre_00(x, legendre)
-                S_slice[j, i] = np.sum(cl * legendre[1:])
-                if remove_dipole:
-                    S_slice[j, i] += 1000.0 * cl[0] * (1.0 + x)
+        _compute_00_symmetric(cl, S_slice, vec1, vec2, npix, remove_dipole)
 
     elif mode == 1:
-        for i in range(npix):
-            for j in range(npix):
-                legendre_00(vec1[j] @ vec2[i].T, legendre)
-                S_slice[j, i] = np.sum(cl * legendre[1:])
+        _compute_00_general(cl, S_slice, vec1, vec2, npix)
 
 
-@njit(cache=True)
+@njit(parallel=True)
+def _compute_00_symmetric(cl, S_slice, vec1, vec2, npix, remove_dipole):
+    """Parallel pixel-pair loop for symmetric spin-0 signal matrix."""
+    for i in prange(npix):
+        leg = np.empty(len(cl) + 1, dtype=np.float64)
+        for j in range(i + 1, npix):
+            x = (
+                vec1[j, 0] * vec2[i, 0]
+                + vec1[j, 1] * vec2[i, 1]
+                + vec1[j, 2] * vec2[i, 2]
+            )
+            legendre_00(x, leg)
+            val = np.float64(0.0)
+            for k in range(len(cl)):
+                val += cl[k] * leg[k + 1]
+            if remove_dipole:
+                val += 1000.0 * cl[0] * (1.0 + x)
+            S_slice[j, i] = val
+
+
+@njit(parallel=True)
+def _compute_00_general(cl, S_slice, vec1, vec2, npix):
+    """Parallel pixel loop for general spin-0 signal matrix."""
+    for i in prange(npix):
+        leg = np.empty(len(cl) + 1, dtype=np.float64)
+        for j in range(npix):
+            x = (
+                vec1[j, 0] * vec2[i, 0]
+                + vec1[j, 1] * vec2[i, 1]
+                + vec1[j, 2] * vec2[i, 2]
+            )
+            legendre_00(x, leg)
+            val = np.float64(0.0)
+            for k in range(len(cl)):
+                val += cl[k] * leg[k + 1]
+            S_slice[j, i] = val
+
+
+@njit
 def compute_22_contribution(cl11, cl22, cl12, S_slice, vec1, vec2, legendre, f1, f2):
     """
     Compute spin-2 x spin-2 field contribution to signal matrix.
@@ -225,9 +256,7 @@ def compute_22_contribution(cl11, cl22, cl12, S_slice, vec1, vec2, legendre, f1,
     Notes
     -----
     Implements the pixel-space covariance for polarization fields with proper
-    rotation handling. Accounts for E/B mode mixing and coordinate rotations
-    between different pixel positions. The matrix structure handles Q and U
-    Stokes parameters with appropriate geometric transformations.
+    rotation handling. The outer pixel loop uses prange for parallelism.
     """
     npix = S_slice.shape[0] // 2
 
@@ -243,13 +272,32 @@ def compute_22_contribution(cl11, cl22, cl12, S_slice, vec1, vec2, legendre, f1,
     for i in range(npix, npix * 2):
         S_slice[i, i] = uu
 
-    for i in range(npix):
-        for j in range(i + 1, npix):
-            legendre_22(vec1[j] @ vec2[i].T, legendre, f1, f2)
+    _compute_22_symmetric(cl11, cl22, cl12, S_slice, vec1, vec2, npix)
 
-            qq = np.sum(cl11 * f1[1:]) - np.sum(cl22 * f2[1:])
-            uu = np.sum(cl22 * f1[1:]) - np.sum(cl11 * f2[1:])
-            qu = np.sum((f1[1:] + f2[1:]) * cl12)
+
+@njit(parallel=True)
+def _compute_22_symmetric(cl11, cl22, cl12, S_slice, vec1, vec2, npix):
+    """Parallel pixel-pair loop for symmetric spin-2 signal matrix."""
+    n_cl = len(cl11)
+    for i in prange(npix):
+        leg = np.empty(n_cl + 1, dtype=np.float64)
+        _f1 = np.empty(n_cl + 1, dtype=np.float64)
+        _f2 = np.empty(n_cl + 1, dtype=np.float64)
+        for j in range(i + 1, npix):
+            x = (
+                vec1[j, 0] * vec2[i, 0]
+                + vec1[j, 1] * vec2[i, 1]
+                + vec1[j, 2] * vec2[i, 2]
+            )
+            legendre_22(x, leg, _f1, _f2)
+
+            qq = np.float64(0.0)
+            uu = np.float64(0.0)
+            qu = np.float64(0.0)
+            for k in range(n_cl):
+                qq += cl11[k] * _f1[k + 1] - cl22[k] * _f2[k + 1]
+                uu += cl22[k] * _f1[k + 1] - cl11[k] * _f2[k + 1]
+                qu += (_f1[k + 1] + _f2[k + 1]) * cl12[k]
 
             ang1, ang2 = get_rotation_angle(vec1[j], vec2[i])
             cos1 = np.cos(ang1)
@@ -272,7 +320,7 @@ def compute_22_contribution(cl11, cl22, cl12, S_slice, vec1, vec2, legendre, f1,
             )
 
 
-@njit(cache=True)
+@njit
 def compute_02_contribution(cl12, cl13, S_slice, vec0, vec2, legendre):
     """
     Compute spin-0 x spin-2 field contribution to signal matrix.
@@ -293,17 +341,32 @@ def compute_02_contribution(cl12, cl13, S_slice, vec0, vec2, legendre):
     Notes
     -----
     Implements cross-correlations between temperature (spin-0) and polarization
-    (spin-2) fields. Handles coordinate rotations and the coupling between
-    scalar and tensor modes on the sphere.
+    (spin-2) fields. The outer pixel loop uses prange for parallelism.
     """
     npix_spin0 = vec0.shape[0]
     npix_spin2 = vec2.shape[0]
 
-    for i in range(npix_spin0):
+    _compute_02_parallel(cl12, cl13, S_slice, vec0, vec2, npix_spin0, npix_spin2)
+
+
+@njit(parallel=True)
+def _compute_02_parallel(cl12, cl13, S_slice, vec0, vec2, npix_spin0, npix_spin2):
+    """Parallel pixel loop for spin-0 x spin-2 signal matrix."""
+    n_cl = len(cl12)
+    for i in prange(npix_spin0):
+        leg = np.empty(n_cl + 1, dtype=np.float64)
         for j in range(npix_spin2):
-            legendre_02(vec2[j] @ vec0[i].T, legendre)
-            tq = -np.sum(cl12 * legendre[1:])
-            tu = -np.sum(cl13 * legendre[1:])
+            x = (
+                vec2[j, 0] * vec0[i, 0]
+                + vec2[j, 1] * vec0[i, 1]
+                + vec2[j, 2] * vec0[i, 2]
+            )
+            legendre_02(x, leg)
+            tq = np.float64(0.0)
+            tu = np.float64(0.0)
+            for k in range(n_cl):
+                tq -= cl12[k] * leg[k + 1]
+                tu -= cl13[k] * leg[k + 1]
             ang1, _ = get_rotation_angle(vec2[j], vec0[i])
             cos1 = np.cos(ang1)
             sin1 = np.sin(ang1)

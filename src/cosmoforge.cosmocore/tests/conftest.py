@@ -5,8 +5,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 
-os.environ.setdefault("NUMBA_DISABLE_JIT", "1")
-
 
 def _configure_plt():
     plt.rc("axes", labelsize=20, linewidth=1.5)

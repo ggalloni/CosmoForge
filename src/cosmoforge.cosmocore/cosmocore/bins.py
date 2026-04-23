@@ -24,6 +24,11 @@ class Bins:
     order. Gaps between bins are allowed (those multipoles are simply
     excluded from the analysis).
 
+    The binning operator formalism follows Bond, Jaffe & Knox (1998).
+    The implementation is adapted from the xQML package (Vanneste et al.
+    2018, Phys. Rev. D 98, 103526), extended with input validation,
+    D_ell weighting, covariance binning, and lmin zero-padding support.
+
     Parameters
     ----------
     lmins : array_like

@@ -1435,7 +1435,7 @@ class PixelBasis(ComputationBasis):
         C_c = self.get_compressed_covariance(C_ell_dict)
         C_c_inv = matrix_inverse_symm(C_c)
         _, logdet = matrix_slogdet_symm(C_c)
-        return SMWPrepared(C_c_inv, None, logdet)
+        return SMWPrepared(C_c_inv, logdet)
 
     def quadratic_form_from_prepared(
         self, data: np.ndarray, C_c_inv: np.ndarray
@@ -1457,7 +1457,7 @@ class PixelBasis(ComputationBasis):
             Power spectrum (array for single-field, dict for multi-field).
         """
         if isinstance(C_ell, dict):
-            _, _, logdet = self.prepare_smw(C_ell)
+            _, logdet = self.prepare_smw(C_ell)
             return logdet
         from ..basics import matrix_slogdet_symm
 

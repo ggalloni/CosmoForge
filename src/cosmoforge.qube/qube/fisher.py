@@ -12,9 +12,9 @@ where C is the total covariance matrix (signal + noise) and θ_i are the cosmolo
 parameters of interest. The implementation supports MPI parallelization for efficient
 computation of large Fisher matrices.
 
-For single-spectrum (temperature-only) analyses, the unified API from Core is used,
-which transparently handles compression if enabled. Multi-spectrum analyses use
-traditional pixel-space computation.
+The unified API from Core transparently handles both harmonic and pixel
+computation bases when configured, falling back to traditional pixel-space
+computation otherwise.
 
 Classes
 -------
@@ -49,6 +49,8 @@ from cosmocore import (
     write_out_matrix,
 )
 
+_WEIGHT_ZERO_THRESHOLD = 1e-30  # Skip derivative terms with negligible weight
+
 
 class Fisher(Core):
     """
@@ -64,16 +66,15 @@ class Fisher(Core):
 
     F_ij = (1/2) * Tr[C^(-1) * ∂C/∂θ_i * C^(-1) * ∂C/∂θ_j]
 
-    For single-spectrum analyses (nspectra=1), the computation uses Core's unified
-    API which transparently handles compression. Multi-spectrum analyses use
-    traditional pixel-space computation.
+    The computation uses Core's unified API which transparently handles
+    harmonic and pixel computation bases when configured.
 
     Parameters
     ----------
     params_file : str, optional
         Path to YAML parameter file containing analysis configuration.
     compression : dict, optional
-        Compression configuration. Supports multiple spin-0 fields (Phase 1).
+        Computation basis configuration (method, epsilon, basis, mode_fraction).
     **kwargs : dict
         Additional keyword arguments passed to the Core parent class.
 
@@ -101,10 +102,10 @@ class Fisher(Core):
     >>> fisher.run()
     >>> F_matrix = fisher.get_fisher_matrix()
 
-    With compression (spin-0 fields only):
+    With harmonic basis:
 
     >>> fisher = Fisher("config.yaml", compression={"method": "harmonic"})
-    >>> fisher.run()  # Uses compressed computation transparently
+    >>> fisher.run()  # Uses harmonic basis transparently
     """
 
     def __init__(
@@ -122,11 +123,10 @@ class Fisher(Core):
         params_file : str, optional
             Path to YAML configuration file.
         compression : dict, optional
-            Compression configuration dictionary. Only supported for
-            single-spectrum (temperature-only) analyses. Options:
+            Computation basis configuration dictionary. Options:
 
             - method : str ("harmonic" or "pixel")
-            - epsilon : float (eigenvalue threshold)
+            - epsilon : float (eigenvalue threshold for pixel basis)
             - basis : str (for pixel: "harmonic", "noise_weighted", etc.)
             - mode_fraction : float (alternative to epsilon)
 
@@ -145,8 +145,8 @@ class Fisher(Core):
         self.rank = self.comm.Get_rank()
         self.size = self.comm.Get_size()
 
-        # Compression config
-        self._compression_config = compression
+        # Computation basis config
+        self._basis_config = compression
 
         # Derivative caching
         self._cache_derivatives = cache_derivatives
@@ -228,255 +228,207 @@ class Fisher(Core):
             self.noise_cov2 = matrix_inverse_symm(self.noise_cov2)
             write_covmat_reduced(self.params.outinvcovmatfile2, self.noise_cov2)
 
-    def _build_derivative_matrix(self, ell: int) -> np.ndarray:
-        """Build pixel-space derivative matrix dC/dC_ell for single spectrum."""
+    def _build_derivative_matrix(self, ell: int, spectrum_idx: int = 0) -> np.ndarray:
+        """Build pixel-space derivative matrix dC/dC_ell."""
         dC = np.zeros_like(self.noise_cov1, dtype=np.float64)
         dC = np.asfortranarray(dC)
-        do_derivative_step(dC, 0, self.npixs, self.params.spins, ell, self.collection)
-        return dC
-
-    # =========================================================================
-    # Single-Spectrum Computation (Unified API - Compression Agnostic)
-    # =========================================================================
-
-    def _compute_single_spectrum(self):
-        """Compute Fisher matrix for single-spectrum analysis (compression agnostic)."""
-        use_compression = (
-            hasattr(self, "basis_manager") and self.basis_manager is not None
+        do_derivative_step(
+            dC, spectrum_idx, self.npixs, self.params.spins, ell, self.collection
         )
-
-        if self.rank == 0:
-            mode = "compressed" if use_compression else "traditional"
-            self.log(f"Starting single-spectrum Fisher computation ({mode})", level=2)
-
-        start_time = time.time() if self.rank == 0 else None
-
-        nbins = self.bins.nbins
-        total_elements = nbins * (nbins + 1) // 2
-        elements_per_proc = int(np.ceil(total_elements / self.size))
-
-        if self.rank == 0:
-            self.log(
-                f"Rank {self.rank} will compute ~{elements_per_proc} elements "
-                f"({nbins} bins)",
-                level=2,
-            )
-
-        fisher_local = np.zeros((nbins, nbins))
-
-        if use_compression:
-            C_ell = self.collection.spectra_manager.get_cls(0, 0, 0)
-            C_inv = self.basis_manager.get_projected_inverse(C_ell)
-        else:
-            C_inv = self.noise_cov1
-
-        # Precompute C⁻¹ dC^b for each bin (optionally cache dC^b for Spectra reuse)
-        cinv_times_dcb = {}
-        if self._cache_derivatives:
-            self._cached_binned_derivatives = {}
-        deriv_start = time.time()
-        for bin_idx in range(nbins):
-            dC_b = self.get_binned_derivative_matrix(
-                bin_idx, beam_smoothing=self.beam_smoothing[: self.n_ell]
-            )
-            if self._cache_derivatives:
-                self._cached_binned_derivatives[bin_idx] = dC_b
-            cinv_times_dcb[bin_idx] = matrix_mult(C_inv, dC_b)
-            if self.rank == 0:
-                elapsed = time.time() - deriv_start
-                self.log(
-                    f"Precomputed C⁻¹ dC^b for bin {bin_idx + 1}/{nbins} "
-                    f"(l=[{self.bins.lmins[bin_idx]}, {self.bins.lmaxs[bin_idx]}]) "
-                    f"[{elapsed:.1f}s]",
-                    level=4,
-                )
-
-        if self.rank == 0:
-            self.log(
-                f"All {nbins} derivative products precomputed in "
-                f"{time.time() - deriv_start:.1f}s",
-                level=3,
-            )
-
-        # F_{bb'} = (1/2) Tr[(C⁻¹ dC^b)(C⁻¹ dC^{b'})]
-        trace_start = time.time()
-        counter = 0
-        for bi in range(nbins):
-            for bj in range(bi, nbins):
-                counter += 1
-                if not (
-                    counter > self.rank * elements_per_proc
-                    and counter <= (self.rank + 1) * elements_per_proc
-                ):
-                    continue
-
-                fisher_val = 0.5 * matrix_trace(cinv_times_dcb[bi], cinv_times_dcb[bj])
-                fisher_local[bi, bj] = fisher_val
-                if bi != bj:
-                    fisher_local[bj, bi] = fisher_val
-
-        if self.rank == 0:
-            self.log(
-                f"Fisher trace computation done in {time.time() - trace_start:.1f}s "
-                f"({total_elements} elements)",
-                level=3,
-            )
-
-        self.comm.Barrier()
-        reduced_fisher = np.zeros_like(fisher_local)
-        self.comm.Reduce(fisher_local, reduced_fisher, op=MPI.SUM, root=0)
-
-        if self.rank == 0:
-            self.fisher = reduced_fisher
-            self.log("-" * 80, level=1)
-            self.log("Fisher matrix computation completed", level=1)
-
-            if start_time is not None:
-                elapsed = time.time() - start_time
-                self.log(f"Total computation time: {elapsed:.2f} seconds", level=3)
-
-            if hasattr(self.params, "outfilefisher"):
-                write_out_matrix(self.params.outfilefisher, self.fisher)
-
-        self.comm.Barrier()
+        return dC
 
     def _build_multi_spectrum_inputs(self):
         """Build C_ell_dict and spectra_list for multi-spectrum compressed Fisher."""
         return self.collection.spectra_manager.build_inputs()
 
     # =========================================================================
-    # Multi-Spectrum Computation
+    # Main Entry Points
     # =========================================================================
 
-    def _get_binned_derivative_multi(
-        self, bin_idx: int, spectrum_idx: int, spectra_list=None
-    ) -> np.ndarray:
-        """Compute beam-smoothed binned derivative for multi-spectrum.
-
-        Handles both pixel-space and compressed paths. Beam smoothing
-        factors b²_ell are absorbed into the binning weights.
+    def compute(self):
         """
-        use_compression = (
-            hasattr(self, "basis_manager") and self.basis_manager is not None
-        )
+        Compute Fisher matrix F_{ij} = (1/2) Tr[C⁻¹ dC^i C⁻¹ dC^j].
 
-        n_ell = self.n_ell
-        w_matrix, _ = self.bins._bin_operators()
-        lmin_b = self.bins.lmins[bin_idx]
-        lmax_b = self.bins.lmaxs[bin_idx]
-        beam_offset = spectrum_idx * n_ell
-        dC_b = None
-
-        for ell in range(lmin_b, lmax_b + 1):
-            weight = w_matrix[bin_idx, ell] * self.beam_smoothing[beam_offset + ell - 2]
-
-            if use_compression:
-                comp_i, comp_j, mode = spectra_list[spectrum_idx]
-                dC_ell = self.basis_manager.get_derivative_matrix(
-                    ell, comp_i, comp_j, mode
-                )
-            else:
-                dC_ell = np.zeros_like(self.noise_cov1)
-                dC_ell = np.asfortranarray(dC_ell, dtype=np.float64)
-                do_derivative_step(
-                    dC_ell,
-                    spectrum_idx,
-                    self.npixs,
-                    self.params.spins,
-                    ell,
-                    self.collection,
-                )
-
-            if dC_b is None:
-                dC_b = weight * dC_ell
-            else:
-                dC_b += weight * dC_ell
-
-        return dC_b
-
-    def _compute_multi_spectrum(self):
-        """Compute Fisher matrix for multi-spectrum analysis (compression supported)."""
-        use_compression = (
-            hasattr(self, "basis_manager") and self.basis_manager is not None
-        )
-
-        if self.rank == 0:
-            mode = "compressed" if use_compression else "traditional"
-            self.log(f"Starting multi-spectrum Fisher computation ({mode})", level=2)
-
-        start_time = time.time() if self.rank == 0 else None
+        Supports single- and multi-spectrum, with or without computation basis.
+        For harmonic basis, exploits sparse derivative structure
+        for O(nnz_i × nnz_j) trace computation instead of O(n_modes²).
+        """
+        use_basis = hasattr(self, "basis_manager") and self.basis_manager is not None
+        use_harmonic_fast = use_basis and self.basis_manager.method == "harmonic"
 
         nbins = self.bins.nbins
         nspectra = self.params.nspectra
         n_params = nspectra * nbins
 
-        total_elements = n_params * (n_params + 1) // 2
-        elements_per_proc = int(np.ceil(total_elements / self.size))
-
         if self.rank == 0:
+            mode = "compressed" if use_basis else "traditional"
             self.log(
-                f"Rank {self.rank} will compute ~{elements_per_proc} elements "
-                f"({nspectra} spectra x {nbins} bins)",
+                f"Starting Fisher computation ({mode}, "
+                f"{nspectra} spectra x {nbins} bins)",
                 level=2,
             )
 
+        start_time = time.time() if self.rank == 0 else None
+        total_elements = n_params * (n_params + 1) // 2
+        elements_per_proc = int(np.ceil(total_elements / self.size))
+
         fisher_local = np.zeros((n_params, n_params))
 
+        # --- Setup: get C_inv or V_Cinv_VT, spectra_list ---
         spectra_list = None
-        if use_compression:
+        C_ell_dict = None
+        if use_basis:
             C_ell_dict, spectra_list = self._build_multi_spectrum_inputs()
-            C_inv = self.basis_manager.get_projected_inverse(C_ell_dict)
+        elif self.params.do_cross:
+            C_inv1 = self.noise_cov1
+            C_inv2 = self.noise_cov2
         else:
-            if self.params.do_cross:
-                C_inv1 = self.noise_cov1
-                C_inv2 = self.noise_cov2
-            else:
-                C_inv = self.noise_cov1
+            C_inv = self.noise_cov1
 
-        # Precompute binned derivatives and C⁻¹ dC^b products
-        # (optionally cache derivatives for Spectra reuse)
-        # Use (spectrum_idx, bin_idx) keys throughout to avoid duplicate storage
-        binned_derivatives = {}
+        # For pixel-space single-spectrum, build a dummy spectra_list
+        if spectra_list is None:
+            spectra_list = [(0, 0, 0)] * nspectra
+
+        # --- Precompute derivatives ---
+        # Harmonic fast path: sparse COO triplets (rows, cols, vals)
+        # Generic path: dense C⁻¹ dC^b products
+        sparse_coo_data = {}
         cinv_times_dcb = {}
+        binned_derivatives = {}
+        w_matrix, _ = self.bins._bin_operators()
+        V_Cinv_VT = None
+
         deriv_start = time.time()
-        for param_idx in range(n_params):
-            spectrum_idx = param_idx // nbins
-            bin_idx = param_idx % nbins
-            key = (spectrum_idx, bin_idx)
-            binned_deriv = self._get_binned_derivative_multi(
-                bin_idx, spectrum_idx, spectra_list
-            )
-            binned_derivatives[key] = binned_deriv
 
-            if use_compression or not self.params.do_cross:
-                cinv_times_dcb[key] = matrix_mult(C_inv, binned_deriv)
-            else:
-                cinv_times_dcb[key] = matrix_mult(
-                    C_inv2, matrix_mult(binned_deriv, C_inv1)
+        if use_harmonic_fast:
+            bm = self.basis_manager
+            field_groups = bm._detect_field_blocks(C_ell_dict)
+            V_Cinv_VT = bm.get_projected_inverse(C_ell_dict, field_groups=field_groups)
+
+            for param_idx in range(n_params):
+                spectrum_idx = param_idx // nbins
+                bin_idx = param_idx % nbins
+                key = (spectrum_idx, bin_idx)
+                comp_i, comp_j = spectra_list[spectrum_idx][0:2]
+                spec_mode = (
+                    spectra_list[spectrum_idx][2]
+                    if len(spectra_list[spectrum_idx]) == 3
+                    else 0
+                )
+                beam_offset = spectrum_idx * self.n_ell
+
+                spin_i = self.collection.fields[comp_i].spin
+                spin_j = self.collection.fields[comp_j].spin
+                is_diagonal = comp_i == comp_j and (
+                    (spin_i == 0 and spin_j == 0)
+                    or (spin_i == 2 and spin_j == 2 and spec_mode in (0, 1))
                 )
 
-            if self.rank == 0:
-                elapsed = time.time() - deriv_start
-                self.log(
-                    f"Precomputed derivative {param_idx + 1}/{n_params} "
-                    f"(spectrum {spectrum_idx}, bin {bin_idx}: "
-                    f"l=[{self.bins.lmins[bin_idx]}, {self.bins.lmaxs[bin_idx]}]) "
-                    f"[{elapsed:.1f}s]",
-                    level=4,
+                if is_diagonal:
+                    # dC^b diagonal: E_b = sum_ell w * beam * E_diag
+                    E_b_diag = np.zeros(bm.n_kept, dtype=np.float64)
+                    for ell in range(
+                        self.bins.lmins[bin_idx], self.bins.lmaxs[bin_idx] + 1
+                    ):
+                        weight = (
+                            w_matrix[bin_idx, ell]
+                            * self.beam_smoothing[beam_offset + ell - 2]
+                        )
+                        E_b_diag += weight * bm._get_derivative_diagonal(
+                            ell, comp_i, comp_j, spec_mode
+                        )
+                    nz = np.nonzero(E_b_diag)[0]
+                    sparse_coo_data[key] = (nz, nz, E_b_diag[nz])
+                    if self._cache_derivatives:
+                        binned_derivatives[key] = E_b_diag.copy()
+                else:
+                    # Cross-spectrum (EB/TE/TB): sparse off-diagonal COO
+                    all_rows = []
+                    all_cols = []
+                    all_vals = []
+                    for ell in range(
+                        self.bins.lmins[bin_idx], self.bins.lmaxs[bin_idx] + 1
+                    ):
+                        weight = (
+                            w_matrix[bin_idx, ell]
+                            * self.beam_smoothing[beam_offset + ell - 2]
+                        )
+                        if abs(weight) < _WEIGHT_ZERO_THRESHOLD:
+                            continue
+                        dC_ell = bm.get_derivative_matrix(ell, comp_i, comp_j, spec_mode)
+                        r, c = np.nonzero(dC_ell)
+                        all_rows.append(r)
+                        all_cols.append(c)
+                        all_vals.append(dC_ell[r, c] * weight)
+
+                    if all_rows:
+                        rows = np.concatenate(all_rows)
+                        cols = np.concatenate(all_cols)
+                        vals = np.concatenate(all_vals)
+                        rc_pairs = rows * bm.n_kept + cols
+                        unique_pairs, inverse = np.unique(rc_pairs, return_inverse=True)
+                        combined_vals = np.zeros(len(unique_pairs))
+                        np.add.at(combined_vals, inverse, vals)
+                        sparse_coo_data[key] = (
+                            unique_pairs // bm.n_kept,
+                            unique_pairs % bm.n_kept,
+                            combined_vals,
+                        )
+                    else:
+                        sparse_coo_data[key] = (
+                            np.array([], dtype=int),
+                            np.array([], dtype=int),
+                            np.array([], dtype=float),
+                        )
+                    if self._cache_derivatives:
+                        dC_b = np.zeros((bm.n_kept, bm.n_kept), dtype=np.float64)
+                        r, c, v = sparse_coo_data[key]
+                        dC_b[r, c] = v
+                        binned_derivatives[key] = dC_b
+        else:
+            # Generic path: pixel basis or traditional pixel-space
+            if use_basis:
+                C_inv = self.basis_manager.get_projected_inverse(C_ell_dict)
+
+            for param_idx in range(n_params):
+                spectrum_idx = param_idx // nbins
+                bin_idx = param_idx % nbins
+                key = (spectrum_idx, bin_idx)
+                beam_offset = spectrum_idx * self.n_ell
+                beam = self.beam_smoothing[beam_offset : beam_offset + self.n_ell]
+
+                dC_b = self.get_binned_derivative_matrix(
+                    bin_idx,
+                    beam_smoothing=beam,
+                    spectrum_idx=spectrum_idx,
+                    comp_i=spectra_list[spectrum_idx][0] if use_basis else None,
+                    comp_j=spectra_list[spectrum_idx][1] if use_basis else None,
+                    mode=(
+                        spectra_list[spectrum_idx][2]
+                        if use_basis and len(spectra_list[spectrum_idx]) == 3
+                        else 0
+                    ),
                 )
+                binned_derivatives[key] = dC_b
+
+                if use_basis or not self.params.do_cross:
+                    cinv_times_dcb[key] = matrix_mult(C_inv, dC_b)
+                else:
+                    cinv_times_dcb[key] = matrix_mult(C_inv2, matrix_mult(dC_b, C_inv1))
+
+        if self._cache_derivatives:
+            self._cached_binned_derivatives = binned_derivatives
 
         if self.rank == 0:
+            path = "sparse" if use_harmonic_fast else "dense"
             self.log(
-                f"All {n_params} derivative products precomputed in "
-                f"{time.time() - deriv_start:.1f}s",
+                f"All {n_params} derivatives precomputed in "
+                f"{time.time() - deriv_start:.1f}s ({path})",
                 level=3,
             )
 
-        # Assign cache after precomputation loop (just a reference, no copy)
-        if self._cache_derivatives:
-            self._cached_binned_derivatives_multi = binned_derivatives
-
-        # F_{ij} = (1/2) Tr[(C⁻¹ dC^i)(C⁻¹ dC^j)]
+        # --- Compute Fisher traces with MPI distribution ---
+        # F_{ij} = (1/2) Tr[C⁻¹ dC^i C⁻¹ dC^j]
         trace_start = time.time()
         counter = 0
         for param_i in range(n_params):
@@ -490,7 +442,18 @@ class Fisher(Core):
                     continue
 
                 key_j = (param_j // nbins, param_j % nbins)
-                if use_compression or not self.params.do_cross:
+
+                if (
+                    use_harmonic_fast
+                    and key_i in sparse_coo_data
+                    and key_j in sparse_coo_data
+                ):
+                    r_i, c_i, v_i = sparse_coo_data[key_i]
+                    r_j, c_j, v_j = sparse_coo_data[key_j]
+                    M1 = V_Cinv_VT[np.ix_(c_j, r_i)]
+                    M2 = V_Cinv_VT[np.ix_(c_i, r_j)]
+                    fisher_val = 0.5 * np.einsum("ji,ij,i,j->", M1, M2, v_i, v_j)
+                elif use_basis or not self.params.do_cross:
                     fisher_val = 0.5 * matrix_trace(
                         cinv_times_dcb[key_i], cinv_times_dcb[key_j]
                     )
@@ -505,11 +468,12 @@ class Fisher(Core):
 
         if self.rank == 0:
             self.log(
-                f"Fisher trace computation done in {time.time() - trace_start:.1f}s "
+                f"Fisher traces done in {time.time() - trace_start:.1f}s "
                 f"({total_elements} elements)",
                 level=3,
             )
 
+        # --- MPI reduce and output ---
         self.comm.Barrier()
         reduced_fisher = np.zeros_like(fisher_local)
         self.comm.Reduce(fisher_local, reduced_fisher, op=MPI.SUM, root=0)
@@ -528,29 +492,11 @@ class Fisher(Core):
 
         self.comm.Barrier()
 
-    # =========================================================================
-    # Main Entry Points
-    # =========================================================================
-
-    def compute(self):
-        """
-        Execute Fisher matrix computation.
-
-        Automatically selects the appropriate method:
-        - Single-spectrum: Uses unified API (compression agnostic)
-        - Multi-spectrum: Uses traditional computation
-        """
-        if self.params.nspectra == 1:
-            self._compute_single_spectrum()
-        else:
-            self._compute_multi_spectrum()
-
     def run(self) -> None:
         """
         Execute the complete Fisher matrix analysis pipeline.
 
-        Compression can be enabled via the compression parameter for
-        spin-0 field analyses. Spin-2 field compression is planned for Phase 2.
+        A computation basis can be enabled via the compression parameter.
         """
         # Setup phase (rank 0 only)
         if self.rank == 0:
@@ -575,9 +521,9 @@ class Fisher(Core):
             self.setup_beams(lmax=self.lmax_signal)
             self.log("Beam functions setup completed", level=3)
 
-            # Setup compression if configured (spin-0 fields only for Phase 1)
-            if self._compression_config is not None:
-                config = self._compression_config
+            # Setup computation basis if configured
+            if self._basis_config is not None:
+                config = self._basis_config
                 self.setup_computation_basis(
                     method=config.get("method", "harmonic"),
                     lmax=config.get("lmax"),
@@ -587,12 +533,12 @@ class Fisher(Core):
                     C_ell=config.get("C_ell"),
                 )
                 self.log(
-                    f"Compression enabled: {self.basis_manager.n_kept} modes "
+                    f"Computation basis enabled: {self.basis_manager.n_kept} modes "
                     f"({self.basis_manager.compression_ratio:.1%})",
                     level=2,
                 )
                 # Also prepare covariance matrices for Spectra compatibility
-                # (Spectra needs the inverted covariance files even with compression)
+                # Spectra needs the inverted covariance files even with basis
                 self.prepare_covariance_matrices()
                 self.log(
                     "Covariance matrices prepared for Spectra compatibility", level=3
@@ -602,39 +548,41 @@ class Fisher(Core):
                 self.prepare_covariance_matrices()
                 self.log("Signal matrix and covariance preparation completed", level=3)
 
-        # Synchronize before broadcasting
+        # Synchronize and broadcast shared variables to worker processes.
+        # Skip broadcast for single-process runs to avoid unnecessary
+        # serialization of large objects (basis_manager can exceed 2 GB).
         self.comm.Barrier()
 
-        # Broadcast shared variables
-        self.params: InputParams = self.comm.bcast(
-            self.params if self.rank == 0 else None, root=0
-        )
-        self.collection = self.comm.bcast(
-            self.collection if self.rank == 0 else None, root=0
-        )
-        self.npixs = self.comm.bcast(self.npixs if self.rank == 0 else None, root=0)
-        self.pixact = self.comm.bcast(self.pixact if self.rank == 0 else None, root=0)
-        self.point_vectors = self.comm.bcast(
-            self.point_vectors if self.rank == 0 else None, root=0
-        )
-        self.noise_cov1 = self.comm.bcast(
-            self.noise_cov1 if self.rank == 0 else None, root=0
-        )
+        if self.size > 1:
+            self.params: InputParams = self.comm.bcast(
+                self.params if self.rank == 0 else None, root=0
+            )
+            self.collection = self.comm.bcast(
+                self.collection if self.rank == 0 else None, root=0
+            )
+            self.npixs = self.comm.bcast(self.npixs if self.rank == 0 else None, root=0)
+            self.pixact = self.comm.bcast(self.pixact if self.rank == 0 else None, root=0)
+            self.point_vectors = self.comm.bcast(
+                self.point_vectors if self.rank == 0 else None, root=0
+            )
+            self.noise_cov1 = self.comm.bcast(
+                self.noise_cov1 if self.rank == 0 else None, root=0
+            )
 
-        if self._compression_config is not None:
-            self.basis_manager = self.comm.bcast(
-                self.basis_manager if self.rank == 0 else None, root=0
-            )
-        else:
-            self.signal_matrix = self.comm.bcast(
-                self.signal_matrix if self.rank == 0 else None, root=0
-            )
-            if self.params.do_cross:
-                self.noise_cov2 = self.comm.bcast(
-                    self.noise_cov2 if self.rank == 0 else None, root=0
+            if self._basis_config is not None:
+                self.basis_manager = self.comm.bcast(
+                    self.basis_manager if self.rank == 0 else None, root=0
                 )
+            else:
+                self.signal_matrix = self.comm.bcast(
+                    self.signal_matrix if self.rank == 0 else None, root=0
+                )
+                if self.params.do_cross:
+                    self.noise_cov2 = self.comm.bcast(
+                        self.noise_cov2 if self.rank == 0 else None, root=0
+                    )
 
-        self.comm.Barrier()
+            self.comm.Barrier()
 
         # Binning: set_binning() > config bin_lmins/lmaxs > config delta_ell
         if not hasattr(self, "bins") or self.bins is None:

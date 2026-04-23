@@ -659,7 +659,7 @@ class TestPixelProjectedPICSLikeMethods:
         qf_direct = ppc.compute_quadratic_form(data, C_ell_dict)
 
         # Two-step: prepare then compute
-        C_c_inv, _, logdet = ppc.prepare_smw(C_ell_dict)
+        C_c_inv, logdet = ppc.prepare_smw(C_ell_dict)
         assert C_c_inv.shape == (ppc.n_kept, ppc.n_kept)
         assert isinstance(logdet, float)
 
