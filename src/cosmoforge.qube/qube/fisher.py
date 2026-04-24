@@ -565,18 +565,24 @@ class Fisher(Core, MPISharedMemoryMixin):
             self.npixs = self.comm.bcast(self.npixs if self.rank == 0 else None, root=0)
             self.pixact = self.comm.bcast(self.pixact if self.rank == 0 else None, root=0)
 
-            # Numpy arrays via shared memory (zero-copy, no size limits)
-            self.point_vectors = self._shared_array(self.point_vectors)
-            self.noise_cov1 = self._shared_array(self.noise_cov1)
+            # Numpy arrays via shared memory (zero-copy, no size limits).
+            # Worker ranks may not have these attributes yet (setup is rank-0 only),
+            # so use getattr to pass None for non-root ranks.
+            self.point_vectors = self._shared_array(getattr(self, "point_vectors", None))
+            self.noise_cov1 = self._shared_array(getattr(self, "noise_cov1", None))
 
             if self._basis_config is not None:
                 self.basis_manager = self.comm.bcast(
                     self.basis_manager if self.rank == 0 else None, root=0
                 )
             else:
-                self.signal_matrix = self._shared_array(self.signal_matrix)
+                self.signal_matrix = self._shared_array(
+                    getattr(self, "signal_matrix", None)
+                )
                 if self.params.do_cross:
-                    self.noise_cov2 = self._shared_array(self.noise_cov2)
+                    self.noise_cov2 = self._shared_array(
+                        getattr(self, "noise_cov2", None)
+                    )
 
             self.comm.Barrier()
 

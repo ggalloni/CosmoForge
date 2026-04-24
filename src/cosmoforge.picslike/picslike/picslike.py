@@ -380,12 +380,13 @@ class PICSLike(Core, MPISharedMemoryMixin):
         self.npixs = self.comm.bcast(self.npixs if self.rank == 0 else None, root=0)
         self.pixact = self.comm.bcast(self.pixact if self.rank == 0 else None, root=0)
 
-        # Numpy arrays via shared memory (zero-copy, no size limits)
-        self.point_vectors = self._shared_array(self.point_vectors)
-        self.noise_cov1 = self._shared_array(self.noise_cov1)
-        self.maps1 = self._shared_array(self.maps1)
+        # Numpy arrays via shared memory (zero-copy, no size limits).
+        # Worker ranks may not have these attributes yet, so use getattr.
+        self.point_vectors = self._shared_array(getattr(self, "point_vectors", None))
+        self.noise_cov1 = self._shared_array(getattr(self, "noise_cov1", None))
+        self.maps1 = self._shared_array(getattr(self, "maps1", None))
         if self.params.do_cross:
-            self.maps2 = self._shared_array(self.maps2)
+            self.maps2 = self._shared_array(getattr(self, "maps2", None))
 
     def compute(self) -> None:
         """

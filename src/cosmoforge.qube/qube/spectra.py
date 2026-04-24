@@ -1081,26 +1081,29 @@ class Spectra(Core, MPISharedMemoryMixin):
         self.npixs = self.comm.bcast(self.npixs if self.rank == 0 else None, root=0)
         self.pixact = self.comm.bcast(self.pixact if self.rank == 0 else None, root=0)
 
-        # Numpy arrays via shared memory (zero-copy, no size limits)
-        self.point_vectors = self._shared_array(self.point_vectors)
+        # Numpy arrays via shared memory (zero-copy, no size limits).
+        # Worker ranks may not have these attributes yet, so use getattr.
+        self.point_vectors = self._shared_array(getattr(self, "point_vectors", None))
 
         # Covariance matrices (can be very large at high nside)
-        self.noise_cov1 = self._shared_array(self.noise_cov1)
-        self.inv_cov1 = self._shared_array(self.inv_cov1)
+        self.noise_cov1 = self._shared_array(getattr(self, "noise_cov1", None))
+        self.inv_cov1 = self._shared_array(getattr(self, "inv_cov1", None))
         if self.params.do_cross:
-            self.noise_cov2 = self._shared_array(self.noise_cov2)
-            self.inv_cov2 = self._shared_array(self.inv_cov2)
+            self.noise_cov2 = self._shared_array(getattr(self, "noise_cov2", None))
+            self.inv_cov2 = self._shared_array(getattr(self, "inv_cov2", None))
 
         # Maps (can be large: n_pix × n_sims)
-        self.maps1 = self._shared_array(self.maps1)
+        self.maps1 = self._shared_array(getattr(self, "maps1", None))
         if self.params.do_cross:
-            self.maps2 = self._shared_array(self.maps2)
+            self.maps2 = self._shared_array(getattr(self, "maps2", None))
 
         # Fisher-related (small but still read-only)
-        self.invfisher = self._shared_array(self.invfisher)
-        self.beam_smoothing = self._shared_array(self.beam_smoothing)
-        self.inv_fisher_sqrt = self._shared_array(self.inv_fisher_sqrt)
-        self.fisher_normalized = self._shared_array(self.fisher_normalized)
+        self.invfisher = self._shared_array(getattr(self, "invfisher", None))
+        self.beam_smoothing = self._shared_array(getattr(self, "beam_smoothing", None))
+        self.inv_fisher_sqrt = self._shared_array(getattr(self, "inv_fisher_sqrt", None))
+        self.fisher_normalized = self._shared_array(
+            getattr(self, "fisher_normalized", None)
+        )
 
     def _normalize_spectra(self, spectra: np.ndarray) -> np.ndarray:
         """

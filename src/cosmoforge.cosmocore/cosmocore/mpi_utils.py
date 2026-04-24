@@ -30,18 +30,26 @@ class MPISharedMemoryMixin:
             self._shared_comm = self.comm.Split_type(MPI.COMM_TYPE_SHARED)
             self._shared_wins: list[MPI.Win] = []
 
-    def _shared_array(self, arr: np.ndarray | None) -> np.ndarray:
+    def _shared_array(self, arr: np.ndarray | None = None) -> np.ndarray:
         """Share a numpy array via MPI shared memory (intra-node, zero-copy).
 
         Rank 0 on each node allocates and fills the shared buffer.
         Other ranks attach to it read-only.  No data is copied between
         ranks on the same node.
+
+        Parameters
+        ----------
+        arr : numpy.ndarray or None
+            Array to share.  Only rank 0 needs to pass the actual array;
+            other ranks may pass ``None`` (the shape and dtype are
+            broadcast from rank 0).
         """
         self._setup_shared_comm()
         comm_node = self._shared_comm
 
-        shape = self.comm.bcast(arr.shape if self.rank == 0 else None, root=0)
-        dtype = self.comm.bcast(arr.dtype if self.rank == 0 else None, root=0)
+        is_root = self.rank == 0 and arr is not None
+        shape = self.comm.bcast(arr.shape if is_root else None, root=0)
+        dtype = self.comm.bcast(arr.dtype if is_root else None, root=0)
         nbytes = int(np.prod(shape)) * np.dtype(dtype).itemsize
 
         alloc = nbytes if comm_node.Get_rank() == 0 else 0
@@ -70,7 +78,7 @@ class MPISharedMemoryMixin:
     # Buffer-based broadcast (fallback for multi-node)
     # ------------------------------------------------------------------
 
-    def _bcast_array(self, arr: np.ndarray | None) -> np.ndarray:
+    def _bcast_array(self, arr: np.ndarray | None = None) -> np.ndarray:
         """Broadcast a numpy array using buffer-based MPI.
 
         Uses ``comm.Bcast`` (uppercase) which sends raw memory buffers
@@ -78,9 +86,16 @@ class MPISharedMemoryMixin:
         standard library.  This avoids the ~2 GB message-size limit
         that affects serialization-based broadcasts in many MPI
         implementations.
+
+        Parameters
+        ----------
+        arr : numpy.ndarray or None
+            Array to broadcast.  Only rank 0 needs to pass the actual
+            array; other ranks may pass ``None``.
         """
-        shape = self.comm.bcast(arr.shape if self.rank == 0 else None, root=0)
-        dtype = self.comm.bcast(arr.dtype if self.rank == 0 else None, root=0)
+        is_root = self.rank == 0 and arr is not None
+        shape = self.comm.bcast(arr.shape if is_root else None, root=0)
+        dtype = self.comm.bcast(arr.dtype if is_root else None, root=0)
         if self.rank != 0:
             arr = np.empty(shape, dtype=dtype)
         self.comm.Bcast(arr, root=0)
