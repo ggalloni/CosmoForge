@@ -91,6 +91,7 @@ from .in_out import (
     writecl,
 )
 from .logger import CosmoLogger, Timer, get_logger, get_logger_from_params
+from .mpi_utils import MPISharedMemoryMixin
 from .pixel import (
     compute_00_contribution,
     compute_02_contribution,
@@ -155,6 +156,8 @@ __all__ = [
     "PolarizationField",
     "ScalarField",
     "create_field",
+    # mpi_utils
+    "MPISharedMemoryMixin",
     # basics
     "get_rotation_angle",
     "idx2spec",
