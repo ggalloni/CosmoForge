@@ -181,7 +181,7 @@ class HarmonicBasis(ComputationBasis):
         from ..logger import get_logger
 
         logger = get_logger("basis")
-        logger.verbose(
+        logger.debug(
             f"Basis setup: V={_t_basis:.2f}s, eff_noise={_t_eff:.2f}s, SMW={_t_smw:.2f}s"
         )
 

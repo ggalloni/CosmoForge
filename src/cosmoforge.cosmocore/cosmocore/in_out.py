@@ -91,7 +91,8 @@ def read_covmat(covmatfile, npix, nmaps, active, C):
     NCVMfull = np.fromfile(covmatfile.strip(), dtype=np.float64)
     NCVMfull = NCVMfull.reshape((full_size, full_size))
 
-    C[:] = NCVMfull[np.ix_(active, active)]
+    idx = np.asarray(active, dtype=np.intp)
+    C[:] = NCVMfull[np.ix_(idx, idx)]
     return C
 
 
