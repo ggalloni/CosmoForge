@@ -779,12 +779,21 @@ class Spectra(Core):
                 d_c = bm.compress_data(self.maps1)
                 maps1_weighted = C_c_inv @ d_c
         else:
-            C_c_inv = None
-            if bm.method == "pixel":
+            if bm.method == "harmonic":
+                # Vectorized SMW: w = y - M K^{-1} y, y = V N^{-1} d
+                from cosmocore.basics import smw_kernel
+
+                Lambda_diag = bm._build_lambda_diagonal(C_ell)
+                K = smw_kernel(bm._V_Ninv_VT, Lambda_diag)
+                smw_kernel_inv = matrix_inverse_symm(np.asfortranarray(K))
+                M_kernel_inv = bm._V_Ninv_VT @ smw_kernel_inv
+
+                projected_data1 = bm._V_N_inv @ self.maps1
+                maps1_weighted = projected_data1 - M_kernel_inv @ projected_data1
+            else:
                 C_c_inv = bm.get_compressed_inverse(C_ell)
-            for isim in range(n_sims):
-                maps1_weighted[:, isim] = bm.get_weighted_compressed_data(
-                    self.maps1[:, isim], C_ell, C_c_inv=C_c_inv
+                maps1_weighted = bm.get_weighted_compressed_data(
+                    self.maps1, C_ell, C_c_inv=C_c_inv
                 )
 
         if self.params.do_cross:
@@ -798,9 +807,12 @@ class Spectra(Core):
                     d_c2 = bm.compress_data(self.maps2)
                     maps2_weighted = C_c_inv @ d_c2
             else:
-                for isim in range(n_sims):
-                    maps2_weighted[:, isim] = bm.get_weighted_compressed_data(
-                        self.maps2[:, isim], C_ell, C_c_inv=C_c_inv
+                if bm.method == "harmonic":
+                    projected_data2 = bm._V_N_inv @ self.maps2
+                    maps2_weighted = projected_data2 - M_kernel_inv @ projected_data2
+                else:
+                    maps2_weighted = bm.get_weighted_compressed_data(
+                        self.maps2, C_ell, C_c_inv=C_c_inv
                     )
 
         # For noise bias computation (only for non-cross)
@@ -1042,13 +1054,14 @@ class Spectra(Core):
             self.setup_maps()
             self.setup_fisher_inversion()
 
-        # Synchronize before broadcasting
+        # Synchronize and broadcast shared variables to worker processes.
+        # Skip broadcast for single-process runs to avoid unnecessary
+        # serialization of large objects (covariance matrices can exceed 2 GB).
         self.comm.Barrier()
 
-        # Broadcast shared variables to all processes
-        self._broadcast_variables()
-
-        self.comm.Barrier()
+        if self.size > 1:
+            self._broadcast_variables()
+            self.comm.Barrier()
 
         # Main QML computation (parallel computation)
         self.compute()
@@ -1056,55 +1069,54 @@ class Spectra(Core):
         # Finalize
         self.comm.Barrier()
 
+    def _bcast_array(self, arr: np.ndarray | None) -> np.ndarray:
+        """
+        Broadcast a numpy array using buffer-based MPI.
+
+        Uses ``comm.Bcast`` (uppercase) which sends raw memory buffers
+        instead of ``comm.bcast`` (lowercase) which serializes via the
+        standard library.  This avoids the ~2 GB message-size limit
+        that affects serialization-based broadcasts in many MPI
+        implementations.
+        """
+        shape = self.comm.bcast(arr.shape if self.rank == 0 else None, root=0)
+        dtype = self.comm.bcast(arr.dtype if self.rank == 0 else None, root=0)
+        if self.rank != 0:
+            arr = np.empty(shape, dtype=dtype)
+        self.comm.Bcast(arr, root=0)
+        return arr
+
     def _broadcast_variables(self):
         """Broadcast essential data from master to all MPI worker processes."""
-        # Broadcast parameters and core variables
+        # Broadcast Python objects (small, serialization is fine)
         self.params = self.comm.bcast(self.params if self.rank == 0 else None, root=0)
         self.collection = self.comm.bcast(
             self.collection if self.rank == 0 else None, root=0
         )
-        self.npixs = self.comm.bcast(self.npixs if self.rank == 0 else None, root=0)
-        self.pixact = self.comm.bcast(self.pixact if self.rank == 0 else None, root=0)
-        self.point_vectors = self.comm.bcast(
-            self.point_vectors if self.rank == 0 else None, root=0
-        )
-
-        # Broadcast covariance matrices
-        self.noise_cov1 = self.comm.bcast(
-            self.noise_cov1 if self.rank == 0 else None, root=0
-        )
-        self.inv_cov1 = self.comm.bcast(self.inv_cov1 if self.rank == 0 else None, root=0)
-        if self.params.do_cross:
-            self.noise_cov2 = self.comm.bcast(
-                self.noise_cov2 if self.rank == 0 else None, root=0
-            )
-            self.inv_cov2 = self.comm.bcast(
-                self.inv_cov2 if self.rank == 0 else None, root=0
-            )
-
-        # Broadcast maps
-        self.maps1 = self.comm.bcast(self.maps1 if self.rank == 0 else None, root=0)
-        if self.params.do_cross:
-            self.maps2 = self.comm.bcast(self.maps2 if self.rank == 0 else None, root=0)
-
-        # Broadcast inverted Fisher matrix
-        self.invfisher = self.comm.bcast(
-            self.invfisher if self.rank == 0 else None, root=0
-        )
-
-        # Broadcast binning and beam smoothing
         self.bins = self.comm.bcast(self.bins if self.rank == 0 else None, root=0)
-        self.beam_smoothing = self.comm.bcast(
-            self.beam_smoothing if self.rank == 0 else None, root=0
-        )
 
-        # Broadcast normalization mode support matrices
-        self.inv_fisher_sqrt = self.comm.bcast(
-            self.inv_fisher_sqrt if self.rank == 0 else None, root=0
-        )
-        self.fisher_normalized = self.comm.bcast(
-            self.fisher_normalized if self.rank == 0 else None, root=0
-        )
+        # Broadcast numpy arrays using buffer-based MPI (handles >2 GB)
+        self.npixs = self._bcast_array(self.npixs)
+        self.pixact = self.comm.bcast(self.pixact if self.rank == 0 else None, root=0)
+        self.point_vectors = self._bcast_array(self.point_vectors)
+
+        # Covariance matrices (can be very large at high nside)
+        self.noise_cov1 = self._bcast_array(self.noise_cov1)
+        self.inv_cov1 = self._bcast_array(self.inv_cov1)
+        if self.params.do_cross:
+            self.noise_cov2 = self._bcast_array(self.noise_cov2)
+            self.inv_cov2 = self._bcast_array(self.inv_cov2)
+
+        # Maps (can be large: n_pix × n_sims)
+        self.maps1 = self._bcast_array(self.maps1)
+        if self.params.do_cross:
+            self.maps2 = self._bcast_array(self.maps2)
+
+        # Fisher-related (small matrices)
+        self.invfisher = self._bcast_array(self.invfisher)
+        self.beam_smoothing = self._bcast_array(self.beam_smoothing)
+        self.inv_fisher_sqrt = self._bcast_array(self.inv_fisher_sqrt)
+        self.fisher_normalized = self._bcast_array(self.fisher_normalized)
 
     def _normalize_spectra(self, spectra: np.ndarray) -> np.ndarray:
         """

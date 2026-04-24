@@ -492,6 +492,23 @@ class Fisher(Core):
 
         self.comm.Barrier()
 
+    def _bcast_array(self, arr: np.ndarray | None) -> np.ndarray:
+        """
+        Broadcast a numpy array using buffer-based MPI.
+
+        Uses ``comm.Bcast`` (uppercase) which sends raw memory buffers
+        instead of ``comm.bcast`` (lowercase) which serializes via the
+        standard library.  This avoids the ~2 GB message-size limit
+        that affects serialization-based broadcasts in many MPI
+        implementations.
+        """
+        shape = self.comm.bcast(arr.shape if self.rank == 0 else None, root=0)
+        dtype = self.comm.bcast(arr.dtype if self.rank == 0 else None, root=0)
+        if self.rank != 0:
+            arr = np.empty(shape, dtype=dtype)
+        self.comm.Bcast(arr, root=0)
+        return arr
+
     def run(self) -> None:
         """
         Execute the complete Fisher matrix analysis pipeline.
@@ -560,27 +577,19 @@ class Fisher(Core):
             self.collection = self.comm.bcast(
                 self.collection if self.rank == 0 else None, root=0
             )
-            self.npixs = self.comm.bcast(self.npixs if self.rank == 0 else None, root=0)
+            self.npixs = self._bcast_array(self.npixs)
             self.pixact = self.comm.bcast(self.pixact if self.rank == 0 else None, root=0)
-            self.point_vectors = self.comm.bcast(
-                self.point_vectors if self.rank == 0 else None, root=0
-            )
-            self.noise_cov1 = self.comm.bcast(
-                self.noise_cov1 if self.rank == 0 else None, root=0
-            )
+            self.point_vectors = self._bcast_array(self.point_vectors)
+            self.noise_cov1 = self._bcast_array(self.noise_cov1)
 
             if self._basis_config is not None:
                 self.basis_manager = self.comm.bcast(
                     self.basis_manager if self.rank == 0 else None, root=0
                 )
             else:
-                self.signal_matrix = self.comm.bcast(
-                    self.signal_matrix if self.rank == 0 else None, root=0
-                )
+                self.signal_matrix = self._bcast_array(self.signal_matrix)
                 if self.params.do_cross:
-                    self.noise_cov2 = self.comm.bcast(
-                        self.noise_cov2 if self.rank == 0 else None, root=0
-                    )
+                    self.noise_cov2 = self._bcast_array(self.noise_cov2)
 
             self.comm.Barrier()
 
