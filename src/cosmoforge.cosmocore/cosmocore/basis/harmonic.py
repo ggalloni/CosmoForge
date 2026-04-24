@@ -160,14 +160,30 @@ class HarmonicBasis(ComputationBasis):
         - N_eff = N + S_fixed is used instead of N
         This dramatically reduces the SMW dimension.
         """
+        import time as _time
+
         # Build harmonic operator, ell-mode mapping, and derivative diagonals
+        _t0 = _time.time()
         self._build_basis()
+        _t_basis = _time.time() - _t0
 
         # Compute effective noise matrix when switch optimization is enabled
+        _t_eff = 0.0
         if self._use_switch_optimization:
+            _t0 = _time.time()
             self._compute_effective_noise()
+            _t_eff = _time.time() - _t0
 
+        _t0 = _time.time()
         self._compute_smw_components()
+        _t_smw = _time.time() - _t0
+
+        from ..logger import get_logger
+
+        logger = get_logger("basis")
+        logger.verbose(
+            f"Basis setup: V={_t_basis:.2f}s, eff_noise={_t_eff:.2f}s, SMW={_t_smw:.2f}s"
+        )
 
         if self._compress:
             self._compute_mblock_smw_components()
