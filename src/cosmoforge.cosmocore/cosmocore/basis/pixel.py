@@ -127,6 +127,7 @@ class PixelBasis(ComputationBasis):
         mode_fraction: float | list[float | tuple[float, float]] | None = None,
     ):
         super().__init__(N, N_inv, theta, phi, lmax, beam, spins=spins)
+        self._init_harmonic_internals()
         # Before compression, n_kept = n_pix
         self.n_kept = self.n_pix
         # Compression quantities

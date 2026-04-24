@@ -110,6 +110,8 @@ class HarmonicBasis(ComputationBasis):
             fiducial_C_ell=fiducial_C_ell,
             S_fixed=S_fixed,
         )
+        self._init_harmonic_internals()
+        self.n_kept = self.n_modes_total
         self._compress = compress
         self._delta_m = delta_m
 
