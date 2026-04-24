@@ -579,11 +579,15 @@ class Core(ABC):
                     # Restore original spectra (already smoothed - don't re-apply beam)
                     self.collection.spectra_manager._cls_dict = original_spectra_smoothed
 
-        # Create computation basis
+        # Create computation basis.
+        # When switch optimization is active, N_inv is not needed upfront —
+        # _compute_effective_noise() will invert N_eff = N + S_fixed instead.
+        # This skips an expensive O(n_pix³) Cholesky that would be discarded.
+        need_n_inv = lswitch_high is None or lswitch_high >= basis_lmax
         self.basis_manager = create_computation_basis(
             method=method,
             N=self.noise_cov1,
-            N_inv=matrix_inverse_symm(self.noise_cov1),
+            N_inv=matrix_inverse_symm(self.noise_cov1) if need_n_inv else None,
             theta=theta_arr,
             phi=phi_arr,
             lmax=basis_lmax,

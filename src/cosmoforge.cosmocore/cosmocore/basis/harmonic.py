@@ -222,11 +222,19 @@ class HarmonicBasis(ComputationBasis):
 
         # Compute effective noise and its inverse
         self._N_eff = self._N + S_fixed
-        self._N_eff_inv = matrix_inverse_symm(self._N_eff)
+        self._N_eff_inv = matrix_inverse_symm(np.asfortranarray(self._N_eff))
+
+        # Save original noise info before overwriting.
+        # _N_inv_original is only used for its diagonal (noise bias in Spectra),
+        # so when N_inv was not precomputed we store the diagonal of N directly.
+        self._N_original = self._N
+        if self.N_inv is not None:
+            self._N_inv_original = self.N_inv
+        else:
+            # Diagonal noise: diag(N_inv) = 1/diag(N)
+            self._N_inv_original = np.diag(1.0 / np.diag(self._N))
 
         # Replace N and N_inv with N_eff for SMW computations
-        self._N_original = self._N
-        self._N_inv_original = self.N_inv
         self._N = np.asfortranarray(self._N_eff)
         self.N_inv = np.asfortranarray(self._N_eff_inv)
 

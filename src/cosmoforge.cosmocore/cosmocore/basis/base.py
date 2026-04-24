@@ -90,7 +90,7 @@ class ComputationBasis(ABC):
     def __init__(
         self,
         N: np.ndarray,
-        N_inv: np.ndarray,
+        N_inv: np.ndarray | None,
         theta: np.ndarray | tuple[np.ndarray, ...],
         phi: np.ndarray | tuple[np.ndarray, ...],
         lmax: int,
@@ -108,8 +108,10 @@ class ComputationBasis(ABC):
         ----------
         N : numpy.ndarray
             Noise covariance matrix (n_pix_total, n_pix_total).
-        N_inv : numpy.ndarray
+        N_inv : numpy.ndarray or None
             Precomputed noise inverse matrix (n_pix_total, n_pix_total).
+            Can be None when switch optimization is enabled — the effective
+            noise inverse N_eff⁻¹ will be computed instead.
         theta : numpy.ndarray or tuple of numpy.ndarray
             Colatitude angles for active pixels in radians. Single array for
             single-field, tuple of arrays for multi-field (one per component).
@@ -140,7 +142,9 @@ class ComputationBasis(ABC):
             Shape should be (n_pix_total, n_pix_total).
         """
         self._N = np.asfortranarray(N, dtype=np.float64)
-        self.N_inv = np.asfortranarray(N_inv, dtype=np.float64)
+        self.N_inv = (
+            np.asfortranarray(N_inv, dtype=np.float64) if N_inv is not None else None
+        )
         self.lmax = lmax
 
         # Normalize theta/phi to tuple format for consistent handling
