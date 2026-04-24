@@ -382,7 +382,7 @@ class PICSLike(Core, MPISharedMemoryMixin):
 
         # Numpy arrays via shared memory (zero-copy, no size limits).
         # Worker ranks may not have these attributes yet, so use getattr.
-        self.point_vectors = self._shared_array(getattr(self, "point_vectors", None))
+        self.point_vectors = self.comm.bcast(getattr(self, "point_vectors", None), root=0)
         self.noise_cov1 = self._shared_array(getattr(self, "noise_cov1", None))
         self.maps1 = self._shared_array(getattr(self, "maps1", None))
         if self.params.do_cross:

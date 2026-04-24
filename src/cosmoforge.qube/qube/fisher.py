@@ -568,7 +568,9 @@ class Fisher(Core, MPISharedMemoryMixin):
             # Numpy arrays via shared memory (zero-copy, no size limits).
             # Worker ranks may not have these attributes yet (setup is rank-0 only),
             # so use getattr to pass None for non-root ranks.
-            self.point_vectors = self._shared_array(getattr(self, "point_vectors", None))
+            self.point_vectors = self.comm.bcast(
+                getattr(self, "point_vectors", None), root=0
+            )
             self.noise_cov1 = self._shared_array(getattr(self, "noise_cov1", None))
 
             if self._basis_config is not None:
