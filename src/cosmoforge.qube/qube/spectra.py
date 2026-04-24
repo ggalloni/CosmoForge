@@ -286,7 +286,10 @@ class Spectra(Core, MPISharedMemoryMixin):
         if not hasattr(self, "basis_manager"):
             self.basis_manager = None
 
-        self._load_covariance_matrices()
+        # Harmonic basis uses SMW formula — pixel-space covariance matrices
+        # (inv_cov, noise_cov) are not needed for the compressed QML path.
+        if self.basis_manager is None:
+            self._load_covariance_matrices()
 
     def _load_covariance_matrices(self):
         """Load noise and inverted covariance matrices from disk files."""
@@ -1085,12 +1088,15 @@ class Spectra(Core, MPISharedMemoryMixin):
         # Worker ranks may not have these attributes yet, so use getattr.
         self.point_vectors = self.comm.bcast(getattr(self, "point_vectors", None), root=0)
 
-        # Covariance matrices (can be very large at high nside)
-        self.noise_cov1 = self._shared_array(getattr(self, "noise_cov1", None))
-        self.inv_cov1 = self._shared_array(getattr(self, "inv_cov1", None))
-        if self.params.do_cross:
-            self.noise_cov2 = self._shared_array(getattr(self, "noise_cov2", None))
-            self.inv_cov2 = self._shared_array(getattr(self, "inv_cov2", None))
+        use_basis = hasattr(self, "basis_manager") and self.basis_manager is not None
+
+        # Pixel-space covariance matrices only needed for traditional path
+        if not use_basis:
+            self.noise_cov1 = self._shared_array(getattr(self, "noise_cov1", None))
+            self.inv_cov1 = self._shared_array(getattr(self, "inv_cov1", None))
+            if self.params.do_cross:
+                self.noise_cov2 = self._shared_array(getattr(self, "noise_cov2", None))
+                self.inv_cov2 = self._shared_array(getattr(self, "inv_cov2", None))
 
         # Maps (can be large: n_pix × n_sims)
         self.maps1 = self._shared_array(getattr(self, "maps1", None))

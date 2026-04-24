@@ -538,11 +538,11 @@ class Fisher(Core, MPISharedMemoryMixin):
                     f"({self.basis_manager.compression_ratio:.1%})",
                     level=2,
                 )
-                # Also prepare covariance matrices for Spectra compatibility
-                # Spectra needs the inverted covariance files even with basis
-                self.prepare_covariance_matrices()
+                # Harmonic basis uses SMW formula internally — pixel-space
+                # signal matrix and covariance inversion are not needed.
                 self.log(
-                    "Covariance matrices prepared for Spectra compatibility", level=3
+                    "Skipping pixel-space covariance preparation (harmonic basis)",
+                    level=3,
                 )
             else:
                 # Traditional: prepare covariance matrices (signal + inverse)
@@ -571,13 +571,14 @@ class Fisher(Core, MPISharedMemoryMixin):
             self.point_vectors = self.comm.bcast(
                 getattr(self, "point_vectors", None), root=0
             )
-            self.noise_cov1 = self._shared_array(getattr(self, "noise_cov1", None))
 
             if self._basis_config is not None:
                 self.basis_manager = self.comm.bcast(
                     self.basis_manager if self.rank == 0 else None, root=0
                 )
             else:
+                # Traditional path needs pixel-space matrices
+                self.noise_cov1 = self._shared_array(getattr(self, "noise_cov1", None))
                 self.signal_matrix = self._shared_array(
                     getattr(self, "signal_matrix", None)
                 )
