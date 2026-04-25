@@ -217,31 +217,68 @@ pcl_theory_kept = pcl_theory_windowed[pcl_keep]
 
 n_match = min(len(qml_ells), len(pcl_ells))
 
-print("\n" + "=" * 100)
-print("QML vs PCL — means vs windowed theory, scatter ratio")
-print("=" * 100)
-print(
-    f"{'ell':>6} {'QML mean':>12} {'QML F-th':>12} {'rat':>6} | "
-    f"{'PCL mean':>12} {'PCL B-th':>12} {'rat':>6} | {'σPCL/σQML':>10}"
+# =========================================================================
+# Knox formula — optimal-estimator variance bound on partial sky.
+# Per-ell:   σ²(C_ℓ) = 2 (C_ℓ + N_ℓ/b²_ℓ)² / [(2ℓ+1) f_sky]
+# Per-bin:   σ²(C_b) = 1 / Σ_{ℓ∈bin} 1/σ²(C_ℓ)         (inverse-variance sum)
+# QML approaches this bound; PCL exceeds it (suboptimal).
+# =========================================================================
+omega_pix = 4.0 * np.pi / npix
+n_ell_white = sigma**2 * omega_pix
+ell_grid_full = np.arange(lmax_sim + 1)
+b_ell = beam.copy()
+b_ell[b_ell < 1e-12] = 1e-12
+n_ell_eff = n_ell_white / b_ell**2
+sigma2_perell = np.where(
+    ell_grid_full >= 2,
+    2.0 * (cl_tt_full + n_ell_eff) ** 2 / np.maximum(2 * ell_grid_full + 1, 1) / fsky,
+    np.inf,
 )
-print("-" * 100)
+
+knox_std = np.zeros(len(qml_ells))
+for bi, ell_eff in enumerate(qml_ells):
+    bin_idx = np.argmin(np.abs(bins.lbin - ell_eff))
+    lo, hi = bins.lmins[bin_idx], bins.lmaxs[bin_idx]
+    inv_var_sum = np.sum(1.0 / sigma2_perell[lo : hi + 1])
+    knox_std[bi] = np.sqrt(1.0 / inv_var_sum) if inv_var_sum > 0 else np.inf
+
+print("\n" + "=" * 110)
+print("QML vs PCL vs Knox — windowed theory means and variance ratios")
+print("=" * 110)
+print(
+    f"{'ell':>6} {'QML mean':>12} {'QML F-th':>10} | "
+    f"{'PCL mean':>12} {'PCL B-th':>10} | "
+    f"{'σ_Knox':>10} {'σQML/Kx':>8} {'σPCL/Kx':>8} {'σPCL/QML':>9}"
+)
+print("-" * 110)
 for i in range(n_match):
     rq = qml_mean[i] / qml_theory_kept[i] if qml_theory_kept[i] != 0 else 0
     rp = pcl_mean[i] / pcl_theory_kept[i] if pcl_theory_kept[i] != 0 else 0
+    qk = qml_std[i] / knox_std[i] if knox_std[i] > 0 else float("inf")
+    pk = pcl_std[i] / knox_std[i] if knox_std[i] > 0 else float("inf")
     sr = pcl_std[i] / qml_std[i] if qml_std[i] > 0 else float("inf")
     print(
-        f"{qml_ells[i]:>6.1f} {qml_mean[i]:>12.4e} {qml_theory_kept[i]:>12.4e} "
-        f"{rq:>5.3f}x | "
-        f"{pcl_mean[i]:>12.4e} {pcl_theory_kept[i]:>12.4e} {rp:>5.3f}x | "
-        f"{sr:>9.2f}x"
+        f"{qml_ells[i]:>6.1f} {qml_mean[i]:>12.4e} {qml_theory_kept[i]:>10.3e} | "
+        f"{pcl_mean[i]:>12.4e} {pcl_theory_kept[i]:>10.3e} | "
+        f"{knox_std[i]:>10.3e} {qk:>7.2f}x {pk:>7.2f}x {sr:>8.2f}x"
     )
 
 ratio = pcl_std[:n_match] / qml_std[:n_match]
 ratio_valid = ratio[np.isfinite(ratio) & (ratio > 0)]
+qml_over_knox = qml_std[:n_match] / knox_std[:n_match]
+pcl_over_knox = pcl_std[:n_match] / knox_std[:n_match]
 print(
     f"\nσ_PCL / σ_QML — mean: {np.mean(ratio_valid):.2f}x, "
     f"median: {np.median(ratio_valid):.2f}x, "
     f"range: {np.min(ratio_valid):.2f}x — {np.max(ratio_valid):.2f}x"
+)
+print(
+    f"σ_QML / σ_Knox — mean: {np.mean(qml_over_knox):.2f}x, "
+    f"median: {np.median(qml_over_knox):.2f}x"
+)
+print(
+    f"σ_PCL / σ_Knox — mean: {np.mean(pcl_over_knox):.2f}x, "
+    f"median: {np.median(pcl_over_knox):.2f}x"
 )
 
 # =========================================================================
@@ -317,29 +354,40 @@ ax1.set_title(
 ax1.legend(fontsize=8, loc="upper right")
 ax1.set_xlim(0, lmax_science + 2)
 
-ax2.axhline(1, color="k", ls="--", lw=0.8)
-ratio_plot = pcl_std[:n_match] / qml_std[:n_match]
 ells_plot = qml_ells[:n_match]
-ax2.plot(ells_plot, ratio_plot, "o-", ms=6, color="C3")
-ax2.fill_between(ells_plot, 1, ratio_plot, where=(ratio_plot > 1), alpha=0.2, color="C3")
+ax2.axhline(1, color="k", ls="--", lw=0.8, label="Knox bound")
+ax2.plot(
+    ells_plot,
+    qml_over_knox,
+    "o-",
+    ms=6,
+    color="C0",
+    label=r"$\sigma_{\rm QML}/\sigma_{\rm Knox}$",
+)
+ax2.plot(
+    ells_plot,
+    pcl_over_knox,
+    "s-",
+    ms=6,
+    color="C1",
+    label=r"$\sigma_{\rm PCL}/\sigma_{\rm Knox}$",
+)
+ax2.fill_between(
+    ells_plot, 1, pcl_over_knox, where=(pcl_over_knox > 1), alpha=0.15, color="C1"
+)
+ax2.fill_between(
+    ells_plot, 1, qml_over_knox, where=(qml_over_knox > 1), alpha=0.25, color="C0"
+)
 ax2.set_xlabel(r"$\ell$")
-ax2.set_ylabel(r"$\sigma_{\rm PCL} / \sigma_{\rm QML}$")
+ax2.set_ylabel(r"$\sigma / \sigma_{\rm Knox}$")
 ax2.set_title(
-    f"Error bar ratio (median = {np.median(ratio_valid):.2f}x, "
-    f"mean = {np.mean(ratio_valid):.2f}x)"
+    f"Variance vs Knox (QML median = {np.median(qml_over_knox):.2f}x, "
+    f"PCL median = {np.median(pcl_over_knox):.2f}x)"
 )
+ax2.legend(fontsize=9, loc="upper right")
 ax2.set_xlim(0, lmax_science + 2)
-ax2.set_ylim(0.9, max(1.5, np.max(ratio_plot) * 1.1))
-ax2.text(
-    0.05,
-    0.95,
-    f"QML wins everywhere\nMedian gain: {np.median(ratio_valid):.2f}x",
-    transform=ax2.transAxes,
-    ha="left",
-    va="top",
-    fontsize=10,
-    bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
-)
+ymax = max(2.0, np.max(pcl_over_knox) * 1.1)
+ax2.set_ylim(0.9, ymax)
 
 plt.tight_layout()
 outname = f"qml_vs_pcl_fsky{fsky:.2f}_dl{delta_ell}.png"
