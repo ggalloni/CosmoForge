@@ -296,7 +296,6 @@ class Fisher(Core, MPISharedMemoryMixin):
         sparse_coo_data = {}
         cinv_times_dcb = {}
         binned_derivatives = {}
-        w_matrix, _ = self.bins._bin_operators()
         V_Cinv_VT = None
 
         deriv_start = time.time()
@@ -326,15 +325,12 @@ class Fisher(Core, MPISharedMemoryMixin):
                 )
 
                 if is_diagonal:
-                    # dC^b diagonal: E_b = sum_ell w * beam * E_diag
+                    # dC^b diagonal: E_b = sum_ell beam * E_diag
                     E_b_diag = np.zeros(bm.n_kept, dtype=np.float64)
                     for ell in range(
                         self.bins.lmins[bin_idx], self.bins.lmaxs[bin_idx] + 1
                     ):
-                        weight = (
-                            w_matrix[bin_idx, ell]
-                            * self.beam_smoothing[beam_offset + ell - 2]
-                        )
+                        weight = self.beam_smoothing[beam_offset + ell - 2]
                         E_b_diag += weight * bm._get_derivative_diagonal(
                             ell, comp_i, comp_j, spec_mode
                         )
@@ -350,10 +346,7 @@ class Fisher(Core, MPISharedMemoryMixin):
                     for ell in range(
                         self.bins.lmins[bin_idx], self.bins.lmaxs[bin_idx] + 1
                     ):
-                        weight = (
-                            w_matrix[bin_idx, ell]
-                            * self.beam_smoothing[beam_offset + ell - 2]
-                        )
+                        weight = self.beam_smoothing[beam_offset + ell - 2]
                         if abs(weight) < _WEIGHT_ZERO_THRESHOLD:
                             continue
                         dC_ell = bm.get_derivative_matrix(ell, comp_i, comp_j, spec_mode)

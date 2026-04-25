@@ -767,7 +767,6 @@ class Core(ABC):
         mode : int
             Spin mode (0=TT/EE/TE, 1=BB/TB, 2=EB).
         """
-        w_matrix, _ = self.bins._bin_operators()
         lmin_b = self.bins.lmins[bin_idx]
         lmax_b = self.bins.lmaxs[bin_idx]
         dC_b = None
@@ -779,9 +778,9 @@ class Core(ABC):
                 comp_j=comp_j,
                 mode=mode,
             )
-            weight = w_matrix[bin_idx, ell]
+            weight = 1.0
             if beam_smoothing is not None:
-                weight *= beam_smoothing[ell - 2]
+                weight = beam_smoothing[ell - 2]
             if dC_b is None:
                 dC_b = weight * dC_ell
             else:

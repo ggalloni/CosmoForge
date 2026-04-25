@@ -630,7 +630,6 @@ class Spectra(Core, MPISharedMemoryMixin):
 
         use_basis = hasattr(self, "basis_manager") and self.basis_manager is not None
 
-        w_matrix, _ = self.bins._bin_operators()
         lmin_b = self.bins.lmins[bin_idx]
         lmax_b = self.bins.lmaxs[bin_idx]
         n_ell = self.params.lmax - 1
@@ -638,7 +637,7 @@ class Spectra(Core, MPISharedMemoryMixin):
         dC_b = None
 
         for ell in range(lmin_b, lmax_b + 1):
-            weight = w_matrix[bin_idx, ell] * self.beam_smoothing[beam_offset + ell - 2]
+            weight = self.beam_smoothing[beam_offset + ell - 2]
 
             if use_basis:
                 bm = self.basis_manager
