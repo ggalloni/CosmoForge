@@ -1390,6 +1390,101 @@ class Spectra(Core, MPISharedMemoryMixin):
             return noise_bias
         return None
 
+    def convolve_theory_for_inference(self, cl_theory: np.ndarray) -> np.ndarray | None:
+        """
+        Apply the QML bandpower window to a per-ℓ theory spectrum.
+
+        Returns the expected binned bandpower for the given theory, in
+        the same convention as ``get_power_spectra(mode="deconvolved")``.
+        Use this in a Gaussian likelihood for parameter inference:
+
+            mu_b(θ) = convolve_theory_for_inference(C_ℓ(θ))
+            -2 ln L = (d - mu)ᵀ F_b (d - mu)
+
+        Parameters
+        ----------
+        cl_theory : np.ndarray
+            Per-ℓ theory C_ℓ. Two formats accepted:
+            - shape ``(n_ell,)`` for ℓ=2..lmax (length lmax-1)
+            - shape ``(lmax+1,)`` starting at ℓ=0 (leading entries for
+              ℓ=0,1 are ignored)
+            Must be **unbeamed** physical C_ℓ — beam² is already absorbed
+            into the window.
+
+        Returns
+        -------
+        cl_binned : np.ndarray of shape (n_bins,), or None
+            Expected binned bandpower for the given theory. If the
+            output convention is "Dl", the result is converted to D_ℓ
+            using the bin effective ells. Returns None on worker
+            processes (rank != 0).
+
+        Notes
+        -----
+        This delegates to :meth:`Fisher.get_bandpower_window_function`
+        on the underlying Fisher instance. The first call triggers a
+        per-ℓ Fisher computation (cached for subsequent calls).
+
+        See :meth:`Fisher.get_bandpower_window_function` for details on
+        the buffer approach and multi-spectrum limitations.
+
+        Examples
+        --------
+        >>> spectra = Spectra("config.yaml", fisher=fisher,
+        ...                   compression={"method": "harmonic"})
+        >>> spectra.set_binning(bins)
+        >>> spectra.run()
+        >>> cl_th = compute_camb_cl(theta)        # ell=0..lmax
+        >>> mu_b = spectra.convolve_theory_for_inference(cl_th)
+        >>> data = spectra.get_power_spectra(mode="deconvolved").mean(0)
+        >>> F_b = spectra.fisher_instance.get_fisher_matrix()
+        >>> neg2lnL = (data - mu_b) @ F_b @ (data - mu_b)
+
+        See Also
+        --------
+        Fisher.get_bandpower_window_function : Underlying window matrix.
+        get_power_spectra : Get the data bandpower (deconvolved mode).
+        get_covariance : Get the covariance matrix (= F_b⁻¹).
+        """
+        if self.rank != 0:
+            return None
+
+        if not hasattr(self, "fisher_instance") or self.fisher_instance is None:
+            raise ValueError(
+                "convolve_theory_for_inference requires an attached Fisher "
+                "instance. Pass fisher=fisher to Spectra() at construction."
+            )
+        if getattr(self.fisher_instance, "fisher", None) is None:
+            raise ValueError(
+                "Fisher matrix has not been computed. Call fisher.run() "
+                "(and spectra.run()) before convolve_theory_for_inference()."
+            )
+
+        n_ell = self.params.lmax - 1
+        cl = np.asarray(cl_theory, dtype=np.float64)
+        if cl.ndim != 1:
+            raise ValueError(f"cl_theory must be 1D, got shape {cl.shape}")
+        if cl.size == n_ell:
+            cl_vec = cl
+        elif cl.size >= self.params.lmax + 1:
+            cl_vec = cl[2 : self.params.lmax + 1]
+        else:
+            raise ValueError(
+                f"cl_theory length {cl.size} does not match expected "
+                f"{n_ell} (ℓ=2..lmax) or {self.params.lmax + 1} (ℓ=0..lmax)"
+            )
+
+        W = self.fisher_instance.get_bandpower_window_function()
+        if W is None:
+            return None
+
+        cl_binned = W @ cl_vec
+
+        if self._output_is_dl():
+            cl_binned = cl_binned * self._dl_factor()
+
+        return cl_binned
+
     def get_covariance(self, mode: str = "deconvolved") -> np.ndarray | None:
         """
         Get covariance matrix for power spectrum estimates in specified mode.

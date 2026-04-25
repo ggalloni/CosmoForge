@@ -12,6 +12,9 @@ dependencies = [
     "tqdm>=4.67.1",
 ]
 
+[project.optional-dependencies]
+pcl = ["pymaster>=2.6"]
+
 [tool.uv.sources]
 cosmocore = { workspace = true }
 

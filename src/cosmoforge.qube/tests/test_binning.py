@@ -416,6 +416,80 @@ class TestNormalizationModesBinned:
 
 
 # =============================================================================
+# Bandpower window function (for parameter inference)
+# =============================================================================
+
+
+class TestBandpowerWindow:
+    """Bin-to-ell bandpower window for binned QML inference."""
+
+    @pytest.fixture
+    def setup(self, config_resolver):
+        bins = Bins.fromdeltal(2, 8, 2)
+        f = _run_fisher_with_bins("T", config_resolver, bins=bins)
+        s = _run_spectra_with_bins("T", config_resolver, bins=bins, fisher=f)
+        return f, s, bins
+
+    def test_window_shape(self, setup):
+        f, _, bins = setup
+        W = f.get_bandpower_window_function()
+        n_ell = f.params.lmax - 1
+        assert W.shape == (bins.nbins, n_ell)
+
+    def test_window_consistency_with_perell_fisher(self, setup):
+        """W = F_b^-1 @ Q @ F_perell."""
+        f, _, bins = setup
+        W = f.get_bandpower_window_function()
+        F_b = f.get_fisher_matrix()
+        F_pe = f._compute_per_ell_fisher()
+        n_ell = f.params.lmax - 1
+        Q = np.zeros((bins.nbins, n_ell))
+        for b, (lo, hi) in enumerate(zip(bins.lmins, bins.lmaxs)):
+            Q[b, lo - 2 : hi - 2 + 1] = 1.0
+        W_expected = np.linalg.solve(F_b, Q @ F_pe)
+        np.testing.assert_allclose(W, W_expected, rtol=1e-10)
+
+    def test_window_cached(self, setup):
+        """Second call returns the same matrix without recomputation."""
+        f, _, _ = setup
+        W1 = f.get_bandpower_window_function()
+        W2 = f.get_bandpower_window_function()
+        assert W1 is W2
+
+    def test_convolve_theory_matches_window_product(self, setup):
+        """convolve_theory_for_inference applies the window correctly."""
+        f, s, _ = setup
+        W = f.get_bandpower_window_function()
+        cl_test = 1.0 / (np.arange(2, f.params.lmax + 1) ** 2)
+        mu = s.convolve_theory_for_inference(cl_test)
+        np.testing.assert_allclose(mu, W @ cl_test, rtol=1e-12)
+
+    def test_convolve_theory_input_formats(self, setup):
+        """Both ell=2..lmax and ell=0..lmax input formats give same result."""
+        _, s, _ = setup
+        cl_short = np.arange(2.0, s.params.lmax + 1) ** -2
+        cl_full = np.zeros(s.params.lmax + 1)
+        cl_full[2:] = cl_short
+        mu_short = s.convolve_theory_for_inference(cl_short)
+        mu_full = s.convolve_theory_for_inference(cl_full)
+        np.testing.assert_allclose(mu_short, mu_full, rtol=1e-12)
+
+    def test_convolve_theory_invalid_length_raises(self, setup):
+        """Wrong length raises ValueError."""
+        _, s, _ = setup
+        with pytest.raises(ValueError, match="length"):
+            s.convolve_theory_for_inference(np.ones(3))
+
+    def test_window_default_delta_ell_one_is_identity(self, config_resolver):
+        """Without explicit binning (delta_ell=1 default) W is identity."""
+        f = _run_fisher_with_bins("T", config_resolver)
+        W = f.get_bandpower_window_function()
+        n_ell = f.params.lmax - 1
+        assert W.shape == (n_ell, n_ell)
+        np.testing.assert_allclose(W, np.eye(n_ell), atol=1e-10)
+
+
+# =============================================================================
 # Config-based binning (delta_ell, custom lmins/lmaxs)
 # =============================================================================
 

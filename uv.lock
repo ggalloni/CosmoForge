@@ -367,6 +367,29 @@ wheels = [
 ]
 
 [[package]]
+name = "ducc0"
+version = "0.41.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/cf/e7/849dd1a079b994184fa53905d47278f86d0dd3dcfb6ff2b0e3eb7d6a1c1b/ducc0-0.41.0.tar.gz", hash = "sha256:bac084745bbdb243482a4aec3ecc857bdd46faec298c67e48bc0bb90350dbabd", size = 353129, upload-time = "2026-03-26T18:56:04.669Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/19/5e/a50de56cbe81e22a3d861e0c218e2cd07ffe334d5b97585594977ea8c213/ducc0-0.41.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:4db464d417d130f729705a456e79376aa4e0d5760c24a4ef87481630cd6e4258", size = 2700757, upload-time = "2026-03-26T18:54:05.261Z" },
+    { url = "https://files.pythonhosted.org/packages/27/49/791ac7df904bdc3ee5689de38523184d631e3dadb616300e1ad1c029a15d/ducc0-0.41.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:ac8ac81578baa8885980bf8fd131b36701623e249d5fb1bcc84da69f22d247b6", size = 4574658, upload-time = "2026-03-26T18:54:09.869Z" },
+    { url = "https://files.pythonhosted.org/packages/39/99/a408b917a71a466b99d1ad0d27b3a3fdc2e30544a11fdff21c3626952f0a/ducc0-0.41.0-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:9c92f9854adeed74b37c8ceb7dfbaa8390d40e9937e5313c6d8620a3d6779a2c", size = 5614364, upload-time = "2026-03-26T18:54:16.303Z" },
+    { url = "https://files.pythonhosted.org/packages/da/a4/4043b33577ccd5375173aa8fd6374e298844c22a55d69ef480d5289ca4b4/ducc0-0.41.0-cp311-cp311-win_amd64.whl", hash = "sha256:77831103f74683fbbf640c4afd0610ca05157cd609f4f18b29959b1b11701431", size = 1731111, upload-time = "2026-03-26T18:54:20.021Z" },
+    { url = "https://files.pythonhosted.org/packages/2d/2f/6e8e381e67f4b6e7284e3bdb00e1fd7373cbcab86ae0f597c96c9aacd656/ducc0-0.41.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:e351d5dcf8e5a061ec2767f008fccc34d226a21c227ff636460abd8160e0e12b", size = 2701395, upload-time = "2026-03-26T18:54:23.525Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/8e/3a28ebdef748b9b59c22d9a801116a9ea073d0ce66d9a738bf5db6c29e0c/ducc0-0.41.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:94718e321194313232ae6ba73c528a3847d5eae212a9fc1ef67471e7113e6492", size = 4563683, upload-time = "2026-03-26T18:54:28.643Z" },
+    { url = "https://files.pythonhosted.org/packages/11/72/5132178a63fbbbc8868c10b07cbacee138f248ac6f319040537e5a45b3a9/ducc0-0.41.0-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:c17565f332745f08dd012334e07a4dcbb591c9591c2b14f51a1d57ad40018f53", size = 5601347, upload-time = "2026-03-26T18:54:34.054Z" },
+    { url = "https://files.pythonhosted.org/packages/02/a6/3602419c6b8ce4bb37063d95ec066d2383ea2dc5029addb78e28c1133d3b/ducc0-0.41.0-cp312-cp312-win_amd64.whl", hash = "sha256:7f6d1219f543d0a5e9459146f0c4dc104fc63a7583a6b6e18499684a2d143dcb", size = 1732908, upload-time = "2026-03-26T18:54:37.771Z" },
+    { url = "https://files.pythonhosted.org/packages/76/a7/64d89292ed1e307b3578863d573b399d4b046260535cb465c5c799a1c789/ducc0-0.41.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:aebe37a41efbb82b20745a86b506755164c1d270e7a8076db344c47bdce8182d", size = 2701462, upload-time = "2026-03-26T18:54:42.833Z" },
+    { url = "https://files.pythonhosted.org/packages/17/97/191420d245383304f20f96254774f14b96239e52a0eac44cab93c870941e/ducc0-0.41.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:ca66a1806983545460c5447f053f15f6d9f8037b16b128b2a925f0410bcee06d", size = 4563741, upload-time = "2026-03-26T18:54:47.684Z" },
+    { url = "https://files.pythonhosted.org/packages/1f/e3/a8783330d7225def7cafe33ed9a2fd7e29eff8f91e7312306037048199a2/ducc0-0.41.0-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:d058b71274f9d60d6edae70cc31d6f5a72e29b0ecc7229725905682566d1e605", size = 5602698, upload-time = "2026-03-26T18:54:53.816Z" },
+    { url = "https://files.pythonhosted.org/packages/ce/f2/80b4ecc45edcc700a4190cae0ec2eb21d6e0eca5155c57155c19a0f8821f/ducc0-0.41.0-cp313-cp313-win_amd64.whl", hash = "sha256:90b98e02c92cd3026065907b1845c6de1eaecabd2fab2b60cf011bf7759eb750", size = 1732986, upload-time = "2026-03-26T18:54:57.076Z" },
+]
+
+[[package]]
 name = "filelock"
 version = "3.19.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1002,6 +1025,16 @@ wheels = [
 ]
 
 [[package]]
+name = "pymaster"
+version = "2.6"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "ducc0" },
+    { name = "healpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/95/45/470858f2a6a3f5133955bb87aed978a5e921d4052aea1c19718e6b72f0ae/pymaster-2.6.tar.gz", hash = "sha256:056a09bc8631cf338e93ef14d8c70272ad9554ef10498d919e920994531c57a2", size = 33707181, upload-time = "2025-12-16T09:18:28.905Z" }
+
+[[package]]
 name = "pyparsing"
 version = "3.2.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1149,11 +1182,18 @@ dependencies = [
     { name = "tqdm" },
 ]
 
+[package.optional-dependencies]
+pcl = [
+    { name = "pymaster" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "cosmocore", editable = "src/cosmoforge.cosmocore" },
+    { name = "pymaster", marker = "extra == 'pcl'", specifier = ">=2.6" },
     { name = "tqdm", specifier = ">=4.67.1" },
 ]
+provides-extras = ["pcl"]
 
 [[package]]
 name = "requests"

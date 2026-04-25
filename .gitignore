@@ -34,6 +34,7 @@ wheels/
 run_*.py
 /src/*/.library
 /.claude
+/sync_to_cluster.sh
 
 # Fortran reference/build directories
 /src/*/.fortran

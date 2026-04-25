@@ -673,3 +673,154 @@ class Fisher(Core, MPISharedMemoryMixin):
         deconvolving the window, the theory is convolved for comparison.
         """
         return self.get_fisher_matrix()
+
+    def get_bandpower_window_function(
+        self,
+        per_ell_fisher: np.ndarray | None = None,
+    ) -> np.ndarray | None:
+        """
+        Compute the bandpower window function for binned QML inference.
+
+        The window matrix W maps a per-ℓ theory spectrum to the expected
+        binned bandpower estimates from the deconvolved QML output:
+
+            <C_hat_b> = W @ C_ell_theory
+
+        Use this in a Gaussian likelihood for parameter inference:
+
+            mu_b(θ) = W @ C_ell(θ)
+            -2 ln L = (d - mu)ᵀ F_b (d - mu)
+
+        where d = ``Spectra.get_power_spectra(mode="deconvolved")`` and
+        F_b = ``Fisher.get_fisher_matrix()``.
+
+        This differs from :meth:`get_window_matrix`, which returns the
+        bin-to-bin Fisher used in "convolved" mode and assumes a constant
+        spectrum within each bin. The bandpower window function is the
+        correct quantity for inference when bins are wide enough that
+        the theory varies appreciably within them.
+
+        Parameters
+        ----------
+        per_ell_fisher : np.ndarray, optional
+            Pre-computed per-ℓ Fisher matrix of shape ``(n_ell, n_ell)``
+            (single spectrum). If None, the per-ℓ Fisher is computed on
+            demand by re-running the Fisher pipeline with delta_ell=1
+            using the current configuration. The result is cached for
+            subsequent calls.
+
+        Returns
+        -------
+        W : np.ndarray of shape (n_bins, n_ell), or None
+            Bandpower window matrix. Rows correspond to bin indices,
+            columns to multipoles ℓ=2..lmax. Returns None on worker
+            processes (rank != 0).
+
+        Notes
+        -----
+        The window function encodes:
+
+        - Mode coupling from sky cuts.
+        - Beam smoothing (b²_ℓ).
+        - Pixel window functions.
+        - The Fisher-weighting that QML naturally applies within each bin.
+
+        The theory C_ℓ should be the **unbeamed** physical spectrum
+        (standard CAMB/CLASS output), since beam² is already absorbed
+        into the derivatives used to build the window.
+
+        For best statistical accuracy near lmax, use the buffer approach:
+        estimate to ``lmax_buffer = lmax_science + margin`` (a few bin
+        widths or ~1/fsky multipoles), then drop the buffer rows from
+        ``W``, ``d`` and ``F_b`` before forming the likelihood. This
+        absorbs mode coupling from ℓ > lmax_science into discarded
+        buffer bins.
+
+        Currently supports single-spectrum analysis only. Multi-spectrum
+        extension is planned.
+
+        Examples
+        --------
+        Standard inference workflow:
+
+        >>> fisher = Fisher("config.yaml", compression={"method": "harmonic"})
+        >>> fisher.set_binning(bins)
+        >>> fisher.run()
+        >>> W = fisher.get_bandpower_window_function()
+        >>> F_b = fisher.get_fisher_matrix()
+        >>> # In the MCMC loop:
+        >>> mu = W @ cl_theory_per_ell        # expected bandpower
+        >>> r = data_bandpower - mu           # residual
+        >>> neg2lnL = r @ F_b @ r             # quadratic form
+
+        See Also
+        --------
+        get_window_matrix : Bin-to-bin window for convolved mode.
+        get_fisher_matrix : Inverse covariance for the bandpower likelihood.
+        """
+        if self.rank != 0 or self.fisher is None:
+            return None
+
+        if not hasattr(self, "bins") or self.bins is None:
+            raise ValueError(
+                "Bandpower window requires binning. Call set_binning() before run()."
+            )
+
+        if self.params.nspectra > 1:
+            raise NotImplementedError(
+                "Bandpower window function currently supports single-spectrum "
+                "analysis only. Multi-spectrum extension is planned."
+            )
+
+        # Return cached value if available and no override provided
+        cached = getattr(self, "_bandpower_window", None)
+        if cached is not None and per_ell_fisher is None:
+            return cached
+
+        # Obtain per-ℓ Fisher
+        if per_ell_fisher is None:
+            per_ell_fisher = self._compute_per_ell_fisher()
+
+        # Build Q (sum-over-ℓ-in-bin operator)
+        n_ell = self.params.lmax - 1  # ell indices 2..lmax
+        Q = np.zeros((self.bins.nbins, n_ell), dtype=np.float64)
+        for b, (lo, hi) in enumerate(zip(self.bins.lmins, self.bins.lmaxs)):
+            Q[b, lo - 2 : hi - 2 + 1] = 1.0
+
+        # W = F_b^{-1} @ Q @ F_perell
+        W = np.linalg.solve(self.fisher, Q @ per_ell_fisher)
+        self._bandpower_window = W
+        return W
+
+    def _compute_per_ell_fisher(self) -> np.ndarray:
+        """
+        Compute the per-ℓ Fisher matrix using the current configuration.
+
+        Triggers a Fisher computation with delta_ell=1, reusing the
+        existing setup (basis, beams, covariance) by re-invoking the
+        compute() phase with binning temporarily set to per-ℓ.
+
+        Returns
+        -------
+        F_perell : np.ndarray, shape (n_ell, n_ell)
+            Per-ℓ Fisher for ell=2..lmax.
+        """
+        self.log("Computing per-ℓ Fisher for bandpower window function...", level=2)
+        saved_bins = self.bins
+        saved_fisher = self.fisher
+        saved_n_params = self.n_params
+        saved_cached = getattr(self, "_cached_binned_derivatives", None)
+        try:
+            self.bins = Bins.fromdeltal(2, self.params.lmax, 1)
+            self.n_params = self.params.nspectra * self.bins.nbins
+            self.fisher = np.zeros((self.n_params, self.n_params))
+            # Drop binned-derivative cache so per-ℓ run rebuilds its own
+            self._cached_binned_derivatives = None
+            self.compute()
+            F_perell = self.fisher.copy()
+        finally:
+            self.bins = saved_bins
+            self.fisher = saved_fisher
+            self.n_params = saved_n_params
+            self._cached_binned_derivatives = saved_cached
+        return F_perell
