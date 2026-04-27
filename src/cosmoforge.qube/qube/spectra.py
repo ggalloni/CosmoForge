@@ -724,27 +724,32 @@ class Spectra(Core, MPISharedMemoryMixin):
 
     def _compute_qml_spectra_compressed(self):
         """
-        Compute QML spectra using compressed representation.
+        Compute QML spectra using a computation basis (harmonic or pixel).
 
-        This method performs QML estimation entirely in compressed space,
-        ensuring consistency with the compressed Fisher matrix computation.
+        Performs QML estimation entirely in basis space, consistent with the
+        basis-aware Fisher matrix computation. The estimator is
 
-        The compressed QML estimator is:
-            q_l = (1/2) * w^T @ E_l @ w
+            q_b = (1/2) * w^T @ E_b @ w
 
-        where:
-            w = V @ C^{-1} @ d  (weighted compressed data via SMW)
-            E_l = get_derivative_matrix(ell) (diagonal with (2ℓ+1)/(4π) at modes for ℓ)
+        where w = V C^{-1} d is the basis-projected weighted data (built via
+        SMW for the harmonic basis) and E_b is the binned derivative matrix.
+        This is mathematically equivalent to the traditional pixel-space form
+        q_b = (1/2) * d^T C^{-1} dC_b C^{-1} d, since dC_b = V^T E_b V.
 
-        This is mathematically equivalent to the traditional estimator:
-            q_l = (1/2) * d^T @ C^{-1} @ dC_l @ C^{-1} @ d
+        Inner-loop paths
+        ----------------
+        - **Sparse-COO** (preferred when ``basis_manager.method == "harmonic"``
+          and Fisher cached the COO triplets): for each bin the per-ℓ
+          derivative is stored as ``(rows, cols, vals)`` with O(2ℓ+1) nonzeros.
+          q and the noise-bias trace reduce to einsum/contractions over the
+          nonzero pattern (~200x-800x faster than dense E_b @ w at production
+          scale; same trick the Fisher trace path uses).
+        - **Dense fallback**: pixel basis, or harmonic basis when the COO
+          cache is missing. Builds the full E_b matrix on demand and uses
+          the original dense E_b @ w / matrix_trace path.
 
-        The key insight is that dC_l = V^T @ E_l @ V in harmonic space, so:
-            q_l = (1/2) * d^T @ C^{-1} @ V^T @ E_l @ V @ C^{-1} @ d
-                = (1/2) * (V C^{-1} d)^T @ E_l @ (V C^{-1} d)
-                = (1/2) * w^T @ E_l @ w
-
-        Supports both single-field and multi-field configurations.
+        Supports single-field, multi-field, and cross-correlation
+        (``do_cross=True``) configurations on both paths.
         """
         if self.rank == 0:
             path_label = _basis_path_label(self.basis_manager)
