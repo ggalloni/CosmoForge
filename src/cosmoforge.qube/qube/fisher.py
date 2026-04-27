@@ -519,7 +519,7 @@ class Fisher(Core, MPISharedMemoryMixin):
             if self._basis_config is not None:
                 config = self._basis_config
                 self.setup_computation_basis(
-                    method=config.get("method", "harmonic"),
+                    method=config.get("method", "auto"),
                     lmax=config.get("lmax"),
                     epsilon=config.get("epsilon"),
                     mode_fraction=config.get("mode_fraction"),

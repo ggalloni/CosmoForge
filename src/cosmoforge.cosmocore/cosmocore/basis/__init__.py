@@ -30,6 +30,7 @@ References
 from __future__ import annotations
 
 import inspect
+import warnings
 
 import numpy as np
 
@@ -41,6 +42,33 @@ _BASIS_CLASSES: dict[str, type[ComputationBasis]] = {
     "harmonic": HarmonicBasis,
     "pixel": PixelBasis,
 }
+
+
+def _problem_dimensions(
+    theta: np.ndarray | tuple[np.ndarray, ...],
+    spins: list[int] | None,
+    lmax: int,
+    lswitch_high: int | None = None,
+) -> tuple[int, int]:
+    """Compute (n_pix, n_modes) at the effective lmax (after lswitch)."""
+    if isinstance(theta, np.ndarray):
+        thetas = (theta,)
+    else:
+        thetas = tuple(theta)
+
+    n_components = len(thetas)
+    if spins is None:
+        spins = [0] * n_components
+
+    n_pix = sum(2 * len(t) if spins[i] == 2 else len(t) for i, t in enumerate(thetas))
+
+    effective_lmax = lswitch_high if lswitch_high is not None else lmax
+    n_modes_base = (effective_lmax + 1) ** 2 - 4
+    n_modes = sum(
+        2 * n_modes_base if spins[i] == 2 else n_modes_base for i in range(n_components)
+    )
+
+    return n_pix, n_modes
 
 
 def create_computation_basis(
@@ -58,7 +86,12 @@ def create_computation_basis(
     Parameters
     ----------
     method : str
-        Computation basis method: "harmonic" or "pixel".
+        Computation basis method:
+        - "harmonic": Tegmark-like direct harmonic transformation
+        - "pixel": Gjerløw-like pixel-space projector with eigenvalue truncation
+        - "auto": Pick the cheapest path based on n_pix vs n_modes (at the
+          effective lmax after lswitch). Selects "harmonic" when
+          n_pix > n_modes, otherwise "pixel" in direct mode (no V).
     N : numpy.ndarray
         Noise covariance matrix.
     N_inv : numpy.ndarray
@@ -71,18 +104,37 @@ def create_computation_basis(
         Maximum multipole for harmonic expansion.
     **kwargs
         Additional keyword arguments passed to the basis constructor
-        (beam, spins, basis, C_ell, epsilon, mode_fraction, etc.).
-        Arguments not accepted by the chosen class are silently ignored.
+        (beam, spins, basis, C_ell, epsilon, mode_fraction, fields,
+        lswitch_low, lswitch_high, etc.). Arguments not accepted by the
+        chosen class are silently ignored.
 
     Returns
     -------
     ComputationBasis
         Configured basis instance (not yet set up — call .setup()).
     """
+    spins = kwargs.get("spins")
+    lswitch_high = kwargs.get("lswitch_high")
+    n_pix, n_modes = _problem_dimensions(theta, spins, lmax, lswitch_high)
+
+    if method == "auto":
+        if n_pix > n_modes:
+            method = "harmonic"
+        else:
+            method = "pixel"
+            kwargs["use_direct"] = True
+    elif method == "harmonic" and n_pix <= n_modes:
+        warnings.warn(
+            f"n_pix ({n_pix}) <= n_modes ({n_modes}): harmonic basis expands "
+            f"the problem dimension. Consider method='auto' or method='pixel'.",
+            UserWarning,
+            stacklevel=2,
+        )
+
     if method not in _BASIS_CLASSES:
         raise ValueError(
             f"Unknown computation basis method '{method}'. "
-            f"Available: {list(_BASIS_CLASSES)}"
+            f"Available: {list(_BASIS_CLASSES) + ['auto']}"
         )
     cls = _BASIS_CLASSES[method]
     # Filter kwargs to only those accepted by the target class
@@ -102,5 +154,6 @@ __all__ = [
     "HarmonicBasis",
     "PixelBasis",
     "SMWPrepared",
+    "_problem_dimensions",
     "create_computation_basis",
 ]

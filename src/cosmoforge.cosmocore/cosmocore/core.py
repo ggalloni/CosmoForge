@@ -401,7 +401,7 @@ class Core(ABC):
 
     def setup_computation_basis(
         self,
-        method: str = "harmonic",
+        method: str = "auto",
         epsilon: float | list[float | tuple[float, float]] | None = 1e-6,
         mode_fraction: float | list[float | tuple[float, float]] | None = None,
         beam: np.ndarray | None = None,
@@ -513,12 +513,14 @@ class Core(ABC):
         if hasattr(self, "collection") and self.collection is not None:
             spins = [field.spin for field in self.collection.fields]
 
-        # SMW optimization: absorb high-ℓ signal into effective noise
+        # SMW optimization (lswitch + S_fixed) is harmonic-only for now.
+        # Extending it to pixel basis requires careful handling of raw N vs
+        # N_eff = N + S_fixed in noise-bias computations — left as a follow-up.
         lswitch_low = None
         lswitch_high = None
         S_fixed = None
 
-        if use_smw_optimization and method == "harmonic":
+        if use_smw_optimization and method in ("harmonic", "auto"):
             config_lswitch_low = getattr(self.params, "lswitch_low", None)
             config_lswitch_high = getattr(self.params, "lswitch_high", None)
 
@@ -579,15 +581,32 @@ class Core(ABC):
                     # Restore original spectra (already smoothed - don't re-apply beam)
                     self.collection.spectra_manager._cls_dict = original_spectra_smoothed
 
-        # Create computation basis.
-        # When switch optimization is active, N_inv is not needed upfront —
-        # _compute_effective_noise() will invert N_eff = N + S_fixed instead.
-        # This skips an expensive O(n_pix³) Cholesky that would be discarded.
+        # Pre-resolve method="auto" to know which path we're on. lswitch +
+        # S_fixed apply only to the harmonic path (for now).
+        from .basis import _problem_dimensions
+
+        n_pix, n_modes = _problem_dimensions(theta_arr, spins, basis_lmax, lswitch_high)
+        if method == "auto":
+            resolved_method = "harmonic" if n_pix > n_modes else "pixel"
+        else:
+            resolved_method = method
+
+        # Pixel basis: don't use lswitch/S_fixed (left as a follow-up).
+        if resolved_method == "pixel":
+            lswitch_low = None
+            lswitch_high = None
+            S_fixed = None
+
+        # When SMW optimization defers N_eff inversion (harmonic with lswitch),
+        # N_inv is None and the basis computes it lazily from N + S_fixed.
+        # Otherwise compute it upfront.
         need_n_inv = lswitch_high is None or lswitch_high >= basis_lmax
+        N_inv = matrix_inverse_symm(self.noise_cov1) if need_n_inv else None
+
         self.basis_manager = create_computation_basis(
             method=method,
             N=self.noise_cov1,
-            N_inv=matrix_inverse_symm(self.noise_cov1) if need_n_inv else None,
+            N_inv=N_inv,
             theta=theta_arr,
             phi=phi_arr,
             lmax=basis_lmax,
@@ -602,6 +621,7 @@ class Core(ABC):
             S_fixed=S_fixed,
             compress=compress,
             delta_m=delta_m,
+            fields=getattr(self, "collection", None),
         )
 
         # Build harmonic operator and precompute SMW components
