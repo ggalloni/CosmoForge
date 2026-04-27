@@ -57,11 +57,17 @@ THEORY_CL_FILE = Path(__file__).resolve().parent / "dls.txt"
 # ---------------------------------------------------------------------------
 NSIDE = 32
 LMAX_SCIENCE = 2 * NSIDE
-LMAX_BUFFER = int(2.5 * NSIDE)
 LMAX_SIM = 4 * NSIDE
 NSIMS = 1000
 SIGMA_NOISE = 1.5
 ADD_NOISE_TO_SIMS = True
+
+# LMAX_BUFFER is calibrated from the beam: smallest ell >= LMAX_SCIENCE
+# at which b^2(ell) drops below B2_THRESHOLD. This guarantees that
+# residual signal above the buffer is suppressed by 1/B2_THRESHOLD before
+# it can leak into science bins, otherwise it biases the QML mean
+# (validated against the independent NaMaster pipeline).
+B2_THRESHOLD = 0.01
 
 CASES = [
     {
@@ -89,6 +95,21 @@ def gaussian_fwhm_for_lmax(lmax, beam_at_lmax=0.5):
 FWHM_ARCMIN = gaussian_fwhm_for_lmax(LMAX_SCIENCE)
 FWHM_RAD = np.radians(FWHM_ARCMIN / 60.0)
 NPIX = 12 * NSIDE**2
+
+
+def choose_lmax_buffer(fwhm_rad, lmax_sim, lmax_science, b2_threshold):
+    """Smallest ell >= lmax_science at which b^2(ell) <= b2_threshold."""
+    beam = hp.gauss_beam(fwhm_rad, lmax=lmax_sim)
+    b2 = beam**2
+    candidates = np.where(
+        (np.arange(lmax_sim + 1) >= lmax_science) & (b2 <= b2_threshold)
+    )[0]
+    if len(candidates) == 0:
+        return lmax_sim
+    return int(candidates[0])
+
+
+LMAX_BUFFER = choose_lmax_buffer(FWHM_RAD, LMAX_SIM, LMAX_SCIENCE, B2_THRESHOLD)
 
 
 # ---------------------------------------------------------------------------
@@ -737,7 +758,10 @@ def main():
     configure_plt()
     print(
         f"Config: nside={NSIDE}, lmax_science={LMAX_SCIENCE}, "
-        f"lmax_buffer={LMAX_BUFFER}, nsims={NSIMS}, sigma={SIGMA_NOISE}, "
+        f"lmax_buffer={LMAX_BUFFER} "
+        f"(b^2={hp.gauss_beam(FWHM_RAD, lmax=LMAX_SIM)[LMAX_BUFFER] ** 2:.4f}, "
+        f"target<={B2_THRESHOLD}), "
+        f"lmax_sim={LMAX_SIM}, nsims={NSIMS}, sigma={SIGMA_NOISE}, "
         f"FWHM={FWHM_ARCMIN:.1f} arcmin, "
         f"add_noise={ADD_NOISE_TO_SIMS}"
     )
@@ -771,6 +795,7 @@ def main():
         "nside": NSIDE,
         "lmax_science": LMAX_SCIENCE,
         "lmax_buffer": LMAX_BUFFER,
+        "lmax_buffer_b2_threshold": B2_THRESHOLD,
         "lmax_sim": LMAX_SIM,
         "nsims": NSIMS,
         "sigma_noise": SIGMA_NOISE,

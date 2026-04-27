@@ -104,10 +104,12 @@ def generate_test_inputs(nside, lmax, spins, physical_labels, lmax_sim, fsky):
     sigma = float(np.sqrt(sig_var_per_pix))
 
     # Reduced noise covariance: only the n_active × n_active block.
-    # Layout matches Core's expectation: blocks per component, with spin-2
-    # components doubled (Q + U entries), concatenated in field order.
+    # Layout matches Core's expectation. n_fields equals the number of
+    # *physical* maps (e.g. 2 for QU = Q + U), so summing the active count
+    # per physical map already accounts for the spin-2 Q+U doubling — no
+    # extra factor of 2 needed.
     n_active_per_phys = [int(np.sum(mask[i] > 0)) for i in range(n_fields)]
-    n_pix_active = sum(2 * n if 2 in spins else n for n in n_active_per_phys)
+    n_pix_active = sum(n_active_per_phys)
     cov_reduced = np.eye(n_pix_active, dtype=np.float64) * sigma**2
 
     nsims = 10
