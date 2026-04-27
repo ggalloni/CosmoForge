@@ -722,6 +722,62 @@ def test_compressed_spectra_spin2(fields, local_path, config_resolver):
     )
 
 
+@pytest.mark.parametrize("fields", ["QU", "TQU"])
+def test_qml_sparse_coo_matches_dense(fields, config_resolver):
+    """Sparse-COO QML path produces identical results to the dense fallback.
+
+    Runs the harmonic-basis QML pipeline twice on the same fixture: once with
+    the sparse-COO cache populated (default), once with the cache nulled to
+    force the dense fallback. Asserts both paths were actually exercised and
+    that results agree to ~1e-10 relative (last-bit FP reordering).
+    """
+    config_file = config_resolver(f"tests/data/nside4/{fields}/config.yaml")
+
+    try:
+        qml_sparse = Spectra(
+            config_file,
+            compression={"method": "harmonic", "epsilon": 1e-10},
+        )
+        qml_sparse.run()
+        assert qml_sparse._qml_path_used == "sparse", (
+            f"Expected sparse path by default, got {qml_sparse._qml_path_used}"
+        )
+        ps_sparse = qml_sparse.get_power_spectra()
+        nb_sparse = qml_sparse.get_noise_bias()
+
+        # Force the dense fallback path by nulling the COO cache on the
+        # underlying Fisher instance, then re-run QML using the same setup.
+        qml_dense = Spectra(
+            config_file,
+            compression={"method": "harmonic", "epsilon": 1e-10},
+        )
+        qml_dense.run()
+        qml_dense.fisher_instance._cached_sparse_coo_data = None
+        qml_dense.compute_qml_spectra()
+        assert qml_dense._qml_path_used == "dense", (
+            f"Expected dense path when COO cache is None, got {qml_dense._qml_path_used}"
+        )
+        ps_dense = qml_dense.get_power_spectra()
+        nb_dense = qml_dense.get_noise_bias()
+    finally:
+        os.unlink(config_file)
+
+    np.testing.assert_allclose(
+        ps_sparse,
+        ps_dense,
+        rtol=1e-10,
+        atol=0,
+        err_msg=f"Sparse vs dense QML power spectra mismatch for {fields}",
+    )
+    np.testing.assert_allclose(
+        nb_sparse,
+        nb_dense,
+        rtol=1e-10,
+        atol=0,
+        err_msg=f"Sparse vs dense QML noise bias mismatch for {fields}",
+    )
+
+
 def test_binned_derivative_no_cache(local_path, config_resolver):
     """Exercise _get_binned_derivative when fisher cache is unavailable."""
     config_file = config_resolver("tests/data/nside4/T/config.yaml")

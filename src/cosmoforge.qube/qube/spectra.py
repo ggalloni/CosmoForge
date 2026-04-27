@@ -49,6 +49,7 @@ References
 
 from __future__ import annotations
 
+import os
 import time
 import typing
 
@@ -294,8 +295,6 @@ class Spectra(Core, MPISharedMemoryMixin):
 
     def _load_covariance_matrices(self):
         """Load noise and inverted covariance matrices from disk files."""
-        import os
-
         ntot = self.collection.total_active_pixels
 
         # Load inverted covariance matrices
@@ -856,6 +855,19 @@ class Spectra(Core, MPISharedMemoryMixin):
                 N_bar = bm.get_compressed_noise()
                 noise_cov_w = C_bar_inv @ N_bar @ C_bar_inv
 
+        # Harmonic-basis binned derivatives are extremely sparse (~2ℓ+1 nonzeros
+        # in an n_modes×n_modes layout), so Fisher caches them in COO form. When
+        # available, replace dense E_b @ w with einsum over the nonzero pattern.
+        # The dense path remains for pixel-basis QML, which has no comparable
+        # sparsity, and for the cache-less case used by some tests.
+        coo_cache = (
+            getattr(self.fisher_instance, "_cached_sparse_coo_data", None)
+            if getattr(self, "fisher_instance", None) is not None
+            else None
+        )
+        use_sparse = coo_cache is not None
+        self._qml_path_used = "sparse" if use_sparse else "dense"
+
         # Main computation loop - distribute bins across processes
         nbins = self.bins.nbins
         n_params = self.params.nspectra * nbins
@@ -863,6 +875,44 @@ class Spectra(Core, MPISharedMemoryMixin):
             if self.rank == il % self.size:
                 spectrum_idx = il // nbins
                 bin_idx = il % nbins
+
+                if use_sparse:
+                    rows, cols, vals = coo_cache[(spectrum_idx, bin_idx)]
+                    if vals.size == 0:
+                        if not self.params.do_cross:
+                            self.qml_noise_bias[il] = 0.0
+                        self.qml_results[:, il] = 0.0
+                        continue
+
+                    if self.params.do_cross:
+                        # q = 0.5 * sum_k v_k * w2[r_k, s] * w1[c_k, s]
+                        self.qml_results[:, il] = 0.5 * np.einsum(
+                            "k,ks,ks->s",
+                            vals,
+                            maps2_weighted[rows],
+                            maps1_weighted[cols],
+                        )
+                    else:
+                        q_per_sim = 0.5 * np.einsum(
+                            "k,ks,ks->s",
+                            vals,
+                            maps1_weighted[rows],
+                            maps1_weighted[cols],
+                        )
+
+                        # Noise bias: 0.5 * Tr[E_b @ Cov] = 0.5 * sum_k v * Cov[c,r]
+                        if noise_cov_w is not None:
+                            tr_ne = 0.5 * float(np.sum(vals * noise_cov_w[cols, rows]))
+                        else:
+                            # Diagonal-only noise cov is sufficient when E_b is
+                            # diagonal (rows == cols for harmonic auto-spectra).
+                            tr_ne = 0.5 * float(np.sum(vals * noise_cov_w_diag[cols]))
+                        self.qml_noise_bias[il] = tr_ne
+
+                        if hasattr(self.params, "remove_nb") and self.params.remove_nb:
+                            q_per_sim -= tr_ne
+                        self.qml_results[:, il] = q_per_sim
+                    continue
 
                 # Get binned derivative: 1D diagonal vector (harmonic auto-
                 # spectra) or 2D dense matrix (cross-spectra / pixel-space).
