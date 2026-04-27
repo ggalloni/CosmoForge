@@ -184,17 +184,20 @@ def main():
         print(f"  Spectra: {t_spectra:.2f}s ({nsims} sims)")
         print(f"  QML/sim: {t_spectra / nsims:.4f}s")
 
-        # Save Fisher matrix and spectra for consistency check
-        fisher_file = f"benchmark_mpi_fisher_{size}.npy"
-        spectra_file = f"benchmark_mpi_spectra_{size}.npy"
+        from _bench_utils import RESULTS_DIR, save_results
+
+        # Save Fisher matrix and spectra for consistency check (sit alongside JSON)
+        RESULTS_DIR.mkdir(exist_ok=True)
+        fisher_file = RESULTS_DIR / f"benchmark_mpi_fisher_{size}.npy"
+        spectra_file = RESULTS_DIR / f"benchmark_mpi_spectra_{size}.npy"
         np.save(fisher_file, fisher.fisher)
         power_spectra = spectra.get_power_spectra()
         np.save(spectra_file, power_spectra)
 
         # Compare against 1-rank reference if available
-        ref_fisher_file = "benchmark_mpi_fisher_1.npy"
-        ref_spectra_file = "benchmark_mpi_spectra_1.npy"
-        if size > 1 and os.path.exists(ref_fisher_file):
+        ref_fisher_file = RESULTS_DIR / "benchmark_mpi_fisher_1.npy"
+        ref_spectra_file = RESULTS_DIR / "benchmark_mpi_spectra_1.npy"
+        if size > 1 and ref_fisher_file.exists():
             ref_fisher = np.load(ref_fisher_file)
             ref_spectra = np.load(ref_spectra_file)
             fisher_diff = np.max(np.abs(fisher.fisher - ref_fisher))
@@ -214,14 +217,15 @@ def main():
             if spectra_rel > 1e-10:
                 print("  WARNING: Spectra differs beyond machine precision!")
 
-        # Append to results file
-        results_file = "benchmark_mpi_results.json"
-        if os.path.exists(results_file):
-            with open(results_file) as f:
-                results = json.load(f)
+        # Append to results: load existing JSON, replace this size's entry,
+        # rewrite with refreshed metadata.
+        results_path = RESULTS_DIR / "benchmark_mpi_results.json"
+        if results_path.exists():
+            with open(results_path) as f:
+                payload = json.load(f)
+            results = payload.get("results", {})
         else:
             results = {}
-
         results[str(size)] = {
             "n_ranks": size,
             "fisher_time": t_fisher,
@@ -231,10 +235,8 @@ def main():
             "nside": nside,
             "lmax": lmax,
         }
-
-        with open(results_file, "w") as f:
-            json.dump(results, f, indent=2)
-        print(f"  Results appended to {results_file}")
+        out_path = save_results("benchmark_mpi", results)
+        print(f"  Results appended to {out_path}")
 
         # Cleanup
         import shutil

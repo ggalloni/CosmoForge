@@ -142,24 +142,24 @@ def main():
     # Save results
     import json
 
-    output_file = f"benchmark_numba_{mode}.json"
+    from _bench_utils import RESULTS_DIR, save_results
+
     results = {
         "mode": mode,
         "legendre": leg_results,
         "signal_matrix": sig_results,
     }
-    with open(output_file, "w") as f:
-        json.dump(results, f, indent=2, default=str)
-    print(f"\nResults saved to {output_file}")
+    out_path = save_results(f"benchmark_numba_{mode}", results)
+    print(f"\nResults saved to {out_path}")
 
     # If both result files exist, print comparison
-    jit_file = "benchmark_numba_jit.json"
-    py_file = "benchmark_numba_pure_python.json"
-    if os.path.exists(jit_file) and os.path.exists(py_file):
-        with open(jit_file) as f:
-            jit = json.load(f)
-        with open(py_file) as f:
-            py = json.load(f)
+    jit_path = RESULTS_DIR / "benchmark_numba_jit_results.json"
+    py_path = RESULTS_DIR / "benchmark_numba_pure_python_results.json"
+    if jit_path.exists() and py_path.exists():
+        with open(jit_path) as f:
+            jit = json.load(f).get("results", {})
+        with open(py_path) as f:
+            py = json.load(f).get("results", {})
 
         print(f"\n{'=' * 50}")
         print(f"{'Function':<25} {'JIT':>10} {'Python':>10} {'Speedup':>10}")

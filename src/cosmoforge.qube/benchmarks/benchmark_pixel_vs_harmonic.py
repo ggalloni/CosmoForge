@@ -17,7 +17,6 @@ Methods:
 Usage: mpirun -n 1 uv run python -u benchmark_pixel_vs_harmonic.py
 """
 
-import json
 import os
 import tempfile
 import time
@@ -265,10 +264,10 @@ def main():
                         print(f"  FAILED: {e}")
                         results[run_label] = {"error": str(e)}
 
-    output_file = "benchmark_pixel_vs_harmonic_results.json"
-    with open(output_file, "w") as f:
-        json.dump(results, f, indent=2, default=str)
-    print(f"\nResults saved to {output_file}")
+    from _bench_utils import save_results
+
+    out_path = save_results("benchmark_pixel_vs_harmonic", results)
+    print(f"\nResults saved to {out_path}")
 
     print(f"\n{'=' * 78}")
     print(

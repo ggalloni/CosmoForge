@@ -8,7 +8,6 @@ Single MPI process, default BLAS threading.
 Usage: uv run python benchmark_scaling.py
 """
 
-import json
 import os
 import tempfile
 import time
@@ -282,10 +281,10 @@ def main():
                     results[run_label] = {"error": str(e)}
 
     # Save results
-    output_file = "benchmark_scaling_results.json"
-    with open(output_file, "w") as f:
-        json.dump(results, f, indent=2, default=str)
-    print(f"\nResults saved to {output_file}")
+    from _bench_utils import save_results
+
+    out_path = save_results("benchmark_scaling", results)
+    print(f"\nResults saved to {out_path}")
 
     # Print summary table
     print(f"\n{'=' * 70}")
