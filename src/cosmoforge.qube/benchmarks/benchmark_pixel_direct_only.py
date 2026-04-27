@@ -15,6 +15,11 @@ Memory & time hints (cluster, threaded BLAS, fsky=0.01):
   nside=256:   n_pix(QU) ~15728,  total cell ~ 0.5–1 hour
   nside=512:   n_pix(QU) ~62914,  total cell ~ several hours, 30+ GB RAM
 
+Inputs are written in *reduced* form (n_active × n_active) and consumed via
+``load_reduced=True``. This avoids the full 12*nside² × 12*nside² noise
+materialisation that would OOM at nside ≥ 128 (the full HEALPix-resolution
+matrix is 300+ GB for T at nside=128, even though the active block is tiny).
+
 Usage:
   uv run python -u benchmark_pixel_direct_only.py
   uv run python -u benchmark_pixel_direct_only.py --fsky 0.01 --nsides 16,32,64,128
@@ -58,6 +63,15 @@ def _polar_cap_mask(nside, n_fields, fsky):
 
 
 def generate_test_inputs(nside, lmax, spins, physical_labels, lmax_sim, fsky):
+    """Generate inputs for a benchmark cell.
+
+    Returns the *reduced* noise covariance (n_active × n_active) instead of
+    the full HEALPix-resolution one. At small fsky the full matrix is mostly
+    zero anyway and would OOM at nside ≥ 128 (e.g. T at nside=128 is a
+    300+ GB allocation). The reduced matrix is paired with the
+    ``load_reduced`` config flag so Core reads it via
+    ``read_covmat_reduced`` and never materialises the full version.
+    """
     npix = 12 * nside**2
     n_fields = len(physical_labels)
     mask = _polar_cap_mask(nside, n_fields, fsky)
@@ -88,7 +102,13 @@ def generate_test_inputs(nside, lmax, spins, physical_labels, lmax_sim, fsky):
     ell_arr = np.arange(lmax_sim + 1)
     sig_var_per_pix = np.sum((2 * ell_arr + 1) / (4 * np.pi) * cl_for_sigma * beam**2)
     sigma = float(np.sqrt(sig_var_per_pix))
-    cov = np.eye(n_fields * npix) * sigma**2
+
+    # Reduced noise covariance: only the n_active × n_active block.
+    # Layout matches Core's expectation: blocks per component, with spin-2
+    # components doubled (Q + U entries), concatenated in field order.
+    n_active_per_phys = [int(np.sum(mask[i] > 0)) for i in range(n_fields)]
+    n_pix_active = sum(2 * n if 2 in spins else n for n in n_active_per_phys)
+    cov_reduced = np.eye(n_pix_active, dtype=np.float64) * sigma**2
 
     nsims = 10
     field_index_map = {"T": 0, "Q": 1, "U": 2, "E": 1, "B": 2}
@@ -107,7 +127,7 @@ def generate_test_inputs(nside, lmax, spins, physical_labels, lmax_sim, fsky):
         for j, label in enumerate(physical_labels):
             sim_maps[j, :, i] = sim_tqu[field_index_map[label]]
 
-    return cov, mask, sim_maps, fwhm_arcmin
+    return cov_reduced, mask, sim_maps, fwhm_arcmin
 
 
 def write_temp_config(
@@ -144,6 +164,9 @@ def write_temp_config(
         "covmatfile1": cov_file,
         "covmatfile2": cov_file,
         "lmax": lmax,
+        # Read pre-reduced (n_active × n_active) covmat directly from disk;
+        # avoids materialising the full 12*nside^2 noise matrix in memory.
+        "load_reduced": True,
         "load_inverted": True,
         "calibration": 1.0,
         "smoothing_type": "gaussian",
