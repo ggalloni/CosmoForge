@@ -56,3 +56,6 @@ src/cosmoforge.qube/scripts/qml_vs_pcl_results.json
 /src/cosmoforge.qube/benchmarks/results
 /src/cosmoforge.qube/benchmarks/sims
 *.json
+
+# Local git worktrees
+.worktrees/
