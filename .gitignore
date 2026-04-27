@@ -48,3 +48,4 @@ run_*.py
 /src/cosmoforge.qube/benchmarks/sims/bench_T*
 /src/cosmoforge.qube/benchmarks/sims/bench_QU*
 /src/cosmoforge.qube/benchmarks/sims/bench_mpi*
+src/cosmoforge.qube/scripts/qml_vs_pcl_results.json
