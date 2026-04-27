@@ -8,7 +8,11 @@ this benchmark targets.
 
 Geometry: polar cap centred on the north pole, fsky ~ 0.1.
 Sweep: lmax in {8, 16, 24, 32, 48}, T-only and QU.
-Methods: harmonic and pixel (default epsilon=1e-6, noise_weighted).
+Methods:
+  - harmonic: V-based, full SMW pipeline
+  - pixel:    V-based eigenvalue truncation (default epsilon=1e-6, noise_weighted)
+  - auto:     factory picks harmonic when n_pix > n_modes, otherwise
+              pixel in direct mode (no V, full pixel-space ops)
 
 Usage: mpirun -n 1 uv run python -u benchmark_pixel_vs_harmonic.py
 """
@@ -190,7 +194,7 @@ FIELDS = [
     ("QU", [2], ["E", "B"], ["Q", "U"]),
 ]
 
-METHODS = ["harmonic", "pixel"]
+METHODS = ["harmonic", "pixel", "auto"]
 
 
 def main():
