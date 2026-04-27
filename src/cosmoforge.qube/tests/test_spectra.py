@@ -778,6 +778,44 @@ def test_qml_sparse_coo_matches_dense(fields, config_resolver):
     )
 
 
+def test_qml_sparse_coo_matches_dense_cross(config_resolver):
+    """Sparse-COO QML matches dense fallback for cross-correlation (do_cross=True)."""
+    config_file = config_resolver("tests/data/nside4/QU/cross_config.yaml")
+
+    try:
+        qml_sparse = Spectra(
+            config_file,
+            compression={"method": "harmonic", "epsilon": 1e-10},
+        )
+        qml_sparse.run()
+        assert qml_sparse._qml_path_used == "sparse", (
+            f"Expected sparse path by default, got {qml_sparse._qml_path_used}"
+        )
+        ps_sparse = qml_sparse.get_power_spectra()
+
+        qml_dense = Spectra(
+            config_file,
+            compression={"method": "harmonic", "epsilon": 1e-10},
+        )
+        qml_dense.run()
+        qml_dense.fisher_instance._cached_sparse_coo_data = None
+        qml_dense.compute_qml_spectra()
+        assert qml_dense._qml_path_used == "dense", (
+            f"Expected dense path when COO cache is None, got {qml_dense._qml_path_used}"
+        )
+        ps_dense = qml_dense.get_power_spectra()
+    finally:
+        os.unlink(config_file)
+
+    np.testing.assert_allclose(
+        ps_sparse,
+        ps_dense,
+        rtol=1e-10,
+        atol=0,
+        err_msg="Sparse vs dense cross-correlation QML mismatch",
+    )
+
+
 def test_binned_derivative_no_cache(local_path, config_resolver):
     """Exercise _get_binned_derivative when fisher cache is unavailable."""
     config_file = config_resolver("tests/data/nside4/T/config.yaml")
