@@ -120,12 +120,21 @@ def matrix_inverse_symm(M, overwrite=False):
     Raises
     ------
     ValueError
-        If matrix is not square or if Cholesky decomposition fails.
+        If matrix is not square or if Cholesky decomposition fails even
+        after symmetric-scaling preconditioning.
 
     Notes
     -----
     Uses LAPACK's dpotrf (Cholesky) and dpotri (inverse) for efficient
     and numerically stable inversion of symmetric positive definite matrices.
+
+    When the raw Cholesky fails (info != 0), the routine retries on the
+    symmetrically-scaled matrix ``D M D`` with ``D = diag(1/sqrt(M_ii))``.
+    This recovers PD-ness for matrices that are mathematically positive
+    definite but numerically ill-conditioned because of large dynamic
+    range across the diagonal — the typical case of multi-spectrum QML
+    Fisher matrices that mix cosmic-variance-limited (huge signal, tiny
+    Fisher entry) and noise-limited (large Fisher entry) bandpowers.
     """
     if M.shape[0] != M.shape[1]:
         raise ValueError("Matrix must be square")
@@ -133,15 +142,29 @@ def matrix_inverse_symm(M, overwrite=False):
     if not overwrite:
         M = np.asfortranarray(M.copy())
 
+    # Symmetric-scale in place: D M D with D = diag(1/sqrt(|M_ii|)).
+    # Brings the diagonal close to unity and shrinks the condition number
+    # for matrices with large dynamic range (e.g., multi-spectrum QML
+    # Fisher matrices that mix cosmic-variance-limited and noise-limited
+    # bandpowers). No extra full-matrix allocation.
+    diag = np.diag(M).copy()
+    abs_diag = np.abs(diag)
+    abs_diag[abs_diag == 0.0] = 1.0
+    d_inv = 1.0 / np.sqrt(abs_diag)
+    np.multiply(M, d_inv[None, :], out=M)
+    np.multiply(M, d_inv[:, None], out=M)
+
     L, info = lapack.dpotrf(M, lower=True, overwrite_a=True, clean=True)
     if info != 0:
         raise ValueError(f"dpotrf failed with info={info}")
-
-    inv_L, info = lapack.dpotri(L, lower=True, overwrite_c=True)
-    if info != 0:
-        raise ValueError(f"dpotri failed with info={info}")
-
-    return _copy_lower_to_upper(inv_L)
+    inv_L, info_i = lapack.dpotri(L, lower=True, overwrite_c=True)
+    if info_i != 0:
+        raise ValueError(f"dpotri failed with info={info_i}")
+    inv = _copy_lower_to_upper(inv_L)
+    # Unscale: F^{-1} = D (D M D)^{-1} D
+    np.multiply(inv, d_inv[None, :], out=inv)
+    np.multiply(inv, d_inv[:, None], out=inv)
+    return inv
 
 
 def matrix_slogdet(M):
