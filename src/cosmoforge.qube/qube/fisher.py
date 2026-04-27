@@ -351,8 +351,6 @@ class Fisher(Core, MPISharedMemoryMixin):
                         )
                     nz = np.nonzero(E_b_diag)[0]
                     sparse_coo_data[key] = (nz, nz, E_b_diag[nz])
-                    if self._cache_derivatives:
-                        binned_derivatives[key] = E_b_diag.copy()
                 else:
                     # Cross-spectrum (EB/TE/TB): sparse off-diagonal COO
                     all_rows = []
@@ -389,11 +387,6 @@ class Fisher(Core, MPISharedMemoryMixin):
                             np.array([], dtype=int),
                             np.array([], dtype=float),
                         )
-                    if self._cache_derivatives:
-                        dC_b = np.zeros((bm.n_kept, bm.n_kept), dtype=np.float64)
-                        r, c, v = sparse_coo_data[key]
-                        dC_b[r, c] = v
-                        binned_derivatives[key] = dC_b
         else:
             # Generic path: pixel basis or traditional pixel-space
             if use_basis:
@@ -426,10 +419,15 @@ class Fisher(Core, MPISharedMemoryMixin):
                     cinv_times_dcb[key] = matrix_mult(C_inv2, matrix_mult(dC_b, C_inv1))
 
         if self._cache_derivatives:
-            self._cached_binned_derivatives = binned_derivatives
-            # Sparse-COO cache lets Spectra exploit harmonic-basis derivative
-            # sparsity in QML — same trick as the Fisher trace path below.
-            self._cached_sparse_coo_data = sparse_coo_data if use_harmonic_fast else None
+            # Harmonic-fast caches only the COO triplets (Spectra consumes them
+            # directly); dense per-bin matrices would just bloat memory.
+            # Other paths cache the dense form they actually computed.
+            if use_harmonic_fast:
+                self._cached_binned_derivatives = None
+                self._cached_sparse_coo_data = sparse_coo_data
+            else:
+                self._cached_binned_derivatives = binned_derivatives
+                self._cached_sparse_coo_data = None
 
         if self.rank == 0:
             trace_path = "sparse-COO harmonic" if use_harmonic_fast else "dense matmul"
