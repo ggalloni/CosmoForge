@@ -513,14 +513,15 @@ class Core(ABC):
         if hasattr(self, "collection") and self.collection is not None:
             spins = [field.spin for field in self.collection.fields]
 
-        # SMW optimization (lswitch + S_fixed) is harmonic-only for now.
-        # Extending it to pixel basis requires careful handling of raw N vs
-        # N_eff = N + S_fixed in noise-bias computations — left as a follow-up.
+        # SMW optimization: absorb high-ℓ signal into effective noise.
+        # Both harmonic (V-based) and pixel (V-based) benefit — V is built
+        # only at the effective lmax. Pixel-direct mode does not use lswitch
+        # since it operates on full pixel-space matrices anyway.
         lswitch_low = None
         lswitch_high = None
         S_fixed = None
 
-        if use_smw_optimization and method in ("harmonic", "auto"):
+        if use_smw_optimization:
             config_lswitch_low = getattr(self.params, "lswitch_low", None)
             config_lswitch_high = getattr(self.params, "lswitch_high", None)
 
@@ -581,8 +582,7 @@ class Core(ABC):
                     # Restore original spectra (already smoothed - don't re-apply beam)
                     self.collection.spectra_manager._cls_dict = original_spectra_smoothed
 
-        # Pre-resolve method="auto" to know which path we're on. lswitch +
-        # S_fixed apply only to the harmonic path (for now).
+        # Pre-resolve method="auto" to know which path we're on.
         from .basis import _problem_dimensions
 
         n_pix, n_modes = _problem_dimensions(theta_arr, spins, basis_lmax, lswitch_high)
@@ -591,15 +591,17 @@ class Core(ABC):
         else:
             resolved_method = method
 
-        # Pixel basis: don't use lswitch/S_fixed (left as a follow-up).
-        if resolved_method == "pixel":
+        # Pixel-direct mode operates on full pixel-space matrices and doesn't
+        # need lswitch / S_fixed (the high-ℓ signal is naturally included via
+        # the pixel-space S construction).
+        is_pixel_direct = method == "auto" and resolved_method == "pixel"
+        if is_pixel_direct:
             lswitch_low = None
             lswitch_high = None
             S_fixed = None
 
-        # When SMW optimization defers N_eff inversion (harmonic with lswitch),
-        # N_inv is None and the basis computes it lazily from N + S_fixed.
-        # Otherwise compute it upfront.
+        # When SMW optimization defers N_eff inversion (the basis computes it
+        # lazily from N + S_fixed), N_inv is None upfront. Otherwise compute it.
         need_n_inv = lswitch_high is None or lswitch_high >= basis_lmax
         N_inv = matrix_inverse_symm(self.noise_cov1) if need_n_inv else None
 

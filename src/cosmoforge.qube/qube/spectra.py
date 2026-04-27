@@ -843,14 +843,14 @@ class Spectra(Core, MPISharedMemoryMixin):
                         kernel_inv=smw_kernel_inv,
                     )
             else:
-                # For pixel: use compressed quantities
+                # For pixel: use compressed quantities. Noise bias requires
+                # the raw N (not N_eff with absorbed high-ℓ signal), so use
+                # the dedicated get_compressed_noise() method.
                 if is_multi_field:
                     C_bar_inv = bm.get_compressed_inverse(C_ell_dict)
-                    zero_dict = {k: np.zeros_like(v) for k, v in C_ell_dict.items()}
-                    N_bar = bm.get_compressed_covariance(zero_dict)
                 else:
                     C_bar_inv = bm.get_compressed_inverse(C_ell)
-                    N_bar = bm.get_compressed_covariance(np.zeros_like(C_ell))
+                N_bar = bm.get_compressed_noise()
                 noise_cov_w = C_bar_inv @ N_bar @ C_bar_inv
 
         # Main computation loop - distribute bins across processes

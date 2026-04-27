@@ -127,6 +127,7 @@ class PixelBasis(ComputationBasis):
         mode_fraction: float | list[float | tuple[float, float]] | None = None,
         lswitch_low: int | None = None,
         lswitch_high: int | None = None,
+        S_fixed: np.ndarray | None = None,
         fields=None,
         use_direct: bool = False,
     ):
@@ -140,6 +141,7 @@ class PixelBasis(ComputationBasis):
             spins=spins,
             lswitch_low=lswitch_low,
             lswitch_high=lswitch_high,
+            S_fixed=S_fixed,
         )
         self._fields = fields
         self._use_direct = use_direct
@@ -540,8 +542,16 @@ class PixelBasis(ComputationBasis):
             self._setup_v_based()
 
     def _setup_v_based(self) -> None:
-        """V-based setup: build V, P_h, optionally apply compression."""
+        """V-based setup: build V, P_h, optionally apply compression.
+
+        When switch optimization is active (lswitch_high < lmax), absorbs
+        high-ℓ signal into N_eff and uses N_eff for compression matrix
+        construction. Raw N is preserved as ``self._N_original`` for
+        noise-bias computations downstream.
+        """
         self._build_basis()
+        if self._use_switch_optimization:
+            self._compute_effective_noise()
         self._P_h = matrix_mult(self._V.T, self._V)
         if self._epsilon is not None or self._mode_fraction is not None:
             self.apply_compression(
@@ -550,6 +560,47 @@ class PixelBasis(ComputationBasis):
                 basis=self._basis,
                 C_ell=self._C_ell_for_basis,
             )
+
+    def _compute_effective_noise(self) -> None:
+        """Absorb high-ℓ signal into N_eff (mirrors HarmonicBasis).
+
+        Replaces ``self._N`` and ``self.N_inv`` with N_eff = N + S_fixed and
+        its inverse. Saves the original N as ``self._N_original`` so
+        noise-bias computations can still access raw N.
+        """
+        if self._S_fixed is None:
+            raise ValueError(
+                "S_fixed must be provided when using switch optimization "
+                "(lswitch_high < lmax)"
+            )
+        S_fixed = np.asarray(self._S_fixed, dtype=np.float64)
+
+        N_eff = self._N + S_fixed
+        N_eff_inv = matrix_inverse_symm(np.asfortranarray(N_eff))
+
+        # Preserve raw N for noise-bias computations
+        self._N_original = self._N
+
+        # Replace N and N_inv with N_eff for compression / SMW operations
+        self._N = np.asfortranarray(N_eff)
+        self.N_inv = np.asfortranarray(N_eff_inv)
+
+    def get_compressed_noise(self) -> np.ndarray:
+        """U^T N_raw U — compressed *raw* noise covariance.
+
+        Use this for noise-bias computations: ``Tr[C^{-1} N C^{-1} dS]``
+        requires the actual noise N, not the effective N_eff that includes
+        the absorbed high-ℓ signal.
+
+        Without switch optimization, N_eff = N and this is identical to
+        ``get_compressed_covariance(0)``.
+        """
+        N_raw = getattr(self, "_N_original", self._N)
+        if self._eigenvectors is None:
+            return N_raw
+        U = self._eigenvectors
+        UN_raw_U = U.T @ N_raw @ U
+        return 0.5 * (UN_raw_U + UN_raw_U.T)
 
     def _setup_direct(self) -> None:
         """Direct pixel-space setup. No V operator, no harmonic machinery.

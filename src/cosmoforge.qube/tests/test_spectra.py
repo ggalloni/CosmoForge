@@ -271,6 +271,46 @@ def test_pixel_spectra_degradation(local_path, config_resolver):
             )
 
 
+def test_pixel_no_compression_matches_harmonic(local_path, config_resolver):
+    """Without compression, pixel basis (with lswitch) and harmonic basis
+    must agree to machine precision — they're the same exact estimator.
+
+    lswitch is an exact algebraic rearrangement (S = S_low + S_fixed → N_eff)
+    and an eigendecomposition of n_pix × n_pix that keeps all modes is just
+    a unitary basis change.
+    """
+    spectra_harmonic, noise_harmonic = _get_compressed_spectra(
+        "T",
+        config_resolver,
+        method="harmonic",
+        epsilon=1e-15,
+    )
+    # epsilon very tight so eigendecomposition keeps essentially all modes
+    spectra_pp, noise_pp = _get_compressed_spectra(
+        "T",
+        config_resolver,
+        method="pixel",
+        epsilon=1e-30,
+    )
+
+    assert spectra_pp.shape == spectra_harmonic.shape
+    np.testing.assert_allclose(
+        spectra_pp,
+        spectra_harmonic,
+        rtol=1e-6,
+        err_msg="Pixel (no compression) and harmonic spectra differ beyond "
+        "machine precision — lswitch handling is broken",
+    )
+    if noise_harmonic is not None and noise_pp is not None:
+        np.testing.assert_allclose(
+            noise_pp,
+            noise_harmonic,
+            rtol=1e-6,
+            err_msg="Pixel (no compression) and harmonic noise bias differ "
+            "beyond machine precision — N vs N_eff handling is broken",
+        )
+
+
 @pytest.mark.parametrize("fields", ["T", "QU"])
 def test_normalization_modes(fields, local_path, config_resolver):
     """Test the three normalization modes for QML power spectra."""
