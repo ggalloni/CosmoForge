@@ -53,6 +53,19 @@ from cosmocore import (
 _WEIGHT_ZERO_THRESHOLD = 1e-30  # Skip derivative terms with negligible weight
 
 
+def _basis_path_label(basis_manager) -> str:
+    """Human-readable label for the active computation-basis path."""
+    if basis_manager is None:
+        return "traditional"
+    if basis_manager.method == "pixel":
+        return (
+            "pixel-direct"
+            if getattr(basis_manager, "_use_direct", False)
+            else "pixel-truncated"
+        )
+    return "harmonic"
+
+
 class Fisher(Core, MPISharedMemoryMixin):
     """
     Fisher matrix computation for cosmological parameter estimation.
@@ -262,9 +275,11 @@ class Fisher(Core, MPISharedMemoryMixin):
         n_params = nspectra * nbins
 
         if self.rank == 0:
-            mode = "compressed" if use_basis else "traditional"
+            path_label = (
+                _basis_path_label(self.basis_manager) if use_basis else "traditional"
+            )
             self.log(
-                f"Starting Fisher computation ({mode}, "
+                f"Starting Fisher computation (path: {path_label}, "
                 f"{nspectra} spectra x {nbins} bins)",
                 level=2,
             )
@@ -414,10 +429,10 @@ class Fisher(Core, MPISharedMemoryMixin):
             self._cached_binned_derivatives = binned_derivatives
 
         if self.rank == 0:
-            path = "sparse" if use_harmonic_fast else "dense"
+            trace_path = "sparse-COO harmonic" if use_harmonic_fast else "dense matmul"
             self.log(
                 f"All {n_params} derivatives precomputed in "
-                f"{time.time() - deriv_start:.1f}s ({path})",
+                f"{time.time() - deriv_start:.1f}s (trace path: {trace_path})",
                 level=3,
             )
 
@@ -533,15 +548,22 @@ class Fisher(Core, MPISharedMemoryMixin):
                     if k in self._basis_config
                 }
                 self.setup_computation_basis(**kwargs)
+                bm = self.basis_manager
+                path_label = _basis_path_label(bm)
+                if bm.method == "harmonic":
+                    size_desc = f"{bm.n_kept} modes ({bm.compression_ratio:.1%} kept)"
+                else:
+                    size_desc = f"{bm.n_kept} pixels"
                 self.log(
-                    f"Computation basis enabled: {self.basis_manager.n_kept} modes "
-                    f"({self.basis_manager.compression_ratio:.1%})",
+                    f"Computation basis: {path_label} — {size_desc}",
                     level=2,
                 )
-                # Harmonic basis uses SMW formula internally — pixel-space
-                # signal matrix and covariance inversion are not needed.
+                # The basis manager handles covariance inversion internally
+                # (SMW for harmonic, direct/truncated solve for pixel), so the
+                # traditional explicit C = N+S build and inversion is skipped.
                 self.log(
-                    "Skipping pixel-space covariance preparation (harmonic basis)",
+                    f"Skipping explicit pixel-space C inversion "
+                    f"(handled by {path_label} basis)",
                     level=3,
                 )
             else:

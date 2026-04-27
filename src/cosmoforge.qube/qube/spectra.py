@@ -70,6 +70,7 @@ from cosmocore import (
 )
 from cosmocore.settings import InputParams
 from qube import Fisher
+from qube.fisher import _basis_path_label
 
 
 class Spectra(Core, MPISharedMemoryMixin):
@@ -737,7 +738,8 @@ class Spectra(Core, MPISharedMemoryMixin):
         Supports both single-field and multi-field configurations.
         """
         if self.rank == 0:
-            self.log("Starting QML computation (compressed)", level=2)
+            path_label = _basis_path_label(self.basis_manager)
+            self.log(f"Starting QML computation (path: {path_label})", level=2)
 
         start_time = time.time()
 
@@ -905,7 +907,8 @@ class Spectra(Core, MPISharedMemoryMixin):
         self.comm.Barrier()
 
         if self.rank == 0:
-            self.log("QML computation done (compressed)", level=2)
+            path_label = _basis_path_label(self.basis_manager)
+            self.log(f"QML computation done (path: {path_label})", level=2)
             self.log(
                 f"QML computation time: {time.time() - start_time:.2f} seconds", level=3
             )
@@ -924,7 +927,7 @@ class Spectra(Core, MPISharedMemoryMixin):
                 = (1/2) * y^T @ dC_b @ y   where y = C^{-1} @ d
         """
         if self.rank == 0:
-            self.log("Starting QML computation (traditional, optimized)", level=2)
+            self.log("Starting QML computation (path: traditional)", level=2)
 
         start_time = time.time()
 
@@ -969,7 +972,7 @@ class Spectra(Core, MPISharedMemoryMixin):
         self.comm.Barrier()
 
         if self.rank == 0:
-            self.log("QML computation done (traditional)", level=2)
+            self.log("QML computation done (path: traditional)", level=2)
             self.log(
                 f"QML computation time: {time.time() - start_time:.2f} seconds",
                 level=3,
