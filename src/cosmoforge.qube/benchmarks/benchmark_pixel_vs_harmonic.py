@@ -47,9 +47,6 @@ def _polar_cap_mask(nside, n_fields, fsky):
 def generate_test_inputs(nside, lmax, spins, physical_labels, lmax_sim, fsky):
     npix = 12 * nside**2
     n_fields = len(physical_labels)
-
-    sigma = 1.5
-    cov = np.eye(n_fields * npix) * sigma**2
     mask = _polar_cap_mask(nside, n_fields, fsky)
 
     raw_cls = np.loadtxt("sims/tau0.06_dls_r_likelihood_r0.0.txt")
@@ -70,9 +67,20 @@ def generate_test_inputs(nside, lmax, spins, physical_labels, lmax_sim, fsky):
             cl_bb[ell_val] = raw_cls[i, 3] * dl2cl[i]
             cl_te[ell_val] = raw_cls[i, 4] * dl2cl[i]
 
-    fwhm_arcmin = _gaussian_fwhm_for_lmax(lmax)
+    # Use a beam fixed to the simulation lmax so the same input maps work
+    # across the entire sweep — only the analysis cutoff (params.lmax) varies.
+    fwhm_arcmin = _gaussian_fwhm_for_lmax(lmax_sim)
     fwhm_rad = np.radians(fwhm_arcmin / 60.0)
     beam = hp.gauss_beam(fwhm_rad, lmax=lmax_sim)
+
+    # Set noise so C = N + S is uniformly well-conditioned across the sweep.
+    # Signal pixel-variance ~ sum_ell (2l+1)/(4pi) * Cl * b^2; pick sigma at
+    # ~10% of that so the condition number stays around 10.
+    cl_for_sigma = cl_ee if 2 in spins else cl_tt
+    ell_arr = np.arange(lmax_sim + 1)
+    sig_var_per_pix = np.sum((2 * ell_arr + 1) / (4 * np.pi) * cl_for_sigma * beam**2)
+    sigma = float(np.sqrt(0.1 * sig_var_per_pix))
+    cov = np.eye(n_fields * npix) * sigma**2
 
     nsims = 10
     field_index_map = {"T": 0, "Q": 1, "U": 2, "E": 1, "B": 2}
