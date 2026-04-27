@@ -160,14 +160,30 @@ class HarmonicBasis(ComputationBasis):
         - N_eff = N + S_fixed is used instead of N
         This dramatically reduces the SMW dimension.
         """
+        import time as _time
+
         # Build harmonic operator, ell-mode mapping, and derivative diagonals
+        _t0 = _time.time()
         self._build_basis()
+        _t_basis = _time.time() - _t0
 
         # Compute effective noise matrix when switch optimization is enabled
+        _t_eff = 0.0
         if self._use_switch_optimization:
+            _t0 = _time.time()
             self._compute_effective_noise()
+            _t_eff = _time.time() - _t0
 
+        _t0 = _time.time()
         self._compute_smw_components()
+        _t_smw = _time.time() - _t0
+
+        from ..logger import get_logger
+
+        logger = get_logger("basis", feedback_level=4)
+        logger.debug(
+            f"Basis setup: V={_t_basis:.2f}s, eff_noise={_t_eff:.2f}s, SMW={_t_smw:.2f}s"
+        )
 
         if self._compress:
             self._compute_mblock_smw_components()
@@ -206,11 +222,13 @@ class HarmonicBasis(ComputationBasis):
 
         # Compute effective noise and its inverse
         self._N_eff = self._N + S_fixed
-        self._N_eff_inv = matrix_inverse_symm(self._N_eff)
+        self._N_eff_inv = matrix_inverse_symm(np.asfortranarray(self._N_eff))
+
+        # Preserve original N before overwriting self._N with N_eff;
+        # the compressed noise-cov path needs the full pre-switch N.
+        self._N_original = self._N
 
         # Replace N and N_inv with N_eff for SMW computations
-        self._N_original = self._N
-        self._N_inv_original = self.N_inv
         self._N = np.asfortranarray(self._N_eff)
         self.N_inv = np.asfortranarray(self._N_eff_inv)
 
@@ -282,6 +300,16 @@ class HarmonicBasis(ComputationBasis):
         # V @ N @ V^T
         self._V_N_VT = matrix_mult(matrix_mult(self._V, self._N), self._V.T)
         self._V_N_VT = 0.5 * (self._V_N_VT + self._V_N_VT.T)
+
+        # T = V N_eff^{-1} N_orig N_eff^{-1} V^T (n_modes x n_modes).
+        # Used by Spectra._compute_noise_cov_compressed: Cov(w|noise) =
+        # A T A^T with A = I - M K^{-1}. Without switch optimization
+        # N_eff = N_orig and T reduces to V_Ninv_VT (alias, no work).
+        if hasattr(self, "_N_original"):
+            T = matrix_mult(matrix_mult(self._V_N_inv, self._N_original), self._V_N_inv.T)
+            self._noise_cov_T = 0.5 * (T + T.T)
+        else:
+            self._noise_cov_T = self._V_Ninv_VT
 
         # log|N| = -log|N^{-1}|
         _, logdet_N_inv = matrix_slogdet_symm(self.N_inv)

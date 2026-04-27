@@ -579,11 +579,15 @@ class Core(ABC):
                     # Restore original spectra (already smoothed - don't re-apply beam)
                     self.collection.spectra_manager._cls_dict = original_spectra_smoothed
 
-        # Create computation basis
+        # Create computation basis.
+        # When switch optimization is active, N_inv is not needed upfront —
+        # _compute_effective_noise() will invert N_eff = N + S_fixed instead.
+        # This skips an expensive O(n_pix³) Cholesky that would be discarded.
+        need_n_inv = lswitch_high is None or lswitch_high >= basis_lmax
         self.basis_manager = create_computation_basis(
             method=method,
             N=self.noise_cov1,
-            N_inv=matrix_inverse_symm(self.noise_cov1),
+            N_inv=matrix_inverse_symm(self.noise_cov1) if need_n_inv else None,
             theta=theta_arr,
             phi=phi_arr,
             lmax=basis_lmax,
@@ -737,16 +741,16 @@ class Core(ABC):
         mode: int = 0,
     ) -> np.ndarray:
         """
-        Compute binned derivative dC^b = Sum_ell w_{b,ell} b²_ell dC^ell,
+        Compute binned derivative dC^b = Sum_{ell in bin} b²_ell dC^ell,
 
-        where w_{b,ell} are the binning weights from Bins._bin_operators(),
-        b²_ell is the beam smoothing factor, and dC^ell = dC/dC_ell is
-        the per-multipole derivative matrix.
+        where the sum runs over ℓ in the bin with unit weight, b²_ell
+        is the beam smoothing factor, and dC^ell = dC/dC_ell is the
+        per-multipole derivative matrix.
 
         When beam_smoothing is provided, beam window functions are
-        absorbed into the binning weights so that the resulting Fisher
-        matrix is in beam-smoothed space. Without it, the derivative
-        is just the weighted sum dC^b = Sum_ell w_{b,ell} dC^ell.
+        applied per-ℓ so that the resulting Fisher matrix is in
+        beam-smoothed space. Without it, the derivative is just the
+        unweighted sum dC^b = Sum_{ell in bin} dC^ell.
 
         Parameters
         ----------
@@ -763,7 +767,6 @@ class Core(ABC):
         mode : int
             Spin mode (0=TT/EE/TE, 1=BB/TB, 2=EB).
         """
-        w_matrix, _ = self.bins._bin_operators()
         lmin_b = self.bins.lmins[bin_idx]
         lmax_b = self.bins.lmaxs[bin_idx]
         dC_b = None
@@ -775,9 +778,9 @@ class Core(ABC):
                 comp_j=comp_j,
                 mode=mode,
             )
-            weight = w_matrix[bin_idx, ell]
+            weight = 1.0
             if beam_smoothing is not None:
-                weight *= beam_smoothing[ell - 2]
+                weight = beam_smoothing[ell - 2]
             if dC_b is None:
                 dC_b = weight * dC_ell
             else:

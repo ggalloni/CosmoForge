@@ -726,3 +726,107 @@ class TestHarmonicDictOperations:
         w_arr = hc.get_weighted_compressed_data(data, C_ell_arr)
         w_dict = hc.get_weighted_compressed_data(data, C_ell_dict)
         assert_allclose(w_arr, w_dict, rtol=1e-10)
+
+
+class TestNoiseCovWithNonDiagonalN:
+    """Cov(w|noise) must be correct when N has off-diagonal structure."""
+
+    def _build_basis(self, N, lmax=8):
+        from cosmocore.basics import matrix_inverse_symm
+        from cosmocore.basis import HarmonicBasis
+
+        n_pix = N.shape[0]
+        rng = np.random.default_rng(7)
+        theta = rng.uniform(0, np.pi, n_pix)
+        phi = rng.uniform(0, 2 * np.pi, n_pix)
+        N_inv = matrix_inverse_symm(np.asfortranarray(N))
+        hc = HarmonicBasis(N=N, N_inv=N_inv, theta=theta, phi=phi, lmax=lmax)
+        hc.setup()
+        return hc
+
+    def _direct_noise_cov(self, hc, kernel_inv):
+        # Reference: V_Cinv N V_Cinv^T using full pixel-space matmuls.
+        n = kernel_inv.shape[0]
+        V_Cinv = (np.eye(n) - hc._V_Ninv_VT @ kernel_inv) @ hc._V_N_inv
+        N_orig = getattr(hc, "_N_original", hc._N)
+        return V_Cinv @ N_orig @ V_Cinv.T
+
+    def _compressed_noise_cov(self, hc, kernel_inv):
+        # Compressed: A T A^T (the path used in production).
+        n = kernel_inv.shape[0]
+        A = np.eye(n) - hc._V_Ninv_VT @ kernel_inv
+        return A @ hc._noise_cov_T @ A.T
+
+    def _make_kernel_inv(self, hc, C_ell):
+        from cosmocore.basics import matrix_inverse_symm, smw_kernel
+
+        Lambda_diag = hc._build_lambda_diagonal(C_ell)
+        K = smw_kernel(hc._V_Ninv_VT, Lambda_diag)
+        return matrix_inverse_symm(np.asfortranarray(K))
+
+    def _random_psd(self, n_pix, off_scale, seed):
+        rng = np.random.default_rng(seed)
+        diag = rng.uniform(0.5, 1.5, n_pix)
+        offdiag = off_scale * rng.standard_normal((n_pix, n_pix))
+        N = np.diag(diag) + 0.5 * (offdiag + offdiag.T)
+        # Ensure positive-definiteness by shifting eigenvalues if needed.
+        eigvals = np.linalg.eigvalsh(N)
+        if eigvals.min() <= 0:
+            N += (abs(eigvals.min()) + 0.1) * np.eye(n_pix)
+        return N
+
+    def test_diagonal_n_matches_reference(self):
+        n_pix = 60
+        rng = np.random.default_rng(1)
+        N = np.diag(rng.uniform(0.5, 1.5, n_pix))
+        hc = self._build_basis(N)
+        C_ell = np.full(hc.lmax - 1, 0.05)
+        kernel_inv = self._make_kernel_inv(hc, C_ell)
+        ref = self._direct_noise_cov(hc, kernel_inv)
+        got = self._compressed_noise_cov(hc, kernel_inv)
+        assert_allclose(got, ref, rtol=1e-10, atol=1e-12)
+
+    def test_nondiagonal_n_matches_reference(self):
+        n_pix = 60
+        N = self._random_psd(n_pix, off_scale=0.05, seed=2)
+        # Sanity: N is genuinely non-diagonal
+        assert np.max(np.abs(N - np.diag(np.diag(N)))) > 1e-3
+        hc = self._build_basis(N)
+        C_ell = np.full(hc.lmax - 1, 0.05)
+        kernel_inv = self._make_kernel_inv(hc, C_ell)
+        ref = self._direct_noise_cov(hc, kernel_inv)
+        got = self._compressed_noise_cov(hc, kernel_inv)
+        assert_allclose(got, ref, rtol=1e-10, atol=1e-12)
+
+    def test_nondiagonal_n_with_switch_optimization(self):
+        from cosmocore.basics import matrix_inverse_symm
+        from cosmocore.basis import HarmonicBasis
+
+        n_pix = 60
+        lmax = 10
+        N = self._random_psd(n_pix, off_scale=0.05, seed=3)
+
+        rng = np.random.default_rng(4)
+        theta = rng.uniform(0, np.pi, n_pix)
+        phi = rng.uniform(0, 2 * np.pi, n_pix)
+        fiducial_C_ell = np.full(lmax - 1, 0.05)
+
+        # Switch optimization active: N_eff = N + S_fixed for ℓ > lswitch_high.
+        hc = HarmonicBasis(
+            N=N,
+            N_inv=matrix_inverse_symm(np.asfortranarray(N)),
+            theta=theta,
+            phi=phi,
+            lmax=lmax,
+            lswitch_low=2,
+            lswitch_high=6,
+            fiducial_C_ell=fiducial_C_ell,
+        )
+        hc.setup()
+        assert hasattr(hc, "_N_original")  # switch must be active
+
+        C_ell = fiducial_C_ell.copy()
+        kernel_inv = self._make_kernel_inv(hc, C_ell)
+        ref = self._direct_noise_cov(hc, kernel_inv)
+        got = self._compressed_noise_cov(hc, kernel_inv)
+        assert_allclose(got, ref, rtol=1e-10, atol=1e-12)

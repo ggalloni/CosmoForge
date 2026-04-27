@@ -64,6 +64,7 @@ from scipy.linalg import cho_solve
 from cosmocore import (
     Core,
     FieldCollection,
+    MPISharedMemoryMixin,
     compute_signal_matrix,
     matrix_inverse_symm,
     read_maps,
@@ -73,7 +74,7 @@ from .likelihood_result import LikelihoodResult
 from .parameter_grid import ParameterGrid
 
 
-class PICSLike(Core):
+class PICSLike(Core, MPISharedMemoryMixin):
     """
     Pixel-based likelihood computation for cosmological parameter inference.
 
@@ -369,43 +370,33 @@ class PICSLike(Core):
             total_points = self.parameter_grid.get_total_points()
             self.log(f"Parameter grid contains {total_points} points", level=2)
 
-    def _bcast_array(self, arr: np.ndarray | None) -> np.ndarray:
-        """
-        Broadcast a numpy array using buffer-based MPI.
-
-        Uses ``comm.Bcast`` (uppercase) which sends raw memory buffers
-        instead of ``comm.bcast`` (lowercase) which serializes via the
-        standard library.  This avoids the ~2 GB message-size limit
-        that affects serialization-based broadcasts in many MPI
-        implementations.
-        """
-        shape = self.comm.bcast(arr.shape if self.rank == 0 else None, root=0)
-        dtype = self.comm.bcast(arr.dtype if self.rank == 0 else None, root=0)
-        if self.rank != 0:
-            arr = np.empty(shape, dtype=dtype)
-        self.comm.Bcast(arr, root=0)
-        return arr
-
     def _broadcast_variables(self):
         """Broadcast essential data from master to all MPI worker processes."""
-        # Broadcast Python objects (small, serialization is fine)
+        # Python objects (small, serialization is fine)
         self.params = self.comm.bcast(self.params if self.rank == 0 else None, root=0)
         self.collection: FieldCollection = self.comm.bcast(
             self.collection if self.rank == 0 else None, root=0
         )
-
-        # Broadcast numpy arrays using buffer-based MPI (handles >2 GB)
-        self.npixs = self._bcast_array(self.npixs)
+        self.npixs = self.comm.bcast(self.npixs if self.rank == 0 else None, root=0)
         self.pixact = self.comm.bcast(self.pixact if self.rank == 0 else None, root=0)
-        self.point_vectors = self._bcast_array(self.point_vectors)
 
-        # Covariance matrices (can be very large at high nside)
-        self.noise_cov1 = self._bcast_array(self.noise_cov1)
-
-        # Maps (can be large: n_pix × n_sims)
-        self.maps1 = self._bcast_array(self.maps1)
+        # Numpy arrays via shared memory (zero-copy, no size limits).
+        # Worker ranks may not have these attributes yet, so use getattr.
+        point_vectors = getattr(self, "point_vectors", None)
+        n_point_vectors = self.comm.bcast(
+            len(point_vectors) if self.rank == 0 and point_vectors is not None else 0,
+            root=0,
+        )
+        self.point_vectors = tuple(
+            self._shared_array(
+                point_vectors[i] if self.rank == 0 and point_vectors is not None else None
+            )
+            for i in range(n_point_vectors)
+        )
+        self.noise_cov1 = self._shared_array(getattr(self, "noise_cov1", None))
+        self.maps1 = self._shared_array(getattr(self, "maps1", None))
         if self.params.do_cross:
-            self.maps2 = self._bcast_array(self.maps2)
+            self.maps2 = self._shared_array(getattr(self, "maps2", None))
 
     def compute(self) -> None:
         """

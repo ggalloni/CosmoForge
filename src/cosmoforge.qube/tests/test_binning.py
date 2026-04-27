@@ -127,25 +127,27 @@ class TestLinearityPixelSpace:
 
         return _get_cached("binned_fisher_T", runner)
 
-    def _make_P_ell(self, bins, n_ell):
-        """Build (nbins, n_ell) binning matrix mapping Fisher ell indices to bins."""
-        P_full, _ = bins._bin_operators()
-        # P_full is (nbins, bins.lmax+1). Fisher indices: 0..n_ell-1 = ells 2..lmax.
-        # Pad P to cover full Fisher range if bins don't span all ells.
-        n_ell_P = P_full.shape[1] - 2  # columns for ell>=2
-        P_ell = np.zeros((bins.nbins, n_ell))
-        P_ell[:, :n_ell_P] = P_full[:, 2:]
-        return P_ell
+    def _make_Q_ell(self, bins, n_ell):
+        """Build (nbins, n_ell) sum matrix mapping Fisher ell indices to bins.
+
+        Unlike the bin-averaging operator P (weight 1/dl), Q uses weight 1
+        so that QML derivatives are summed, not averaged. This ensures
+        F^{-1} q returns the bin-averaged spectrum without a spurious dl factor.
+        """
+        Q = np.zeros((bins.nbins, n_ell))
+        for b, (a, z) in enumerate(zip(bins.lmins, bins.lmaxs)):
+            Q[b, a - 2 : z - 2 + 1] = 1.0
+        return Q
 
     def test_fisher_linearity(self, unbinned_fisher, binned_fisher, bins):
-        """F_binned == P @ F_unbinned @ P^T (exact by linearity of trace)."""
+        """F_binned == Q @ F_unbinned @ Q^T (exact by linearity of trace)."""
         F_unbinned = unbinned_fisher["fisher"]
         F_binned = binned_fisher["fisher"]
 
         n_ell = F_unbinned.shape[0]
-        P_ell = self._make_P_ell(bins, n_ell)
+        Q_ell = self._make_Q_ell(bins, n_ell)
 
-        F_posthoc = P_ell @ F_unbinned @ P_ell.T
+        F_posthoc = Q_ell @ F_unbinned @ Q_ell.T
 
         np.testing.assert_allclose(
             F_binned,
@@ -171,7 +173,7 @@ class TestLinearityPixelSpace:
         assert np.all(eigvals > 0), f"Negative eigenvalue: {eigvals.min()}"
 
     def test_qml_linearity(self, config_resolver, bins):
-        """q_binned == P @ q_unbinned (exact by linearity)."""
+        """q_binned == Q @ q_unbinned (exact by linearity)."""
         # Unbinned spectra
         f_unb = _run_fisher_with_bins("T", config_resolver)
         s_unb = _run_spectra_with_bins("T", config_resolver, fisher=f_unb)
@@ -183,9 +185,9 @@ class TestLinearityPixelSpace:
         q_binned = s_bin.qml_results  # (nsims, nbins)
 
         n_ell = q_unbinned.shape[1]
-        P_ell = self._make_P_ell(bins, n_ell)
+        Q_ell = self._make_Q_ell(bins, n_ell)
 
-        q_posthoc = q_unbinned @ P_ell.T  # (nsims, nbins)
+        q_posthoc = q_unbinned @ Q_ell.T  # (nsims, nbins)
 
         np.testing.assert_allclose(
             q_binned,
@@ -219,15 +221,14 @@ class TestLinearityCompressed:
     def compression(self):
         return {"method": "harmonic"}
 
-    def _make_P_ell(self, bins, n_ell):
-        P_full, _ = bins._bin_operators()
-        n_ell_P = P_full.shape[1] - 2
-        P_ell = np.zeros((bins.nbins, n_ell))
-        P_ell[:, :n_ell_P] = P_full[:, 2:]
-        return P_ell
+    def _make_Q_ell(self, bins, n_ell):
+        Q = np.zeros((bins.nbins, n_ell))
+        for b, (a, z) in enumerate(zip(bins.lmins, bins.lmaxs)):
+            Q[b, a - 2 : z - 2 + 1] = 1.0
+        return Q
 
     def test_fisher_linearity_compressed(self, config_resolver, bins, compression):
-        """Compressed: F_binned == P @ F_unbinned @ P^T."""
+        """Compressed: F_binned == Q @ F_unbinned @ Q^T."""
         f_unb = _run_fisher_with_bins("T", config_resolver, compression=compression)
         F_unbinned = f_unb.get_fisher_matrix()
 
@@ -237,8 +238,8 @@ class TestLinearityCompressed:
         F_binned = f_bin.get_fisher_matrix()
 
         n_ell = F_unbinned.shape[0]
-        P_ell = self._make_P_ell(bins, n_ell)
-        F_posthoc = P_ell @ F_unbinned @ P_ell.T
+        Q_ell = self._make_Q_ell(bins, n_ell)
+        F_posthoc = Q_ell @ F_unbinned @ Q_ell.T
 
         np.testing.assert_allclose(
             F_binned,
@@ -248,7 +249,7 @@ class TestLinearityCompressed:
         )
 
     def test_qml_linearity_compressed(self, config_resolver, bins, compression):
-        """Compressed: q_binned == P @ q_unbinned."""
+        """Compressed: q_binned == Q @ q_unbinned."""
         f_unb = _run_fisher_with_bins("T", config_resolver, compression=compression)
         s_unb = _run_spectra_with_bins(
             "T", config_resolver, compression=compression, fisher=f_unb
@@ -264,8 +265,8 @@ class TestLinearityCompressed:
         q_binned = s_bin.qml_results
 
         n_ell = q_unbinned.shape[1]
-        P_ell = self._make_P_ell(bins, n_ell)
-        q_posthoc = q_unbinned @ P_ell.T
+        Q_ell = self._make_Q_ell(bins, n_ell)
+        q_posthoc = q_unbinned @ Q_ell.T
 
         np.testing.assert_allclose(
             q_binned,
@@ -412,6 +413,80 @@ class TestNormalizationModesBinned:
         assert errors.shape == (bins.nbins,)
         assert np.all(np.isfinite(errors))
         assert np.all(errors > 0)
+
+
+# =============================================================================
+# Bandpower window function (for parameter inference)
+# =============================================================================
+
+
+class TestBandpowerWindow:
+    """Bin-to-ell bandpower window for binned QML inference."""
+
+    @pytest.fixture
+    def setup(self, config_resolver):
+        bins = Bins.fromdeltal(2, 8, 2)
+        f = _run_fisher_with_bins("T", config_resolver, bins=bins)
+        s = _run_spectra_with_bins("T", config_resolver, bins=bins, fisher=f)
+        return f, s, bins
+
+    def test_window_shape(self, setup):
+        f, _, bins = setup
+        W = f.get_bandpower_window_function()
+        n_ell = f.params.lmax - 1
+        assert W.shape == (bins.nbins, n_ell)
+
+    def test_window_consistency_with_perell_fisher(self, setup):
+        """W = F_b^-1 @ Q @ F_perell."""
+        f, _, bins = setup
+        W = f.get_bandpower_window_function()
+        F_b = f.get_fisher_matrix()
+        F_pe = f._compute_per_ell_fisher()
+        n_ell = f.params.lmax - 1
+        Q = np.zeros((bins.nbins, n_ell))
+        for b, (lo, hi) in enumerate(zip(bins.lmins, bins.lmaxs)):
+            Q[b, lo - 2 : hi - 2 + 1] = 1.0
+        W_expected = np.linalg.solve(F_b, Q @ F_pe)
+        np.testing.assert_allclose(W, W_expected, rtol=1e-10)
+
+    def test_window_cached(self, setup):
+        """Second call returns the same matrix without recomputation."""
+        f, _, _ = setup
+        W1 = f.get_bandpower_window_function()
+        W2 = f.get_bandpower_window_function()
+        assert W1 is W2
+
+    def test_convolve_theory_matches_window_product(self, setup):
+        """convolve_theory_for_inference applies the window correctly."""
+        f, s, _ = setup
+        W = f.get_bandpower_window_function()
+        cl_test = 1.0 / (np.arange(2, f.params.lmax + 1) ** 2)
+        mu = s.convolve_theory_for_inference(cl_test)
+        np.testing.assert_allclose(mu, W @ cl_test, rtol=1e-12)
+
+    def test_convolve_theory_input_formats(self, setup):
+        """Both ell=2..lmax and ell=0..lmax input formats give same result."""
+        _, s, _ = setup
+        cl_short = np.arange(2.0, s.params.lmax + 1) ** -2
+        cl_full = np.zeros(s.params.lmax + 1)
+        cl_full[2:] = cl_short
+        mu_short = s.convolve_theory_for_inference(cl_short)
+        mu_full = s.convolve_theory_for_inference(cl_full)
+        np.testing.assert_allclose(mu_short, mu_full, rtol=1e-12)
+
+    def test_convolve_theory_invalid_length_raises(self, setup):
+        """Wrong length raises ValueError."""
+        _, s, _ = setup
+        with pytest.raises(ValueError, match="length"):
+            s.convolve_theory_for_inference(np.ones(3))
+
+    def test_window_default_delta_ell_one_is_identity(self, config_resolver):
+        """Without explicit binning (delta_ell=1 default) W is identity."""
+        f = _run_fisher_with_bins("T", config_resolver)
+        W = f.get_bandpower_window_function()
+        n_ell = f.params.lmax - 1
+        assert W.shape == (n_ell, n_ell)
+        np.testing.assert_allclose(W, np.eye(n_ell), atol=1e-10)
 
 
 # =============================================================================

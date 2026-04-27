@@ -58,6 +58,7 @@ from mpi4py import MPI
 from cosmocore import (
     Bins,
     Core,
+    MPISharedMemoryMixin,
     do_derivative_step,
     matrix_inverse_symm,
     matrix_mult,
@@ -71,7 +72,7 @@ from cosmocore.settings import InputParams
 from qube import Fisher
 
 
-class Spectra(Core):
+class Spectra(Core, MPISharedMemoryMixin):
     """
     Quadratic Maximum Likelihood (QML) power spectrum estimator.
 
@@ -285,7 +286,10 @@ class Spectra(Core):
         if not hasattr(self, "basis_manager"):
             self.basis_manager = None
 
-        self._load_covariance_matrices()
+        # Harmonic basis uses SMW formula — pixel-space covariance matrices
+        # (inv_cov, noise_cov) are not needed for the compressed QML path.
+        if self.basis_manager is None:
+            self._load_covariance_matrices()
 
     def _load_covariance_matrices(self):
         """Load noise and inverted covariance matrices from disk files."""
@@ -597,10 +601,12 @@ class Spectra(Core):
         self, bin_idx: int, spectrum_idx: int = 0, spectra_list=None
     ) -> np.ndarray:
         """
-        Compute binned derivative dC^b = Sum_ell w_{b,ell} b²_ell dC^ell.
+        Compute binned derivative dC^b = Sum_{ell in bin} b²_ell dC^ell.
 
-        If a Fisher instance with cached derivatives is available, returns
-        the cached result directly, avoiding expensive recomputation.
+        The sum runs over the multipoles in the bin with unit weight;
+        b²_ell is the per-ℓ beam smoothing factor. If a Fisher instance
+        with cached derivatives is available, returns the cached result
+        directly, avoiding expensive recomputation.
 
         Parameters
         ----------
@@ -626,7 +632,6 @@ class Spectra(Core):
 
         use_basis = hasattr(self, "basis_manager") and self.basis_manager is not None
 
-        w_matrix, _ = self.bins._bin_operators()
         lmin_b = self.bins.lmins[bin_idx]
         lmax_b = self.bins.lmaxs[bin_idx]
         n_ell = self.params.lmax - 1
@@ -634,7 +639,7 @@ class Spectra(Core):
         dC_b = None
 
         for ell in range(lmin_b, lmax_b + 1):
-            weight = w_matrix[bin_idx, ell] * self.beam_smoothing[beam_offset + ell - 2]
+            weight = self.beam_smoothing[beam_offset + ell - 2]
 
             if use_basis:
                 bm = self.basis_manager
@@ -695,21 +700,16 @@ class Spectra(Core):
                 K = smw_kernel(bm._V_Ninv_VT, Lambda_diag)
             kernel_inv = matrix_inverse_symm(np.asfortranarray(K))
 
-        # V_Cinv = (I - M K^{-1}) V N^{-1}
-        M_kernel_inv = bm._V_Ninv_VT @ kernel_inv
+        # Cov(w|noise) = V C^{-1} N C^{-1} V^T reduces by SMW algebra to
+        # A T A^T with A = I - M K^{-1} and T = V N_eff^{-1} N N_eff^{-1} V^T,
+        # both n_modes x n_modes. T is precomputed by the basis manager
+        # (= V_Ninv_VT when switch optimization is inactive).
         n = kernel_inv.shape[0]
-        V_Cinv = (np.eye(n) - M_kernel_inv) @ bm._V_N_inv
-
-        # Cov(w|noise) = V_Cinv N V_Cinv^T = W W^T where W = V_Cinv sqrt(N)
-        if hasattr(bm, "_N_inv_original"):
-            noise_var = 1.0 / np.diag(bm._N_inv_original)
-        else:
-            noise_var = 1.0 / np.diag(bm.N_inv)
-        W = V_Cinv * np.sqrt(noise_var)[np.newaxis, :]
-
+        A = np.eye(n) - bm._V_Ninv_VT @ kernel_inv
+        AT = A @ bm._noise_cov_T
         if full_matrix:
-            return W @ W.T
-        return np.sum(W**2, axis=1)
+            return AT @ A.T
+        return np.einsum("ij,ij->i", AT, A)
 
     def _compute_qml_spectra_compressed(self):
         """
@@ -1069,54 +1069,53 @@ class Spectra(Core):
         # Finalize
         self.comm.Barrier()
 
-    def _bcast_array(self, arr: np.ndarray | None) -> np.ndarray:
-        """
-        Broadcast a numpy array using buffer-based MPI.
-
-        Uses ``comm.Bcast`` (uppercase) which sends raw memory buffers
-        instead of ``comm.bcast`` (lowercase) which serializes via the
-        standard library.  This avoids the ~2 GB message-size limit
-        that affects serialization-based broadcasts in many MPI
-        implementations.
-        """
-        shape = self.comm.bcast(arr.shape if self.rank == 0 else None, root=0)
-        dtype = self.comm.bcast(arr.dtype if self.rank == 0 else None, root=0)
-        if self.rank != 0:
-            arr = np.empty(shape, dtype=dtype)
-        self.comm.Bcast(arr, root=0)
-        return arr
-
     def _broadcast_variables(self):
         """Broadcast essential data from master to all MPI worker processes."""
-        # Broadcast Python objects (small, serialization is fine)
+        # Python objects (small, serialization is fine)
         self.params = self.comm.bcast(self.params if self.rank == 0 else None, root=0)
         self.collection = self.comm.bcast(
             self.collection if self.rank == 0 else None, root=0
         )
         self.bins = self.comm.bcast(self.bins if self.rank == 0 else None, root=0)
-
-        # Broadcast numpy arrays using buffer-based MPI (handles >2 GB)
-        self.npixs = self._bcast_array(self.npixs)
+        self.npixs = self.comm.bcast(self.npixs if self.rank == 0 else None, root=0)
         self.pixact = self.comm.bcast(self.pixact if self.rank == 0 else None, root=0)
-        self.point_vectors = self._bcast_array(self.point_vectors)
 
-        # Covariance matrices (can be very large at high nside)
-        self.noise_cov1 = self._bcast_array(self.noise_cov1)
-        self.inv_cov1 = self._bcast_array(self.inv_cov1)
-        if self.params.do_cross:
-            self.noise_cov2 = self._bcast_array(self.noise_cov2)
-            self.inv_cov2 = self._bcast_array(self.inv_cov2)
+        # Numpy arrays via shared memory (zero-copy, no size limits).
+        # Worker ranks may not have these attributes yet, so use getattr.
+        point_vectors = getattr(self, "point_vectors", None)
+        n_point_vectors = self.comm.bcast(
+            len(point_vectors) if self.rank == 0 and point_vectors is not None else 0,
+            root=0,
+        )
+        self.point_vectors = tuple(
+            self._shared_array(
+                point_vectors[i] if self.rank == 0 and point_vectors is not None else None
+            )
+            for i in range(n_point_vectors)
+        )
+
+        use_basis = hasattr(self, "basis_manager") and self.basis_manager is not None
+
+        # Pixel-space covariance matrices only needed for traditional path
+        if not use_basis:
+            self.noise_cov1 = self._shared_array(getattr(self, "noise_cov1", None))
+            self.inv_cov1 = self._shared_array(getattr(self, "inv_cov1", None))
+            if self.params.do_cross:
+                self.noise_cov2 = self._shared_array(getattr(self, "noise_cov2", None))
+                self.inv_cov2 = self._shared_array(getattr(self, "inv_cov2", None))
 
         # Maps (can be large: n_pix × n_sims)
-        self.maps1 = self._bcast_array(self.maps1)
+        self.maps1 = self._shared_array(getattr(self, "maps1", None))
         if self.params.do_cross:
-            self.maps2 = self._bcast_array(self.maps2)
+            self.maps2 = self._shared_array(getattr(self, "maps2", None))
 
-        # Fisher-related (small matrices)
-        self.invfisher = self._bcast_array(self.invfisher)
-        self.beam_smoothing = self._bcast_array(self.beam_smoothing)
-        self.inv_fisher_sqrt = self._bcast_array(self.inv_fisher_sqrt)
-        self.fisher_normalized = self._bcast_array(self.fisher_normalized)
+        # Fisher-related (small but still read-only)
+        self.invfisher = self._shared_array(getattr(self, "invfisher", None))
+        self.beam_smoothing = self._shared_array(getattr(self, "beam_smoothing", None))
+        self.inv_fisher_sqrt = self._shared_array(getattr(self, "inv_fisher_sqrt", None))
+        self.fisher_normalized = self._shared_array(
+            getattr(self, "fisher_normalized", None)
+        )
 
     def _normalize_spectra(self, spectra: np.ndarray) -> np.ndarray:
         """
@@ -1397,6 +1396,101 @@ class Spectra(Core):
                 noise_bias = noise_bias * self._dl_factor()
             return noise_bias
         return None
+
+    def convolve_theory_for_inference(self, cl_theory: np.ndarray) -> np.ndarray | None:
+        """
+        Apply the QML bandpower window to a per-ℓ theory spectrum.
+
+        Returns the expected binned bandpower for the given theory, in
+        the same convention as ``get_power_spectra(mode="deconvolved")``.
+        Use this in a Gaussian likelihood for parameter inference:
+
+            mu_b(θ) = convolve_theory_for_inference(C_ℓ(θ))
+            -2 ln L = (d - mu)ᵀ F_b (d - mu)
+
+        Parameters
+        ----------
+        cl_theory : np.ndarray
+            Per-ℓ theory C_ℓ. Two formats accepted:
+            - shape ``(n_ell,)`` for ℓ=2..lmax (length lmax-1)
+            - shape ``(lmax+1,)`` starting at ℓ=0 (leading entries for
+              ℓ=0,1 are ignored)
+            Must be **unbeamed** physical C_ℓ — beam² is already absorbed
+            into the window.
+
+        Returns
+        -------
+        cl_binned : np.ndarray of shape (n_bins,), or None
+            Expected binned bandpower for the given theory. If the
+            output convention is "Dl", the result is converted to D_ℓ
+            using the bin effective ells. Returns None on worker
+            processes (rank != 0).
+
+        Notes
+        -----
+        This delegates to :meth:`Fisher.get_bandpower_window_function`
+        on the underlying Fisher instance. The first call triggers a
+        per-ℓ Fisher computation (cached for subsequent calls).
+
+        See :meth:`Fisher.get_bandpower_window_function` for details on
+        the buffer approach and multi-spectrum limitations.
+
+        Examples
+        --------
+        >>> spectra = Spectra("config.yaml", fisher=fisher,
+        ...                   compression={"method": "harmonic"})
+        >>> spectra.set_binning(bins)
+        >>> spectra.run()
+        >>> cl_th = compute_camb_cl(theta)        # ell=0..lmax
+        >>> mu_b = spectra.convolve_theory_for_inference(cl_th)
+        >>> data = spectra.get_power_spectra(mode="deconvolved").mean(0)
+        >>> F_b = spectra.fisher_instance.get_fisher_matrix()
+        >>> neg2lnL = (data - mu_b) @ F_b @ (data - mu_b)
+
+        See Also
+        --------
+        Fisher.get_bandpower_window_function : Underlying window matrix.
+        get_power_spectra : Get the data bandpower (deconvolved mode).
+        get_covariance : Get the covariance matrix (= F_b⁻¹).
+        """
+        if self.rank != 0:
+            return None
+
+        if not hasattr(self, "fisher_instance") or self.fisher_instance is None:
+            raise ValueError(
+                "convolve_theory_for_inference requires an attached Fisher "
+                "instance. Pass fisher=fisher to Spectra() at construction."
+            )
+        if getattr(self.fisher_instance, "fisher", None) is None:
+            raise ValueError(
+                "Fisher matrix has not been computed. Call fisher.run() "
+                "(and spectra.run()) before convolve_theory_for_inference()."
+            )
+
+        n_ell = self.params.lmax - 1
+        cl = np.asarray(cl_theory, dtype=np.float64)
+        if cl.ndim != 1:
+            raise ValueError(f"cl_theory must be 1D, got shape {cl.shape}")
+        if cl.size == n_ell:
+            cl_vec = cl
+        elif cl.size >= self.params.lmax + 1:
+            cl_vec = cl[2 : self.params.lmax + 1]
+        else:
+            raise ValueError(
+                f"cl_theory length {cl.size} does not match expected "
+                f"{n_ell} (ℓ=2..lmax) or {self.params.lmax + 1} (ℓ=0..lmax)"
+            )
+
+        W = self.fisher_instance.get_bandpower_window_function()
+        if W is None:
+            return None
+
+        cl_binned = W @ cl_vec
+
+        if self._output_is_dl():
+            cl_binned = cl_binned * self._dl_factor()
+
+        return cl_binned
 
     def get_covariance(self, mode: str = "deconvolved") -> np.ndarray | None:
         """

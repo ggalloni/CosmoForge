@@ -1,0 +1,55 @@
+nside: 16
+spins: [2]
+labels: ["E", "B"]
+physical_labels: ["Q", "U"]
+
+do_cross: false
+
+maskfile: 'sims/mask_gal_cut_30.fits'
+output_geometry_file: 'sims/geometry.dat'
+ordering: RING
+
+# inputclfile: 'sims/tau0.06_dls_noEE.txt'
+inputclfile: 'sims/tau0.06_dls_r_likelihood_r0.0.txt'
+input_convention: Dl
+covmatfile1: 'sims/NCVM1.bin'
+covmatfile2: 'sims/NCVM2.bin'
+
+lmax: 32
+
+load_inverted: true
+calibration: 1.0
+
+# cache_derivatives: false
+
+smoothing_type: cosine
+fwhmarcmin: 440.0
+apply_pixwin: false
+beam_file: 'sims/beam_coswin_pixwin16.fits'
+
+outnoisecovmat1: 'sims/reduced_NCVM1.bin'
+outnoisecovmat2: 'sims/reduced_NCVM2.bin'
+
+feedback: 4
+outinvcovmatfile1: 'sims/invCOV1.bin'
+outinvcovmatfile2: 'sims/invCOV2.bin'
+
+# Fisher matrix output
+outfilefisher: 'sims/fisher.dat'
+
+# QML-specific parameters
+nsims: 1000
+inputmapfile1: 'sims/all_sims_TQU_coswin.npy'
+inputmapfile2: 'sims/all_sims_TQU_coswin.npy'
+
+# Output files for QML
+outcovmatfile: 'sims/cov_matrix.dat'
+outerrfile: 'sims/errors.dat'
+
+# Fisher matrix file (if precomputed)
+outfilefisher: 'sims/fisher.dat'
+
+# QML options
+remove_nb: true
+nspectra: 3
+

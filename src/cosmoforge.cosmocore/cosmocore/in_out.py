@@ -86,16 +86,27 @@ def read_covmat(covmatfile, npix, nmaps, active, C):
     only the relevant submatrix corresponding to active (unmasked) pixels.
     The input matrix is assumed to be stored as float64 in row-major order.
     """
-    ntot = active.size
     full_size = int(npix * nmaps)
 
     NCVMfull = np.fromfile(covmatfile.strip(), dtype=np.float64)
     NCVMfull = NCVMfull.reshape((full_size, full_size))
 
-    for i in range(ntot):
-        for j in range(i, ntot):
-            C[i, j] = NCVMfull[active[i], active[j]]
-            C[j, i] = C[i, j]
+    idx = np.asarray(active, dtype=np.intp)
+    n_active = idx.size
+
+    # np.ix_ would allocate a full (n_active, n_active) temporary.
+    target_block_bytes = 64 * 1024 * 1024
+    block_size = max(1, int(np.sqrt(target_block_bytes / NCVMfull.dtype.itemsize)))
+
+    for row_start in range(0, n_active, block_size):
+        row_stop = min(row_start + block_size, n_active)
+        row_idx = idx[row_start:row_stop]
+        for col_start in range(0, n_active, block_size):
+            col_stop = min(col_start + block_size, n_active)
+            col_idx = idx[col_start:col_stop]
+            C[row_start:row_stop, col_start:col_stop] = NCVMfull[
+                row_idx[:, np.newaxis], col_idx
+            ]
     return C
 
 

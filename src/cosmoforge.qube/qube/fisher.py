@@ -40,6 +40,7 @@ from cosmocore import (
     Bins,
     Core,
     InputParams,
+    MPISharedMemoryMixin,
     compute_signal_matrix,
     do_derivative_step,
     matrix_inverse_symm,
@@ -52,7 +53,7 @@ from cosmocore import (
 _WEIGHT_ZERO_THRESHOLD = 1e-30  # Skip derivative terms with negligible weight
 
 
-class Fisher(Core):
+class Fisher(Core, MPISharedMemoryMixin):
     """
     Fisher matrix computation for cosmological parameter estimation.
 
@@ -295,7 +296,6 @@ class Fisher(Core):
         sparse_coo_data = {}
         cinv_times_dcb = {}
         binned_derivatives = {}
-        w_matrix, _ = self.bins._bin_operators()
         V_Cinv_VT = None
 
         deriv_start = time.time()
@@ -325,15 +325,12 @@ class Fisher(Core):
                 )
 
                 if is_diagonal:
-                    # dC^b diagonal: E_b = sum_ell w * beam * E_diag
+                    # dC^b diagonal: E_b = sum_ell beam * E_diag
                     E_b_diag = np.zeros(bm.n_kept, dtype=np.float64)
                     for ell in range(
                         self.bins.lmins[bin_idx], self.bins.lmaxs[bin_idx] + 1
                     ):
-                        weight = (
-                            w_matrix[bin_idx, ell]
-                            * self.beam_smoothing[beam_offset + ell - 2]
-                        )
+                        weight = self.beam_smoothing[beam_offset + ell - 2]
                         E_b_diag += weight * bm._get_derivative_diagonal(
                             ell, comp_i, comp_j, spec_mode
                         )
@@ -349,10 +346,7 @@ class Fisher(Core):
                     for ell in range(
                         self.bins.lmins[bin_idx], self.bins.lmaxs[bin_idx] + 1
                     ):
-                        weight = (
-                            w_matrix[bin_idx, ell]
-                            * self.beam_smoothing[beam_offset + ell - 2]
-                        )
+                        weight = self.beam_smoothing[beam_offset + ell - 2]
                         if abs(weight) < _WEIGHT_ZERO_THRESHOLD:
                             continue
                         dC_ell = bm.get_derivative_matrix(ell, comp_i, comp_j, spec_mode)
@@ -492,23 +486,6 @@ class Fisher(Core):
 
         self.comm.Barrier()
 
-    def _bcast_array(self, arr: np.ndarray | None) -> np.ndarray:
-        """
-        Broadcast a numpy array using buffer-based MPI.
-
-        Uses ``comm.Bcast`` (uppercase) which sends raw memory buffers
-        instead of ``comm.bcast`` (lowercase) which serializes via the
-        standard library.  This avoids the ~2 GB message-size limit
-        that affects serialization-based broadcasts in many MPI
-        implementations.
-        """
-        shape = self.comm.bcast(arr.shape if self.rank == 0 else None, root=0)
-        dtype = self.comm.bcast(arr.dtype if self.rank == 0 else None, root=0)
-        if self.rank != 0:
-            arr = np.empty(shape, dtype=dtype)
-        self.comm.Bcast(arr, root=0)
-        return arr
-
     def run(self) -> None:
         """
         Execute the complete Fisher matrix analysis pipeline.
@@ -554,11 +531,11 @@ class Fisher(Core):
                     f"({self.basis_manager.compression_ratio:.1%})",
                     level=2,
                 )
-                # Also prepare covariance matrices for Spectra compatibility
-                # Spectra needs the inverted covariance files even with basis
-                self.prepare_covariance_matrices()
+                # Harmonic basis uses SMW formula internally — pixel-space
+                # signal matrix and covariance inversion are not needed.
                 self.log(
-                    "Covariance matrices prepared for Spectra compatibility", level=3
+                    "Skipping pixel-space covariance preparation (harmonic basis)",
+                    level=3,
                 )
             else:
                 # Traditional: prepare covariance matrices (signal + inverse)
@@ -571,25 +548,47 @@ class Fisher(Core):
         self.comm.Barrier()
 
         if self.size > 1:
+            # Python objects (small, serialization is fine)
             self.params: InputParams = self.comm.bcast(
                 self.params if self.rank == 0 else None, root=0
             )
             self.collection = self.comm.bcast(
                 self.collection if self.rank == 0 else None, root=0
             )
-            self.npixs = self._bcast_array(self.npixs)
+            self.npixs = self.comm.bcast(self.npixs if self.rank == 0 else None, root=0)
             self.pixact = self.comm.bcast(self.pixact if self.rank == 0 else None, root=0)
-            self.point_vectors = self._bcast_array(self.point_vectors)
-            self.noise_cov1 = self._bcast_array(self.noise_cov1)
+
+            # Numpy arrays via shared memory (zero-copy, no size limits).
+            # Worker ranks may not have these attributes yet (setup is rank-0 only),
+            # so use getattr to pass None for non-root ranks.
+            point_vectors = getattr(self, "point_vectors", None)
+            n_point_vectors = self.comm.bcast(
+                len(point_vectors) if self.rank == 0 and point_vectors is not None else 0,
+                root=0,
+            )
+            self.point_vectors = tuple(
+                self._shared_array(
+                    point_vectors[i]
+                    if self.rank == 0 and point_vectors is not None
+                    else None
+                )
+                for i in range(n_point_vectors)
+            )
 
             if self._basis_config is not None:
                 self.basis_manager = self.comm.bcast(
                     self.basis_manager if self.rank == 0 else None, root=0
                 )
             else:
-                self.signal_matrix = self._bcast_array(self.signal_matrix)
+                # Traditional path needs pixel-space matrices
+                self.noise_cov1 = self._shared_array(getattr(self, "noise_cov1", None))
+                self.signal_matrix = self._shared_array(
+                    getattr(self, "signal_matrix", None)
+                )
                 if self.params.do_cross:
-                    self.noise_cov2 = self._bcast_array(self.noise_cov2)
+                    self.noise_cov2 = self._shared_array(
+                        getattr(self, "noise_cov2", None)
+                    )
 
             self.comm.Barrier()
 
@@ -684,3 +683,164 @@ class Fisher(Core):
         deconvolving the window, the theory is convolved for comparison.
         """
         return self.get_fisher_matrix()
+
+    def get_bandpower_window_function(
+        self,
+        per_ell_fisher: np.ndarray | None = None,
+    ) -> np.ndarray | None:
+        """
+        Compute the bandpower window function for binned QML inference.
+
+        The window matrix W maps a per-ℓ theory spectrum to the expected
+        binned bandpower estimates from the deconvolved QML output:
+
+            <C_hat_b> = W @ C_ell_theory
+
+        Use this in a Gaussian likelihood for parameter inference:
+
+            mu_b(θ) = W @ C_ell(θ)
+            -2 ln L = (d - mu)ᵀ F_b (d - mu)
+
+        where d = ``Spectra.get_power_spectra(mode="deconvolved")`` and
+        F_b = ``Fisher.get_fisher_matrix()``.
+
+        This differs from :meth:`get_window_matrix`, which returns the
+        bin-to-bin Fisher used in "convolved" mode and assumes a constant
+        spectrum within each bin. The bandpower window function is the
+        correct quantity for inference when bins are wide enough that
+        the theory varies appreciably within them.
+
+        Parameters
+        ----------
+        per_ell_fisher : np.ndarray, optional
+            Pre-computed per-ℓ Fisher matrix of shape ``(n_ell, n_ell)``
+            (single spectrum). If None, the per-ℓ Fisher is computed on
+            demand by re-running the Fisher pipeline with delta_ell=1
+            using the current configuration. The result is cached for
+            subsequent calls.
+
+        Returns
+        -------
+        W : np.ndarray of shape (n_bins, n_ell), or None
+            Bandpower window matrix. Rows correspond to bin indices,
+            columns to multipoles ℓ=2..lmax. Returns None on worker
+            processes (rank != 0).
+
+        Notes
+        -----
+        The window function encodes:
+
+        - Mode coupling from sky cuts.
+        - Beam smoothing (b²_ℓ).
+        - Pixel window functions.
+        - The Fisher-weighting that QML naturally applies within each bin.
+
+        The theory C_ℓ should be the **unbeamed** physical spectrum
+        (standard CAMB/CLASS output), since beam² is already absorbed
+        into the derivatives used to build the window.
+
+        For best statistical accuracy near lmax, use the buffer approach:
+        estimate to ``lmax_buffer = lmax_science + margin`` (a few bin
+        widths or ~1/fsky multipoles), then drop the buffer rows from
+        ``W``, ``d`` and ``F_b`` before forming the likelihood. This
+        absorbs mode coupling from ℓ > lmax_science into discarded
+        buffer bins.
+
+        Currently supports single-spectrum analysis only. Multi-spectrum
+        extension is planned.
+
+        Examples
+        --------
+        Standard inference workflow:
+
+        >>> fisher = Fisher("config.yaml", compression={"method": "harmonic"})
+        >>> fisher.set_binning(bins)
+        >>> fisher.run()
+        >>> W = fisher.get_bandpower_window_function()
+        >>> F_b = fisher.get_fisher_matrix()
+        >>> # In the MCMC loop:
+        >>> mu = W @ cl_theory_per_ell        # expected bandpower
+        >>> r = data_bandpower - mu           # residual
+        >>> neg2lnL = r @ F_b @ r             # quadratic form
+
+        See Also
+        --------
+        get_window_matrix : Bin-to-bin window for convolved mode.
+        get_fisher_matrix : Inverse covariance for the bandpower likelihood.
+        """
+        # _compute_per_ell_fisher() is collective; all ranks must
+        # enter together. Only rank 0 returns W; workers return None.
+        if not hasattr(self, "bins") or self.bins is None:
+            if self.rank == 0:
+                raise ValueError(
+                    "Bandpower window requires binning. Call set_binning() before run()."
+                )
+            return None
+
+        if self.params.nspectra > 1:
+            if self.rank == 0:
+                raise NotImplementedError(
+                    "Bandpower window function currently supports "
+                    "single-spectrum analysis only. "
+                    "Multi-spectrum extension is planned."
+                )
+            return None
+
+        # Broadcast rank 0's decisions so all ranks branch identically.
+        cached = getattr(self, "_bandpower_window", None)
+        provided = bool(self.comm.bcast(per_ell_fisher is not None, root=0))
+        has_cached = bool(self.comm.bcast(cached is not None, root=0)) and not provided
+        if has_cached:
+            return cached if self.rank == 0 else None
+
+        if not provided:
+            per_ell_fisher = self._compute_per_ell_fisher()
+
+        # Only rank 0 has self.fisher and the reduced per_ell_fisher
+        # populated; workers return None.
+        if self.rank != 0 or self.fisher is None:
+            return None
+
+        # Build Q (sum-over-ℓ-in-bin operator)
+        n_ell = self.params.lmax - 1  # ell indices 2..lmax
+        Q = np.zeros((self.bins.nbins, n_ell), dtype=np.float64)
+        for b, (lo, hi) in enumerate(zip(self.bins.lmins, self.bins.lmaxs)):
+            Q[b, lo - 2 : hi - 2 + 1] = 1.0
+
+        # W = F_b^{-1} @ Q @ F_perell
+        W = np.linalg.solve(self.fisher, Q @ per_ell_fisher)
+        self._bandpower_window = W
+        return W
+
+    def _compute_per_ell_fisher(self) -> np.ndarray:
+        """
+        Compute the per-ℓ Fisher matrix using the current configuration.
+
+        Triggers a Fisher computation with delta_ell=1, reusing the
+        existing setup (basis, beams, covariance) by re-invoking the
+        compute() phase with binning temporarily set to per-ℓ.
+
+        Returns
+        -------
+        F_perell : np.ndarray, shape (n_ell, n_ell)
+            Per-ℓ Fisher for ell=2..lmax.
+        """
+        self.log("Computing per-ℓ Fisher for bandpower window function...", level=2)
+        saved_bins = self.bins
+        saved_fisher = self.fisher
+        saved_n_params = self.n_params
+        saved_cached = getattr(self, "_cached_binned_derivatives", None)
+        try:
+            self.bins = Bins.fromdeltal(2, self.params.lmax, 1)
+            self.n_params = self.params.nspectra * self.bins.nbins
+            self.fisher = np.zeros((self.n_params, self.n_params))
+            # Drop binned-derivative cache so per-ℓ run rebuilds its own
+            self._cached_binned_derivatives = None
+            self.compute()
+            F_perell = self.fisher.copy()
+        finally:
+            self.bins = saved_bins
+            self.fisher = saved_fisher
+            self.n_params = saved_n_params
+            self._cached_binned_derivatives = saved_cached
+        return F_perell
