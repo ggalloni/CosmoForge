@@ -81,7 +81,7 @@ CASES = [
         "name": "high_fsky",
         "gal_cut_deg": 24,
         "label": r"$f_{\rm sky}\sim 0.60$",
-        "basis": {"method": "auto"},  # n_pix < n_modes at calibrated buffer
+        "basis": {"method": "harmonic"},  # n_pix < n_modes at calibrated buffer
         "delta_ell": 1,
     },  # unbinned: modes nearly independent
 ]
