@@ -601,10 +601,12 @@ class Spectra(Core, MPISharedMemoryMixin):
         self, bin_idx: int, spectrum_idx: int = 0, spectra_list=None
     ) -> np.ndarray:
         """
-        Compute binned derivative dC^b = Sum_ell w_{b,ell} b²_ell dC^ell.
+        Compute binned derivative dC^b = Sum_{ell in bin} b²_ell dC^ell.
 
-        If a Fisher instance with cached derivatives is available, returns
-        the cached result directly, avoiding expensive recomputation.
+        The sum runs over the multipoles in the bin with unit weight;
+        b²_ell is the per-ℓ beam smoothing factor. If a Fisher instance
+        with cached derivatives is available, returns the cached result
+        directly, avoiding expensive recomputation.
 
         Parameters
         ----------
@@ -698,21 +700,16 @@ class Spectra(Core, MPISharedMemoryMixin):
                 K = smw_kernel(bm._V_Ninv_VT, Lambda_diag)
             kernel_inv = matrix_inverse_symm(np.asfortranarray(K))
 
-        # V_Cinv = (I - M K^{-1}) V N^{-1}
-        M_kernel_inv = bm._V_Ninv_VT @ kernel_inv
+        # Cov(w|noise) = V C^{-1} N C^{-1} V^T reduces by SMW algebra to
+        # A T A^T with A = I - M K^{-1} and T = V N_eff^{-1} N N_eff^{-1} V^T,
+        # both n_modes x n_modes. T is precomputed by the basis manager
+        # (= V_Ninv_VT when switch optimization is inactive).
         n = kernel_inv.shape[0]
-        V_Cinv = (np.eye(n) - M_kernel_inv) @ bm._V_N_inv
-
-        # Cov(w|noise) = V_Cinv N V_Cinv^T = W W^T where W = V_Cinv sqrt(N)
-        if hasattr(bm, "_N_inv_original"):
-            noise_var = 1.0 / np.diag(bm._N_inv_original)
-        else:
-            noise_var = 1.0 / np.diag(bm.N_inv)
-        W = V_Cinv * np.sqrt(noise_var)[np.newaxis, :]
-
+        A = np.eye(n) - bm._V_Ninv_VT @ kernel_inv
+        AT = A @ bm._noise_cov_T
         if full_matrix:
-            return W @ W.T
-        return np.sum(W**2, axis=1)
+            return AT @ A.T
+        return np.einsum("ij,ij->i", AT, A)
 
     def _compute_qml_spectra_compressed(self):
         """
@@ -1085,7 +1082,17 @@ class Spectra(Core, MPISharedMemoryMixin):
 
         # Numpy arrays via shared memory (zero-copy, no size limits).
         # Worker ranks may not have these attributes yet, so use getattr.
-        self.point_vectors = self.comm.bcast(getattr(self, "point_vectors", None), root=0)
+        point_vectors = getattr(self, "point_vectors", None)
+        n_point_vectors = self.comm.bcast(
+            len(point_vectors) if self.rank == 0 and point_vectors is not None else 0,
+            root=0,
+        )
+        self.point_vectors = tuple(
+            self._shared_array(
+                point_vectors[i] if self.rank == 0 and point_vectors is not None else None
+            )
+            for i in range(n_point_vectors)
+        )
 
         use_basis = hasattr(self, "basis_manager") and self.basis_manager is not None
 

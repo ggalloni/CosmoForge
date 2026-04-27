@@ -561,8 +561,18 @@ class Fisher(Core, MPISharedMemoryMixin):
             # Numpy arrays via shared memory (zero-copy, no size limits).
             # Worker ranks may not have these attributes yet (setup is rank-0 only),
             # so use getattr to pass None for non-root ranks.
-            self.point_vectors = self.comm.bcast(
-                getattr(self, "point_vectors", None), root=0
+            point_vectors = getattr(self, "point_vectors", None)
+            n_point_vectors = self.comm.bcast(
+                len(point_vectors) if self.rank == 0 and point_vectors is not None else 0,
+                root=0,
+            )
+            self.point_vectors = tuple(
+                self._shared_array(
+                    point_vectors[i]
+                    if self.rank == 0 and point_vectors is not None
+                    else None
+                )
+                for i in range(n_point_vectors)
             )
 
             if self._basis_config is not None:
@@ -758,28 +768,38 @@ class Fisher(Core, MPISharedMemoryMixin):
         get_window_matrix : Bin-to-bin window for convolved mode.
         get_fisher_matrix : Inverse covariance for the bandpower likelihood.
         """
-        if self.rank != 0 or self.fisher is None:
+        # _compute_per_ell_fisher() is collective; all ranks must
+        # enter together. Only rank 0 returns W; workers return None.
+        if not hasattr(self, "bins") or self.bins is None:
+            if self.rank == 0:
+                raise ValueError(
+                    "Bandpower window requires binning. Call set_binning() before run()."
+                )
             return None
 
-        if not hasattr(self, "bins") or self.bins is None:
-            raise ValueError(
-                "Bandpower window requires binning. Call set_binning() before run()."
-            )
-
         if self.params.nspectra > 1:
-            raise NotImplementedError(
-                "Bandpower window function currently supports single-spectrum "
-                "analysis only. Multi-spectrum extension is planned."
-            )
+            if self.rank == 0:
+                raise NotImplementedError(
+                    "Bandpower window function currently supports "
+                    "single-spectrum analysis only. "
+                    "Multi-spectrum extension is planned."
+                )
+            return None
 
-        # Return cached value if available and no override provided
+        # Broadcast rank 0's decisions so all ranks branch identically.
         cached = getattr(self, "_bandpower_window", None)
-        if cached is not None and per_ell_fisher is None:
-            return cached
+        provided = bool(self.comm.bcast(per_ell_fisher is not None, root=0))
+        has_cached = bool(self.comm.bcast(cached is not None, root=0)) and not provided
+        if has_cached:
+            return cached if self.rank == 0 else None
 
-        # Obtain per-ℓ Fisher
-        if per_ell_fisher is None:
+        if not provided:
             per_ell_fisher = self._compute_per_ell_fisher()
+
+        # Only rank 0 has self.fisher and the reduced per_ell_fisher
+        # populated; workers return None.
+        if self.rank != 0 or self.fisher is None:
+            return None
 
         # Build Q (sum-over-ℓ-in-bin operator)
         n_ell = self.params.lmax - 1  # ell indices 2..lmax

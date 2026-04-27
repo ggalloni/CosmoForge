@@ -56,6 +56,8 @@ line-length = 90
 
 [tool.coverage.run]
 source = ["qube/"]
+parallel = true
+concurrency = ["multiprocessing"]
 omit = [
     "*/tests/*",
     "*/test_*",
@@ -82,6 +84,8 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "if TYPE_CHECKING:",
     "self.log",
+    "@(numba\\.)?njit",
+    "@(numba\\.)?jit",
 ]
 show_missing = true
 precision = 2

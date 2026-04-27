@@ -224,15 +224,9 @@ class HarmonicBasis(ComputationBasis):
         self._N_eff = self._N + S_fixed
         self._N_eff_inv = matrix_inverse_symm(np.asfortranarray(self._N_eff))
 
-        # Save original noise info before overwriting.
-        # _N_inv_original is only used for its diagonal (noise bias in Spectra),
-        # so when N_inv was not precomputed we store the diagonal of N directly.
+        # Preserve original N before overwriting self._N with N_eff;
+        # the compressed noise-cov path needs the full pre-switch N.
         self._N_original = self._N
-        if self.N_inv is not None:
-            self._N_inv_original = self.N_inv
-        else:
-            # Diagonal noise: diag(N_inv) = 1/diag(N)
-            self._N_inv_original = np.diag(1.0 / np.diag(self._N))
 
         # Replace N and N_inv with N_eff for SMW computations
         self._N = np.asfortranarray(self._N_eff)
@@ -306,6 +300,16 @@ class HarmonicBasis(ComputationBasis):
         # V @ N @ V^T
         self._V_N_VT = matrix_mult(matrix_mult(self._V, self._N), self._V.T)
         self._V_N_VT = 0.5 * (self._V_N_VT + self._V_N_VT.T)
+
+        # T = V N_eff^{-1} N_orig N_eff^{-1} V^T (n_modes x n_modes).
+        # Used by Spectra._compute_noise_cov_compressed: Cov(w|noise) =
+        # A T A^T with A = I - M K^{-1}. Without switch optimization
+        # N_eff = N_orig and T reduces to V_Ninv_VT (alias, no work).
+        if hasattr(self, "_N_original"):
+            T = matrix_mult(matrix_mult(self._V_N_inv, self._N_original), self._V_N_inv.T)
+            self._noise_cov_T = 0.5 * (T + T.T)
+        else:
+            self._noise_cov_T = self._V_Ninv_VT
 
         # log|N| = -log|N^{-1}|
         _, logdet_N_inv = matrix_slogdet_symm(self.N_inv)

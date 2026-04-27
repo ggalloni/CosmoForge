@@ -741,16 +741,16 @@ class Core(ABC):
         mode: int = 0,
     ) -> np.ndarray:
         """
-        Compute binned derivative dC^b = Sum_ell w_{b,ell} b²_ell dC^ell,
+        Compute binned derivative dC^b = Sum_{ell in bin} b²_ell dC^ell,
 
-        where w_{b,ell} are the binning weights from Bins._bin_operators(),
-        b²_ell is the beam smoothing factor, and dC^ell = dC/dC_ell is
-        the per-multipole derivative matrix.
+        where the sum runs over ℓ in the bin with unit weight, b²_ell
+        is the beam smoothing factor, and dC^ell = dC/dC_ell is the
+        per-multipole derivative matrix.
 
         When beam_smoothing is provided, beam window functions are
-        absorbed into the binning weights so that the resulting Fisher
-        matrix is in beam-smoothed space. Without it, the derivative
-        is just the weighted sum dC^b = Sum_ell w_{b,ell} dC^ell.
+        applied per-ℓ so that the resulting Fisher matrix is in
+        beam-smoothed space. Without it, the derivative is just the
+        unweighted sum dC^b = Sum_{ell in bin} dC^ell.
 
         Parameters
         ----------

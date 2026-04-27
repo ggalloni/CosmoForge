@@ -126,6 +126,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Install MPI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libopenmpi-dev openmpi-bin
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -147,7 +152,23 @@ jobs:
         if: contains(needs.detect-changes.outputs.cosmocore-strategy, 'test')
         working-directory: src/cosmoforge.cosmocore
         run: |
-          uv run pytest tests/ -v --cov=cosmocore --cov-report=xml
+          uv run pytest tests/ -v --cov=cosmocore --cov-report=
+          mv .coverage .coverage.serial
+
+      - name: Run MPI tests (mpirun -n 2)
+        if: contains(needs.detect-changes.outputs.cosmocore-strategy, 'test')
+        working-directory: src/cosmoforge.cosmocore
+        run: |
+          mpirun -n 2 --oversubscribe \
+            bash -c 'COVERAGE_FILE=.coverage.mpi.${OMPI_COMM_WORLD_RANK} \
+              uv run pytest tests/test_mpi.py -v --cov=cosmocore --cov-report='
+
+      - name: Combine coverage
+        if: contains(needs.detect-changes.outputs.cosmocore-strategy, 'test')
+        working-directory: src/cosmoforge.cosmocore
+        run: |
+          uv run coverage combine
+          uv run coverage xml
 
       - name: Upload coverage to Codecov
         if: contains(needs.detect-changes.outputs.cosmocore-strategy, 'test')
@@ -197,7 +218,23 @@ jobs:
         if: contains(needs.detect-changes.outputs.qube-strategy, 'test')
         working-directory: src/cosmoforge.qube
         run: |
-          uv run pytest tests/ -v --cov=qube --cov-report=xml
+          uv run pytest tests/ -v --cov=qube --cov-report=
+          mv .coverage .coverage.serial
+
+      - name: Run MPI tests (mpirun -n 2)
+        if: contains(needs.detect-changes.outputs.qube-strategy, 'test')
+        working-directory: src/cosmoforge.qube
+        run: |
+          mpirun -n 2 --oversubscribe \
+            bash -c 'COVERAGE_FILE=.coverage.mpi.${OMPI_COMM_WORLD_RANK} \
+              uv run pytest tests/test_mpi.py -v --cov=qube --cov-report='
+
+      - name: Combine coverage
+        if: contains(needs.detect-changes.outputs.qube-strategy, 'test')
+        working-directory: src/cosmoforge.qube
+        run: |
+          uv run coverage combine
+          uv run coverage xml
 
       - name: Upload coverage to Codecov
         if: contains(needs.detect-changes.outputs.qube-strategy, 'test')
@@ -247,7 +284,23 @@ jobs:
         if: contains(needs.detect-changes.outputs.picslike-strategy, 'test')
         working-directory: src/cosmoforge.picslike
         run: |
-          uv run pytest tests/ -v -m "not slow" --cov=picslike --cov-report=xml
+          uv run pytest tests/ -v -m "not slow" --cov=picslike --cov-report=
+          mv .coverage .coverage.serial
+
+      - name: Run MPI tests (mpirun -n 2)
+        if: contains(needs.detect-changes.outputs.picslike-strategy, 'test')
+        working-directory: src/cosmoforge.picslike
+        run: |
+          mpirun -n 2 --oversubscribe \
+            bash -c 'COVERAGE_FILE=.coverage.mpi.${OMPI_COMM_WORLD_RANK} \
+              uv run pytest tests/test_mpi.py -v --cov=picslike --cov-report='
+
+      - name: Combine coverage
+        if: contains(needs.detect-changes.outputs.picslike-strategy, 'test')
+        working-directory: src/cosmoforge.picslike
+        run: |
+          uv run coverage combine
+          uv run coverage xml
 
       - name: Upload coverage to Codecov
         if: contains(needs.detect-changes.outputs.picslike-strategy, 'test')

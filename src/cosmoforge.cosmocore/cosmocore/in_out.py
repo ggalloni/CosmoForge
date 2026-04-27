@@ -92,7 +92,21 @@ def read_covmat(covmatfile, npix, nmaps, active, C):
     NCVMfull = NCVMfull.reshape((full_size, full_size))
 
     idx = np.asarray(active, dtype=np.intp)
-    C[:] = NCVMfull[np.ix_(idx, idx)]
+    n_active = idx.size
+
+    # np.ix_ would allocate a full (n_active, n_active) temporary.
+    target_block_bytes = 64 * 1024 * 1024
+    block_size = max(1, int(np.sqrt(target_block_bytes / NCVMfull.dtype.itemsize)))
+
+    for row_start in range(0, n_active, block_size):
+        row_stop = min(row_start + block_size, n_active)
+        row_idx = idx[row_start:row_stop]
+        for col_start in range(0, n_active, block_size):
+            col_stop = min(col_start + block_size, n_active)
+            col_idx = idx[col_start:col_stop]
+            C[row_start:row_stop, col_start:col_stop] = NCVMfull[
+                row_idx[:, np.newaxis], col_idx
+            ]
     return C
 
 

@@ -680,3 +680,21 @@ def test_compressed_spectra_spin2(fields, local_path, config_resolver):
         f"Relative Frobenius for {fields} vs reference should be < 5%, "
         f"got {rel_fro_ref:.2%}"
     )
+
+
+def test_binned_derivative_no_cache(local_path, config_resolver):
+    """Exercise _get_binned_derivative when fisher cache is unavailable."""
+    config_file = config_resolver("tests/data/nside4/T/config.yaml")
+    fisher = Fisher(config_file)
+    fisher.run()
+
+    # Drop the cache so the fallback compute path runs.
+    fisher._cached_binned_derivatives = None
+
+    qml = Spectra(config_file, fisher=fisher)
+    qml.run()
+    os.unlink(config_file)
+
+    ps = qml.get_power_spectra()
+    assert ps is not None
+    assert np.all(np.isfinite(ps))
