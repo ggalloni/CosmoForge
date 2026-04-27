@@ -45,5 +45,6 @@ run_*.py
 **/tests/data/**/*.png
 *.png
 /src/cosmoforge.picslike/tests/data/nside8/B/fortran_reference/theory_spectra
-/src/cosmoforge.qube/benchmarks/sims/bench_T_lmax*
-/src/cosmoforge.qube/benchmarks/sims/bench_QU_lmax*
+/src/cosmoforge.qube/benchmarks/sims/bench_T*
+/src/cosmoforge.qube/benchmarks/sims/bench_QU*
+/src/cosmoforge.qube/benchmarks/sims/bench_mpi*
