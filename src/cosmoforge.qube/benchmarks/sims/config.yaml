@@ -5,15 +5,15 @@ physical_labels: ["Q", "U"]
 
 do_cross: false
 
-maskfile: 'sims/mask_gal_cut_30.fits'
+maskfile: 'data/mask_gal_cut_30.fits'
 output_geometry_file: 'sims/geometry.dat'
 ordering: RING
 
 # inputclfile: 'sims/tau0.06_dls_noEE.txt'
 inputclfile: 'sims/tau0.06_dls_r_likelihood_r0.0.txt'
 input_convention: Dl
-covmatfile1: 'sims/NCVM1.bin'
-covmatfile2: 'sims/NCVM2.bin'
+covmatfile1: 'data/NCVM1.bin'
+covmatfile2: 'data/NCVM2.bin'
 
 lmax: 32
 
@@ -25,7 +25,7 @@ calibration: 1.0
 smoothing_type: cosine
 fwhmarcmin: 440.0
 apply_pixwin: false
-beam_file: 'sims/beam_coswin_pixwin16.fits'
+beam_file: 'data/beam_coswin_pixwin16.fits'
 
 outnoisecovmat1: 'sims/reduced_NCVM1.bin'
 outnoisecovmat2: 'sims/reduced_NCVM2.bin'
@@ -39,8 +39,8 @@ outfilefisher: 'sims/fisher.dat'
 
 # QML-specific parameters
 nsims: 1000
-inputmapfile1: 'sims/all_sims_TQU_coswin.npy'
-inputmapfile2: 'sims/all_sims_TQU_coswin.npy'
+inputmapfile1: 'data/all_sims_TQU_coswin.npy'
+inputmapfile2: 'data/all_sims_TQU_coswin.npy'
 
 # Output files for QML
 outcovmatfile: 'sims/cov_matrix.dat'

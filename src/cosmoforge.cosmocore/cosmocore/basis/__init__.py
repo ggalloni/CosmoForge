@@ -71,6 +71,37 @@ def _problem_dimensions(
     return n_pix, n_modes
 
 
+def _auto_pick_method(
+    n_pix: int, n_modes: int, lmax: int, n_bins: int
+) -> tuple[str, dict, dict]:
+    """Pick the cheaper basis based on a leading-order cost model.
+
+    Two paths:
+
+    - **Harmonic + sparse traces**: dominated by the SMW kernel Cholesky,
+      cost ~ n_modes^3. Trace stage is O(lmax^4) with the sparse
+      derivative representation and is essentially free in comparison.
+    - **Pixel-direct**: cost ~ (n_bins + 1) * n_pix^3. The per-bin
+      C_inv @ dC^b products are the bottleneck; n_bins=1 is the
+      ratio-only case and binned analyses with small n_bins favour pixel.
+
+    Returns (method, extra_kwargs, costs_dict) so callers can log the
+    decision without re-deriving it.
+    """
+    cost_harmonic = float(n_modes) ** 3
+    cost_pixel = float(n_bins + 1) * float(n_pix) ** 3
+    costs = {
+        "n_pix": n_pix,
+        "n_modes": n_modes,
+        "n_bins": n_bins,
+        "cost_harmonic": cost_harmonic,
+        "cost_pixel": cost_pixel,
+    }
+    if cost_harmonic <= cost_pixel:
+        return "harmonic", {}, costs
+    return "pixel", {"use_direct": True}, costs
+
+
 def create_computation_basis(
     method: str,
     N: np.ndarray,
@@ -89,9 +120,11 @@ def create_computation_basis(
         Computation basis method:
         - "harmonic": Tegmark-like direct harmonic transformation
         - "pixel": Gjerløw-like pixel-space projector with eigenvalue truncation
-        - "auto": Pick the cheapest path based on n_pix vs n_modes (at the
-          effective lmax after lswitch). Selects "harmonic" when
-          n_pix > n_modes, otherwise "pixel" in direct mode (no V).
+        - "auto": Pick the cheaper path using a leading-order cost model.
+          Compares ~n_modes^3 (harmonic + sparse traces) vs
+          ~(n_bins+1)*n_pix^3 (pixel-direct). Pass ``n_bins`` to refine
+          the estimate; defaults to ``lmax-1`` (unbinned, worst case
+          for pixel-direct).
     N : numpy.ndarray
         Noise covariance matrix.
     N_inv : numpy.ndarray
@@ -116,20 +149,35 @@ def create_computation_basis(
     spins = kwargs.get("spins")
     lswitch_high = kwargs.get("lswitch_high")
     n_pix, n_modes = _problem_dimensions(theta, spins, lmax, lswitch_high)
+    n_bins = kwargs.pop("n_bins", None)
+    if n_bins is None:
+        # Worst case for pixel-direct: assume one bandpower per multipole.
+        n_bins = max(lmax - 1, 1)
 
     if method == "auto":
-        if n_pix > n_modes:
-            method = "harmonic"
-        else:
-            method = "pixel"
-            kwargs["use_direct"] = True
-    elif method == "harmonic" and n_pix <= n_modes:
+        method, extra, costs = _auto_pick_method(n_pix, n_modes, lmax, n_bins)
+        kwargs.update(extra)
+        ratio = costs["cost_pixel"] / max(costs["cost_harmonic"], 1.0)
         warnings.warn(
-            f"n_pix ({n_pix}) <= n_modes ({n_modes}): harmonic basis expands "
-            f"the problem dimension. Consider method='auto' or method='pixel'.",
+            f"basis 'auto' picked '{method}' "
+            f"(n_pix={n_pix}, n_modes={n_modes}, n_bins={n_bins}; "
+            f"cost_pixel/cost_harmonic={ratio:.2g})",
             UserWarning,
             stacklevel=2,
         )
+    elif method == "harmonic":
+        # Sparse traces make harmonic competitive even when n_pix < n_modes.
+        # Only warn when the cost model also disagrees with the user's choice.
+        _, _, costs = _auto_pick_method(n_pix, n_modes, lmax, n_bins)
+        if costs["cost_pixel"] < costs["cost_harmonic"]:
+            warnings.warn(
+                f"harmonic basis chosen but pixel-direct estimated "
+                f"~{costs['cost_harmonic'] / costs['cost_pixel']:.1f}x cheaper "
+                f"(n_pix={n_pix}, n_modes={n_modes}, n_bins={n_bins}). "
+                "Consider method='auto'.",
+                UserWarning,
+                stacklevel=2,
+            )
 
     if method not in _BASIS_CLASSES:
         raise ValueError(
