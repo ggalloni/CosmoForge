@@ -164,28 +164,21 @@ class HarmonicBasis(ComputationBasis):
         """
         import time as _time
 
-        from threadpoolctl import threadpool_limits
+        # Build harmonic operator, ell-mode mapping, and derivative diagonals
+        _t0 = _time.time()
+        self._build_basis()
+        _t_basis = _time.time() - _t0
 
-        # OpenBLAS 0.3.29's parallel dpotrf path segfaults under multi-process
-        # MPI pressure when several ranks per node each carry their own BLAS
-        # thread pool (reproduced at 16 ranks × 3 threads on a 48-core node;
-        # the same call ran cleanly at 32 ranks × 1 thread, ruling out memory).
-        # Scope BLAS to a single thread for the duration of basis setup; the
-        # remaining work (Fisher derivatives, QML) is MPI-parallel and unaffected.
-        with threadpool_limits(limits=1, user_api="blas"):
+        # Compute effective noise matrix when switch optimization is enabled
+        _t_eff = 0.0
+        if self._use_switch_optimization:
             _t0 = _time.time()
-            self._build_basis()
-            _t_basis = _time.time() - _t0
+            self._compute_effective_noise()
+            _t_eff = _time.time() - _t0
 
-            _t_eff = 0.0
-            if self._use_switch_optimization:
-                _t0 = _time.time()
-                self._compute_effective_noise()
-                _t_eff = _time.time() - _t0
-
-            _t0 = _time.time()
-            self._compute_smw_components()
-            _t_smw = _time.time() - _t0
+        _t0 = _time.time()
+        self._compute_smw_components()
+        _t_smw = _time.time() - _t0
 
         from ..logger import get_logger
 
