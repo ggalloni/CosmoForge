@@ -10,7 +10,7 @@ Geometry: polar cap centred on the north pole, fsky ~ 0.1.
 Sweep: lmax in {8, 16, 24, 32, 48}, T-only and QU.
 Methods: harmonic and pixel (default epsilon=1e-6, noise_weighted).
 
-Usage: uv run python benchmark_pixel_vs_harmonic.py
+Usage: mpirun -n 1 uv run python -u benchmark_pixel_vs_harmonic.py
 """
 
 import json
