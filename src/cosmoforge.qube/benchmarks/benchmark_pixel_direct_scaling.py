@@ -196,6 +196,8 @@ def benchmark_spectra(config_file, fisher, method, bins=None):
 # =========================================================================
 
 FSKY = 0.10
+# nside=64 QU needs ~10+ GB RAM (n_pix=9830, ~770 MB per matrix); run on a
+# workstation/cluster, not a laptop.
 NSIDE_VALUES = [16, 32, 64]
 TARGET_NBINS = 6  # Binning chosen so each run has ~6 bandpower bins.
 
