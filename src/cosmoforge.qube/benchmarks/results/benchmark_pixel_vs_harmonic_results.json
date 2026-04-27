@@ -1,20 +1,20 @@
 {
   "metadata": {
-    "timestamp_utc": "2026-04-27T12:18:55.342862+00:00",
-    "hostname": "thinkpad",
+    "timestamp_utc": "2026-04-27T12:19:47.424361+00:00",
+    "hostname": "r511c01n01",
     "uname": {
       "system": "Linux",
-      "node": "thinkpad",
-      "release": "6.17.0-20-generic",
-      "version": "#20~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Thu Mar 19 01:28:37 UTC 2",
+      "node": "r511c01n01",
+      "release": "4.18.0-240.el8.x86_64",
+      "version": "#1 SMP Fri Sep 25 19:48:47 UTC 2020",
       "machine": "x86_64",
       "processor": "x86_64"
     },
     "python": "3.13.5",
     "cpu": {
-      "count": 12,
-      "model": "13th Gen Intel(R) Core(TM) i7-1355U",
-      "sockets": 1
+      "count": 48,
+      "model": "Intel(R) Xeon(R) Platinum 8260 CPU @ 2.40GHz",
+      "sockets": 2
     },
     "blas": {
       "blas": {
@@ -39,7 +39,7 @@
     "git": {
       "sha": "e8141c9180488be36b944cae4ac3108d1146a1b5",
       "branch": "pixel-basis-auto",
-      "dirty": false
+      "dirty": true
     },
     "thread_env": {
       "OMP_NUM_THREADS": null,
@@ -50,22 +50,22 @@
       "NUMBA_DISABLE_JIT": null
     },
     "slurm": {
-      "SLURM_JOB_ID": null,
-      "SLURM_NNODES": null,
-      "SLURM_NTASKS": null,
-      "SLURM_NTASKS_PER_NODE": null,
+      "SLURM_JOB_ID": "20051973",
+      "SLURM_NNODES": "1",
+      "SLURM_NTASKS": "48",
+      "SLURM_NTASKS_PER_NODE": "48",
       "SLURM_CPUS_PER_TASK": null,
-      "SLURM_NODELIST": null
+      "SLURM_NODELIST": "r511c01n01"
     },
     "mpi": {
       "size": 1,
       "rank": 0,
-      "vendor": "Open MPI.(4, 1, 6)"
+      "vendor": "Intel MPI.(2021, 6, 0)"
     }
   },
   "results": {
     "T_lmax8_harmonic": {
-      "total": 1.5079046699975152,
+      "total": 5.3002229407429695,
       "n_modes": 77,
       "n_pix": 312,
       "nside": 16,
@@ -77,11 +77,11 @@
       ],
       "field_label": "T",
       "delta_ell": 8,
-      "qml_total": 0.0053832070116186514,
+      "qml_total": 0.39909736067056656,
       "nsims": 10
     },
     "T_lmax8_pixel": {
-      "total": 0.7691951230081031,
+      "total": 1.5117005109786987,
       "n_modes": 312,
       "n_pix": 312,
       "nside": 16,
@@ -93,11 +93,11 @@
       ],
       "field_label": "T",
       "delta_ell": 8,
-      "qml_total": 0.3863073200045619,
+      "qml_total": 2.0723410323262215,
       "nsims": 10
     },
     "T_lmax8_auto": {
-      "total": 0.31361065300006885,
+      "total": 0.9199290573596954,
       "n_modes": 77,
       "n_pix": 312,
       "nside": 16,
@@ -109,11 +109,11 @@
       ],
       "field_label": "T",
       "delta_ell": 8,
-      "qml_total": 0.0033493770024506375,
+      "qml_total": 0.030516766011714935,
       "nsims": 10
     },
     "T_lmax16_harmonic": {
-      "total": 0.5351539719995344,
+      "total": 1.4176989272236824,
       "n_modes": 285,
       "n_pix": 312,
       "nside": 16,
@@ -125,11 +125,11 @@
       ],
       "field_label": "T",
       "delta_ell": 8,
-      "qml_total": 0.20254736099741422,
+      "qml_total": 0.24801166355609894,
       "nsims": 10
     },
     "T_lmax16_pixel": {
-      "total": 0.7382498039951315,
+      "total": 0.7178503721952438,
       "n_modes": 312,
       "n_pix": 312,
       "nside": 16,
@@ -141,11 +141,11 @@
       ],
       "field_label": "T",
       "delta_ell": 8,
-      "qml_total": 0.3594903300108854,
+      "qml_total": 0.44006116688251495,
       "nsims": 10
     },
     "T_lmax16_auto": {
-      "total": 0.3309801799914567,
+      "total": 0.5267282128334045,
       "n_modes": 285,
       "n_pix": 312,
       "nside": 16,
@@ -157,11 +157,11 @@
       ],
       "field_label": "T",
       "delta_ell": 8,
-      "qml_total": 0.21493492199806497,
+      "qml_total": 0.11422128230333328,
       "nsims": 10
     },
     "T_lmax24_harmonic": {
-      "total": 0.351436768003623,
+      "total": 0.879640057682991,
       "n_modes": 621,
       "n_pix": 312,
       "nside": 16,
@@ -173,11 +173,11 @@
       ],
       "field_label": "T",
       "delta_ell": 8,
-      "qml_total": 0.19389781600330025,
+      "qml_total": 0.32202785462141037,
       "nsims": 10
     },
     "T_lmax24_pixel": {
-      "total": 0.7215467500063824,
+      "total": 0.660839356482029,
       "n_modes": 312,
       "n_pix": 312,
       "nside": 16,
@@ -189,11 +189,11 @@
       ],
       "field_label": "T",
       "delta_ell": 8,
-      "qml_total": 0.41112318099476397,
+      "qml_total": 1.7488686740398407,
       "nsims": 10
     },
     "T_lmax24_auto": {
-      "total": 1.1274740639928496,
+      "total": 2.006411723792553,
       "n_modes": 312,
       "n_pix": 312,
       "nside": 16,
@@ -205,11 +205,11 @@
       ],
       "field_label": "T",
       "delta_ell": 8,
-      "qml_total": 0.2848209489893634,
+      "qml_total": 0.3952458128333092,
       "nsims": 10
     },
     "T_lmax32_harmonic": {
-      "total": 0.4808553379989462,
+      "total": 0.566184438765049,
       "n_modes": 1085,
       "n_pix": 312,
       "nside": 16,
@@ -221,11 +221,11 @@
       ],
       "field_label": "T",
       "delta_ell": 8,
-      "qml_total": 0.25523999900906347,
+      "qml_total": 0.21851924061775208,
       "nsims": 10
     },
     "T_lmax32_pixel": {
-      "total": 0.8605465820000973,
+      "total": 1.1674836501479149,
       "n_modes": 312,
       "n_pix": 312,
       "nside": 16,
@@ -237,11 +237,11 @@
       ],
       "field_label": "T",
       "delta_ell": 8,
-      "qml_total": 0.42648557299980894,
+      "qml_total": 1.432929441332817,
       "nsims": 10
     },
     "T_lmax32_auto": {
-      "total": 0.35964558899286203,
+      "total": 1.4263159781694412,
       "n_modes": 312,
       "n_pix": 312,
       "nside": 16,
@@ -253,11 +253,11 @@
       ],
       "field_label": "T",
       "delta_ell": 8,
-      "qml_total": 0.3136164239986101,
+      "qml_total": 1.9724044725298882,
       "nsims": 10
     },
     "T_lmax48_harmonic": {
-      "total": 1.623615680000512,
+      "total": 1.8032710775732994,
       "n_modes": 2397,
       "n_pix": 312,
       "nside": 16,
@@ -269,11 +269,11 @@
       ],
       "field_label": "T",
       "delta_ell": 8,
-      "qml_total": 1.1143256920040585,
+      "qml_total": 0.4188440069556236,
       "nsims": 10
     },
     "T_lmax48_pixel": {
-      "total": 1.3242767789924983,
+      "total": 1.7994891926646233,
       "n_modes": 312,
       "n_pix": 312,
       "nside": 16,
@@ -285,11 +285,11 @@
       ],
       "field_label": "T",
       "delta_ell": 8,
-      "qml_total": 0.7770456029975321,
+      "qml_total": 1.6791092231869698,
       "nsims": 10
     },
     "T_lmax48_auto": {
-      "total": 0.5012272720050532,
+      "total": 0.5944507122039795,
       "n_modes": 312,
       "n_pix": 312,
       "nside": 16,
@@ -301,11 +301,11 @@
       ],
       "field_label": "T",
       "delta_ell": 8,
-      "qml_total": 0.4423682680062484,
+      "qml_total": 0.26337922364473343,
       "nsims": 10
     },
     "QU_lmax8_harmonic": {
-      "total": 1.6523712519992841,
+      "total": 2.0639339238405228,
       "n_modes": 154,
       "n_pix": 624,
       "nside": 16,
@@ -317,11 +317,11 @@
       ],
       "field_label": "QU",
       "delta_ell": 8,
-      "qml_total": 0.19867277699813712,
+      "qml_total": 0.28003697842359543,
       "nsims": 10
     },
     "QU_lmax8_pixel": {
-      "total": 1.395926290002535,
+      "total": 1.1249301880598068,
       "n_modes": 624,
       "n_pix": 624,
       "nside": 16,
@@ -333,11 +333,11 @@
       ],
       "field_label": "QU",
       "delta_ell": 8,
-      "qml_total": 0.9447760250041028,
+      "qml_total": 0.44049122184515,
       "nsims": 10
     },
     "QU_lmax8_auto": {
-      "total": 0.666687364995596,
+      "total": 0.4789540767669678,
       "n_modes": 154,
       "n_pix": 624,
       "nside": 16,
@@ -349,11 +349,11 @@
       ],
       "field_label": "QU",
       "delta_ell": 8,
-      "qml_total": 0.15770376499858685,
+      "qml_total": 0.02208326756954193,
       "nsims": 10
     },
     "QU_lmax16_harmonic": {
-      "total": 1.0957879710040288,
+      "total": 0.897662378847599,
       "n_modes": 570,
       "n_pix": 624,
       "nside": 16,
@@ -365,11 +365,11 @@
       ],
       "field_label": "QU",
       "delta_ell": 8,
-      "qml_total": 0.22590827800740954,
+      "qml_total": 0.18341302126646042,
       "nsims": 10
     },
     "QU_lmax16_pixel": {
-      "total": 1.579817195990472,
+      "total": 1.1882291659712791,
       "n_modes": 624,
       "n_pix": 624,
       "nside": 16,
@@ -381,11 +381,11 @@
       ],
       "field_label": "QU",
       "delta_ell": 8,
-      "qml_total": 0.7929725680005504,
+      "qml_total": 0.43940237164497375,
       "nsims": 10
     },
     "QU_lmax16_auto": {
-      "total": 0.6596272339957068,
+      "total": 0.5510545670986176,
       "n_modes": 570,
       "n_pix": 624,
       "nside": 16,
@@ -397,11 +397,11 @@
       ],
       "field_label": "QU",
       "delta_ell": 8,
-      "qml_total": 0.20925240700307768,
+      "qml_total": 0.10233475267887115,
       "nsims": 10
     },
     "QU_lmax24_harmonic": {
-      "total": 1.0955733000009786,
+      "total": 0.8586667627096176,
       "n_modes": 1242,
       "n_pix": 624,
       "nside": 16,
@@ -413,11 +413,11 @@
       ],
       "field_label": "QU",
       "delta_ell": 8,
-      "qml_total": 0.5470035320031457,
+      "qml_total": 0.30867575854063034,
       "nsims": 10
     },
     "QU_lmax24_pixel": {
-      "total": 3.0764698709972436,
+      "total": 2.3711110576987267,
       "n_modes": 624,
       "n_pix": 624,
       "nside": 16,
@@ -429,11 +429,11 @@
       ],
       "field_label": "QU",
       "delta_ell": 8,
-      "qml_total": 0.5514346419950016,
+      "qml_total": 1.0005191043019295,
       "nsims": 10
     },
     "QU_lmax24_auto": {
-      "total": 1.9084111909905914,
+      "total": 2.6120069921016693,
       "n_modes": 624,
       "n_pix": 624,
       "nside": 16,
@@ -445,11 +445,11 @@
       ],
       "field_label": "QU",
       "delta_ell": 8,
-      "qml_total": 0.3304142119886819,
+      "qml_total": 1.2374114841222763,
       "nsims": 10
     },
     "QU_lmax32_harmonic": {
-      "total": 3.0067760850070044,
+      "total": 1.945130005478859,
       "n_modes": 2170,
       "n_pix": 624,
       "nside": 16,
@@ -461,11 +461,11 @@
       ],
       "field_label": "QU",
       "delta_ell": 8,
-      "qml_total": 2.2847992879978847,
+      "qml_total": 0.5155858248472214,
       "nsims": 10
     },
     "QU_lmax32_pixel": {
-      "total": 9.950152031990001,
+      "total": 3.4858812242746353,
       "n_modes": 624,
       "n_pix": 624,
       "nside": 16,
@@ -477,11 +477,11 @@
       ],
       "field_label": "QU",
       "delta_ell": 8,
-      "qml_total": 0.6836370009987149,
+      "qml_total": 0.5185632035136223,
       "nsims": 10
     },
     "QU_lmax32_auto": {
-      "total": 2.429079957000795,
+      "total": 1.7609749287366867,
       "n_modes": 624,
       "n_pix": 624,
       "nside": 16,
@@ -493,11 +493,11 @@
       ],
       "field_label": "QU",
       "delta_ell": 8,
-      "qml_total": 0.4258898389962269,
+      "qml_total": 0.538857027888298,
       "nsims": 10
     },
     "QU_lmax48_harmonic": {
-      "total": 19.420910599001218,
+      "total": 9.655271872878075,
       "n_modes": 4794,
       "n_pix": 624,
       "nside": 16,
@@ -509,11 +509,11 @@
       ],
       "field_label": "QU",
       "delta_ell": 8,
-      "qml_total": 19.658469141999376,
+      "qml_total": 2.462361380457878,
       "nsims": 10
     },
     "QU_lmax48_pixel": {
-      "total": 61.9961530110013,
+      "total": 6.493012122809887,
       "n_modes": 624,
       "n_pix": 624,
       "nside": 16,
@@ -525,11 +525,11 @@
       ],
       "field_label": "QU",
       "delta_ell": 8,
-      "qml_total": 1.8076709099987056,
+      "qml_total": 0.8557008281350136,
       "nsims": 10
     },
     "QU_lmax48_auto": {
-      "total": 3.2675061999907484,
+      "total": 3.4710300639271736,
       "n_modes": 624,
       "n_pix": 624,
       "nside": 16,
@@ -541,7 +541,7 @@
       ],
       "field_label": "QU",
       "delta_ell": 8,
-      "qml_total": 0.38060413899074774,
+      "qml_total": 0.4875820204615593,
       "nsims": 10
     }
   }
