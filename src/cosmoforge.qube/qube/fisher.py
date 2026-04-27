@@ -515,17 +515,24 @@ class Fisher(Core, MPISharedMemoryMixin):
             self.setup_beams(lmax=self.lmax_signal)
             self.log("Beam functions setup completed", level=3)
 
-            # Setup computation basis if configured
+            # Setup computation basis if configured. Only forward keys that
+            # are explicitly set in the config dict so the function defaults
+            # (e.g. epsilon=1e-6) take effect when the user omits a key.
             if self._basis_config is not None:
-                config = self._basis_config
-                self.setup_computation_basis(
-                    method=config.get("method", "auto"),
-                    lmax=config.get("lmax"),
-                    epsilon=config.get("epsilon"),
-                    mode_fraction=config.get("mode_fraction"),
-                    basis=config.get("basis", "noise_weighted"),
-                    C_ell=config.get("C_ell"),
+                _basis_keys = (
+                    "method",
+                    "lmax",
+                    "epsilon",
+                    "mode_fraction",
+                    "basis",
+                    "C_ell",
                 )
+                kwargs = {
+                    k: self._basis_config[k]
+                    for k in _basis_keys
+                    if k in self._basis_config
+                }
+                self.setup_computation_basis(**kwargs)
                 self.log(
                     f"Computation basis enabled: {self.basis_manager.n_kept} modes "
                     f"({self.basis_manager.compression_ratio:.1%})",
