@@ -427,6 +427,9 @@ class Fisher(Core, MPISharedMemoryMixin):
 
         if self._cache_derivatives:
             self._cached_binned_derivatives = binned_derivatives
+            # Sparse-COO cache lets Spectra exploit harmonic-basis derivative
+            # sparsity in QML — same trick as the Fisher trace path below.
+            self._cached_sparse_coo_data = sparse_coo_data if use_harmonic_fast else None
 
         if self.rank == 0:
             trace_path = "sparse-COO harmonic" if use_harmonic_fast else "dense matmul"
@@ -859,12 +862,14 @@ class Fisher(Core, MPISharedMemoryMixin):
         saved_fisher = self.fisher
         saved_n_params = self.n_params
         saved_cached = getattr(self, "_cached_binned_derivatives", None)
+        saved_coo = getattr(self, "_cached_sparse_coo_data", None)
         try:
             self.bins = Bins.fromdeltal(2, self.params.lmax, 1)
             self.n_params = self.params.nspectra * self.bins.nbins
             self.fisher = np.zeros((self.n_params, self.n_params))
             # Drop binned-derivative cache so per-ℓ run rebuilds its own
             self._cached_binned_derivatives = None
+            self._cached_sparse_coo_data = None
             self.compute()
             F_perell = self.fisher.copy()
         finally:
@@ -872,4 +877,5 @@ class Fisher(Core, MPISharedMemoryMixin):
             self.fisher = saved_fisher
             self.n_params = saved_n_params
             self._cached_binned_derivatives = saved_cached
+            self._cached_sparse_coo_data = saved_coo
         return F_perell
