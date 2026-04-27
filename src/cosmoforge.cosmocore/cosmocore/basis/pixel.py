@@ -622,11 +622,31 @@ class PixelBasis(ComputationBasis):
     # =========================================================================
 
     def _spectrum_idx_from_components(self, comp_i: int, comp_j: int, mode: int) -> int:
-        """Map (comp_i, comp_j, mode) to spectrum_idx for do_derivative_step."""
-        labels_i = self._fields.fields[comp_i].maps_label
-        labels_j = self._fields.fields[comp_j].maps_label
-        combined = [a + b for a in labels_i for b in labels_j]
-        return self._spec_label_to_idx[combined[mode]]
+        """Map (comp_i, comp_j, mode) to spectrum_idx for do_derivative_step.
+
+        Mode encoding follows the QML/CosmoForge convention:
+        - spin-0 × spin-0: mode 0 = auto (e.g. TT)
+        - spin-2 × spin-2 same component: mode 0 = EE, 1 = BB, 2 = EB
+        - spin-2 × spin-2 cross-component: linear over label pairs
+        - spin-0 × spin-2: linear over label pairs (e.g. TE, TB)
+        """
+        fi = self._fields.fields[comp_i]
+        fj = self._fields.fields[comp_j]
+        labels_i = fi.maps_label if isinstance(fi.maps_label, list) else [fi.maps_label]
+        labels_j = fj.maps_label if isinstance(fj.maps_label, list) else [fj.maps_label]
+
+        if fi.spin == 2 and fj.spin == 2 and comp_i == comp_j:
+            # Auto-spectrum on a single spin-2 field: mode 0=EE, 1=BB, 2=EB
+            if mode == 0:
+                label = labels_i[0] + labels_j[0]
+            elif mode == 1:
+                label = labels_i[1] + labels_j[1]
+            else:  # mode == 2
+                label = labels_i[0] + labels_j[1]
+        else:
+            combined = [a + b for a in labels_i for b in labels_j]
+            label = combined[mode]
+        return self._spec_label_to_idx[label]
 
     def _get_derivative_direct(
         self,

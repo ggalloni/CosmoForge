@@ -25,6 +25,7 @@ import healpy as hp
 import numpy as np
 import yaml
 
+from cosmocore import Bins
 from qube import Fisher, Spectra
 
 
@@ -73,13 +74,14 @@ def generate_test_inputs(nside, lmax, spins, physical_labels, lmax_sim, fsky):
     fwhm_rad = np.radians(fwhm_arcmin / 60.0)
     beam = hp.gauss_beam(fwhm_rad, lmax=lmax_sim)
 
-    # Set noise so C = N + S is uniformly well-conditioned across the sweep.
-    # Signal pixel-variance ~ sum_ell (2l+1)/(4pi) * Cl * b^2; pick sigma at
-    # ~10% of that so the condition number stays around 10.
+    # Set noise so C = N + S is uniformly well-conditioned across the sweep
+    # AND the Fisher matrix remains invertible at the highest ℓ where the beam
+    # suppresses signal most heavily. Use sigma² >= signal pixel-variance so
+    # noise dominates and condition numbers stay near 1.
     cl_for_sigma = cl_ee if 2 in spins else cl_tt
     ell_arr = np.arange(lmax_sim + 1)
     sig_var_per_pix = np.sum((2 * ell_arr + 1) / (4 * np.pi) * cl_for_sigma * beam**2)
-    sigma = float(np.sqrt(0.1 * sig_var_per_pix))
+    sigma = float(np.sqrt(sig_var_per_pix))
     cov = np.eye(n_fields * npix) * sigma**2
 
     nsims = 10
@@ -162,8 +164,23 @@ def write_temp_config(
     return config_file
 
 
-def benchmark_fisher(config_file, method):
-    fisher = Fisher(config_file, compression={"method": method})
+def _compression_dict(method):
+    """Build the compression config for a method.
+
+    Pixel V-based path uses an extremely small epsilon so the eigenvalue
+    truncation is effectively disabled — we want to measure pure pixel-basis
+    cost, not compression. Harmonic and auto don't use epsilon.
+    """
+    cfg = {"method": method}
+    if method == "pixel":
+        cfg["epsilon"] = 1e-30
+    return cfg
+
+
+def benchmark_fisher(config_file, method, bins=None):
+    fisher = Fisher(config_file, compression=_compression_dict(method))
+    if bins is not None:
+        fisher.set_binning(bins)
     t0 = time.perf_counter()
     fisher.run()
     t_total = time.perf_counter() - t0
@@ -179,8 +196,10 @@ def benchmark_fisher(config_file, method):
     }, fisher
 
 
-def benchmark_spectra(config_file, fisher, method):
-    spectra = Spectra(config_file, fisher=fisher, compression={"method": method})
+def benchmark_spectra(config_file, fisher, method, bins=None):
+    spectra = Spectra(config_file, fisher=fisher, compression=_compression_dict(method))
+    if bins is not None:
+        spectra.set_binning(bins)
     t0 = time.perf_counter()
     spectra.run()
     t_qml = time.perf_counter() - t0
@@ -194,6 +213,8 @@ def benchmark_spectra(config_file, fisher, method):
 NSIDE = 16
 FSKY = 0.10
 LMAX_VALUES = [8, 16, 24, 32, 48]
+DELTA_ELL = 8  # Bandpower binning keeps the Fisher matrix small (~6×6) and
+# well-conditioned even at small fsky where individual ℓ bins lack modes.
 
 FIELDS = [
     # (label, spins, labels, physical_labels)
@@ -246,17 +267,14 @@ def main():
                         sim_maps,
                         fwhmarcmin=fwhmarcmin,
                     )
+                    # Cap delta_ell so we always get at least 2 bins
+                    delta_ell_used = min(DELTA_ELL, max(2, (lmax - 1) // 2))
+                    bins = Bins.fromdeltal(2, lmax, delta_ell_used)
                     try:
-                        timings, fisher = benchmark_fisher(config_file, method)
+                        timings, fisher = benchmark_fisher(config_file, method, bins=bins)
                         print(f"  n_modes/n_kept = {timings['n_modes']}")
                         print(f"  n_pix          = {timings['n_pix']}")
                         print(f"  Fisher run:    {timings['total']:.2f}s")
-                        qml_timings = benchmark_spectra(config_file, fisher, method)
-                        print(
-                            f"  QML ({qml_timings['nsims']} sims): "
-                            f"{qml_timings['qml_total']:.2f}s"
-                        )
-                        timings.update(qml_timings)
                         timings.update(
                             {
                                 "nside": NSIDE,
@@ -265,8 +283,24 @@ def main():
                                 "method": method,
                                 "spins": spins,
                                 "field_label": field_label,
+                                "delta_ell": DELTA_ELL,
                             }
                         )
+                        # QML is optional: catch any failure (e.g. singular
+                        # Fisher when both fsky and ℓ-coverage push the limits).
+                        try:
+                            qml_timings = benchmark_spectra(
+                                config_file, fisher, method, bins=bins
+                            )
+                            print(
+                                f"  QML ({qml_timings['nsims']} sims): "
+                                f"{qml_timings['qml_total']:.2f}s"
+                            )
+                            timings.update(qml_timings)
+                        except Exception as qml_err:
+                            print(f"  QML SKIPPED: {qml_err}")
+                            timings["qml_total"] = None
+                            timings["qml_error"] = str(qml_err)
                         results[run_label] = timings
                     except Exception as e:
                         print(f"  FAILED: {e}")

@@ -1,0 +1,509 @@
+{
+  "metadata": {
+    "timestamp_utc": "2026-04-27T12:11:09.294782+00:00",
+    "hostname": "thinkpad",
+    "uname": {
+      "system": "Linux",
+      "node": "thinkpad",
+      "release": "6.17.0-20-generic",
+      "version": "#20~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Thu Mar 19 01:28:37 UTC 2",
+      "machine": "x86_64",
+      "processor": "x86_64"
+    },
+    "python": "3.13.5",
+    "cpu": {
+      "count": 12,
+      "model": "13th Gen Intel(R) Core(TM) i7-1355U",
+      "sockets": 1
+    },
+    "blas": {
+      "blas": {
+        "name": "scipy-openblas",
+        "version": "0.3.29"
+      },
+      "lapack": {
+        "name": "scipy-openblas",
+        "version": "0.3.29"
+      }
+    },
+    "packages": {
+      "cosmocore": "0.1.0",
+      "qube": "0.1.0",
+      "picslike": "0.1.0",
+      "numpy": "2.2.6",
+      "scipy": "1.16.1",
+      "healpy": "1.18.1",
+      "numba": "0.61.2",
+      "mpi4py": "4.1.0"
+    },
+    "git": {
+      "sha": "2abf72d9396e6c97dab15dfb59ad8352a6c3e5e5",
+      "branch": "pixel-basis-auto",
+      "dirty": true
+    },
+    "thread_env": {
+      "OMP_NUM_THREADS": null,
+      "MKL_NUM_THREADS": null,
+      "OPENBLAS_NUM_THREADS": null,
+      "BLIS_NUM_THREADS": null,
+      "NUMBA_NUM_THREADS": null,
+      "NUMBA_DISABLE_JIT": null
+    },
+    "slurm": {
+      "SLURM_JOB_ID": null,
+      "SLURM_NNODES": null,
+      "SLURM_NTASKS": null,
+      "SLURM_NTASKS_PER_NODE": null,
+      "SLURM_CPUS_PER_TASK": null,
+      "SLURM_NODELIST": null
+    },
+    "mpi": {
+      "size": 1,
+      "rank": 0,
+      "vendor": "Open MPI.(4, 1, 6)"
+    }
+  },
+  "results": {
+    "T_lmax8_harmonic": {
+      "total": 1.7581286009954056,
+      "n_modes": 77,
+      "n_pix": 312,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 8,
+      "method": "harmonic",
+      "spins": [
+        0
+      ],
+      "field_label": "T",
+      "delta_ell": 8,
+      "qml_total": 0.00857273698784411,
+      "nsims": 10
+    },
+    "T_lmax8_pixel": {
+      "total": 0.4355209870118415,
+      "n_modes": 23,
+      "n_pix": 312,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 8,
+      "method": "pixel",
+      "spins": [
+        0
+      ],
+      "field_label": "T",
+      "delta_ell": 8,
+      "qml_total": 0.0426506500079995,
+      "nsims": 10
+    },
+    "T_lmax8_auto": {
+      "total": 0.3004758509923704,
+      "n_modes": 77,
+      "n_pix": 312,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 8,
+      "method": "auto",
+      "spins": [
+        0
+      ],
+      "field_label": "T",
+      "delta_ell": 8,
+      "qml_total": 0.002655121003044769,
+      "nsims": 10
+    },
+    "T_lmax16_harmonic": {
+      "total": 0.3586710630042944,
+      "n_modes": 285,
+      "n_pix": 312,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 16,
+      "method": "harmonic",
+      "spins": [
+        0
+      ],
+      "field_label": "T",
+      "delta_ell": 8,
+      "qml_total": 0.3370746769942343,
+      "nsims": 10
+    },
+    "T_lmax16_pixel": {
+      "total": 0.4299297830002615,
+      "n_modes": 61,
+      "n_pix": 312,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 16,
+      "method": "pixel",
+      "spins": [
+        0
+      ],
+      "field_label": "T",
+      "delta_ell": 8,
+      "qml_total": 0.08389319299021736,
+      "nsims": 10
+    },
+    "T_lmax16_auto": {
+      "total": 0.39264435099903494,
+      "n_modes": 285,
+      "n_pix": 312,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 16,
+      "method": "auto",
+      "spins": [
+        0
+      ],
+      "field_label": "T",
+      "delta_ell": 8,
+      "qml_total": 0.19428641299600713,
+      "nsims": 10
+    },
+    "T_lmax24_harmonic": {
+      "total": 0.41621158400084823,
+      "n_modes": 621,
+      "n_pix": 312,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 24,
+      "method": "harmonic",
+      "spins": [
+        0
+      ],
+      "field_label": "T",
+      "delta_ell": 8,
+      "qml_total": 0.2152058829960879,
+      "nsims": 10
+    },
+    "T_lmax24_pixel": {
+      "total": 0.6308959580055671,
+      "n_modes": 111,
+      "n_pix": 312,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 24,
+      "method": "pixel",
+      "spins": [
+        0
+      ],
+      "field_label": "T",
+      "delta_ell": 8,
+      "qml_total": 0.3066939810087206,
+      "nsims": 10
+    },
+    "T_lmax24_auto": {
+      "total": 1.1461916430125711,
+      "n_modes": 312,
+      "n_pix": 312,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 24,
+      "method": "auto",
+      "spins": [
+        0
+      ],
+      "field_label": "T",
+      "delta_ell": 8,
+      "qml_total": 0.2905034750001505,
+      "nsims": 10
+    },
+    "T_lmax32_harmonic": {
+      "total": 0.5547683840122772,
+      "n_modes": 1085,
+      "n_pix": 312,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 32,
+      "method": "harmonic",
+      "spins": [
+        0
+      ],
+      "field_label": "T",
+      "delta_ell": 8,
+      "qml_total": 0.340961875001085,
+      "nsims": 10
+    },
+    "T_lmax32_pixel": {
+      "total": 0.7872692079981789,
+      "n_modes": 173,
+      "n_pix": 312,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 32,
+      "method": "pixel",
+      "spins": [
+        0
+      ],
+      "field_label": "T",
+      "delta_ell": 8,
+      "qml_total": 0.40281199500896037,
+      "nsims": 10
+    },
+    "T_lmax32_auto": {
+      "total": 0.3980869730003178,
+      "n_modes": 312,
+      "n_pix": 312,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 32,
+      "method": "auto",
+      "spins": [
+        0
+      ],
+      "field_label": "T",
+      "delta_ell": 8,
+      "qml_total": 0.2616249079874251,
+      "nsims": 10
+    },
+    "T_lmax48_harmonic": {
+      "total": 1.3660542569996323,
+      "n_modes": 2397,
+      "n_pix": 312,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 48,
+      "method": "harmonic",
+      "spins": [
+        0
+      ],
+      "field_label": "T",
+      "delta_ell": 8,
+      "qml_total": 1.0064246560068568,
+      "nsims": 10
+    },
+    "T_lmax48_pixel": {
+      "total": 1.1179230280104093,
+      "n_modes": 287,
+      "n_pix": 312,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 48,
+      "method": "pixel",
+      "spins": [
+        0
+      ],
+      "field_label": "T",
+      "delta_ell": 8,
+      "qml_total": 0.4857733310054755,
+      "nsims": 10
+    },
+    "T_lmax48_auto": {
+      "total": 0.5702997009939281,
+      "n_modes": 312,
+      "n_pix": 312,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 48,
+      "method": "auto",
+      "spins": [
+        0
+      ],
+      "field_label": "T",
+      "delta_ell": 8,
+      "qml_total": 0.26100347501051147,
+      "nsims": 10
+    },
+    "QU_lmax8_harmonic": {
+      "total": 1.5207543249998707,
+      "n_modes": 154,
+      "n_pix": 624,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 8,
+      "method": "harmonic",
+      "spins": [
+        2
+      ],
+      "field_label": "QU",
+      "delta_ell": 8,
+      "qml_total": 0.19189351100067142,
+      "nsims": 10
+    },
+    "QU_lmax8_pixel": {
+      "total": 0.6965408300020499,
+      "n_modes": 48,
+      "n_pix": 624,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 8,
+      "method": "pixel",
+      "spins": [
+        2
+      ],
+      "field_label": "QU",
+      "delta_ell": 8,
+      "qml_total": 0.11716333500226028,
+      "nsims": 10
+    },
+    "QU_lmax8_auto": {
+      "total": 0.6347101769933943,
+      "n_modes": 154,
+      "n_pix": 624,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 8,
+      "method": "auto",
+      "spins": [
+        2
+      ],
+      "field_label": "QU",
+      "delta_ell": 8,
+      "qml_total": 0.18679129199881572,
+      "nsims": 10
+    },
+    "QU_lmax16_harmonic": {
+      "total": 0.5715513100003591,
+      "n_modes": 570,
+      "n_pix": 624,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 16,
+      "method": "harmonic",
+      "spins": [
+        2
+      ],
+      "field_label": "QU",
+      "delta_ell": 8,
+      "qml_total": 0.21793325299222488,
+      "nsims": 10
+    },
+    "QU_lmax16_pixel": {
+      "total": 0.9337381380028091,
+      "n_modes": 124,
+      "n_pix": 624,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 16,
+      "method": "pixel",
+      "spins": [
+        2
+      ],
+      "field_label": "QU",
+      "delta_ell": 8,
+      "qml_total": 0.4062948810023954,
+      "nsims": 10
+    },
+    "QU_lmax16_auto": {
+      "total": 0.6516440650011646,
+      "n_modes": 570,
+      "n_pix": 624,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 16,
+      "method": "auto",
+      "spins": [
+        2
+      ],
+      "field_label": "QU",
+      "delta_ell": 8,
+      "qml_total": 0.22402002599847037,
+      "nsims": 10
+    },
+    "QU_lmax24_harmonic": {
+      "total": 1.5561051800032146,
+      "n_modes": 1242,
+      "n_pix": 624,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 24,
+      "method": "harmonic",
+      "spins": [
+        2
+      ],
+      "field_label": "QU",
+      "delta_ell": 8,
+      "qml_total": 0.45034140700590797,
+      "nsims": 10
+    },
+    "QU_lmax24_pixel": {
+      "total": 1.8418662199983373,
+      "n_modes": 220,
+      "n_pix": 624,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 24,
+      "method": "pixel",
+      "spins": [
+        2
+      ],
+      "field_label": "QU",
+      "delta_ell": 8,
+      "qml_total": 0.4483808070071973,
+      "nsims": 10
+    },
+    "QU_lmax24_auto": {
+      "error": "'BE'"
+    },
+    "QU_lmax32_harmonic": {
+      "total": 3.2150843540002825,
+      "n_modes": 2170,
+      "n_pix": 624,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 32,
+      "method": "harmonic",
+      "spins": [
+        2
+      ],
+      "field_label": "QU",
+      "delta_ell": 8,
+      "qml_total": 2.425417987004039,
+      "nsims": 10
+    },
+    "QU_lmax32_pixel": {
+      "total": 8.44732441600354,
+      "n_modes": 346,
+      "n_pix": 624,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 32,
+      "method": "pixel",
+      "spins": [
+        2
+      ],
+      "field_label": "QU",
+      "delta_ell": 8,
+      "qml_total": 0.7849629429983906,
+      "nsims": 10
+    },
+    "QU_lmax32_auto": {
+      "error": "'BE'"
+    },
+    "QU_lmax48_harmonic": {
+      "total": 22.94547991800937,
+      "n_modes": 4794,
+      "n_pix": 624,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 48,
+      "method": "harmonic",
+      "spins": [
+        2
+      ],
+      "field_label": "QU",
+      "delta_ell": 8,
+      "qml_total": 21.936326343988185,
+      "nsims": 10
+    },
+    "QU_lmax48_pixel": {
+      "total": 70.30091429999447,
+      "n_modes": 574,
+      "n_pix": 624,
+      "nside": 16,
+      "fsky": 0.1,
+      "lmax": 48,
+      "method": "pixel",
+      "spins": [
+        2
+      ],
+      "field_label": "QU",
+      "delta_ell": 8,
+      "qml_total": 1.895779048994882,
+      "nsims": 10
+    },
+    "QU_lmax48_auto": {
+      "error": "'BE'"
+    }
+  }
+}
