@@ -418,8 +418,9 @@ class Spectra(Core, MPISharedMemoryMixin):
             # Store beam-smoothed Fisher for convolved mode covariance
             self.fisher_normalized = self.invfisher.copy()
 
-            # Compute F^(-1/2) for decorrelated mode
-            self._compute_inv_fisher_sqrt(self.invfisher)
+            # F^(-1/2) for the decorrelated mode is computed lazily on first
+            # request — it costs an O(n_params^3) eigendecomposition that only
+            # decorrelated mode consumes.
 
             # Invert Fisher matrix
             self.log("Inverting normalized Fisher matrix", level=2)
@@ -1306,22 +1307,15 @@ class Spectra(Core, MPISharedMemoryMixin):
         Compute decorrelated bandpower estimates (F⁻¹/²y).
 
         Produces uncorrelated estimates with identity covariance matrix.
+        F^(-1/2) is computed lazily on first call.
 
         Returns
         -------
         numpy.ndarray
             Decorrelated power spectrum estimates with shape (nsims, n_params).
-
-        Raises
-        ------
-        ValueError
-            If F^(-1/2) was not computed (e.g., due to ill-conditioning).
         """
         if self.inv_fisher_sqrt is None:
-            raise ValueError(
-                "F^(-1/2) not computed. Check Fisher matrix conditioning or "
-                "ensure setup_fisher_inversion() was called."
-            )
+            self._compute_inv_fisher_sqrt(self.fisher_normalized)
 
         decorrelated = self.qml_results @ self.inv_fisher_sqrt
 
