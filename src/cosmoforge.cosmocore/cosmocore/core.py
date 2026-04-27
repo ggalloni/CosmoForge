@@ -789,6 +789,20 @@ class Core(ABC):
         mode : int
             Spin mode (0=TT/EE/TE, 1=BB/TB, 2=EB).
         """
+        # Fast path: pixel-direct mode has a batched binned derivative that
+        # avoids the per-ℓ Legendre/Wigner pass when bin width is large.
+        bm = getattr(self, "basis_manager", None)
+        if (
+            bm is not None
+            and getattr(bm, "_use_direct", False)
+            and hasattr(bm, "get_binned_derivative_direct")
+        ):
+            ci = 0 if comp_i is None else comp_i
+            cj = 0 if comp_j is None else comp_j
+            return bm.get_binned_derivative_direct(
+                bin_idx, self.bins, beam_smoothing, ci, cj, mode
+            )
+
         lmin_b = self.bins.lmins[bin_idx]
         lmax_b = self.bins.lmaxs[bin_idx]
         dC_b = None

@@ -648,6 +648,27 @@ class PixelBasis(ComputationBasis):
             label = combined[mode]
         return self._spec_label_to_idx[label]
 
+    @staticmethod
+    def _symmetrize_inplace(block: np.ndarray) -> None:
+        """Set block[i,j] = block[j,i] for i < j, in-place. Block must be square."""
+        # Equivalent to: block += block.T - diag(block)
+        # but uses in-place ops to avoid temporary allocations of size n_pix^2.
+        idx = np.triu_indices_from(block, k=1)
+        block[idx] = block[(idx[1], idx[0])]
+
+    def _direct_buffer(self) -> np.ndarray:
+        """Return a reusable n_pix × n_pix Fortran-ordered buffer.
+
+        Allocated lazily on first use. Repeatedly zeroed and refilled by the
+        per-spectrum contribution functions to avoid 8 GB+ allocation churn
+        during binned-derivative loops.
+        """
+        if not hasattr(self, "_direct_pix_buffer"):
+            self._direct_pix_buffer = np.asfortranarray(
+                np.zeros((self.n_pix, self.n_pix), dtype=np.float64)
+            )
+        return self._direct_pix_buffer
+
     def _get_derivative_direct(
         self,
         ell: int,
@@ -666,8 +687,8 @@ class PixelBasis(ComputationBasis):
         cj = 0 if comp_j is None else comp_j
         spectrum_idx = self._spectrum_idx_from_components(ci, cj, mode)
 
-        dS = np.zeros((self.n_pix, self.n_pix), dtype=np.float64)
-        dS = np.asfortranarray(dS)
+        dS = self._direct_buffer()
+        dS.fill(0.0)
         do_derivative_step(
             dS,
             spectrum_idx,
@@ -676,6 +697,150 @@ class PixelBasis(ComputationBasis):
             ell,
             self._fields,
         )
+        return dS
+
+    def get_binned_derivative_direct(
+        self,
+        bin_idx: int,
+        bins,
+        beam_smoothing: np.ndarray | None,
+        comp_i: int = 0,
+        comp_j: int = 0,
+        mode: int = 0,
+    ) -> np.ndarray:
+        """Build the binned derivative dC^b in a single Legendre/Wigner pass.
+
+        Mathematically equivalent to summing per-ℓ ``_get_derivative_direct``
+        results with weights ``beam²(ℓ)`` over ℓ ∈ [bins.lmins[bin_idx],
+        bins.lmaxs[bin_idx]], but uses one ``compute_*_contribution`` call
+        instead of N (where N = bin width). The contribution functions
+        already accumulate ``Σ_k cl[k] × kernel[k+1]`` per pixel pair, so
+        passing ``cl[ell-2] = beam²(ell)`` (zero outside bin) yields the
+        exact binned derivative.
+        """
+        from ..pixel import (
+            compute_00_contribution,
+            compute_02_contribution,
+            compute_22_contribution,
+        )
+
+        lmin_b = bins.lmins[bin_idx]
+        lmax_b = bins.lmaxs[bin_idx]
+
+        # Build per-ell weight array w[k] for k = ell - 2 (k=0 → ell=2).
+        # The contribution functions evaluate Σ_k w[k] × kernel[k+1], where
+        # kernel[k+1] = legendre/Wigner at ell = k + 2. So setting w[k] to
+        # beam²(ell) inside the bin and 0 elsewhere produces exactly
+        # Σ_{ell∈bin} beam²(ell) × dC/dC_ell.
+        n_cl = self.lmax - 1  # ell = 2 .. lmax → length lmax - 1
+        weights = np.zeros(n_cl, dtype=np.float64)
+        for ell in range(lmin_b, lmax_b + 1):
+            if ell < 2 or ell > self.lmax:
+                continue
+            w = 1.0
+            if beam_smoothing is not None:
+                w = beam_smoothing[ell - 2]
+            weights[ell - 2] = w
+
+        fi = self._fields.fields[comp_i]
+        fj = self._fields.fields[comp_j]
+        spin_i = fi.spin
+        spin_j = fj.spin
+
+        # Pixel layout matches do_derivative_step's convention.
+        ri = sum(
+            2 * n if s == 2 else n
+            for n, s in zip(
+                self._fields.n_active[:comp_i],
+                self._fields.spin[:comp_i],
+            )
+        )
+        rj = sum(
+            2 * n if s == 2 else n
+            for n, s in zip(
+                self._fields.n_active[:comp_j],
+                self._fields.spin[:comp_j],
+            )
+        )
+        nrow = self._n_pix_per_component[comp_i]
+        ncol = self._n_pix_per_component[comp_j]
+
+        # Allocate a fresh output array — Fisher stores all binned derivatives
+        # in a dict and reuses them later, so we cannot share a buffer across
+        # binned calls without aliasing.
+        dS = np.asfortranarray(np.zeros((self.n_pix, self.n_pix), dtype=np.float64))
+        block = dS[rj : rj + ncol, ri : ri + nrow]
+        legendre = np.empty(self.lmax, dtype=np.float64)
+        zeros = np.zeros(n_cl, dtype=np.float64)
+
+        if spin_i == 0 and spin_j == 0:
+            sub_mode = 0 if comp_i == comp_j else 1
+            compute_00_contribution(
+                weights, block, fi.point_vectors, fj.point_vectors, legendre, sub_mode
+            )
+            if sub_mode == 0:
+                # compute_00_contribution mode=0 fills only lower + diagonal;
+                # derivative_step_00 mode=0 symmetrizes upper at the end.
+                self._symmetrize_inplace(block)
+            else:
+                # Cross-field (mode=1): both halves filled inside, but the
+                # transposed cross-block in dS must be set to match
+                # do_derivative_step's outer-level mirror.
+                dS[ri : ri + nrow, rj : rj + ncol] = block.T
+        elif spin_i == 2 and spin_j == 2 and comp_i == comp_j:
+            f1 = np.empty(self.lmax, dtype=np.float64)
+            f2 = np.empty(self.lmax, dtype=np.float64)
+            if mode == 0:  # EE
+                cl11, cl22, cl12 = weights, zeros, zeros
+            elif mode == 1:  # BB
+                cl11, cl22, cl12 = zeros, weights, zeros
+            elif mode == 2:  # EB
+                cl11, cl22, cl12 = zeros, zeros, weights
+            else:
+                raise ValueError(f"Invalid spin-2 mode {mode}")
+            compute_22_contribution(
+                cl11,
+                cl22,
+                cl12,
+                block,
+                fi.point_vectors,
+                fj.point_vectors,
+                legendre,
+                f1,
+                f2,
+            )
+            # derivative_step_22 symmetrizes its full output; compute_22 does
+            # not, so do it here. The block is the full square spin-2 derivative.
+            self._symmetrize_inplace(block)
+        elif (spin_i, spin_j) in ((0, 2), (2, 0)):
+            cl12 = weights if mode == 0 else zeros
+            cl13 = weights if mode == 1 else zeros
+            if spin_i == 0:
+                compute_02_contribution(
+                    cl12,
+                    cl13,
+                    block,
+                    fi.point_vectors,
+                    fj.point_vectors,
+                    legendre,
+                )
+            else:
+                block_swapped = dS[ri : ri + nrow, rj : rj + ncol]
+                compute_02_contribution(
+                    cl12,
+                    cl13,
+                    block_swapped,
+                    fj.point_vectors,
+                    fi.point_vectors,
+                    legendre,
+                )
+            # No symmetrize: derivative_step_02 fills the same one-sided
+            # cross-block (do_derivative_step does NOT mirror for spin-0×spin-2).
+        else:
+            raise NotImplementedError(
+                f"Direct binned derivative not implemented for spins ({spin_i}, {spin_j})"
+            )
+
         return dS
 
     def _build_signal_matrix_direct(self) -> np.ndarray:
