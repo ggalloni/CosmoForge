@@ -161,7 +161,7 @@ def main():
 
     # Time Fisher
     compression_config = {"method": "harmonic"}
-    fisher = Fisher(config_file, compression=compression_config, cache_derivatives=False)
+    fisher = Fisher(config_file, compression=compression_config)
 
     comm.Barrier()
     t0 = time.perf_counter()
