@@ -125,9 +125,28 @@ class PixelBasis(ComputationBasis):
         C_ell: np.ndarray | None = None,
         epsilon: float | list[float | tuple[float, float]] | None = None,
         mode_fraction: float | list[float | tuple[float, float]] | None = None,
+        lswitch_low: int | None = None,
+        lswitch_high: int | None = None,
+        fields=None,
+        use_direct: bool = False,
     ):
-        super().__init__(N, N_inv, theta, phi, lmax, beam, spins=spins)
-        self._init_harmonic_internals()
+        super().__init__(
+            N,
+            N_inv,
+            theta,
+            phi,
+            lmax,
+            beam,
+            spins=spins,
+            lswitch_low=lswitch_low,
+            lswitch_high=lswitch_high,
+        )
+        self._fields = fields
+        self._use_direct = use_direct
+
+        if not self._use_direct:
+            self._init_harmonic_internals()
+
         # Before compression, n_kept = n_pix
         self.n_kept = self.n_pix
         # Compression quantities
@@ -487,36 +506,43 @@ class PixelBasis(ComputationBasis):
         """
         Get the projection matrix U^T (n_kept × n_pix).
 
-        Maps pixel space to eigenbasis compressed space.
+        Maps pixel space to eigenbasis compressed space. In direct mode
+        without compression, the projector is the identity.
 
         Raises
         ------
         RuntimeError
-            If compression has not been applied yet.
+            If compression has not been applied yet (V-based mode only).
         """
+        if self._use_direct:
+            return np.eye(self.n_pix)
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
         return self._eigenvectors.T
 
     @property
     def n_compressed(self) -> int:
-        """Size of compressed space (n_kept)."""
+        """Size of compressed space."""
         return self.n_kept
 
     def setup(self) -> None:
         """
-        Build projector P_h and prepare for eigenvalue compression.
+        Initialize the basis.
 
-        Computes:
-        - V: harmonic operator (n_modes × n_pix)
-        - P_h = V^T V: harmonic projector (n_pix × n_pix, rank n_modes)
-        - N from N^{-1}: needed for compressed covariance
+        In V-based mode: build V and P_h, optionally apply eigenvalue
+        compression. In direct mode (n_pix small enough that V is overkill):
+        skip V construction and rely on existing pixel-space machinery
+        (compute_signal_matrix, do_derivative_step).
         """
+        if self._use_direct:
+            self._setup_direct()
+        else:
+            self._setup_v_based()
+
+    def _setup_v_based(self) -> None:
+        """V-based setup: build V, P_h, optionally apply compression."""
         self._build_basis()
-
-        # P_h = V^T V (harmonic projector, n_pix × n_pix but rank n_modes)
         self._P_h = matrix_mult(self._V.T, self._V)
-
         if self._epsilon is not None or self._mode_fraction is not None:
             self.apply_compression(
                 epsilon=self._epsilon,
@@ -524,6 +550,75 @@ class PixelBasis(ComputationBasis):
                 basis=self._basis,
                 C_ell=self._C_ell_for_basis,
             )
+
+    def _setup_direct(self) -> None:
+        """Direct pixel-space setup. No V operator, no harmonic machinery.
+
+        Direct mode reuses existing pixel-space machinery from
+        ``cosmocore.pixel`` — no Legendre or geometry recomputation.
+        """
+        if self._fields is None:
+            raise ValueError(
+                "Direct mode requires fields (FieldCollection) to be passed to PixelBasis"
+            )
+        # Build (label -> spectrum_idx) mapping for derivative dispatch
+        self._spec_label_to_idx = {
+            label: idx for idx, label in enumerate(self._fields.spectra_labels)
+        }
+
+    # =========================================================================
+    # Direct pixel-space methods (no V operator, reuse cosmocore.pixel)
+    # =========================================================================
+
+    def _spectrum_idx_from_components(self, comp_i: int, comp_j: int, mode: int) -> int:
+        """Map (comp_i, comp_j, mode) to spectrum_idx for do_derivative_step."""
+        labels_i = self._fields.fields[comp_i].maps_label
+        labels_j = self._fields.fields[comp_j].maps_label
+        combined = [a + b for a in labels_i for b in labels_j]
+        return self._spec_label_to_idx[combined[mode]]
+
+    def _get_derivative_direct(
+        self,
+        ell: int,
+        comp_i: int | None = None,
+        comp_j: int | None = None,
+        mode: int = 0,
+    ) -> np.ndarray:
+        """Compute dS/dC_ell via existing pixel-space machinery.
+
+        Reuses ``do_derivative_step`` from ``cosmocore.pixel`` — no
+        duplication of Legendre or dispatch logic.
+        """
+        from ..pixel import do_derivative_step
+
+        ci = 0 if comp_i is None else comp_i
+        cj = 0 if comp_j is None else comp_j
+        spectrum_idx = self._spectrum_idx_from_components(ci, cj, mode)
+
+        dS = np.zeros((self.n_pix, self.n_pix), dtype=np.float64)
+        dS = np.asfortranarray(dS)
+        do_derivative_step(
+            dS,
+            spectrum_idx,
+            self._fields.n_active,
+            self._fields.spin,
+            ell,
+            self._fields,
+        )
+        return dS
+
+    def _build_signal_matrix_direct(self) -> np.ndarray:
+        """Build signal matrix S via existing pixel-space machinery.
+
+        Uses the spectra currently set on the FieldCollection.
+        Reuses ``compute_signal_matrix`` from ``cosmocore.pixel``.
+        """
+        from ..pixel import compute_signal_matrix
+
+        S = np.zeros((self.n_pix, self.n_pix), dtype=np.float64)
+        S = np.asfortranarray(S)
+        compute_signal_matrix(S, self.lmax, self._fields)
+        return S
 
     def _build_compression_matrix(
         self,
@@ -1201,6 +1296,9 @@ class PixelBasis(ComputationBasis):
         numpy.ndarray
             Inverse of compressed covariance, shape (n_kept, n_kept).
         """
+        if self._use_direct:
+            C = self._build_signal_matrix_direct() + self._N
+            return matrix_inverse_symm(np.asfortranarray(C))
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
         return self.get_compressed_inverse(C_ell)
@@ -1213,7 +1311,7 @@ class PixelBasis(ComputationBasis):
         mode: int = 0,
     ) -> np.ndarray:
         """
-        Get ∂C_compressed/∂C_ℓ = (VU)^T E_ℓ (VU).
+        Get derivative matrix ∂C/∂C_ℓ in the compressed basis.
 
         Parameters
         ----------
@@ -1227,8 +1325,11 @@ class PixelBasis(ComputationBasis):
         Returns
         -------
         numpy.ndarray
-            Derivative matrix of shape (n_kept, n_kept).
+            Derivative matrix of shape (n_compressed, n_compressed).
         """
+        if self._use_direct:
+            return self._get_derivative_direct(ell, comp_i, comp_j, mode)
+
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
@@ -1250,7 +1351,7 @@ class PixelBasis(ComputationBasis):
 
     def get_compressed_covariance(self, C_ell) -> np.ndarray:
         """
-        Compute compressed covariance C_compressed = U^T C U.
+        Compute covariance matrix in the compressed space.
 
         Parameters
         ----------
@@ -1260,8 +1361,11 @@ class PixelBasis(ComputationBasis):
         Returns
         -------
         numpy.ndarray
-            Compressed covariance matrix of shape (n_kept, n_kept).
+            Covariance matrix of shape (n_compressed, n_compressed).
         """
+        if self._use_direct:
+            return self._build_signal_matrix_direct() + self._N
+
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
@@ -1281,7 +1385,7 @@ class PixelBasis(ComputationBasis):
         self, data: np.ndarray, C_ell, C_c_inv: np.ndarray | None = None
     ) -> np.ndarray:
         """
-        Compute C_c^{-1} @ U^T @ d for QML estimation in compressed space.
+        Compute C^{-1} @ d for QML estimation.
 
         Parameters
         ----------
@@ -1290,13 +1394,18 @@ class PixelBasis(ComputationBasis):
         C_ell : numpy.ndarray or dict
             Power spectrum (array for single-field, dict for multi-field).
         C_c_inv : numpy.ndarray, optional
-            Precomputed compressed covariance inverse.
+            Precomputed inverse covariance.
 
         Returns
         -------
         numpy.ndarray
-            Weighted compressed data of shape (n_kept,) or (n_kept, n_sims).
+            Weighted data of shape (n_compressed,) or (n_compressed, n_sims).
         """
+        if self._use_direct:
+            if C_c_inv is None:
+                C_c_inv = self.get_projected_inverse(C_ell)
+            return matrix_mult(C_c_inv, data)
+
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
@@ -1307,7 +1416,7 @@ class PixelBasis(ComputationBasis):
 
     def compute_quadratic_form(self, data: np.ndarray, C_ell) -> float:
         """
-        Compute d^T C^{-1} d approximately in compressed space.
+        Compute d^T C^{-1} d in the compressed space.
 
         Parameters
         ----------
@@ -1319,8 +1428,12 @@ class PixelBasis(ComputationBasis):
         Returns
         -------
         float
-            Approximate quadratic form value.
+            Quadratic form value.
         """
+        if self._use_direct:
+            C_inv = self.get_projected_inverse(C_ell)
+            return float(data.T @ C_inv @ data)
+
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
@@ -1428,7 +1541,7 @@ class PixelBasis(ComputationBasis):
 
     def prepare_smw(self, C_ell_dict: dict) -> SMWPrepared:
         """Precompute compressed inverse and logdet for reuse across sims."""
-        if self._eigenvectors is None:
+        if not self._use_direct and self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
         from ..basics import matrix_slogdet_symm
@@ -1442,6 +1555,8 @@ class PixelBasis(ComputationBasis):
         self, data: np.ndarray, C_c_inv: np.ndarray
     ) -> float:
         """Compute d^T C^{-1} d using precomputed compressed inverse."""
+        if self._use_direct:
+            return float(data.T @ C_c_inv @ data)
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
