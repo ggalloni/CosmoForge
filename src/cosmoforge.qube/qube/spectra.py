@@ -677,36 +677,46 @@ class Spectra(Core, MPISharedMemoryMixin):
         *,
         full_matrix=False,
         kernel_inv=None,
+        stable_inner_inv=None,
     ) -> np.ndarray:
         """
         Compute noise covariance in compressed space.
 
-        Cov(w|noise) = V C^{-1} N C^{-1} V^T
+        Cov(w|noise) = V C^{-1} N C^{-1} V^T = A T A^T
+
+        with A = I - M K^{-1} = (I + Lambda M)^{-1} (stable identity)
+        and T = V N_eff^{-1} N N_eff^{-1} V^T.
 
         Parameters
         ----------
         full_matrix : bool
-            If False, return only the diagonal. If True, return the full matrix
-            (needed when non-diagonal derivatives like EB/TE/TB are present).
+            If False, return only the diagonal. If True, return the full
+            matrix (needed when non-diagonal derivatives like EB/TE/TB
+            are present).
+        stable_inner_inv : np.ndarray or None
+            Precomputed (I + Lambda M)^{-1}. Preferred — avoids the
+            cancellation in the legacy ``A = I - M K^{-1}`` form.
         kernel_inv : np.ndarray or None
-            Precomputed (Λ⁻¹ + M)⁻¹. If None, computed via basis_manager.
+            Legacy precomputed (Lambda^{-1} + M)^{-1}. Kept for backward
+            compatibility; may lose precision at high SNR.
         """
-        if kernel_inv is None:
-            if is_multi_field:
-                K, _ = bm._build_smw_kernel(C_ell_dict)
-            else:
-                from cosmocore.basics import smw_kernel
+        if stable_inner_inv is not None:
+            # stable_inner_inv = (I + Lambda M)^{-1};
+            # A = I - M K^{-1} = (I + M Lambda)^{-1} = stable_inner_inv^T
+            A = stable_inner_inv.T
+        else:
+            if kernel_inv is None:
+                if is_multi_field:
+                    K, _ = bm._build_smw_kernel(C_ell_dict)
+                else:
+                    from cosmocore.basics import smw_kernel
 
-                Lambda_diag = bm._build_lambda_diagonal(C_ell)
-                K = smw_kernel(bm._V_Ninv_VT, Lambda_diag)
-            kernel_inv = matrix_inverse_symm(np.asfortranarray(K))
+                    Lambda_diag = bm._build_lambda_diagonal(C_ell)
+                    K = smw_kernel(bm._V_Ninv_VT, Lambda_diag)
+                kernel_inv = matrix_inverse_symm(np.asfortranarray(K))
+            n = kernel_inv.shape[0]
+            A = np.eye(n) - bm._V_Ninv_VT @ kernel_inv
 
-        # Cov(w|noise) = V C^{-1} N C^{-1} V^T reduces by SMW algebra to
-        # A T A^T with A = I - M K^{-1} and T = V N_eff^{-1} N N_eff^{-1} V^T,
-        # both n_modes x n_modes. T is precomputed by the basis manager
-        # (= V_Ninv_VT when switch optimization is inactive).
-        n = kernel_inv.shape[0]
-        A = np.eye(n) - bm._V_Ninv_VT @ kernel_inv
         AT = A @ bm._noise_cov_T
         if full_matrix:
             return AT @ A.T
@@ -764,17 +774,19 @@ class Spectra(Core, MPISharedMemoryMixin):
         # w = V @ C^{-1} @ d (using SMW formula internally)
         # For multi-field harmonic, precompute kernel_inv once — reused for
         # data weighting, cross-correlation weighting, and noise bias.
+        # Stable SMW algebra: w = V C^{-1} d = (I + Lambda M)^{-1} (V N^{-1} d).
+        # Replaces the legacy w = y - M K^{-1} y, which loses precision in
+        # the cosmic-variance-limited regime via catastrophic cancellation.
+        # The same matrix (I + Lambda M)^{-1} reappears as the noise-bias
+        # matrix A = I - M K^{-1}, so we cache it once and reuse below.
         smw_kernel_inv = None
+        stable_inner_inv = None
         maps1_weighted = np.zeros((n_compressed, n_sims), dtype=np.float64)
         if is_multi_field:
             if bm.method == "harmonic":
-                K, _ = bm._build_smw_kernel(C_ell_dict)
-                smw_kernel_inv = matrix_inverse_symm(np.asfortranarray(K))
-                M_kernel_inv = bm._V_Ninv_VT @ smw_kernel_inv
-
-                # w = y - M K^{-1} y where y = V N^{-1} d
+                stable_inner_inv = bm.prepare_stable_inner_inv(C_ell_dict)
                 projected_data1 = bm._V_N_inv @ self.maps1
-                maps1_weighted = projected_data1 - M_kernel_inv @ projected_data1
+                maps1_weighted = stable_inner_inv.T @ projected_data1
             else:
                 # pixel: use compressed-space weighted data
                 C_c_inv = bm.get_compressed_inverse(C_ell_dict)
@@ -782,16 +794,9 @@ class Spectra(Core, MPISharedMemoryMixin):
                 maps1_weighted = C_c_inv @ d_c
         else:
             if bm.method == "harmonic":
-                # Vectorized SMW: w = y - M K^{-1} y, y = V N^{-1} d
-                from cosmocore.basics import smw_kernel
-
-                Lambda_diag = bm._build_lambda_diagonal(C_ell)
-                K = smw_kernel(bm._V_Ninv_VT, Lambda_diag)
-                smw_kernel_inv = matrix_inverse_symm(np.asfortranarray(K))
-                M_kernel_inv = bm._V_Ninv_VT @ smw_kernel_inv
-
+                stable_inner_inv = bm.prepare_stable_inner_inv(C_ell)
                 projected_data1 = bm._V_N_inv @ self.maps1
-                maps1_weighted = projected_data1 - M_kernel_inv @ projected_data1
+                maps1_weighted = stable_inner_inv.T @ projected_data1
             else:
                 C_c_inv = bm.get_compressed_inverse(C_ell)
                 maps1_weighted = bm.get_weighted_compressed_data(
@@ -802,16 +807,15 @@ class Spectra(Core, MPISharedMemoryMixin):
             maps2_weighted = np.zeros((n_compressed, n_sims), dtype=np.float64)
             if is_multi_field:
                 if bm.method == "harmonic":
-                    # Use precomputed matrices
                     projected_data2 = bm._V_N_inv @ self.maps2
-                    maps2_weighted = projected_data2 - M_kernel_inv @ projected_data2
+                    maps2_weighted = stable_inner_inv.T @ projected_data2
                 else:
                     d_c2 = bm.compress_data(self.maps2)
                     maps2_weighted = C_c_inv @ d_c2
             else:
                 if bm.method == "harmonic":
                     projected_data2 = bm._V_N_inv @ self.maps2
-                    maps2_weighted = projected_data2 - M_kernel_inv @ projected_data2
+                    maps2_weighted = stable_inner_inv.T @ projected_data2
                 else:
                     maps2_weighted = bm.get_weighted_compressed_data(
                         self.maps2, C_ell, C_c_inv=C_c_inv
@@ -833,6 +837,7 @@ class Spectra(Core, MPISharedMemoryMixin):
                         C_ell_dict,
                         is_multi_field,
                         full_matrix=True,
+                        stable_inner_inv=stable_inner_inv,
                         kernel_inv=smw_kernel_inv,
                     )
                     noise_cov_w_diag = np.diag(noise_cov_w)
@@ -842,6 +847,7 @@ class Spectra(Core, MPISharedMemoryMixin):
                         C_ell,
                         C_ell_dict,
                         is_multi_field,
+                        stable_inner_inv=stable_inner_inv,
                         kernel_inv=smw_kernel_inv,
                     )
             else:

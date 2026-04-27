@@ -341,6 +341,48 @@ class HarmonicBasis(ComputationBasis):
     # SMW helpers
     # =================================================================
 
+    def prepare_stable_inner_inv(
+        self, C_ell, lambda_matrix: np.ndarray | None = None
+    ) -> np.ndarray:
+        """Build (I + Lambda M)^{-1} for the stable QML algebra.
+
+        This matrix appears identically in three places of the QML
+        algebra and replaces the unstable subtractive forms:
+
+        - Projected inverse:    V C^{-1} V^T = M @ (I + Lambda M)^{-1}
+        - Data weighting:       V C^{-1} d = (I + Lambda M)^{-1} @ V N^{-1} d
+        - Noise bias matrix:    A = I - M K^{-1} = (I + Lambda M)^{-1}
+
+        All three follow from the identity
+        ``M - M K^{-1} M = M K^{-1} Lambda^{-1} = M (I + Lambda M)^{-1}``
+        and never subtract large nearly-equal matrices, so they remain
+        accurate in the cosmic-variance-limited regime where the legacy
+        SMW form loses precision (e.g. T at low ell with sub-uK
+        polarization noise).
+
+        Parameters
+        ----------
+        C_ell : np.ndarray or dict
+            Power spectrum (single-field array or multi-field dict).
+        lambda_matrix : np.ndarray, optional
+            Pre-built full Lambda matrix.  If None, built from C_ell.
+
+        Returns
+        -------
+        np.ndarray
+            (I + Lambda M)^{-1}, n_modes_total x n_modes_total.
+        """
+        if lambda_matrix is None:
+            _, c_ell_dict, is_single = self._normalize_c_ell(C_ell)
+            if is_single:
+                lambda_diag = self._build_lambda_diagonal(C_ell)
+                lambda_matrix = np.diag(lambda_diag)
+            else:
+                lambda_matrix = self._build_lambda_matrix(c_ell_dict)
+        inner = lambda_matrix @ self._V_Ninv_VT
+        inner[np.diag_indices_from(inner)] += 1.0
+        return np.linalg.inv(inner)
+
     def _smw_projected_inverse(
         self,
         M: np.ndarray,
