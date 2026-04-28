@@ -197,16 +197,13 @@ def test_binned_derivative_direct_spin2(mode, name):
 
 
 @pytest.mark.parametrize("mode,name", [(0, "TE"), (1, "TB")])
-def test_binned_derivative_direct_cross_spin_smoke(mode, name):
-    """Cross-spin (T×P) binned direct derivative runs and produces nonzero output.
+def test_binned_derivative_direct_cross_spin(mode, name):
+    """Cross-spin (T×P) binned direct derivative matches per-ℓ direct sum.
 
-    Numerical equivalence with the per-ℓ ``_get_derivative_direct`` sum is
-    *not* asserted because ``get_binned_derivative_direct`` for the
-    spin-0×spin-2 case fills only one of the two off-diagonal cross-blocks
-    while ``do_derivative_step`` fills both — see TODO in
-    ``pixel.py::get_binned_derivative_direct``. This test is a smoke check
-    that the dispatch runs end-to-end; tighten to numerical equality once
-    the underlying code is reconciled.
+    Spectrum labels follow the spin-0-first convention (TE/TB), so the
+    canonical caller passes comp_i=0 (T), comp_j=1 (P). Both off-diagonal
+    blocks of dC must be filled (regression test for an earlier bug where
+    only one was populated, breaking trace formulas downstream).
     """
     core, mask_file = _make_core(
         spins=[0, 2],
@@ -224,9 +221,19 @@ def test_binned_derivative_direct_cross_spin_smoke(mode, name):
             comp_j=1,
             mode=mode,
         )
-        assert dC_te.shape == (bm.n_pix, bm.n_pix)
-        assert np.all(np.isfinite(dC_te))
-        assert np.any(dC_te != 0), f"{name} cross-spin output is identically zero"
+        ref_te = _per_ell_reference(bm, bins, 1, 0, 1, mode)
+        np.testing.assert_allclose(
+            dC_te,
+            ref_te,
+            rtol=1e-10,
+            atol=1e-12,
+            err_msg=f"{name} (spin-0×2) direct binned derivative mismatch",
+        )
+        # Sanity: both off-diagonal cross-blocks should be filled (regression).
+        n_t = core.collection.fields[0].n_active[0]
+        n_p = core.collection.fields[1].n_active[0]
+        assert np.any(dC_te[:n_t, n_t : n_t + n_p] != 0)
+        assert np.any(dC_te[n_t : n_t + n_p, :n_t] != 0)
     finally:
         Path(mask_file).unlink()
 

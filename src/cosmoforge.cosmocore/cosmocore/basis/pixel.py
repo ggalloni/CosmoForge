@@ -824,6 +824,10 @@ class PixelBasis(ComputationBasis):
                     fj.point_vectors,
                     legendre,
                 )
+                # Mirror to the (i,j) block so the full dS is symmetric, matching
+                # do_derivative_step's outer-level mirror (cosmocore/pixel.py
+                # line ~781) for the spin-0×spin-2 case.
+                dS[ri : ri + nrow, rj : rj + ncol] = block.T
             else:
                 block_swapped = dS[ri : ri + nrow, rj : rj + ncol]
                 compute_02_contribution(
@@ -834,8 +838,8 @@ class PixelBasis(ComputationBasis):
                     fi.point_vectors,
                     legendre,
                 )
-            # No symmetrize: derivative_step_02 fills the same one-sided
-            # cross-block (do_derivative_step does NOT mirror for spin-0×spin-2).
+                # Same mirror, opposite direction.
+                dS[rj : rj + ncol, ri : ri + nrow] = block_swapped.T
         else:
             raise NotImplementedError(
                 f"Direct binned derivative not implemented for spins ({spin_i}, {spin_j})"
