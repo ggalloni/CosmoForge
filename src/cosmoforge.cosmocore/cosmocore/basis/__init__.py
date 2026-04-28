@@ -154,20 +154,25 @@ def create_computation_basis(
         # Worst case for pixel-direct: assume one bandpower per multipole.
         n_bins = max(lmax - 1, 1)
 
+    from ..logger import get_logger
+
+    logger = get_logger("basis", feedback_level=4)
+
     if method == "auto":
         method, extra, costs = _auto_pick_method(n_pix, n_modes, lmax, n_bins)
         kwargs.update(extra)
         ratio = costs["cost_pixel"] / max(costs["cost_harmonic"], 1.0)
-        warnings.warn(
+        # Auto-selection diagnostic: debug-level so the default Core flow
+        # (now defaults to method="auto") doesn't spam stderr on every run.
+        logger.debug(
             f"basis 'auto' picked '{method}' "
             f"(n_pix={n_pix}, n_modes={n_modes}, n_bins={n_bins}; "
-            f"cost_pixel/cost_harmonic={ratio:.2g})",
-            UserWarning,
-            stacklevel=2,
+            f"cost_pixel/cost_harmonic={ratio:.2g})"
         )
     elif method == "harmonic":
         # Sparse traces make harmonic competitive even when n_pix < n_modes.
-        # Only warn when the cost model also disagrees with the user's choice.
+        # Only warn when the cost model also disagrees with the user's
+        # explicit choice — a real action item, not a default-path notice.
         _, _, costs = _auto_pick_method(n_pix, n_modes, lmax, n_bins)
         if costs["cost_pixel"] < costs["cost_harmonic"]:
             warnings.warn(

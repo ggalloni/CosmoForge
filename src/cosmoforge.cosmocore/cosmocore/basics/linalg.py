@@ -128,13 +128,16 @@ def matrix_inverse_symm(M, overwrite=False):
     Uses LAPACK's dpotrf (Cholesky) and dpotri (inverse) for efficient
     and numerically stable inversion of symmetric positive definite matrices.
 
-    When the raw Cholesky fails (info != 0), the routine retries on the
-    symmetrically-scaled matrix ``D M D`` with ``D = diag(1/sqrt(M_ii))``.
-    This recovers PD-ness for matrices that are mathematically positive
-    definite but numerically ill-conditioned because of large dynamic
-    range across the diagonal — the typical case of multi-spectrum QML
-    Fisher matrices that mix cosmic-variance-limited (huge signal, tiny
-    Fisher entry) and noise-limited (large Fisher entry) bandpowers.
+    The matrix is always symmetrically preconditioned before Cholesky as
+    ``D M D`` with ``D = diag(1/sqrt(|M_ii|))``, then unscaled back after
+    inversion via ``F^{-1} = D (D M D)^{-1} D``. This recovers PD-ness
+    for matrices that are mathematically positive definite but numerically
+    ill-conditioned because of large dynamic range across the diagonal —
+    the typical case of multi-spectrum QML Fisher matrices that mix
+    cosmic-variance-limited (huge signal, tiny Fisher entry) and noise-
+    limited (large Fisher entry) bandpowers. The preconditioning is cheap
+    (two diagonal scalings) and well-conditioned matrices are unaffected
+    in finite precision.
     """
     if M.shape[0] != M.shape[1]:
         raise ValueError("Matrix must be square")

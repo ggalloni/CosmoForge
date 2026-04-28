@@ -582,12 +582,21 @@ class Core(ABC):
                     # Restore original spectra (already smoothed - don't re-apply beam)
                     self.collection.spectra_manager._cls_dict = original_spectra_smoothed
 
-        # Pre-resolve method="auto" to know which path we're on.
-        from .basis import _problem_dimensions
+        # Pre-resolve method="auto" with the *same* cost model the factory
+        # uses (harmonic ~ n_modes^3 vs pixel-direct ~ (n_bins+1) * n_pix^3).
+        # Using a different heuristic here would let Core and the factory
+        # disagree — e.g. drop lswitch/S_fixed expecting pixel-direct while
+        # the factory then picks harmonic — silently corrupting the SMW path.
+        from .basis import _auto_pick_method, _problem_dimensions
 
         n_pix, n_modes = _problem_dimensions(theta_arr, spins, basis_lmax, lswitch_high)
+        n_bins = (
+            self.bins.nbins
+            if getattr(self, "bins", None) is not None
+            else max(basis_lmax - 1, 1)
+        )
         if method == "auto":
-            resolved_method = "harmonic" if n_pix > n_modes else "pixel"
+            resolved_method, _, _ = _auto_pick_method(n_pix, n_modes, basis_lmax, n_bins)
         else:
             resolved_method = method
 
@@ -624,6 +633,7 @@ class Core(ABC):
             compress=compress,
             delta_m=delta_m,
             fields=getattr(self, "collection", None),
+            n_bins=n_bins,
         )
 
         # Build harmonic operator and precompute SMW components

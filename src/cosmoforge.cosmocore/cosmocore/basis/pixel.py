@@ -517,7 +517,12 @@ class PixelBasis(ComputationBasis):
             If compression has not been applied yet (V-based mode only).
         """
         if self._use_direct:
-            return np.eye(self.n_pix)
+            # Cache the identity projector — n_pix×n_pix dense, allocated once.
+            cached = getattr(self, "_direct_projector", None)
+            if cached is None:
+                cached = np.eye(self.n_pix)
+                self._direct_projector = cached
+            return cached
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
         return self._eigenvectors.T
@@ -526,6 +531,18 @@ class PixelBasis(ComputationBasis):
     def n_compressed(self) -> int:
         """Size of compressed space."""
         return self.n_kept
+
+    def compress_data(self, data: np.ndarray) -> np.ndarray:
+        """
+        Project pixel-space data into the basis.
+
+        Pixel-direct mode short-circuits the multiplication against the
+        identity projector (otherwise an ``n_pix × n_sims`` matmul against
+        an ``n_pix × n_pix`` identity, allocated and run on every call).
+        """
+        if self._use_direct:
+            return data
+        return super().compress_data(data)
 
     def setup(self) -> None:
         """
