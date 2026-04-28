@@ -219,6 +219,12 @@ class ComputationBasis(ABC):
         # Derived quantities
         self.n_pix = sum(self._n_pix_per_component)
 
+    def _init_harmonic_internals(self) -> None:
+        """Initialize harmonic mode counts, offsets, and the HarmonicBasisBuilder.
+
+        Subclasses that need harmonic machinery (V operator, Lambda, derivatives)
+        must call this after ``super().__init__()``.
+        """
         # n_modes per component depends on whether switch optimization is used
         if self._use_switch_optimization:
             # Only modes for ℓ in [lswitch_low, lswitch_high]
@@ -227,9 +233,9 @@ class ComputationBasis(ABC):
             self._lmax_smw = self.lswitch_high
         else:
             # All modes from ℓ=2 to lmax
-            self._n_modes_base = (lmax + 1) ** 2 - 4
+            self._n_modes_base = (self.lmax + 1) ** 2 - 4
             self._lmin_smw = 2
-            self._lmax_smw = lmax
+            self._lmax_smw = self.lmax
 
         # Mode count per component: spin-2 has 2x modes (E, B)
         self._n_modes_per_component_list = [
@@ -254,7 +260,6 @@ class ComputationBasis(ABC):
 
         # Harmonic basis helper (V, Lambda, derivative construction)
         self._harmonic_basis = HarmonicBasisBuilder(self)
-        self.n_kept = self.n_modes_total
 
     @abstractmethod
     def setup(self) -> None:

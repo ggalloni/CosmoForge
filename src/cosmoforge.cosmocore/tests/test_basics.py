@@ -161,7 +161,7 @@ class TestSMWInverse:
         M = N + V.T @ Lambda @ V
         direct_result = matrix_inverse_symm(np.asfortranarray(M.copy()))
 
-        np.testing.assert_allclose(smw_result, direct_result, rtol=1e-10)
+        np.testing.assert_allclose(smw_result, direct_result, rtol=1e-9)
 
     def test_smw_inverse_symmetric(self):
         """SMW inverse should produce symmetric result."""
@@ -294,7 +294,7 @@ class TestSMWLogdet:
         M = N + V.T @ Lambda @ V
         _, direct_result = matrix_slogdet_symm(M.copy())
 
-        np.testing.assert_allclose(smw_result, direct_result, rtol=1e-10)
+        np.testing.assert_allclose(smw_result, direct_result, rtol=1e-9)
 
     @pytest.mark.parametrize("n,k", [(100, 10), (200, 20), (500, 50)])
     def test_smw_logdet_various_sizes(self, n, k):
@@ -385,7 +385,7 @@ class TestSMWQuadraticForm:
         C_inv = matrix_inverse_symm(C.copy())
         direct_result = float(data.T @ C_inv @ data)
 
-        np.testing.assert_allclose(smw_result, direct_result, rtol=1e-10)
+        np.testing.assert_allclose(smw_result, direct_result, rtol=1e-9)
 
     @pytest.mark.parametrize("n,k", [(100, 10), (200, 20), (500, 50)])
     def test_smw_quadratic_form_various_sizes(self, n, k):

@@ -35,7 +35,7 @@ class MPISharedMemoryMixin:
         color = 0 if node_rank == 0 else MPI.UNDEFINED
         self._inter_node_comm = self.comm.Split(color, self.rank)
 
-    def _shared_array(self, arr: np.ndarray | None = None) -> np.ndarray:
+    def _shared_array(self, arr: np.ndarray | None = None) -> np.ndarray | None:
         """Share a numpy array via MPI shared memory (intra-node, zero-copy).
 
         Each node's local rank 0 allocates the shared buffer and is
@@ -48,13 +48,18 @@ class MPISharedMemoryMixin:
         arr : numpy.ndarray or None
             Array to share. Only global rank 0 needs to pass the actual
             array; other ranks may pass ``None`` (shape and dtype are
-            broadcast from rank 0).
+            broadcast from rank 0). If rank 0 also passes ``None``,
+            all ranks receive ``None`` (nothing to share).
         """
         self._setup_shared_comm()
         comm_node = self._shared_comm
         inter_comm = self._inter_node_comm
 
-        is_root = self.rank == 0 and arr is not None
+        has_data = self.comm.bcast(arr is not None if self.rank == 0 else None, root=0)
+        if not has_data:
+            return None
+
+        is_root = self.rank == 0
         shape = self.comm.bcast(arr.shape if is_root else None, root=0)
         dtype = self.comm.bcast(arr.dtype if is_root else None, root=0)
         nbytes = int(np.prod(shape)) * np.dtype(dtype).itemsize

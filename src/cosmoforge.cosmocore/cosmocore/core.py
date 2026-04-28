@@ -401,7 +401,7 @@ class Core(ABC):
 
     def setup_computation_basis(
         self,
-        method: str = "harmonic",
+        method: str = "auto",
         epsilon: float | list[float | tuple[float, float]] | None = 1e-6,
         mode_fraction: float | list[float | tuple[float, float]] | None = None,
         beam: np.ndarray | None = None,
@@ -513,12 +513,15 @@ class Core(ABC):
         if hasattr(self, "collection") and self.collection is not None:
             spins = [field.spin for field in self.collection.fields]
 
-        # SMW optimization: absorb high-ℓ signal into effective noise
+        # SMW optimization: absorb high-ℓ signal into effective noise.
+        # Both harmonic (V-based) and pixel (V-based) benefit — V is built
+        # only at the effective lmax. Pixel-direct mode does not use lswitch
+        # since it operates on full pixel-space matrices anyway.
         lswitch_low = None
         lswitch_high = None
         S_fixed = None
 
-        if use_smw_optimization and method == "harmonic":
+        if use_smw_optimization:
             config_lswitch_low = getattr(self.params, "lswitch_low", None)
             config_lswitch_high = getattr(self.params, "lswitch_high", None)
 
@@ -579,15 +582,42 @@ class Core(ABC):
                     # Restore original spectra (already smoothed - don't re-apply beam)
                     self.collection.spectra_manager._cls_dict = original_spectra_smoothed
 
-        # Create computation basis.
-        # When switch optimization is active, N_inv is not needed upfront —
-        # _compute_effective_noise() will invert N_eff = N + S_fixed instead.
-        # This skips an expensive O(n_pix³) Cholesky that would be discarded.
+        # Pre-resolve method="auto" with the *same* cost model the factory
+        # uses (harmonic ~ n_modes^3 vs pixel-direct ~ (n_bins+1) * n_pix^3).
+        # Using a different heuristic here would let Core and the factory
+        # disagree — e.g. drop lswitch/S_fixed expecting pixel-direct while
+        # the factory then picks harmonic — silently corrupting the SMW path.
+        from .basis import _auto_pick_method, _problem_dimensions
+
+        n_pix, n_modes = _problem_dimensions(theta_arr, spins, basis_lmax, lswitch_high)
+        n_bins = (
+            self.bins.nbins
+            if getattr(self, "bins", None) is not None
+            else max(basis_lmax - 1, 1)
+        )
+        if method == "auto":
+            resolved_method, _, _ = _auto_pick_method(n_pix, n_modes, basis_lmax, n_bins)
+        else:
+            resolved_method = method
+
+        # Pixel-direct mode operates on full pixel-space matrices and doesn't
+        # need lswitch / S_fixed (the high-ℓ signal is naturally included via
+        # the pixel-space S construction).
+        is_pixel_direct = method == "auto" and resolved_method == "pixel"
+        if is_pixel_direct:
+            lswitch_low = None
+            lswitch_high = None
+            S_fixed = None
+
+        # When SMW optimization defers N_eff inversion (the basis computes it
+        # lazily from N + S_fixed), N_inv is None upfront. Otherwise compute it.
         need_n_inv = lswitch_high is None or lswitch_high >= basis_lmax
+        N_inv = matrix_inverse_symm(self.noise_cov1) if need_n_inv else None
+
         self.basis_manager = create_computation_basis(
             method=method,
             N=self.noise_cov1,
-            N_inv=matrix_inverse_symm(self.noise_cov1) if need_n_inv else None,
+            N_inv=N_inv,
             theta=theta_arr,
             phi=phi_arr,
             lmax=basis_lmax,
@@ -602,6 +632,8 @@ class Core(ABC):
             S_fixed=S_fixed,
             compress=compress,
             delta_m=delta_m,
+            fields=getattr(self, "collection", None),
+            n_bins=n_bins,
         )
 
         # Build harmonic operator and precompute SMW components
@@ -767,6 +799,20 @@ class Core(ABC):
         mode : int
             Spin mode (0=TT/EE/TE, 1=BB/TB, 2=EB).
         """
+        # Fast path: pixel-direct mode has a batched binned derivative that
+        # avoids the per-ℓ Legendre/Wigner pass when bin width is large.
+        bm = getattr(self, "basis_manager", None)
+        if (
+            bm is not None
+            and getattr(bm, "_use_direct", False)
+            and hasattr(bm, "get_binned_derivative_direct")
+        ):
+            ci = 0 if comp_i is None else comp_i
+            cj = 0 if comp_j is None else comp_j
+            return bm.get_binned_derivative_direct(
+                bin_idx, self.bins, beam_smoothing, ci, cj, mode
+            )
+
         lmin_b = self.bins.lmins[bin_idx]
         lmax_b = self.bins.lmaxs[bin_idx]
         dC_b = None

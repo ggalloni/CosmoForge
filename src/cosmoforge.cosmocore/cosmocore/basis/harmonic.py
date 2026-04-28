@@ -110,6 +110,8 @@ class HarmonicBasis(ComputationBasis):
             fiducial_C_ell=fiducial_C_ell,
             S_fixed=S_fixed,
         )
+        self._init_harmonic_internals()
+        self.n_kept = self.n_modes_total
         self._compress = compress
         self._delta_m = delta_m
 
@@ -339,6 +341,48 @@ class HarmonicBasis(ComputationBasis):
     # SMW helpers
     # =================================================================
 
+    def prepare_stable_inner_inv(
+        self, C_ell, lambda_matrix: np.ndarray | None = None
+    ) -> np.ndarray:
+        """Build (I + Lambda M)^{-1} for the stable QML algebra.
+
+        This matrix appears identically in three places of the QML
+        algebra and replaces the unstable subtractive forms:
+
+        - Projected inverse:    V C^{-1} V^T = M @ (I + Lambda M)^{-1}
+        - Data weighting:       V C^{-1} d = (I + Lambda M)^{-1} @ V N^{-1} d
+        - Noise bias matrix:    A = I - M K^{-1} = (I + Lambda M)^{-1}
+
+        All three follow from the identity
+        ``M - M K^{-1} M = M K^{-1} Lambda^{-1} = M (I + Lambda M)^{-1}``
+        and never subtract large nearly-equal matrices, so they remain
+        accurate in the cosmic-variance-limited regime where the legacy
+        SMW form loses precision (e.g. T at low ell with sub-uK
+        polarization noise).
+
+        Parameters
+        ----------
+        C_ell : np.ndarray or dict
+            Power spectrum (single-field array or multi-field dict).
+        lambda_matrix : np.ndarray, optional
+            Pre-built full Lambda matrix.  If None, built from C_ell.
+
+        Returns
+        -------
+        np.ndarray
+            (I + Lambda M)^{-1}, n_modes_total x n_modes_total.
+        """
+        if lambda_matrix is None:
+            _, c_ell_dict, is_single = self._normalize_c_ell(C_ell)
+            if is_single:
+                lambda_diag = self._build_lambda_diagonal(C_ell)
+                lambda_matrix = np.diag(lambda_diag)
+            else:
+                lambda_matrix = self._build_lambda_matrix(c_ell_dict)
+        inner = lambda_matrix @ self._V_Ninv_VT
+        inner[np.diag_indices_from(inner)] += 1.0
+        return np.linalg.inv(inner)
+
     def _smw_projected_inverse(
         self,
         M: np.ndarray,
@@ -346,20 +390,67 @@ class HarmonicBasis(ComputationBasis):
         lambda_inv_diag: np.ndarray | None = None,
         lambda_inv_matrix: np.ndarray | None = None,
         K: np.ndarray | None = None,
+        lambda_matrix: np.ndarray | None = None,
     ) -> np.ndarray:
-        """Compute M - M @ K^{-1} @ M where K = Lambda^{-1} + M.
+        """Compute the projected inverse V (S+N)^{-1} V^T.
+
+        Two algebraically equivalent forms are supported:
+
+        - **Subtractive (legacy)**: ``M - M K^{-1} M`` with
+          ``K = Lambda^{-1} + M``. Numerically unstable in the
+          signal-dominated regime (``Lambda >> M^{-1}``) because the two
+          terms become large and nearly equal — float64 cancellation can
+          drive entries to spuriously negative values, breaking
+          downstream Fisher PD-ness. Used when ``K`` or
+          ``lambda_inv_*`` is supplied (preserves backward compatibility
+          for callers that already built K).
+
+        - **Stable**: ``(M^{-1} + Lambda)^{-1}``. Algebraically
+          identical, but never subtracts large nearly-equal matrices —
+          accurate in both noise- and signal-dominated regimes.
+          Triggered automatically when only ``lambda_matrix`` is
+          provided.
 
         Parameters
         ----------
         M : numpy.ndarray
             V @ N^{-1} @ V^T (or a sub-block of it).
-        lambda_inv_diag : numpy.ndarray or None
-            Diagonal of Lambda^{-1}. Builds K = diag(lambda_inv) + M.
-        lambda_inv_matrix : numpy.ndarray or None
-            Full Lambda^{-1} matrix. Builds K = lambda_inv_matrix + M.
-        K : numpy.ndarray or None
-            Prebuilt K matrix (skips K construction).
+        lambda_inv_diag, lambda_inv_matrix, K : optional
+            Trigger the legacy subtractive form (see above).
+        lambda_matrix : numpy.ndarray, optional
+            Full Lambda matrix (signal-space block). Triggers the stable
+            ``(M^{-1} + Lambda)^{-1}`` form. Mutually exclusive with the
+            legacy keywords.
         """
+        if lambda_matrix is not None:
+            if (
+                K is not None
+                or lambda_inv_diag is not None
+                or lambda_inv_matrix is not None
+            ):
+                raise ValueError(
+                    "lambda_matrix is mutually exclusive with K / "
+                    "lambda_inv_diag / lambda_inv_matrix"
+                )
+            # Stable form: V C^{-1} V^T = M (I + Lambda M)^{-1}.
+            # Algebraically equivalent to M - M K^{-1} M but never
+            # subtracts large nearly-equal matrices and never inverts
+            # M (which is rank-deficient on a partial sky) or Lambda
+            # (which can be ill-conditioned in the cosmic-variance
+            # limit). The matrix (I + Lambda M) has eigenvalues 1 +
+            # eig(Lambda^{1/2} M Lambda^{1/2}) >= 1, so it is always
+            # well-conditioned and invertible. Result must be symmetric;
+            # we enforce it to clean float-eps drift.
+            # We want VCVT = M @ inv(I + Lambda @ M).  Compute via
+            # solve((I + Lambda @ M)^T, M^T)^T which is equivalent.  By
+            # symmetry of Lambda and M, (I + Lambda M)^T = I + M Lambda;
+            # we use the form that lets numpy's solve do the work.
+            inner = lambda_matrix @ M
+            inner[np.diag_indices_from(inner)] += 1.0
+            VCVT = np.linalg.solve(inner.T, M.T).T
+            VCVT = 0.5 * (VCVT + VCVT.T)
+            return np.asfortranarray(VCVT)
+
         if K is None:
             if lambda_inv_diag is not None:
                 K = M.copy()
@@ -737,8 +828,13 @@ class HarmonicBasis(ComputationBasis):
         if field_groups is not None and len(field_groups) > 1:
             return self._get_projected_inverse_field_blocks(c_ell_dict, field_groups)
 
-        K, _ = self._build_smw_kernel(c_ell_dict)
-        return self._smw_projected_inverse(self._V_Ninv_VT, K=K)
+        # Stable form: (M^{-1} + Lambda)^{-1}. Avoids the catastrophic
+        # cancellation of M - M K^{-1} M in the signal-dominated regime,
+        # which is otherwise the dominant source of numerical noise for
+        # multi-spectrum QML at high SNR (e.g. T at low ell with sub-uK
+        # polarization noise).
+        lambda_matrix = self._build_lambda_matrix(c_ell_dict)
+        return self._smw_projected_inverse(self._V_Ninv_VT, lambda_matrix=lambda_matrix)
 
     def get_derivative_matrix(
         self,

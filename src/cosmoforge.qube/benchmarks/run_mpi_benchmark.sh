@@ -10,13 +10,30 @@ cd "$(dirname "$0")"
 # Remove previous results
 rm -f benchmark_mpi_results.json
 
-for np in 1 2 4 8 16 32 48; do
+for np in 8 16 32 48; do
     threads=$((NCORES / np))
     echo ""
     echo "=========================================="
     echo "Running with $np MPI ranks x $threads threads = $NCORES cores"
     echo "=========================================="
-    OMP_NUM_THREADS=$threads mpirun -n $np -genv I_MPI_PIN_DOMAIN=omp uv run python -u benchmark_mpi.py
+    env \
+        OMP_NUM_THREADS=$threads \
+        OPENBLAS_NUM_THREADS=$threads \
+        MKL_NUM_THREADS=$threads \
+        BLIS_NUM_THREADS=$threads \
+        NUMEXPR_NUM_THREADS=$threads \
+        VECLIB_MAXIMUM_THREADS=$threads \
+        NUMBA_NUM_THREADS=$threads \
+        mpirun -n $np \
+            -genv I_MPI_PIN_DOMAIN=omp \
+            -genv OMP_NUM_THREADS=$threads \
+            -genv OPENBLAS_NUM_THREADS=$threads \
+            -genv MKL_NUM_THREADS=$threads \
+            -genv BLIS_NUM_THREADS=$threads \
+            -genv NUMEXPR_NUM_THREADS=$threads \
+            -genv VECLIB_MAXIMUM_THREADS=$threads \
+            -genv NUMBA_NUM_THREADS=$threads \
+            uv run python -u benchmark_mpi.py
 done
 
 echo ""

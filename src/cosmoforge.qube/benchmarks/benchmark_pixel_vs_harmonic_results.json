@@ -1,0 +1,86 @@
+{
+  "T_lmax8_harmonic": {
+    "total": 5.414850786328316,
+    "n_modes": 77,
+    "n_pix": 312,
+    "qml_total": 0.5035408809781075,
+    "nsims": 10,
+    "nside": 16,
+    "fsky": 0.1,
+    "lmax": 8,
+    "method": "harmonic",
+    "spins": [
+      0
+    ],
+    "field_label": "T"
+  },
+  "T_lmax8_pixel": {
+    "error": "Compression not applied. Call apply_compression() first."
+  },
+  "T_lmax16_harmonic": {
+    "error": "dpotrf failed with info=13"
+  },
+  "T_lmax16_pixel": {
+    "error": "Compression not applied. Call apply_compression() first."
+  },
+  "T_lmax24_harmonic": {
+    "error": "dpotrf failed with info=12"
+  },
+  "T_lmax24_pixel": {
+    "error": "Compression not applied. Call apply_compression() first."
+  },
+  "T_lmax32_harmonic": {
+    "error": "dpotrf failed with info=14"
+  },
+  "T_lmax32_pixel": {
+    "error": "Compression not applied. Call apply_compression() first."
+  },
+  "T_lmax48_harmonic": {
+    "error": "dpotrf failed with info=13"
+  },
+  "T_lmax48_pixel": {
+    "error": "Compression not applied. Call apply_compression() first."
+  },
+  "QU_lmax8_harmonic": {
+    "total": 1.8645127788186073,
+    "n_modes": 154,
+    "n_pix": 624,
+    "qml_total": 0.23678284138441086,
+    "nsims": 10,
+    "nside": 16,
+    "fsky": 0.1,
+    "lmax": 8,
+    "method": "harmonic",
+    "spins": [
+      2
+    ],
+    "field_label": "QU"
+  },
+  "QU_lmax8_pixel": {
+    "error": "Compression not applied. Call apply_compression() first."
+  },
+  "QU_lmax16_harmonic": {
+    "error": "dpotrf failed with info=12"
+  },
+  "QU_lmax16_pixel": {
+    "error": "Compression not applied. Call apply_compression() first."
+  },
+  "QU_lmax24_harmonic": {
+    "error": "dpotrf failed with info=12"
+  },
+  "QU_lmax24_pixel": {
+    "error": "Compression not applied. Call apply_compression() first."
+  },
+  "QU_lmax32_harmonic": {
+    "error": "dpotrf failed with info=14"
+  },
+  "QU_lmax32_pixel": {
+    "error": "Compression not applied. Call apply_compression() first."
+  },
+  "QU_lmax48_harmonic": {
+    "error": "dpotrf failed with info=12"
+  },
+  "QU_lmax48_pixel": {
+    "error": "Compression not applied. Call apply_compression() first."
+  }
+}

@@ -45,3 +45,17 @@ run_*.py
 **/tests/data/**/*.png
 *.png
 /src/cosmoforge.picslike/tests/data/nside8/B/fortran_reference/theory_spectra
+/src/cosmoforge.qube/benchmarks/sims/bench_T*
+/src/cosmoforge.qube/benchmarks/sims/bench_QU*
+/src/cosmoforge.qube/benchmarks/sims/bench_mpi*
+
+# Heavy benchmark fixtures (kept locally, synced to cluster manually)
+/src/cosmoforge.qube/benchmarks/data/
+
+src/cosmoforge.qube/scripts/qml_vs_pcl_results.json
+/src/cosmoforge.qube/benchmarks/results
+/src/cosmoforge.qube/benchmarks/sims
+*.json
+
+# Local git worktrees
+.worktrees/

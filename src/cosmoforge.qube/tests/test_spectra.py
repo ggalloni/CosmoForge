@@ -271,6 +271,46 @@ def test_pixel_spectra_degradation(local_path, config_resolver):
             )
 
 
+def test_pixel_no_compression_matches_harmonic(local_path, config_resolver):
+    """Without compression, pixel basis (with lswitch) and harmonic basis
+    must agree to machine precision — they're the same exact estimator.
+
+    lswitch is an exact algebraic rearrangement (S = S_low + S_fixed → N_eff)
+    and an eigendecomposition of n_pix × n_pix that keeps all modes is just
+    a unitary basis change.
+    """
+    spectra_harmonic, noise_harmonic = _get_compressed_spectra(
+        "T",
+        config_resolver,
+        method="harmonic",
+        epsilon=1e-15,
+    )
+    # epsilon very tight so eigendecomposition keeps essentially all modes
+    spectra_pp, noise_pp = _get_compressed_spectra(
+        "T",
+        config_resolver,
+        method="pixel",
+        epsilon=1e-30,
+    )
+
+    assert spectra_pp.shape == spectra_harmonic.shape
+    np.testing.assert_allclose(
+        spectra_pp,
+        spectra_harmonic,
+        rtol=1e-6,
+        err_msg="Pixel (no compression) and harmonic spectra differ beyond "
+        "machine precision — lswitch handling is broken",
+    )
+    if noise_harmonic is not None and noise_pp is not None:
+        np.testing.assert_allclose(
+            noise_pp,
+            noise_harmonic,
+            rtol=1e-6,
+            err_msg="Pixel (no compression) and harmonic noise bias differ "
+            "beyond machine precision — N vs N_eff handling is broken",
+        )
+
+
 @pytest.mark.parametrize("fields", ["T", "QU"])
 def test_normalization_modes(fields, local_path, config_resolver):
     """Test the three normalization modes for QML power spectra."""
@@ -679,6 +719,100 @@ def test_compressed_spectra_spin2(fields, local_path, config_resolver):
     assert rel_fro_ref < 0.05, (
         f"Relative Frobenius for {fields} vs reference should be < 5%, "
         f"got {rel_fro_ref:.2%}"
+    )
+
+
+@pytest.mark.parametrize("fields", ["QU", "TQU"])
+def test_qml_sparse_coo_matches_dense(fields, config_resolver):
+    """Sparse-COO QML path produces identical results to the dense fallback.
+
+    Runs the harmonic-basis QML pipeline twice on the same fixture: once with
+    the sparse-COO cache populated (default), once with the cache nulled to
+    force the dense fallback. Asserts both paths were actually exercised and
+    that results agree to ~1e-10 relative (last-bit FP reordering).
+    """
+    config_file = config_resolver(f"tests/data/nside4/{fields}/config.yaml")
+
+    try:
+        qml_sparse = Spectra(
+            config_file,
+            compression={"method": "harmonic", "epsilon": 1e-10},
+        )
+        qml_sparse.run()
+        assert qml_sparse._qml_path_used == "sparse", (
+            f"Expected sparse path by default, got {qml_sparse._qml_path_used}"
+        )
+        ps_sparse = qml_sparse.get_power_spectra()
+        nb_sparse = qml_sparse.get_noise_bias()
+
+        # Force the dense fallback path by nulling the COO cache on the
+        # underlying Fisher instance, then re-run QML using the same setup.
+        qml_dense = Spectra(
+            config_file,
+            compression={"method": "harmonic", "epsilon": 1e-10},
+        )
+        qml_dense.run()
+        qml_dense.fisher_instance._cached_sparse_coo_data = None
+        qml_dense.compute_qml_spectra()
+        assert qml_dense._qml_path_used == "dense", (
+            f"Expected dense path when COO cache is None, got {qml_dense._qml_path_used}"
+        )
+        ps_dense = qml_dense.get_power_spectra()
+        nb_dense = qml_dense.get_noise_bias()
+    finally:
+        os.unlink(config_file)
+
+    np.testing.assert_allclose(
+        ps_sparse,
+        ps_dense,
+        rtol=1e-10,
+        atol=0,
+        err_msg=f"Sparse vs dense QML power spectra mismatch for {fields}",
+    )
+    np.testing.assert_allclose(
+        nb_sparse,
+        nb_dense,
+        rtol=1e-10,
+        atol=0,
+        err_msg=f"Sparse vs dense QML noise bias mismatch for {fields}",
+    )
+
+
+def test_qml_sparse_coo_matches_dense_cross(config_resolver):
+    """Sparse-COO QML matches dense fallback for cross-correlation (do_cross=True)."""
+    config_file = config_resolver("tests/data/nside4/QU/cross_config.yaml")
+
+    try:
+        qml_sparse = Spectra(
+            config_file,
+            compression={"method": "harmonic", "epsilon": 1e-10},
+        )
+        qml_sparse.run()
+        assert qml_sparse._qml_path_used == "sparse", (
+            f"Expected sparse path by default, got {qml_sparse._qml_path_used}"
+        )
+        ps_sparse = qml_sparse.get_power_spectra()
+
+        qml_dense = Spectra(
+            config_file,
+            compression={"method": "harmonic", "epsilon": 1e-10},
+        )
+        qml_dense.run()
+        qml_dense.fisher_instance._cached_sparse_coo_data = None
+        qml_dense.compute_qml_spectra()
+        assert qml_dense._qml_path_used == "dense", (
+            f"Expected dense path when COO cache is None, got {qml_dense._qml_path_used}"
+        )
+        ps_dense = qml_dense.get_power_spectra()
+    finally:
+        os.unlink(config_file)
+
+    np.testing.assert_allclose(
+        ps_sparse,
+        ps_dense,
+        rtol=1e-10,
+        atol=0,
+        err_msg="Sparse vs dense cross-correlation QML mismatch",
     )
 
 

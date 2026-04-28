@@ -53,6 +53,19 @@ from cosmocore import (
 _WEIGHT_ZERO_THRESHOLD = 1e-30  # Skip derivative terms with negligible weight
 
 
+def _basis_path_label(basis_manager) -> str:
+    """Human-readable label for the active computation-basis path."""
+    if basis_manager is None:
+        return "traditional"
+    if basis_manager.method == "pixel":
+        return (
+            "pixel-direct"
+            if getattr(basis_manager, "_use_direct", False)
+            else "pixel-truncated"
+        )
+    return "harmonic"
+
+
 class Fisher(Core, MPISharedMemoryMixin):
     """
     Fisher matrix computation for cosmological parameter estimation.
@@ -262,9 +275,11 @@ class Fisher(Core, MPISharedMemoryMixin):
         n_params = nspectra * nbins
 
         if self.rank == 0:
-            mode = "compressed" if use_basis else "traditional"
+            path_label = (
+                _basis_path_label(self.basis_manager) if use_basis else "traditional"
+            )
             self.log(
-                f"Starting Fisher computation ({mode}, "
+                f"Starting Fisher computation (path: {path_label}, "
                 f"{nspectra} spectra x {nbins} bins)",
                 level=2,
             )
@@ -336,8 +351,6 @@ class Fisher(Core, MPISharedMemoryMixin):
                         )
                     nz = np.nonzero(E_b_diag)[0]
                     sparse_coo_data[key] = (nz, nz, E_b_diag[nz])
-                    if self._cache_derivatives:
-                        binned_derivatives[key] = E_b_diag.copy()
                 else:
                     # Cross-spectrum (EB/TE/TB): sparse off-diagonal COO
                     all_rows = []
@@ -374,11 +387,6 @@ class Fisher(Core, MPISharedMemoryMixin):
                             np.array([], dtype=int),
                             np.array([], dtype=float),
                         )
-                    if self._cache_derivatives:
-                        dC_b = np.zeros((bm.n_kept, bm.n_kept), dtype=np.float64)
-                        r, c, v = sparse_coo_data[key]
-                        dC_b[r, c] = v
-                        binned_derivatives[key] = dC_b
         else:
             # Generic path: pixel basis or traditional pixel-space
             if use_basis:
@@ -411,13 +419,21 @@ class Fisher(Core, MPISharedMemoryMixin):
                     cinv_times_dcb[key] = matrix_mult(C_inv2, matrix_mult(dC_b, C_inv1))
 
         if self._cache_derivatives:
-            self._cached_binned_derivatives = binned_derivatives
+            # Harmonic-fast caches only the COO triplets (Spectra consumes them
+            # directly); dense per-bin matrices would just bloat memory.
+            # Other paths cache the dense form they actually computed.
+            if use_harmonic_fast:
+                self._cached_binned_derivatives = None
+                self._cached_sparse_coo_data = sparse_coo_data
+            else:
+                self._cached_binned_derivatives = binned_derivatives
+                self._cached_sparse_coo_data = None
 
         if self.rank == 0:
-            path = "sparse" if use_harmonic_fast else "dense"
+            trace_path = "sparse-COO harmonic" if use_harmonic_fast else "dense matmul"
             self.log(
                 f"All {n_params} derivatives precomputed in "
-                f"{time.time() - deriv_start:.1f}s ({path})",
+                f"{time.time() - deriv_start:.1f}s (trace path: {trace_path})",
                 level=3,
             )
 
@@ -515,26 +531,40 @@ class Fisher(Core, MPISharedMemoryMixin):
             self.setup_beams(lmax=self.lmax_signal)
             self.log("Beam functions setup completed", level=3)
 
-            # Setup computation basis if configured
+            # Setup computation basis if configured. Only forward keys that
+            # are explicitly set in the config dict so the function defaults
+            # (e.g. epsilon=1e-6) take effect when the user omits a key.
             if self._basis_config is not None:
-                config = self._basis_config
-                self.setup_computation_basis(
-                    method=config.get("method", "harmonic"),
-                    lmax=config.get("lmax"),
-                    epsilon=config.get("epsilon"),
-                    mode_fraction=config.get("mode_fraction"),
-                    basis=config.get("basis", "noise_weighted"),
-                    C_ell=config.get("C_ell"),
+                _basis_keys = (
+                    "method",
+                    "lmax",
+                    "epsilon",
+                    "mode_fraction",
+                    "basis",
+                    "C_ell",
                 )
+                kwargs = {
+                    k: self._basis_config[k]
+                    for k in _basis_keys
+                    if k in self._basis_config
+                }
+                self.setup_computation_basis(**kwargs)
+                bm = self.basis_manager
+                path_label = _basis_path_label(bm)
+                if bm.method == "harmonic":
+                    size_desc = f"{bm.n_kept} modes ({bm.compression_ratio:.1%} kept)"
+                else:
+                    size_desc = f"{bm.n_kept} pixels"
                 self.log(
-                    f"Computation basis enabled: {self.basis_manager.n_kept} modes "
-                    f"({self.basis_manager.compression_ratio:.1%})",
+                    f"Computation basis: {path_label} — {size_desc}",
                     level=2,
                 )
-                # Harmonic basis uses SMW formula internally — pixel-space
-                # signal matrix and covariance inversion are not needed.
+                # The basis manager handles covariance inversion internally
+                # (SMW for harmonic, direct/truncated solve for pixel), so the
+                # traditional explicit C = N+S build and inversion is skipped.
                 self.log(
-                    "Skipping pixel-space covariance preparation (harmonic basis)",
+                    f"Skipping explicit pixel-space C inversion "
+                    f"(handled by {path_label} basis)",
                     level=3,
                 )
             else:
@@ -830,12 +860,14 @@ class Fisher(Core, MPISharedMemoryMixin):
         saved_fisher = self.fisher
         saved_n_params = self.n_params
         saved_cached = getattr(self, "_cached_binned_derivatives", None)
+        saved_coo = getattr(self, "_cached_sparse_coo_data", None)
         try:
             self.bins = Bins.fromdeltal(2, self.params.lmax, 1)
             self.n_params = self.params.nspectra * self.bins.nbins
             self.fisher = np.zeros((self.n_params, self.n_params))
             # Drop binned-derivative cache so per-ℓ run rebuilds its own
             self._cached_binned_derivatives = None
+            self._cached_sparse_coo_data = None
             self.compute()
             F_perell = self.fisher.copy()
         finally:
@@ -843,4 +875,5 @@ class Fisher(Core, MPISharedMemoryMixin):
             self.fisher = saved_fisher
             self.n_params = saved_n_params
             self._cached_binned_derivatives = saved_cached
+            self._cached_sparse_coo_data = saved_coo
         return F_perell

@@ -1,20 +1,16 @@
-"""
-Benchmark: Harmonic vs pixel basis at small fsky.
+"""Benchmark: pixel-direct scaling with nside at fixed fsky and lmax/nside.
 
-The pixel basis becomes competitive when n_kept < n_modes. At fixed
-nside, n_pix shrinks with the mask while n_modes ~ lmax^2 grows. The
-crossover therefore sits at small fsky and increasing lmax — the regime
-this benchmark targets.
+Always operates in the regime where pixel-direct (auto) is the optimal
+choice: fsky=0.10 with lmax = 2 * nside means n_modes >> n_pix at every
+nside. The point is to measure how pixel-direct scales with n_pix and
+compare against harmonic and pixel V-based at each scale.
 
-Geometry: polar cap centred on the north pole, fsky ~ 0.1.
-Sweep: lmax in {8, 16, 24, 32, 48}, T-only and QU.
-Methods:
-  - harmonic: V-based, full SMW pipeline
-  - pixel:    V-based eigenvalue truncation (default epsilon=1e-6, noise_weighted)
-  - auto:     factory picks harmonic when n_pix > n_modes, otherwise
-              pixel in direct mode (no V, full pixel-space ops)
+Geometry: polar cap centred on the north pole, fsky ~ 0.10.
+Sweep: nside in {16, 32, 64}; lmax_analysis = 2 * nside.
+Binning: delta_ell scales so each run has ~6 bandpower bins.
+Methods: harmonic, pixel (V-based, no compression), auto (pixel-direct).
 
-Usage: mpirun -n 1 uv run python -u benchmark_pixel_vs_harmonic.py
+Usage: mpirun -n 1 uv run python -u benchmark_pixel_direct_scaling.py
 """
 
 import os
@@ -24,6 +20,7 @@ import time
 import healpy as hp
 import numpy as np
 import yaml
+from _bench_utils import save_results
 
 from cosmocore import Bins
 from qube import Fisher, Spectra
@@ -36,7 +33,6 @@ def _gaussian_fwhm_for_lmax(lmax, beam_at_lmax=0.5):
 
 
 def _polar_cap_mask(nside, n_fields, fsky):
-    """Return a mask selecting a polar cap with the requested sky fraction."""
     radius = np.arccos(1.0 - 2.0 * fsky)
     pole_vec = hp.ang2vec(0.0, 0.0)
     cap_pixels = hp.query_disc(nside, pole_vec, radius)
@@ -68,16 +64,11 @@ def generate_test_inputs(nside, lmax, spins, physical_labels, lmax_sim, fsky):
             cl_bb[ell_val] = raw_cls[i, 3] * dl2cl[i]
             cl_te[ell_val] = raw_cls[i, 4] * dl2cl[i]
 
-    # Use a beam fixed to the simulation lmax so the same input maps work
-    # across the entire sweep — only the analysis cutoff (params.lmax) varies.
     fwhm_arcmin = _gaussian_fwhm_for_lmax(lmax_sim)
     fwhm_rad = np.radians(fwhm_arcmin / 60.0)
     beam = hp.gauss_beam(fwhm_rad, lmax=lmax_sim)
 
-    # Set noise so C = N + S is uniformly well-conditioned across the sweep
-    # AND the Fisher matrix remains invertible at the highest ℓ where the beam
-    # suppresses signal most heavily. Use sigma² >= signal pixel-variance so
-    # noise dominates and condition numbers stay near 1.
+    # Noise sigma sized so C = N + S is well-conditioned at every scale.
     cl_for_sigma = cl_ee if 2 in spins else cl_tt
     ell_arr = np.arange(lmax_sim + 1)
     sig_var_per_pix = np.sum((2 * ell_arr + 1) / (4 * np.pi) * cl_for_sigma * beam**2)
@@ -165,12 +156,6 @@ def write_temp_config(
 
 
 def _compression_dict(method):
-    """Build the compression config for a method.
-
-    Pixel V-based path uses an extremely small epsilon so the eigenvalue
-    truncation is effectively disabled — we want to measure pure pixel-basis
-    cost, not compression. Harmonic and auto don't use epsilon.
-    """
     cfg = {"method": method}
     if method == "pixel":
         cfg["epsilon"] = 1e-30
@@ -207,14 +192,14 @@ def benchmark_spectra(config_file, fisher, method, bins=None):
 
 
 # =========================================================================
-# Configurations: fixed nside + fsky, sweep lmax across both methods.
+# Configurations
 # =========================================================================
 
-NSIDE = 16
 FSKY = 0.10
-LMAX_VALUES = [8, 16, 24, 32, 48]
-DELTA_ELL = 8  # Bandpower binning keeps the Fisher matrix small (~6×6) and
-# well-conditioned even at small fsky where individual ℓ bins lack modes.
+# nside=64 QU needs ~10+ GB RAM (n_pix=9830, ~770 MB per matrix); run on a
+# workstation/cluster, not a laptop.
+NSIDE_VALUES = [16, 32, 64]
+TARGET_NBINS = 6  # Binning chosen so each run has ~6 bandpower bins.
 
 FIELDS = [
     # (label, spins, labels, physical_labels)
@@ -229,19 +214,22 @@ def main():
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
     results = {}
-    lmax_sim = 4 * NSIDE
 
-    for field_label, spins, labels, physical_labels in FIELDS:
-        for lmax in LMAX_VALUES:
+    for nside in NSIDE_VALUES:
+        lmax = 2 * nside
+        lmax_sim = 4 * nside
+        delta_ell = max(2, (lmax - 1) // TARGET_NBINS)
+
+        for field_label, spins, labels, physical_labels in FIELDS:
             print(f"\n{'=' * 60}")
             print(
-                f"{field_label} lmax={lmax} (nside={NSIDE}, fsky={FSKY}, "
-                f"{physical_labels})"
+                f"{field_label} nside={nside}, lmax={lmax}, "
+                f"delta_ell={delta_ell}, fsky={FSKY}"
             )
             print(f"{'=' * 60}")
 
             cov, mask, sim_maps, fwhmarcmin = generate_test_inputs(
-                NSIDE,
+                nside,
                 lmax,
                 spins,
                 physical_labels,
@@ -250,14 +238,14 @@ def main():
             )
 
             for method in METHODS:
-                run_label = f"{field_label}_lmax{lmax}_{method}"
+                run_label = f"{field_label}_nside{nside}_{method}"
                 print(f"\n--- Method: {method} ---")
                 with tempfile.TemporaryDirectory(
                     dir="sims", prefix=f"bench_{run_label}_"
                 ) as tmpdir:
                     config_file = write_temp_config(
                         tmpdir,
-                        NSIDE,
+                        nside,
                         lmax,
                         spins,
                         labels,
@@ -267,9 +255,7 @@ def main():
                         sim_maps,
                         fwhmarcmin=fwhmarcmin,
                     )
-                    # Cap delta_ell so we always get at least 2 bins
-                    delta_ell_used = min(DELTA_ELL, max(2, (lmax - 1) // 2))
-                    bins = Bins.fromdeltal(2, lmax, delta_ell_used)
+                    bins = Bins.fromdeltal(2, lmax, delta_ell)
                     try:
                         timings, fisher = benchmark_fisher(config_file, method, bins=bins)
                         print(f"  n_modes/n_kept = {timings['n_modes']}")
@@ -277,17 +263,16 @@ def main():
                         print(f"  Fisher run:    {timings['total']:.2f}s")
                         timings.update(
                             {
-                                "nside": NSIDE,
+                                "nside": nside,
                                 "fsky": FSKY,
                                 "lmax": lmax,
+                                "lmax_sim": lmax_sim,
+                                "delta_ell": delta_ell,
                                 "method": method,
                                 "spins": spins,
                                 "field_label": field_label,
-                                "delta_ell": DELTA_ELL,
                             }
                         )
-                        # QML is optional: catch any failure (e.g. singular
-                        # Fisher when both fsky and ℓ-coverage push the limits).
                         try:
                             qml_timings = benchmark_spectra(
                                 config_file, fisher, method, bins=bins
@@ -306,24 +291,25 @@ def main():
                         print(f"  FAILED: {e}")
                         results[run_label] = {"error": str(e)}
 
-    from _bench_utils import save_results
-
-    out_path = save_results("benchmark_pixel_vs_harmonic", results)
+    out_path = save_results("benchmark_pixel_direct_scaling", results)
     print(f"\nResults saved to {out_path}")
 
-    print(f"\n{'=' * 78}")
+    print(f"\n{'=' * 90}")
     print(
-        f"{'Config':<22} {'Method':<10} {'n_modes':>9} {'n_pix':>7} "
+        f"{'Config':<26} {'Method':<10} {'n_modes':>9} {'n_pix':>7} "
         f"{'Fisher':>10} {'QML/sim':>10}"
     )
-    print(f"{'=' * 78}")
+    print(f"{'=' * 90}")
     for key, t in results.items():
         if "error" in t:
-            print(f"{key:<22} FAILED: {t['error']}")
+            print(f"{key:<26} FAILED: {t['error']}")
             continue
-        qml_per_sim = t["qml_total"] / t["nsims"] if t["nsims"] > 0 else 0
+        if t.get("qml_total") is None:
+            qml_per_sim = float("nan")
+        else:
+            qml_per_sim = t["qml_total"] / t["nsims"] if t["nsims"] > 0 else 0
         print(
-            f"{key:<22} {t['method']:<10} {t.get('n_modes', '?'):>9} "
+            f"{key:<26} {t['method']:<10} {t.get('n_modes', '?'):>9} "
             f"{t['n_pix']:>7} {t['total']:>9.1f}s "
             f"{qml_per_sim:>9.3f}s"
         )
