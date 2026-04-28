@@ -11,9 +11,13 @@
 
 set -euo pipefail
 
-CF_SBATCH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-CF_BENCH_DIR="$(dirname "${CF_SBATCH_DIR}")"
-CF_REPO_ROOT="$(realpath "${CF_BENCH_DIR}/../../..")"
+# SLURM copies the script into /var/spool/slurmd/...; $0 and BASH_SOURCE
+# point there, not at the submission directory. Use SLURM_SUBMIT_DIR
+# (set by SLURM to the directory the user ran sbatch from) to resolve
+# the layout, with a fallback for non-SLURM execution.
+CF_SBATCH_DIR="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)}"
+CF_BENCH_DIR="$(cd "${CF_SBATCH_DIR}/.." && pwd)"
+CF_REPO_ROOT="$(cd "${CF_BENCH_DIR}/../../.." && pwd)"
 export CF_REPO_ROOT
 
 source "${CF_SBATCH_DIR}/_env.sh"
