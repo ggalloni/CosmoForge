@@ -228,9 +228,12 @@ class HarmonicBasis(ComputationBasis):
         # in _compute_smw_components reads it once, then it can be released.
         self._N_original = self._N
 
-        # Build N_eff = N + S_fixed in F-order directly so we don't keep an
-        # extra C-order copy as a separate attribute.
-        self._N = np.asfortranarray(self._N + S_fixed)
+        # Build N_eff = N + S_fixed straight into a preallocated F-order
+        # buffer to avoid the C-order intermediate that `_N + S_fixed`
+        # would otherwise produce (one extra n_pix^2 alloc at peak).
+        N_eff = np.empty_like(self._N, order="F")
+        np.add(self._N, S_fixed, out=N_eff)
+        self._N = N_eff
         self.N_inv = matrix_inverse_symm(self._N)
 
         # log|N_eff| for determinant calculations

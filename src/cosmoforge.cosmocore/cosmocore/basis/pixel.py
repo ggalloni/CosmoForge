@@ -614,8 +614,12 @@ class PixelBasis(ComputationBasis):
         # get_compressed_noise, so we cannot release it here).
         self._N_original = self._N
 
-        # Build N_eff = N + S_fixed in F-order directly, no intermediate alloc.
-        self._N = np.asfortranarray(self._N + S_fixed)
+        # Build N_eff = N + S_fixed straight into a preallocated F-order
+        # buffer to avoid the C-order intermediate that `_N + S_fixed`
+        # would otherwise produce (one extra n_pix^2 alloc at peak).
+        N_eff = np.empty_like(self._N, order="F")
+        np.add(self._N, S_fixed, out=N_eff)
+        self._N = N_eff
         self.N_inv = matrix_inverse_symm(self._N)
 
         # S_fixed has been absorbed into N_eff and is not read again; release.

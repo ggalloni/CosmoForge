@@ -451,10 +451,10 @@ class Fisher(Core, MPISharedMemoryMixin):
                             else 0
                         ),
                     )
-                    # Skip retaining dC when the trace path won't consume it,
-                    # to avoid a 2x n_pix^2 memory penalty.
+                    # Retain dC only when the trace itself consumes it
+                    # (traditional pixel-space cross-spectrum path).
                     trace_needs_dC = not use_basis and self.params.do_cross
-                    if trace_needs_dC or self._cache_derivatives:
+                    if trace_needs_dC:
                         binned_derivatives[key] = dC_b
 
                     if use_basis or not self.params.do_cross:
@@ -465,15 +465,14 @@ class Fisher(Core, MPISharedMemoryMixin):
                         )
 
             if self._cache_derivatives:
-                # Harmonic-fast caches only the COO triplets (Spectra consumes them
-                # directly); dense per-bin matrices would just bloat memory.
-                # Other paths cache the dense form they actually computed.
-                if use_harmonic_fast:
-                    self._cached_binned_derivatives = None
-                    self._cached_sparse_coo_data = sparse_coo_data
-                else:
-                    self._cached_binned_derivatives = binned_derivatives
-                    self._cached_sparse_coo_data = None
+                # Harmonic-fast caches the small COO triplets; the dense
+                # per-bin pixel cache would cost n_params * n_pix^2 (~14 GB
+                # at QU_nside64 fsky=0.1) so we skip it. Spectra falls back
+                # to the per-ell recompute path on cache miss.
+                self._cached_binned_derivatives = None
+                self._cached_sparse_coo_data = (
+                    sparse_coo_data if use_harmonic_fast else None
+                )
 
             if self.rank == 0:
                 trace_path = (
