@@ -609,31 +609,25 @@ class Spectra(Core, MPISharedMemoryMixin):
         """Build C_ell_dict and spectra_list for multi-spectrum."""
         return self.collection.spectra_manager.build_inputs()
 
+    def _build_derivative_matrix(self, ell: int, spectrum_idx: int = 0) -> np.ndarray:
+        """Build pixel-space derivative matrix dC/dC_ell (no-basis fallback)."""
+        ntot = sum(self.collection.n_active)
+        dC = np.zeros((ntot, ntot), dtype=np.float64, order="F")
+        do_derivative_step(
+            dC, spectrum_idx, self.npixs, self.params.spins, ell, self.collection
+        )
+        return dC
+
     def _get_binned_derivative(
         self, bin_idx: int, spectrum_idx: int = 0, spectra_list=None
     ) -> np.ndarray:
         """
         Compute binned derivative dC^b = Sum_{ell in bin} b²_ell dC^ell.
 
-        The sum runs over the multipoles in the bin with unit weight;
-        b²_ell is the per-ℓ beam smoothing factor. If a Fisher instance
-        with cached derivatives is available, returns the cached result
-        directly, avoiding expensive recomputation.
-
-        Parameters
-        ----------
-        bin_idx : int
-            Multipole bin index.
-        spectrum_idx : int, optional
-            Spectrum index for multi-spectrum analysis (default: 0).
-        spectra_list : list or None
-            List of (comp_i, comp_j, mode) tuples for multi-field.
-
-        Returns
-        -------
-        numpy.ndarray
-            Binned derivative matrix, shape (n_pix, n_pix) or
-            (n_modes, n_modes) if a computation basis is enabled.
+        Uses Fisher's cache when available, otherwise delegates to
+        :meth:`Core.get_binned_derivative_matrix`, which dispatches to the
+        pixel-direct fast path (single Legendre/Wigner pass per bin) when
+        applicable.
         """
         if hasattr(self, "fisher_instance") and self.fisher_instance is not None:
             cache = getattr(self.fisher_instance, "_cached_binned_derivatives", None)
@@ -642,42 +636,23 @@ class Spectra(Core, MPISharedMemoryMixin):
                 if key in cache:
                     return cache[key]
 
-        use_basis = hasattr(self, "basis_manager") and self.basis_manager is not None
-
-        lmin_b = self.bins.lmins[bin_idx]
-        lmax_b = self.bins.lmaxs[bin_idx]
         n_ell = self.params.lmax - 1
         beam_offset = spectrum_idx * n_ell
-        dC_b = None
+        beam = self.beam_smoothing[beam_offset : beam_offset + n_ell]
 
-        for ell in range(lmin_b, lmax_b + 1):
-            weight = self.beam_smoothing[beam_offset + ell - 2]
+        comp_i = comp_j = None
+        mode = 0
+        if spectra_list is not None:
+            comp_i, comp_j, mode = spectra_list[spectrum_idx]
 
-            if use_basis:
-                bm = self.basis_manager
-                if spectra_list is not None:
-                    comp_i, comp_j, mode = spectra_list[spectrum_idx]
-                    dC_ell = bm.get_derivative_matrix(ell, comp_i, comp_j, mode)
-                else:
-                    dC_ell = bm.get_derivative_matrix(ell)
-            else:
-                ntot = sum(self.collection.n_active)
-                dC_ell = np.zeros((ntot, ntot), dtype=np.float64)
-                do_derivative_step(
-                    dC_ell,
-                    spectrum_idx,
-                    self.npixs,
-                    self.params.spins,
-                    ell,
-                    self.collection,
-                )
-
-            if dC_b is None:
-                dC_b = weight * dC_ell
-            else:
-                dC_b += weight * dC_ell
-
-        return dC_b
+        return self.get_binned_derivative_matrix(
+            bin_idx,
+            beam_smoothing=beam,
+            spectrum_idx=spectrum_idx,
+            comp_i=comp_i,
+            comp_j=comp_j,
+            mode=mode,
+        )
 
     def _compute_noise_cov_compressed(
         self,
