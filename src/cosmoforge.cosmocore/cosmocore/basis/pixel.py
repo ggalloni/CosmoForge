@@ -577,6 +577,24 @@ class PixelBasis(ComputationBasis):
                 basis=self._basis,
                 C_ell=self._C_ell_for_basis,
             )
+        # Precompute U^T N_raw U so _N_original can be released; the
+        # noise-bias path reads only the compressed form thereafter.
+        self._precompute_compressed_noise()
+
+    def _precompute_compressed_noise(self) -> None:
+        """Cache U^T N_orig U and release the n_pix x n_pix raw N reference.
+
+        Only possible when compression is active (``_eigenvectors`` is set)
+        and switch optimization captured a raw ``_N_original``. Otherwise
+        ``get_compressed_noise`` falls back to ``_N`` / ``_N_original``.
+        """
+        N_original = getattr(self, "_N_original", None)
+        if N_original is None or self._eigenvectors is None:
+            return
+        U = self._eigenvectors
+        UN_raw_U = U.T @ N_original @ U
+        self._compressed_noise_cache = 0.5 * (UN_raw_U + UN_raw_U.T)
+        del self._N_original
 
     def _compute_effective_noise(self) -> None:
         """Absorb high-ℓ signal into N_eff (mirrors HarmonicBasis).
@@ -613,6 +631,9 @@ class PixelBasis(ComputationBasis):
         Without switch optimization, N_eff = N and this is identical to
         ``get_compressed_covariance(0)``.
         """
+        cached = getattr(self, "_compressed_noise_cache", None)
+        if cached is not None:
+            return cached
         N_raw = getattr(self, "_N_original", self._N)
         if self._eigenvectors is None:
             return N_raw
