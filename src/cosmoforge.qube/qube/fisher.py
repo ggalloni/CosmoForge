@@ -145,7 +145,7 @@ class Fisher(Core, MPISharedMemoryMixin):
         self,
         params_file: str | None = None,
         compression: dict | None = None,
-        cache_derivatives: bool = True,
+        cache_derivatives: bool = False,
         **kwargs,
     ):
         """
@@ -164,10 +164,14 @@ class Fisher(Core, MPISharedMemoryMixin):
             - mode_fraction : float (alternative to epsilon)
 
         cache_derivatives : bool, optional
-            Whether to cache binned derivative matrices for later reuse
-            (e.g. by Spectra). Default is True. Set to False to reduce
-            memory usage when derivatives are not needed after Fisher
-            computation.
+            Whether to cache binned derivative matrices for Spectra to
+            reuse. Default is False — Spectra recomputes via the
+            pixel-direct fast path (single Legendre/Wigner pass per bin),
+            which is amortized across MPI ranks. Setting True keeps the
+            dense per-bin cache, which can cost n_params * n_pix^2 of
+            memory (e.g. ~14 GB at QU_nside64 fsky=0.1) but skips the
+            recompute. The harmonic-fast path always caches its small
+            COO triplets regardless of this flag.
         **kwargs : dict
             Additional keyword arguments passed to Core.
         """
@@ -451,10 +455,10 @@ class Fisher(Core, MPISharedMemoryMixin):
                             else 0
                         ),
                     )
-                    # Retain dC only when the trace itself consumes it
-                    # (traditional pixel-space cross-spectrum path).
+                    # Retain dC when the trace consumes it OR when the user
+                    # opted in to caching for Spectra to reuse.
                     trace_needs_dC = not use_basis and self.params.do_cross
-                    if trace_needs_dC:
+                    if trace_needs_dC or self._cache_derivatives:
                         binned_derivatives[key] = dC_b
 
                     if use_basis or not self.params.do_cross:
@@ -464,15 +468,19 @@ class Fisher(Core, MPISharedMemoryMixin):
                             C_inv2, matrix_mult(dC_b, C_inv1)
                         )
 
-            if self._cache_derivatives:
-                # Harmonic-fast caches the small COO triplets; the dense
-                # per-bin pixel cache would cost n_params * n_pix^2 (~14 GB
-                # at QU_nside64 fsky=0.1) so we skip it. Spectra falls back
-                # to the per-ell recompute path on cache miss.
+            # Harmonic-fast COO triplets are small (~2l+1 nonzeros per bin)
+            # and Spectra uses them on the hot path, so they're always cached.
+            # Dense per-bin matrices can be huge (n_params * n_pix^2) and are
+            # only cached when the user explicitly opts in.
+            if use_harmonic_fast:
                 self._cached_binned_derivatives = None
-                self._cached_sparse_coo_data = (
-                    sparse_coo_data if use_harmonic_fast else None
-                )
+                self._cached_sparse_coo_data = sparse_coo_data
+            elif self._cache_derivatives:
+                self._cached_binned_derivatives = binned_derivatives
+                self._cached_sparse_coo_data = None
+            else:
+                self._cached_binned_derivatives = None
+                self._cached_sparse_coo_data = None
 
             if self.rank == 0:
                 trace_path = (
