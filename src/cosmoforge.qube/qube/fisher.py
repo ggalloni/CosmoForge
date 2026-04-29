@@ -31,11 +31,29 @@ References
 
 from __future__ import annotations
 
+import os
 import time
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 
 import numpy as np
 from mpi4py import MPI
+
+try:
+    from threadpoolctl import threadpool_limits as _threadpool_limits
+except ImportError:  # graceful degradation; setup just runs at OMP_NUM_THREADS
+    _threadpool_limits = None
+
+
+@contextmanager
+def _wide_threadpool():
+    """Widen BLAS threads to the visible CPU set for rank-0 setup work."""
+    if _threadpool_limits is None:
+        yield
+        return
+    n_visible = len(os.sched_getaffinity(0))
+    with _threadpool_limits(limits=n_visible):
+        yield
+
 
 from cosmocore import (
     Bins,
@@ -433,7 +451,11 @@ class Fisher(Core, MPISharedMemoryMixin):
                             else 0
                         ),
                     )
-                    binned_derivatives[key] = dC_b
+                    # Skip retaining dC when the trace path won't consume it,
+                    # to avoid a 2x n_pix^2 memory penalty.
+                    trace_needs_dC = not use_basis and self.params.do_cross
+                    if trace_needs_dC or self._cache_derivatives:
+                        binned_derivatives[key] = dC_b
 
                     if use_basis or not self.params.do_cross:
                         cinv_times_dcb[key] = matrix_mult(C_inv, dC_b)
@@ -552,7 +574,8 @@ class Fisher(Core, MPISharedMemoryMixin):
                 self.log("Geometry setup completed", level=3)
 
             with self._stage("fisher.covariance_setup"):
-                self.setup_covariance_matrices()
+                with _wide_threadpool():
+                    self.setup_covariance_matrices()
                 self.log("Covariance matrices setup completed", level=3)
 
             with self._stage("fisher.setup_cls_beams"):
@@ -584,7 +607,8 @@ class Fisher(Core, MPISharedMemoryMixin):
                     if k in self._basis_config
                 }
                 with self._stage("fisher.basis_setup"):
-                    self.setup_computation_basis(**kwargs)
+                    with _wide_threadpool():
+                        self.setup_computation_basis(**kwargs)
                 bm = self.basis_manager
                 path_label = _basis_path_label(bm)
                 if bm.method == "harmonic":
@@ -606,7 +630,8 @@ class Fisher(Core, MPISharedMemoryMixin):
             else:
                 # Traditional: prepare covariance matrices (signal + inverse)
                 with self._stage("fisher.prepare_covariance"):
-                    self.prepare_covariance_matrices()
+                    with _wide_threadpool():
+                        self.prepare_covariance_matrices()
                 self.log("Signal matrix and covariance preparation completed", level=3)
 
         # Synchronize and broadcast shared variables to worker processes.

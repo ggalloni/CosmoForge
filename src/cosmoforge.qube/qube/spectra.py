@@ -958,13 +958,17 @@ class Spectra(Core, MPISharedMemoryMixin):
                         maps2_weighted * E_b_times_w1, axis=0
                     )
                 else:
-                    # Noise bias: 0.5 * Tr[E_b @ Cov(w|noise)]
+                    # Noise bias: 0.5 * Tr[E_b @ Cov(w|noise)]. The dense-E_b /
+                    # diag-only-noise branch handles the single-spectrum cache-miss
+                    # recompute path where _get_binned_derivative returns dense.
                     if is_diag and noise_cov_w_diag is not None:
                         tr_ne = 0.5 * np.sum(E_b * noise_cov_w_diag)
                     elif is_diag:
                         tr_ne = 0.5 * np.sum(E_b * np.diag(noise_cov_w))
-                    else:
+                    elif noise_cov_w is not None:
                         tr_ne = 0.5 * matrix_trace(E_b, noise_cov_w)
+                    else:
+                        tr_ne = 0.5 * np.sum(np.diagonal(E_b) * noise_cov_w_diag)
                     self.qml_noise_bias[il] = tr_ne
 
                     # q = 0.5 * w^T @ E_b @ w for all sims
