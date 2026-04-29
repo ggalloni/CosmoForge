@@ -7,6 +7,8 @@ transformed directly to n_modes dimensions via the harmonic operator V.
 
 from __future__ import annotations
 
+from functools import cached_property
+
 import numpy as np
 from scipy.linalg import cho_solve
 
@@ -222,20 +224,20 @@ class HarmonicBasis(ComputationBasis):
                 "switch optimization (lswitch_high < lmax)"
             )
 
-        # Compute effective noise and its inverse
-        self._N_eff = self._N + S_fixed
-        self._N_eff_inv = matrix_inverse_symm(np.asfortranarray(self._N_eff))
-
-        # Preserve original N before overwriting self._N with N_eff;
-        # the compressed noise-cov path needs the full pre-switch N.
+        # Preserve original N before overwriting; noise-bias precomputation
+        # in _compute_smw_components reads it once, then it can be released.
         self._N_original = self._N
 
-        # Replace N and N_inv with N_eff for SMW computations
-        self._N = np.asfortranarray(self._N_eff)
-        self.N_inv = np.asfortranarray(self._N_eff_inv)
+        # Build N_eff = N + S_fixed in F-order directly so we don't keep an
+        # extra C-order copy as a separate attribute.
+        self._N = np.asfortranarray(self._N + S_fixed)
+        self.N_inv = matrix_inverse_symm(self._N)
 
-        # Store log|N_eff| for determinant calculations
-        _, self._log_det_N_eff = matrix_slogdet_symm(self._N_eff)
+        # log|N_eff| for determinant calculations
+        _, self._log_det_N_eff = matrix_slogdet_symm(self._N)
+
+        # S_fixed has been absorbed into N_eff and is not read again; release.
+        self._S_fixed = None
 
     def _compute_s_fixed_from_fiducial(self) -> np.ndarray:
         """
@@ -299,17 +301,19 @@ class HarmonicBasis(ComputationBasis):
         self._V_Ninv_VT = matrix_mult(self._V_N_inv, self._V.T)
         self._V_Ninv_VT = 0.5 * (self._V_Ninv_VT + self._V_Ninv_VT.T)
 
-        # V @ N @ V^T
-        self._V_N_VT = matrix_mult(matrix_mult(self._V, self._N), self._V.T)
-        self._V_N_VT = 0.5 * (self._V_N_VT + self._V_N_VT.T)
+        # V @ N @ V^T is computed lazily via the _V_N_VT cached_property
+        # (only consumed by get_compressed_covariance, never on the hot path).
 
         # T = V N_eff^{-1} N_orig N_eff^{-1} V^T (n_modes x n_modes).
         # Used by Spectra._compute_noise_cov_compressed: Cov(w|noise) =
         # A T A^T with A = I - M K^{-1}. Without switch optimization
         # N_eff = N_orig and T reduces to V_Ninv_VT (alias, no work).
-        if hasattr(self, "_N_original"):
-            T = matrix_mult(matrix_mult(self._V_N_inv, self._N_original), self._V_N_inv.T)
+        N_original = getattr(self, "_N_original", None)
+        if N_original is not None:
+            T = matrix_mult(matrix_mult(self._V_N_inv, N_original), self._V_N_inv.T)
             self._noise_cov_T = 0.5 * (T + T.T)
+            # _N_original consumed; release the n_pix x n_pix reference.
+            del self._N_original
         else:
             self._noise_cov_T = self._V_Ninv_VT
 
@@ -319,6 +323,12 @@ class HarmonicBasis(ComputationBasis):
 
         # Pre-allocate buffers for frequently called methods
         self._allocate_buffers()
+
+    @cached_property
+    def _V_N_VT(self) -> np.ndarray:
+        """Lazily compute V @ N @ V^T; only get_compressed_covariance reads it."""
+        VNT = matrix_mult(matrix_mult(self._V, self._N), self._V.T)
+        return 0.5 * (VNT + VNT.T)
 
     def _allocate_buffers(self) -> None:
         """

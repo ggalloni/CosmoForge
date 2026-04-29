@@ -592,15 +592,16 @@ class PixelBasis(ComputationBasis):
             )
         S_fixed = np.asarray(self._S_fixed, dtype=np.float64)
 
-        N_eff = self._N + S_fixed
-        N_eff_inv = matrix_inverse_symm(np.asfortranarray(N_eff))
-
-        # Preserve raw N for noise-bias computations
+        # Preserve raw N for noise-bias computations (still read lazily by
+        # get_compressed_noise, so we cannot release it here).
         self._N_original = self._N
 
-        # Replace N and N_inv with N_eff for compression / SMW operations
-        self._N = np.asfortranarray(N_eff)
-        self.N_inv = np.asfortranarray(N_eff_inv)
+        # Build N_eff = N + S_fixed in F-order directly, no intermediate alloc.
+        self._N = np.asfortranarray(self._N + S_fixed)
+        self.N_inv = matrix_inverse_symm(self._N)
+
+        # S_fixed has been absorbed into N_eff and is not read again; release.
+        self._S_fixed = None
 
     def get_compressed_noise(self) -> np.ndarray:
         """U^T N_raw U — compressed *raw* noise covariance.
