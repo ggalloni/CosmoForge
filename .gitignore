@@ -59,3 +59,5 @@ src/cosmoforge.qube/scripts/qml_vs_pcl_results.json
 
 # Local git worktrees
 .worktrees/
+/src/cosmoforge.qube/benchmarks/results
+/src/cosmoforge.qube/benchmarks/sbatch
