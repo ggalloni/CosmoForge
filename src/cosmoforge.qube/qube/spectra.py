@@ -52,6 +52,7 @@ from __future__ import annotations
 import os
 import time
 import typing
+from contextlib import nullcontext
 
 import numpy as np
 from mpi4py import MPI
@@ -242,6 +243,16 @@ class Spectra(Core, MPISharedMemoryMixin):
 
         # lmax for signal matrix computation (matches Fortran convention of 4*nside)
         self._lmax_signal = None
+
+    def _stage(self, name: str):
+        """Return the profiler's stage context, or a nullcontext when none.
+
+        Hosts (e.g. benchmark scripts) attach a ``StageProfiler`` instance
+        by setting ``spectra._profiler``; otherwise the wrapping ``with``
+        block is a zero-cost no-op.
+        """
+        profiler = getattr(self, "_profiler", None)
+        return profiler.stage(name) if profiler is not None else nullcontext()
 
     @property
     def lmax_signal(self) -> int:
@@ -1066,10 +1077,12 @@ class Spectra(Core, MPISharedMemoryMixin):
         Calls setup_qml_computation() to initialize arrays, then
         compute_qml_spectra() for the main parallel computation.
         """
-        self.setup_qml_computation()
+        with self._stage("spectra.compute.setup"):
+            self.setup_qml_computation()
 
         # Compute QML power spectra
-        self.compute_qml_spectra()
+        with self._stage("spectra.compute.qml_spectra"):
+            self.compute_qml_spectra()
 
     def run(self):
         """
@@ -1092,41 +1105,47 @@ class Spectra(Core, MPISharedMemoryMixin):
         """
         # Only rank 0 does the initial setup
         if self.rank == 0:
-            # If we have a pre-computed Fisher instance, reuse its setup
-            if hasattr(self, "collection") and self.collection is not None:
-                self.log("Reusing setup from Fisher instance", level=2)
-            else:
-                # Setup from Core class
-                self.setup_fields()
-                self.setup_geometry()
-                self.setup_covariance_matrices()
-                # Setup Cls and beams with lmax_signal (defaults to 4*nside)
-                # This matches the Fortran convention for derivative computation
-                self.log(
-                    f"Using lmax_signal = {self.lmax_signal} for Cls and beams", level=3
-                )
-                self.setup_cls(lmax=self.lmax_signal)
-                self.setup_beams(lmax=self.lmax_signal)
-                # Load covariance matrices for the case when not reusing Fisher instance
-                self._load_covariance_matrices()
+            with self._stage("spectra.setup_static"):
+                # If we have a pre-computed Fisher instance, reuse its setup
+                if hasattr(self, "collection") and self.collection is not None:
+                    self.log("Reusing setup from Fisher instance", level=2)
+                else:
+                    # Setup from Core class
+                    self.setup_fields()
+                    self.setup_geometry()
+                    self.setup_covariance_matrices()
+                    # Setup Cls and beams with lmax_signal (defaults to 4*nside)
+                    # This matches the Fortran convention for derivative computation
+                    self.log(
+                        f"Using lmax_signal = {self.lmax_signal} for Cls and beams",
+                        level=3,
+                    )
+                    self.setup_cls(lmax=self.lmax_signal)
+                    self.setup_beams(lmax=self.lmax_signal)
+                    # Load covariance matrices when not reusing a Fisher instance
+                    self._load_covariance_matrices()
 
-            # Setup binning: Fisher > set_binning() > config > default
-            if not hasattr(self, "bins") or self.bins is None:
-                delta_ell = getattr(self.params, "delta_ell", 1)
-                self.set_binning(Bins.fromdeltal(2, self.params.lmax, delta_ell))
+            with self._stage("spectra.binning"):
+                # Setup binning: Fisher > set_binning() > config > default
+                if not hasattr(self, "bins") or self.bins is None:
+                    delta_ell = getattr(self.params, "delta_ell", 1)
+                    self.set_binning(Bins.fromdeltal(2, self.params.lmax, delta_ell))
 
-            # QML-specific setup
-            self.setup_maps()
-            self.setup_fisher_inversion()
+            with self._stage("spectra.setup_maps"):
+                self.setup_maps()
+
+            with self._stage("spectra.setup_fisher_inversion"):
+                self.setup_fisher_inversion()
 
         # Synchronize and broadcast shared variables to worker processes.
         # Skip broadcast for single-process runs to avoid unnecessary
         # serialization of large objects (covariance matrices can exceed 2 GB).
         self.comm.Barrier()
 
-        if self.size > 1:
-            self._broadcast_variables()
-            self.comm.Barrier()
+        with self._stage("spectra.mpi_distribution"):
+            if self.size > 1:
+                self._broadcast_variables()
+                self.comm.Barrier()
 
         # Main QML computation (parallel computation)
         self.compute()
