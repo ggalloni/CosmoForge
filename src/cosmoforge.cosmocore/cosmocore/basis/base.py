@@ -36,6 +36,9 @@ class SMWPrepared(NamedTuple):
 
 from ..basics import (
     cholesky_decomposition,
+    cholesky_factor,
+    cholesky_solve,
+    matrix_inverse_symm,
     matrix_mult,
     matrix_slogdet_symm,
 )
@@ -144,7 +147,10 @@ class ComputationBasis(ABC):
             Shape should be (n_pix_total, n_pix_total).
         """
         self._N = np.asfortranarray(N, dtype=np.float64)
-        self.N_inv = (
+        # Caller-provided dense N_inv (legacy; kept for the no-switch-opt case).
+        # Released to None after _factorise_noise() runs; the N_inv property
+        # then materialises a dense inverse on demand for deferred consumers.
+        self._N_inv_dense = (
             np.asfortranarray(N_inv, dtype=np.float64) if N_inv is not None else None
         )
         self.lmax = lmax
@@ -274,7 +280,10 @@ class ComputationBasis(ABC):
 
     @cached_property
     def _L(self) -> np.ndarray:
-        # Forwarding view: commit 3 replaces this with in-place storage.
+        # Pre-_factorise_noise fallback: separate-buffer factor for the
+        # rare case where _L is read before setup completes. Production
+        # flow calls _factorise_noise(), which binds an in-place L into
+        # __dict__ and overrides this descriptor.
         return cholesky_decomposition(self._N)
 
     @property
@@ -283,8 +292,80 @@ class ComputationBasis(ABC):
 
     @property
     def _N_symmetric(self) -> np.ndarray:
-        # Forwarding view: commit 3 reconstructs L @ L.T when self._N is gone.
-        return self._N
+        # If self._N still exists, return it directly. Once _factorise_noise
+        # has overwritten and deleted it, reconstruct L @ L.T on demand
+        # (transient n_pix² allocation; only deferred consumers hit this).
+        N = getattr(self, "_N", None)
+        if N is not None:
+            return N
+        return self._L @ self._L.T
+
+    @property
+    def N_inv(self) -> np.ndarray | None:
+        # Caller-provided / pre-factor cached dense N_inv if available.
+        stored = getattr(self, "_N_inv_dense", None)
+        if stored is not None:
+            return stored
+        # Pre-factor: materialise from symmetric N once and cache, so
+        # apply_compression's repeated reads share one allocation. The
+        # cache is freed in _factorise_noise.
+        N = getattr(self, "_N", None)
+        if N is not None:
+            self._N_inv_dense = matrix_inverse_symm(N)
+            return self._N_inv_dense
+        # Post-factor: lazy materialise from L, do not cache (would re-add
+        # the 1× cov footprint we just eliminated). Diagnostic paths only.
+        L = self.__dict__.get("_L")
+        if L is None:
+            return None
+        return cholesky_solve((L, True), np.eye(L.shape[0]))
+
+    def _factorise_noise(self) -> None:
+        """In-place Cholesky factor of self._N.
+
+        Replaces self._N's buffer contents with the lower-triangular factor
+        L (upper triangle becomes garbage; no consumer reads it because all
+        access goes through cholesky_solve or the _N_symmetric reconstruction).
+        After this method, ``self._L`` is the in-place factor, ``self._N_chol``
+        is the (L, True) tuple, ``self._log_det_N`` is set, and the original
+        symmetric-N attribute ``self._N`` is removed so any stale read
+        raises AttributeError.
+        """
+        # Scan off-diagonal noise blocks for cross-field coupling while N is
+        # still symmetric. The result is C_ell-independent and consumed by
+        # _detect_field_blocks; computing it here avoids a later
+        # _N_symmetric reconstruction (n_pix² transient buffer).
+        self._noise_block_adjacency = self._compute_noise_block_adjacency()
+
+        L_buf = self._N
+        L, lower = cholesky_factor(L_buf, overwrite_a=True)
+        # Bind the in-place factor as a concrete attribute, overriding the
+        # cached_property fallback above.
+        self.__dict__["_L"] = L
+        self._log_det_N = 2.0 * float(np.sum(np.log(np.diag(L))))
+        # Free the caller-provided dense inverse if any: the factor replaces it.
+        self._N_inv_dense = None
+        del self._N
+
+    def _compute_noise_block_adjacency(self) -> set[tuple[int, int]]:
+        """Return ``{(ci, cj)}`` pairs (ci<cj) with non-zero off-diagonal noise.
+
+        Scans ``self._N`` once while symmetric. Empty for single-field bases.
+        """
+        pairs: set[tuple[int, int]] = set()
+        if self.n_components <= 1:
+            return pairs
+        N_sym = self._N_symmetric
+        for ci in range(self.n_components):
+            for cj in range(ci + 1, self.n_components):
+                ri = self._pix_offsets[ci]
+                re = self._pix_offsets[ci + 1]
+                cj_start = self._pix_offsets[cj]
+                cj_end = self._pix_offsets[cj + 1]
+                N_block = N_sym[ri:re, cj_start:cj_end]
+                if np.any(np.abs(N_block) > _LAMBDA_ZERO_THRESHOLD):
+                    pairs.add((ci, cj))
+        return pairs
 
     def _build_basis(self) -> None:
         """Build harmonic operator V, mode mappings, and derivative diagonals."""
@@ -489,18 +570,14 @@ class ComputationBasis(ABC):
                 adj[ci].add(cj)
                 adj[cj].add(ci)
 
-        for ci in range(self.n_components):
-            for cj in range(ci + 1, self.n_components):
-                if cj in adj[ci]:
-                    continue
-                ri = self._pix_offsets[ci]
-                re = self._pix_offsets[ci + 1]
-                ci_start = self._pix_offsets[cj]
-                ci_end = self._pix_offsets[cj + 1]
-                N_block = self._N[ri:re, ci_start:ci_end]
-                if np.any(np.abs(N_block) > _LAMBDA_ZERO_THRESHOLD):
-                    adj[ci].add(cj)
-                    adj[cj].add(ci)
+        # Merge noise off-diagonal coupling (precomputed by _factorise_noise
+        # while N was symmetric; falls back to an on-demand scan if absent).
+        noise_pairs = getattr(self, "_noise_block_adjacency", None)
+        if noise_pairs is None:
+            noise_pairs = self._compute_noise_block_adjacency()
+        for ci, cj in noise_pairs:
+            adj[ci].add(cj)
+            adj[cj].add(ci)
 
         visited: set[int] = set()
         groups: list[list[int]] = []

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 from numba import njit
-from scipy.linalg import cho_factor, cho_solve, lapack
+from scipy.linalg import cho_solve, lapack
 
 
 def matrix_mult(A, B):
@@ -252,12 +252,13 @@ def cholesky_decomposition(M):
     return L
 
 
-def cholesky_factor(M, overwrite_a=False):
+def cholesky_factor(M, overwrite_a=False, clean=True):
     """
     Cholesky factor (L, lower=True) of a symmetric positive definite matrix.
 
-    Pairs with :func:`cholesky_solve`. The lower triangle of the returned
-    matrix holds L; the upper triangle is left untouched (LAPACK convention).
+    Pairs with :func:`cholesky_solve`. With ``clean=True`` (default) the
+    upper triangle is zeroed so consumers that treat the factor as a dense
+    matrix (e.g., ``L @ L.T``) get correct results without reading garbage.
 
     Parameters
     ----------
@@ -266,6 +267,8 @@ def cholesky_factor(M, overwrite_a=False):
     overwrite_a : bool, optional
         If True, M is overwritten with the factor in place (no extra
         n×n allocation). Default is False.
+    clean : bool, optional
+        If True, zero the upper triangle of the result. Default is True.
 
     Returns
     -------
@@ -278,7 +281,12 @@ def cholesky_factor(M, overwrite_a=False):
     numpy.linalg.LinAlgError
         If M is not positive definite.
     """
-    return cho_factor(M, lower=True, overwrite_a=overwrite_a)
+    L, info = lapack.dpotrf(M, lower=True, overwrite_a=overwrite_a, clean=clean)
+    if info != 0:
+        raise np.linalg.LinAlgError(
+            f"dpotrf failed: matrix is not positive definite (info={info})"
+        )
+    return (L, True)
 
 
 def cholesky_solve(c_and_lower, b, overwrite_b=False):

@@ -58,9 +58,10 @@ class TestPixelBasisSetup:
         assert ppc._P_h is not None
         assert ppc._P_h.shape == (setup["n_pix"], setup["n_pix"])
 
-        # Check noise matrix N exists
-        assert ppc._N is not None
-        assert ppc._N.shape == (setup["n_pix"], setup["n_pix"])
+        # Check Cholesky factor of noise covariance is available
+        assert ppc._L is not None
+        assert ppc._L.shape == (setup["n_pix"], setup["n_pix"])
+        assert ppc._N_chol == (ppc._L, True)
 
     def test_projector_is_symmetric(self, simple_compression_setup):
         """Test that P_h is symmetric."""

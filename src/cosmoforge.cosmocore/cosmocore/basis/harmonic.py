@@ -178,6 +178,11 @@ class HarmonicBasis(ComputationBasis):
             self._compute_effective_noise()
             _t_eff = _time.time() - _t0
 
+        # Factor the (effective) noise in place; releases the symmetric N
+        # buffer and any caller-provided dense N_inv. After this call,
+        # cholesky_solve via self._N_chol is the only path to N^{-1}.
+        self._factorise_noise()
+
         _t0 = _time.time()
         self._compute_smw_components()
         _t_smw = _time.time() - _t0
@@ -234,10 +239,6 @@ class HarmonicBasis(ComputationBasis):
         N_eff = np.empty_like(self._N, order="F")
         np.add(self._N, S_fixed, out=N_eff)
         self._N = N_eff
-        self.N_inv = matrix_inverse_symm(self._N)
-
-        # log|N_eff| for determinant calculations
-        _, self._log_det_N_eff = matrix_slogdet_symm(self._N)
 
         # S_fixed has been absorbed into N_eff and is not read again; release.
         self._S_fixed = None
@@ -320,9 +321,7 @@ class HarmonicBasis(ComputationBasis):
         else:
             self._noise_cov_T = self._V_Ninv_VT
 
-        # log|N| = -log|N^{-1}|
-        _, logdet_N_inv = matrix_slogdet_symm(self.N_inv)
-        self._log_det_N = -logdet_N_inv
+        # log|N| was set by _factorise_noise as 2 sum log diag L.
 
         # Pre-allocate buffers for frequently called methods
         self._allocate_buffers()

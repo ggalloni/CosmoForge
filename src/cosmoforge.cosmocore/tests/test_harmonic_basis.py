@@ -751,7 +751,7 @@ class TestNoiseCovWithNonDiagonalN:
         n = kernel_inv.shape[0]
         V_Cinv = (np.eye(n) - hc._V_Ninv_VT @ kernel_inv) @ hc._V_N_inv
         if N_orig is None:
-            N_orig = hc._N
+            N_orig = hc._N_symmetric
         return V_Cinv @ N_orig @ V_Cinv.T
 
     def _compressed_noise_cov(self, hc, kernel_inv):
