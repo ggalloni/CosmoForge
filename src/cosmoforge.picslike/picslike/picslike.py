@@ -59,12 +59,12 @@ from typing import Any
 
 import numpy as np
 from mpi4py import MPI
-from scipy.linalg import cho_solve
 
 from cosmocore import (
     Core,
     FieldCollection,
     MPISharedMemoryMixin,
+    cholesky_solve,
     compute_signal_matrix,
     matrix_inverse_symm,
     read_maps,
@@ -545,10 +545,12 @@ class PICSLike(Core, MPISharedMemoryMixin):
                 )
                 # Batch SMW quadratic form across simulations:
                 # χ²_n = d_n^T N^{-1} d_n - y_n^T K^{-1} y_n
-                # where y = V N^{-1} d
-                term1 = np.einsum("in,ij,jn->n", self.maps1, bm.N_inv, self.maps1)
+                # where y = V N^{-1} d. d^T N^{-1} d via Cholesky solve avoids
+                # ever materialising a dense N^{-1}.
+                ninv_maps1 = cholesky_solve(bm._N_chol, self.maps1)
+                term1 = np.einsum("in,in->n", self.maps1, ninv_maps1)
                 projected = bm._V_N_inv @ self.maps1
-                kernel_inv_y = cho_solve((K_chol, True), projected)
+                kernel_inv_y = cholesky_solve((K_chol, True), projected)
                 term2 = np.einsum("in,in->n", projected, kernel_inv_y)
                 chi_squared = term1 - term2
 

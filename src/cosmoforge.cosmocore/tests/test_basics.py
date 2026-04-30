@@ -366,6 +366,7 @@ class TestSMWQuadraticForm:
         A = np.random.randn(n, n)
         N = A @ A.T + np.eye(n)
         N_inv = matrix_inverse_symm(N.copy())
+        N_chol = cholesky_factor(N.copy())
 
         # Create projector V and diagonal Lambda
         V = np.random.randn(k, n)
@@ -379,7 +380,7 @@ class TestSMWQuadraticForm:
         data = np.random.randn(n)
 
         # SMW quadratic form
-        smw_result = smw_quadratic_form(data, N_inv, V_N_inv, V_Ninv_VT, Lambda_diag)
+        smw_result = smw_quadratic_form(data, N_chol, V_N_inv, V_Ninv_VT, Lambda_diag)
 
         # Direct: d^T C^{-1} d where C = N + V^T Λ V
         Lambda = np.diag(Lambda_diag)
@@ -397,6 +398,7 @@ class TestSMWQuadraticForm:
         A = np.random.randn(n, n)
         N = A @ A.T + np.eye(n)
         N_inv = matrix_inverse_symm(N.copy())
+        N_chol = cholesky_factor(N.copy())
 
         V = np.random.randn(k, n)
         Lambda_diag = np.abs(np.random.randn(k)) + 0.1
@@ -406,7 +408,7 @@ class TestSMWQuadraticForm:
 
         data = np.random.randn(n)
 
-        smw_result = smw_quadratic_form(data, N_inv, V_N_inv, V_Ninv_VT, Lambda_diag)
+        smw_result = smw_quadratic_form(data, N_chol, V_N_inv, V_Ninv_VT, Lambda_diag)
 
         # Direct computation
         Lambda = np.diag(Lambda_diag)
@@ -429,6 +431,7 @@ def test_smw_quadratic_form_performance(capsys):
     A = np.random.randn(n, n)
     N = A @ A.T + np.eye(n)
     N_inv = matrix_inverse_symm(np.asfortranarray(N.copy()))
+    N_chol = cholesky_factor(np.asfortranarray(N.copy()))
 
     V = np.random.randn(k, n)
 
@@ -445,7 +448,7 @@ def test_smw_quadratic_form_performance(capsys):
     # Time SMW quadratic form (multiple calls)
     t0 = time.perf_counter()
     for Lambda_diag, data in zip(Lambda_diags, data_vectors):
-        _ = smw_quadratic_form(data, N_inv, V_N_inv, V_Ninv_VT, Lambda_diag)
+        _ = smw_quadratic_form(data, N_chol, V_N_inv, V_Ninv_VT, Lambda_diag)
     smw_time = time.perf_counter() - t0
 
     # Time direct quadratic form (multiple calls)

@@ -10,11 +10,11 @@ from __future__ import annotations
 from functools import cached_property
 
 import numpy as np
-from scipy.linalg import cho_solve
 
 from ..basics import (
     add_diagonal,
     cholesky_decomposition,
+    cholesky_solve,
     matrix_inverse_symm,
     matrix_mult,
     matrix_slogdet_symm,
@@ -297,8 +297,8 @@ class HarmonicBasis(ComputationBasis):
         Note: V @ N @ V^T is computed lazily when needed (get_compressed_covariance)
         to avoid expensive O(n_pix³) inversion when only Fisher is needed.
         """
-        # V @ N^{-1}
-        self._V_N_inv = matrix_mult(self._V, self.N_inv)
+        # V @ N^{-1} via Cholesky solve: (N^{-1} V^T)^T = cholesky_solve(N_chol, V^T)^T
+        self._V_N_inv = cholesky_solve(self._N_chol, self._V.T).T
 
         # V @ N^{-1} @ V^T (SMW kernel)
         self._V_Ninv_VT = matrix_mult(self._V_N_inv, self._V.T)
@@ -329,9 +329,13 @@ class HarmonicBasis(ComputationBasis):
 
     @cached_property
     def _V_N_VT(self) -> np.ndarray:
-        """Lazily compute V @ N @ V^T; only get_compressed_covariance reads it."""
-        VNT = matrix_mult(matrix_mult(self._V, self._N), self._V.T)
-        return 0.5 * (VNT + VNT.T)
+        """Lazily compute V @ N @ V^T via the Cholesky factor.
+
+        Uses N = L L^T so V N V^T = (V L)(V L)^T — cheaper than building
+        N from L and tolerant of in-place factor storage in commit 3.
+        """
+        VL = matrix_mult(self._V, self._L)
+        return matrix_mult(VL, VL.T)
 
     def _allocate_buffers(self) -> None:
         """
@@ -976,7 +980,7 @@ class HarmonicBasis(ComputationBasis):
             K, _ = self._build_smw_kernel(c_ell_dict)
 
         L = cholesky_decomposition(K)
-        kernel_inv_y = cho_solve((L, True), y)
+        kernel_inv_y = cholesky_solve((L, True), y)
         return y - matrix_mult(self._V_Ninv_VT, kernel_inv_y)
 
     def compute_quadratic_form(self, data: np.ndarray, C_ell) -> float:
@@ -1001,7 +1005,7 @@ class HarmonicBasis(ComputationBasis):
             return self.quadratic_form_from_prepared(data, K_chol)
         Lambda_diag = self._build_lambda_diagonal(c_ell_arr)
         return smw_quadratic_form(
-            data, self.N_inv, self._V_N_inv, self._V_Ninv_VT, Lambda_diag
+            data, self._N_chol, self._V_N_inv, self._V_Ninv_VT, Lambda_diag
         )
 
     def _build_smw_kernel(self, C_ell_dict: dict) -> tuple[np.ndarray, np.ndarray]:
@@ -1029,9 +1033,9 @@ class HarmonicBasis(ComputationBasis):
 
     def quadratic_form_from_prepared(self, data: np.ndarray, K_chol: np.ndarray) -> float:
         """Compute d^T C^{-1} d using precomputed K Cholesky factor."""
-        term1 = float(data.T @ self.N_inv @ data)
+        term1 = float(data.T @ cholesky_solve(self._N_chol, data))
         y = self._V_N_inv @ data
-        kernel_inv_y = cho_solve((K_chol, True), y)
+        kernel_inv_y = cholesky_solve((K_chol, True), y)
         term2 = float(y.T @ kernel_inv_y)
         return term1 - term2
 

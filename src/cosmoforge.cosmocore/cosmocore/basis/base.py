@@ -8,6 +8,7 @@ for all computation basis methods used in CMB Fisher matrix computation.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from functools import cached_property
 from typing import NamedTuple
 
 import numpy as np
@@ -271,10 +272,9 @@ class ComputationBasis(ABC):
         """
         pass
 
-    @property
+    @cached_property
     def _L(self) -> np.ndarray:
-        # Forwarding view: commit 3 makes this in-place storage. Do not
-        # call on the hot path in this commit (would cost 1× cov per access).
+        # Forwarding view: commit 3 replaces this with in-place storage.
         return cholesky_decomposition(self._N)
 
     @property

@@ -18,7 +18,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.linalg import eigh
 
-from ..basics import matrix_inverse_symm, matrix_mult, matrix_trace
+from ..basics import (
+    cholesky_solve,
+    matrix_inverse_symm,
+    matrix_mult,
+    matrix_trace,
+)
 from .base import ComputationBasis, SMWPrepared
 
 if TYPE_CHECKING:
@@ -638,7 +643,7 @@ class PixelBasis(ComputationBasis):
         cached = getattr(self, "_compressed_noise_cache", None)
         if cached is not None:
             return cached
-        N_raw = getattr(self, "_N_original", self._N)
+        N_raw = getattr(self, "_N_original", self._N_symmetric)
         if self._eigenvectors is None:
             return N_raw
         U = self._eigenvectors
@@ -1533,8 +1538,8 @@ class PixelBasis(ComputationBasis):
         self._U_N_U = 0.5 * (self._U_N_U + self._U_N_U.T)
 
         # SMW components for get_weighted_compressed_data
-        # V @ N^{-1} (n_modes, n_pix)
-        self._V_N_inv = matrix_mult(self._V, self.N_inv)
+        # V @ N^{-1} via Cholesky solve: (N^{-1} V^T)^T = cholesky_solve(N_chol, V^T)^T
+        self._V_N_inv = cholesky_solve(self._N_chol, self._V.T).T
         # V @ N^{-1} @ V^T (n_modes, n_modes) - the M matrix in SMW
         self._V_Ninv_VT = matrix_mult(self._V_N_inv, self._V.T)
         self._V_Ninv_VT = 0.5 * (self._V_Ninv_VT + self._V_Ninv_VT.T)
