@@ -34,6 +34,7 @@ class SMWPrepared(NamedTuple):
 
 
 from ..basics import (
+    cholesky_decomposition,
     matrix_mult,
     matrix_slogdet_symm,
 )
@@ -269,6 +270,21 @@ class ComputationBasis(ABC):
         Must be called after initialization before using any other methods.
         """
         pass
+
+    @property
+    def _L(self) -> np.ndarray:
+        # Forwarding view: commit 3 makes this in-place storage. Do not
+        # call on the hot path in this commit (would cost 1× cov per access).
+        return cholesky_decomposition(self._N)
+
+    @property
+    def _N_chol(self) -> tuple:
+        return (self._L, True)
+
+    @property
+    def _N_symmetric(self) -> np.ndarray:
+        # Forwarding view: commit 3 reconstructs L @ L.T when self._N is gone.
+        return self._N
 
     def _build_basis(self) -> None:
         """Build harmonic operator V, mode mappings, and derivative diagonals."""

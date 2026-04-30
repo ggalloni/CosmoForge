@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 from numba import njit
-from scipy.linalg import lapack
+from scipy.linalg import cho_factor, cho_solve, lapack
 
 
 def matrix_mult(A, B):
@@ -250,6 +250,56 @@ def cholesky_decomposition(M):
         raise ValueError(f"dpotrf failed with info={info}")
 
     return L
+
+
+def cholesky_factor(M, overwrite_a=False):
+    """
+    Cholesky factor (L, lower=True) of a symmetric positive definite matrix.
+
+    Pairs with :func:`cholesky_solve`. The lower triangle of the returned
+    matrix holds L; the upper triangle is left untouched (LAPACK convention).
+
+    Parameters
+    ----------
+    M : numpy.ndarray
+        2D square symmetric positive definite matrix.
+    overwrite_a : bool, optional
+        If True, M is overwritten with the factor in place (no extra
+        n×n allocation). Default is False.
+
+    Returns
+    -------
+    tuple
+        ``(c, True)`` where c is the n×n array holding L in its lower
+        triangle. Suitable as the first argument to :func:`cholesky_solve`.
+
+    Raises
+    ------
+    numpy.linalg.LinAlgError
+        If M is not positive definite.
+    """
+    return cho_factor(M, lower=True, overwrite_a=overwrite_a)
+
+
+def cholesky_solve(c_and_lower, b, overwrite_b=False):
+    """
+    Solve A x = b given the Cholesky factor of A from :func:`cholesky_factor`.
+
+    Parameters
+    ----------
+    c_and_lower : tuple
+        ``(c, lower)`` tuple as returned by :func:`cholesky_factor`.
+    b : numpy.ndarray
+        Right-hand side, shape ``(n,)`` or ``(n, k)``.
+    overwrite_b : bool, optional
+        If True, b may be overwritten with the solution. Default is False.
+
+    Returns
+    -------
+    numpy.ndarray
+        Solution x with the same shape as b.
+    """
+    return cho_solve(c_and_lower, b, overwrite_b=overwrite_b)
 
 
 def matrix_slogdet_symm(M):

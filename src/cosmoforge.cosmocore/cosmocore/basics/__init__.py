@@ -13,6 +13,8 @@ from .linalg import (
     _copy_lower_to_upper,
     add_diagonal,
     cholesky_decomposition,
+    cholesky_factor,
+    cholesky_solve,
     matrix_inverse_symm,
     matrix_mult,
     matrix_slogdet,
@@ -46,6 +48,8 @@ __all__ = [
     "matrix_inverse_symm",
     "matrix_slogdet",
     "cholesky_decomposition",
+    "cholesky_factor",
+    "cholesky_solve",
     "matrix_slogdet_symm",
     # smw
     "smw_inverse",
