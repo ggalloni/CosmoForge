@@ -20,7 +20,6 @@ class TestPixelBasisInitialization:
         setup = simple_compression_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -42,7 +41,6 @@ class TestPixelBasisSetup:
         setup = simple_compression_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -70,7 +68,6 @@ class TestPixelBasisSetup:
         setup = simple_compression_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -94,7 +91,6 @@ class TestPixelBasisApply:
         setup = simple_compression_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -115,7 +111,6 @@ class TestPixelBasisApply:
         setup = simple_compression_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -135,7 +130,6 @@ class TestPixelBasisApply:
         setup = simple_compression_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -155,7 +149,6 @@ class TestPixelBasisApply:
         setup = simple_compression_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -172,7 +165,6 @@ class TestPixelBasisApply:
         setup = simple_compression_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -196,7 +188,6 @@ class TestPixelBasisOperations:
         setup = uniform_sky_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -217,7 +208,6 @@ class TestPixelBasisOperations:
         setup = uniform_sky_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -240,7 +230,6 @@ class TestPixelBasisOperations:
         setup = uniform_sky_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -264,7 +253,6 @@ class TestPixelBasisOperations:
         setup = uniform_sky_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -295,7 +283,6 @@ class TestPixelBasisFisher:
         setup = uniform_sky_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -319,7 +306,6 @@ class TestPixelBasisFisher:
         setup = uniform_sky_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -384,7 +370,6 @@ class TestCompressionCrossValidation:
         # HarmonicBasis
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=lmax,
@@ -395,7 +380,6 @@ class TestCompressionCrossValidation:
         # PixelBasis
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=lmax,
@@ -429,7 +413,6 @@ class TestCompressionCrossValidation:
         # HarmonicBasis
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=lmax,
@@ -440,7 +423,6 @@ class TestCompressionCrossValidation:
         # PixelBasis with minimal compression (keep most modes)
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=lmax,
@@ -489,7 +471,6 @@ class TestPixelBasisBases:
         setup = uniform_sky_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -510,7 +491,6 @@ class TestPixelBasisBases:
         setup = uniform_sky_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -532,7 +512,6 @@ class TestPixelBasisBases:
 
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -554,7 +533,6 @@ class TestPixelBasisBases:
 
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -573,7 +551,6 @@ class TestPixelBasisBases:
         setup = uniform_sky_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -591,7 +568,6 @@ class TestPixelBasisBases:
         setup = uniform_sky_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -609,7 +585,6 @@ class TestPixelBasisBases:
         setup = uniform_sky_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -632,7 +607,6 @@ class TestPixelBasisBases:
         for basis in ["harmonic", "noise_weighted", "total_covariance", "snr"]:
             ppc = PixelBasis(
                 N=setup["N"],
-                N_inv=setup["N_inv"],
                 theta=setup["theta"],
                 phi=setup["phi"],
                 lmax=setup["lmax"],
@@ -660,7 +634,6 @@ class TestPixelBasisEigenspectrum:
         setup = uniform_sky_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -679,7 +652,6 @@ class TestPixelBasisEigenspectrum:
         setup = uniform_sky_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -697,7 +669,6 @@ class TestPixelBasisEigenspectrum:
         setup = uniform_sky_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -719,7 +690,6 @@ class TestPixelBasisEigenspectrum:
 
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -748,7 +718,6 @@ class TestPixelBasisEigenspectrum:
         setup = uniform_sky_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -777,7 +746,6 @@ class TestPixelBasisEigenspectrum:
 
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -801,7 +769,6 @@ class TestPixelBasisEigenspectrum:
         setup = uniform_sky_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -825,7 +792,6 @@ class TestComputeEigenspectrumPerField:
         setup = uniform_sky_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -851,7 +817,6 @@ class TestComputeEigenspectrumPerField:
         setup = two_scalar_field_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -879,9 +844,9 @@ class TestComputeEigenspectrumPerField:
         lmax = 5
 
         N = np.eye(2 * n_pix) * 0.01
-        N_inv = np.eye(2 * n_pix) * 100.0
+        np.eye(2 * n_pix) * 100.0
 
-        ppc = PixelBasis(N, N_inv, theta, phi, lmax, spins=[2])
+        ppc = PixelBasis(N, theta, phi, lmax, spins=[2])
         ppc.setup()
 
         result = ppc.compute_eigenspectrum_per_field(basis="noise_weighted")
@@ -906,7 +871,6 @@ class TestComputeEigenspectrumPerField:
 
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -935,7 +899,6 @@ class TestComputeEigenspectrumPerField:
 
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=lmax,
@@ -957,7 +920,6 @@ class TestComputeEigenspectrumPerField:
         setup = uniform_sky_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -983,7 +945,6 @@ class TestPlotMultiField:
         setup = two_scalar_field_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -1011,9 +972,9 @@ class TestPlotMultiField:
         lmax = 5
 
         N = np.eye(2 * n_pix) * 0.01
-        N_inv = np.eye(2 * n_pix) * 100.0
+        np.eye(2 * n_pix) * 100.0
 
-        ppc = PixelBasis(N, N_inv, theta, phi, lmax, spins=[2])
+        ppc = PixelBasis(N, theta, phi, lmax, spins=[2])
         ppc.setup()
 
         fig, axes = ppc.plot_eigenvalue_spectrum(
@@ -1040,7 +1001,6 @@ class TestPlotMultiField:
         setup = two_scalar_field_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -1075,7 +1035,6 @@ class TestPPCOperationChain:
         setup = uniform_sky_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -1125,7 +1084,6 @@ class TestPPCOperationChain:
         lmax = setup["lmax"]
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=lmax,
@@ -1174,7 +1132,6 @@ class TestPPCOperationChain:
         setup = uniform_sky_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -1190,7 +1147,6 @@ class TestPPCOperationChain:
         setup = uniform_sky_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -1224,7 +1180,6 @@ class TestPPCOperationChain:
         setup = uniform_sky_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -1243,7 +1198,6 @@ class TestPPCOperationChain:
         setup = uniform_sky_setup
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],

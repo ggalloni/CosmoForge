@@ -48,9 +48,9 @@ class HarmonicBasis(ComputationBasis):
     Parameters
     ----------
     N : numpy.ndarray
-        Noise covariance matrix of shape (n_pix, n_pix).
-    N_inv : numpy.ndarray
-        Precomputed noise inverse matrix of shape (n_pix, n_pix).
+        Noise covariance matrix of shape (n_pix, n_pix). The basis takes
+        ownership of this buffer; ``_factorise_noise()`` overwrites it
+        in place during setup.
     theta : numpy.ndarray
         Colatitude angles for active pixels in radians.
     phi : numpy.ndarray
@@ -72,8 +72,7 @@ class HarmonicBasis(ComputationBasis):
     --------
     >>> import numpy as np
     >>> from cosmocore.basis import HarmonicBasis
-    >>> N_inv = np.diag(1.0 / noise_variance)
-    >>> hc = HarmonicBasis(N_inv, theta, phi, lmax=100)
+    >>> hc = HarmonicBasis(N, theta, phi, lmax=100)
     >>> hc.setup()
     >>> fisher_element = hc.compute_fisher_element(C_ell, ell_i=10, ell_j=10)
 
@@ -86,7 +85,6 @@ class HarmonicBasis(ComputationBasis):
     def __init__(
         self,
         N: np.ndarray,
-        N_inv: np.ndarray,
         theta: np.ndarray | tuple[np.ndarray, ...],
         phi: np.ndarray | tuple[np.ndarray, ...],
         lmax: int,
@@ -101,7 +99,6 @@ class HarmonicBasis(ComputationBasis):
     ):
         super().__init__(
             N=N,
-            N_inv=N_inv,
             theta=theta,
             phi=phi,
             lmax=lmax,

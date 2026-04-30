@@ -67,9 +67,9 @@ class PixelBasis(ComputationBasis):
     Parameters
     ----------
     N : numpy.ndarray
-        Noise covariance matrix of shape (n_pix, n_pix).
-    N_inv : numpy.ndarray
-        Precomputed noise inverse matrix of shape (n_pix, n_pix).
+        Noise covariance matrix of shape (n_pix, n_pix). The basis takes
+        ownership of this buffer; ``_factorise_noise()`` overwrites it
+        in place during setup (V-based mode only; pixel-direct keeps it).
     theta : numpy.ndarray
         Colatitude angles for active pixels in radians.
     phi : numpy.ndarray
@@ -102,8 +102,7 @@ class PixelBasis(ComputationBasis):
     >>> import numpy as np
     >>> from cosmocore.basis import PixelBasis
     >>> N = np.diag(noise_variance)  # Noise covariance matrix
-    >>> N_inv = np.diag(1.0 / noise_variance)
-    >>> ppc = PixelBasis(N, N_inv, theta, phi, lmax=100)
+    >>> ppc = PixelBasis(N, theta, phi, lmax=100)
     >>> ppc.setup()
     >>> # Inspect eigenvalue spectrum to choose threshold
     >>> fig, axes = ppc.plot_eigenvalue_spectrum(basis="noise_weighted")
@@ -120,7 +119,6 @@ class PixelBasis(ComputationBasis):
     def __init__(
         self,
         N: np.ndarray,
-        N_inv: np.ndarray,
         theta: np.ndarray,
         phi: np.ndarray,
         lmax: int,
@@ -138,7 +136,6 @@ class PixelBasis(ComputationBasis):
     ):
         super().__init__(
             N,
-            N_inv,
             theta,
             phi,
             lmax,

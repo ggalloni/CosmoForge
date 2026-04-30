@@ -59,8 +59,10 @@ class ComputationBasis(ABC):
 
     Parameters
     ----------
-    N_inv : numpy.ndarray
-        Precomputed noise inverse matrix of shape (n_pix_total, n_pix_total).
+    N : numpy.ndarray
+        Noise covariance matrix of shape (n_pix_total, n_pix_total). The
+        basis takes ownership of this buffer; the in-place Cholesky factor
+        overwrites it during setup.
     theta : numpy.ndarray or tuple of numpy.ndarray
         Colatitude angles for active pixels in radians. Single array for
         single-field, tuple of arrays for multi-field.
@@ -95,7 +97,6 @@ class ComputationBasis(ABC):
     def __init__(
         self,
         N: np.ndarray,
-        N_inv: np.ndarray | None,
         theta: np.ndarray | tuple[np.ndarray, ...],
         phi: np.ndarray | tuple[np.ndarray, ...],
         lmax: int,
@@ -112,11 +113,9 @@ class ComputationBasis(ABC):
         Parameters
         ----------
         N : numpy.ndarray
-            Noise covariance matrix (n_pix_total, n_pix_total).
-        N_inv : numpy.ndarray or None
-            Precomputed noise inverse matrix (n_pix_total, n_pix_total).
-            Can be None when switch optimization is enabled — the effective
-            noise inverse N_eff⁻¹ will be computed instead.
+            Noise covariance matrix (n_pix_total, n_pix_total). The basis
+            takes ownership; ``_factorise_noise()`` overwrites this buffer
+            in place during setup.
         theta : numpy.ndarray or tuple of numpy.ndarray
             Colatitude angles for active pixels in radians. Single array for
             single-field, tuple of arrays for multi-field (one per component).
@@ -147,12 +146,11 @@ class ComputationBasis(ABC):
             Shape should be (n_pix_total, n_pix_total).
         """
         self._N = np.asfortranarray(N, dtype=np.float64)
-        # Caller-provided dense N_inv (legacy; kept for the no-switch-opt case).
-        # Released to None after _factorise_noise() runs; the N_inv property
-        # then materialises a dense inverse on demand for deferred consumers.
-        self._N_inv_dense = (
-            np.asfortranarray(N_inv, dtype=np.float64) if N_inv is not None else None
-        )
+        # Pre-factor cache slot for the lazy N_inv property (populated on
+        # first read of self.N_inv before _factorise_noise runs, then
+        # released by _factorise_noise). The basis owns the noise buffer
+        # end-to-end; the constructor no longer accepts a precomputed inverse.
+        self._N_inv_dense = None
         self.lmax = lmax
 
         # Normalize theta/phi to tuple format for consistent handling

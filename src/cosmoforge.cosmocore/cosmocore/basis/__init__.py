@@ -105,7 +105,6 @@ def _auto_pick_method(
 def create_computation_basis(
     method: str,
     N: np.ndarray,
-    N_inv: np.ndarray,
     theta: np.ndarray,
     phi: np.ndarray,
     lmax: int,
@@ -126,9 +125,8 @@ def create_computation_basis(
           the estimate; defaults to ``lmax-1`` (unbinned, worst case
           for pixel-direct).
     N : numpy.ndarray
-        Noise covariance matrix.
-    N_inv : numpy.ndarray
-        Precomputed noise inverse matrix.
+        Noise covariance matrix. The basis takes ownership; the caller
+        should drop its reference after construction.
     theta : numpy.ndarray
         Colatitude angles for active pixels in radians.
     phi : numpy.ndarray
@@ -198,7 +196,7 @@ def create_computation_basis(
         if p.kind in (p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY)
     }
     filtered = {k: v for k, v in kwargs.items() if k in accepted}
-    return cls(N, N_inv, theta, phi, lmax, **filtered)
+    return cls(N, theta, phi, lmax, **filtered)
 
 
 __all__ = [
