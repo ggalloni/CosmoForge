@@ -23,6 +23,7 @@ from ..basics import (
     matrix_inverse_symm,
     matrix_mult,
     matrix_trace,
+    symmetrize_inplace,
 )
 from .base import ComputationBasis, SMWPrepared
 
@@ -601,7 +602,7 @@ class PixelBasis(ComputationBasis):
             return
         U = self._eigenvectors
         UN_raw_U = U.T @ N_original @ U
-        self._compressed_noise_cache = 0.5 * (UN_raw_U + UN_raw_U.T)
+        self._compressed_noise_cache = symmetrize_inplace(UN_raw_U)
         del self._N_original
 
     def _compute_effective_noise(self) -> None:
@@ -650,7 +651,7 @@ class PixelBasis(ComputationBasis):
             return N_raw
         U = self._eigenvectors
         UN_raw_U = U.T @ N_raw @ U
-        return 0.5 * (UN_raw_U + UN_raw_U.T)
+        return symmetrize_inplace(UN_raw_U)
 
     def _setup_direct(self) -> None:
         """Direct pixel-space setup. No V operator, no harmonic machinery.
@@ -1539,15 +1540,16 @@ class PixelBasis(ComputationBasis):
         # VU has shape (n_modes, n_kept)
         self._VU = self._V @ U
 
-        # Make U_N_U symmetric (numerical stability)
-        self._U_N_U = 0.5 * (self._U_N_U + self._U_N_U.T)
+        # Make U_N_U symmetric (numerical stability) — in place to avoid
+        # the n_kept² broadcast temporaries.
+        symmetrize_inplace(self._U_N_U)
 
         # SMW components for get_weighted_compressed_data
         # V @ N^{-1} via Cholesky solve: (N^{-1} V^T)^T = cholesky_solve(N_chol, V^T)^T
         self._V_N_inv = cholesky_solve(self._N_chol, self._V.T).T
         # V @ N^{-1} @ V^T (n_modes, n_modes) - the M matrix in SMW
         self._V_Ninv_VT = matrix_mult(self._V_N_inv, self._V.T)
-        self._V_Ninv_VT = 0.5 * (self._V_Ninv_VT + self._V_Ninv_VT.T)
+        symmetrize_inplace(self._V_Ninv_VT)
 
         # Precompute derivative diagonals (from base class)
         self._precompute_derivative_diagonals()

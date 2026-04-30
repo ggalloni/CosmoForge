@@ -100,6 +100,35 @@ def _copy_lower_to_upper(M):
     return M
 
 
+@njit
+def symmetrize_inplace(M):
+    """
+    Symmetrize ``M`` in place: ``M[i,j] = M[j,i] = (M[i,j] + M[j,i]) / 2``.
+
+    Equivalent to ``M = 0.5 * (M + M.T)`` but without the two ``n²`` temporary
+    allocations of the broadcast form. Important on the QML hot path where
+    M is the SMW kernel ``V N⁻¹ Vᵀ`` (n_modes × n_modes); at production scale
+    the temporaries can dominate the basis-setup memory peak.
+
+    Parameters
+    ----------
+    M : numpy.ndarray
+        2D square matrix.
+
+    Returns
+    -------
+    numpy.ndarray
+        The same array, now symmetric (lower and upper triangles agree).
+    """
+    n = M.shape[0]
+    for i in range(n):
+        for j in range(i + 1, n):
+            avg = 0.5 * (M[i, j] + M[j, i])
+            M[i, j] = avg
+            M[j, i] = avg
+    return M
+
+
 def matrix_inverse_symm(M, overwrite=False):
     """
     Compute inverse of symmetric positive definite matrix.

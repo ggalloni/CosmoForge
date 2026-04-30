@@ -20,6 +20,7 @@ from .linalg import (
     matrix_slogdet,
     matrix_slogdet_symm,
     matrix_trace,
+    symmetrize_inplace,
 )
 from .smw import smw_inverse, smw_kernel, smw_logdet, smw_quadratic_form
 from .wigner import _wigner_d_start, wigner_d_matrix, wigner_d_small
@@ -51,6 +52,7 @@ __all__ = [
     "cholesky_factor",
     "cholesky_solve",
     "matrix_slogdet_symm",
+    "symmetrize_inplace",
     # smw
     "smw_inverse",
     "smw_logdet",

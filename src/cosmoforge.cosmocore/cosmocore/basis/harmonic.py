@@ -23,6 +23,7 @@ from ..basics import (
     smw_kernel,
     smw_logdet,
     smw_quadratic_form,
+    symmetrize_inplace,
 )
 from .base import (
     _LAMBDA_INV_CAP,
@@ -298,9 +299,11 @@ class HarmonicBasis(ComputationBasis):
         # V @ N^{-1} via Cholesky solve: (N^{-1} V^T)^T = cholesky_solve(N_chol, V^T)^T
         self._V_N_inv = cholesky_solve(self._N_chol, self._V.T).T
 
-        # V @ N^{-1} @ V^T (SMW kernel)
+        # V @ N^{-1} @ V^T (SMW kernel). Symmetrise in place — at production
+        # n_modes the broadcast form (M + M.T) and 0.5 * (...) each allocate
+        # a fresh n_modes² buffer (~88 GB transient at QU/nside=64/lmax=192).
         self._V_Ninv_VT = matrix_mult(self._V_N_inv, self._V.T)
-        self._V_Ninv_VT = 0.5 * (self._V_Ninv_VT + self._V_Ninv_VT.T)
+        symmetrize_inplace(self._V_Ninv_VT)
 
         # V @ N @ V^T is computed lazily via the _V_N_VT cached_property
         # (only consumed by get_compressed_covariance, never on the hot path).
@@ -312,7 +315,7 @@ class HarmonicBasis(ComputationBasis):
         N_original = getattr(self, "_N_original", None)
         if N_original is not None:
             T = matrix_mult(matrix_mult(self._V_N_inv, N_original), self._V_N_inv.T)
-            self._noise_cov_T = 0.5 * (T + T.T)
+            self._noise_cov_T = symmetrize_inplace(T)
             # _N_original consumed; release the n_pix x n_pix reference.
             del self._N_original
         else:
@@ -461,7 +464,7 @@ class HarmonicBasis(ComputationBasis):
             inner = lambda_matrix @ M
             inner[np.diag_indices_from(inner)] += 1.0
             VCVT = np.linalg.solve(inner.T, M.T).T
-            VCVT = 0.5 * (VCVT + VCVT.T)
+            symmetrize_inplace(VCVT)
             return np.asfortranarray(VCVT)
 
         if K is None:
