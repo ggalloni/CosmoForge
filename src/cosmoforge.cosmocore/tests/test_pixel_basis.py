@@ -60,6 +60,11 @@ class TestPixelBasisSetup:
         assert ppc._L is not None
         assert ppc._L.shape == (setup["n_pix"], setup["n_pix"])
         assert ppc._N_chol == (ppc._L, True)
+        # Invariant: cholesky_factor(clean=True) zeroes the upper triangle.
+        # The (V @ L)(V @ L)^T rewrite of V N V^T depends on this; if a
+        # future scipy/lapack change quietly drops the clean step, dense
+        # consumers of L would silently produce wrong results.
+        assert np.all(np.triu(ppc._L, k=1) == 0.0)
 
     def test_projector_is_symmetric(self, simple_compression_setup):
         """Test that P_h is symmetric."""

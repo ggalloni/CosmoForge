@@ -280,7 +280,17 @@ def cholesky_factor(M, overwrite_a=False, clean=True):
     ------
     numpy.linalg.LinAlgError
         If M is not positive definite.
+    ValueError
+        If ``overwrite_a=True`` but M is not F-contiguous (LAPACK would
+        silently ignore overwrite_a and copy, defeating the in-place intent).
     """
+    if overwrite_a and not M.flags.f_contiguous:
+        raise ValueError(
+            "cholesky_factor(overwrite_a=True) requires F-contiguous input; "
+            "got C-contiguous. Use np.asfortranarray(M) at the allocation "
+            "site or set overwrite_a=False."
+        )
+
     L, info = lapack.dpotrf(M, lower=True, overwrite_a=overwrite_a, clean=clean)
     if info != 0:
         raise np.linalg.LinAlgError(

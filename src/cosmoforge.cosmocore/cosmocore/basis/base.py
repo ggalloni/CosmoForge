@@ -278,10 +278,16 @@ class ComputationBasis(ABC):
 
     @cached_property
     def _L(self) -> np.ndarray:
-        # Pre-_factorise_noise fallback: separate-buffer factor for the
-        # rare case where _L is read before setup completes. Production
-        # flow calls _factorise_noise(), which binds an in-place L into
-        # __dict__ and overrides this descriptor.
+        # Pre-_factorise_noise fallback. Load-bearing: PixelBasis
+        # _setup_compressed_arrays reads cholesky_solve(self._N_chol, V.T)
+        # to build _V_N_inv during apply_compression, which runs *before*
+        # _factorise_noise in _setup_v_based. Without this fallback, that
+        # access would AttributeError. _factorise_noise then writes the
+        # in-place factor into __dict__["_L"], which shadows this descriptor
+        # and orphans the separate buffer allocated here (~1× cov, GC'd at
+        # the next allocation). Net cost: one transient cov-sized buffer
+        # during apply_compression. Removing it requires reordering setup
+        # so the in-place factor exists before any consumer reads _N_chol.
         return cholesky_decomposition(self._N)
 
     @property
@@ -312,7 +318,11 @@ class ComputationBasis(ABC):
             self._N_inv_dense = matrix_inverse_symm(N)
             return self._N_inv_dense
         # Post-factor: lazy materialise from L, do not cache (would re-add
-        # the 1× cov footprint we just eliminated). Diagnostic paths only.
+        # the 1× cov footprint we just eliminated). Reachable from the
+        # deferred compression-basis paths in pixel.py (compute_compression_matrix
+        # for "noise_weighted"/"snr"/per-field), and from the test-only
+        # HarmonicBasis.get_inverse via smw_inverse. Never on the QML hot
+        # path after the refactor.
         L = self.__dict__.get("_L")
         if L is None:
             return None
@@ -327,8 +337,14 @@ class ComputationBasis(ABC):
         After this method, ``self._L`` is the in-place factor, ``self._N_chol``
         is the (L, True) tuple, ``self._log_det_N`` is set, and the original
         symmetric-N attribute ``self._N`` is removed so any stale read
-        raises AttributeError.
+        raises AttributeError. Calling twice is a programming error.
         """
+        if not hasattr(self, "_N"):
+            raise RuntimeError(
+                "_factorise_noise called twice (or after self._N was removed). "
+                "The basis is meant to factorise once during setup."
+            )
+
         # Scan off-diagonal noise blocks for cross-field coupling while N is
         # still symmetric. The result is C_ell-independent and consumed by
         # _detect_field_blocks; computing it here avoids a later
@@ -337,8 +353,9 @@ class ComputationBasis(ABC):
 
         L_buf = self._N
         L, lower = cholesky_factor(L_buf, overwrite_a=True)
-        # Bind the in-place factor as a concrete attribute, overriding the
-        # cached_property fallback above.
+        # Bind into __dict__ to shadow the cached_property fallback. If the
+        # fallback ran earlier (e.g., during apply_compression), its separate
+        # buffer is orphaned here and GC'd at the next allocation.
         self.__dict__["_L"] = L
         self._log_det_N = 2.0 * float(np.sum(np.log(np.diag(L))))
         # Free the caller-provided dense inverse if any: the factor replaces it.
@@ -349,11 +366,19 @@ class ComputationBasis(ABC):
         """Return ``{(ci, cj)}`` pairs (ci<cj) with non-zero off-diagonal noise.
 
         Scans ``self._N`` once while symmetric. Empty for single-field bases.
+        Uses a relative threshold scaled by the diagonal magnitude so that
+        float32-loaded noise covariances do not flip the decision on
+        spuriously tiny pivot fill.
         """
         pairs: set[tuple[int, int]] = set()
         if self.n_components <= 1:
             return pairs
         N_sym = self._N_symmetric
+        diag_max = float(np.max(np.abs(np.diag(N_sym)))) if N_sym.size else 0.0
+        # Floor the absolute threshold for the (unphysical) all-zero diagonal
+        # case; otherwise scale by the dominant noise magnitude.
+        rel_tol = 1e-12
+        threshold = max(diag_max * rel_tol, _LAMBDA_ZERO_THRESHOLD)
         for ci in range(self.n_components):
             for cj in range(ci + 1, self.n_components):
                 ri = self._pix_offsets[ci]
@@ -361,7 +386,7 @@ class ComputationBasis(ABC):
                 cj_start = self._pix_offsets[cj]
                 cj_end = self._pix_offsets[cj + 1]
                 N_block = N_sym[ri:re, cj_start:cj_end]
-                if np.any(np.abs(N_block) > _LAMBDA_ZERO_THRESHOLD):
+                if np.any(np.abs(N_block) > threshold):
                     pairs.add((ci, cj))
         return pairs
 
