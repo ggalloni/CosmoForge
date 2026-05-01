@@ -626,6 +626,9 @@ class Fisher(Core, MPISharedMemoryMixin):
                     f"Computation basis: {path_label} — {size_desc}",
                     level=2,
                 )
+                # Fisher's harmonic QML path reads only V_N_inv and V_Ninv_VT
+                # after setup. Drop V to free n_modes × n_pix.
+                bm.release_pixel_projector()
                 # The basis manager handles covariance inversion internally
                 # (SMW for harmonic, direct/truncated solve for pixel), so the
                 # traditional explicit C = N+S build and inversion is skipped.

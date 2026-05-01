@@ -1572,10 +1572,6 @@ class PixelBasis(ComputationBasis):
         self._U_S_U_buffer = np.empty(
             (self.n_kept, self.n_kept), dtype=np.float64, order="F"
         )
-        # Buffer for compressed covariance: (n_kept, n_kept)
-        self._C_compressed_buffer = np.empty(
-            (self.n_kept, self.n_kept), dtype=np.float64, order="F"
-        )
 
     def get_projected_inverse(self, C_ell) -> np.ndarray:
         """

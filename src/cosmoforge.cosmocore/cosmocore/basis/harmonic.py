@@ -137,6 +137,22 @@ class HarmonicBasis(ComputationBasis):
         """Projection matrix V (n_modes × n_pix)."""
         return self._V
 
+    def release_pixel_projector(self) -> None:
+        """Drop V after SMW components are built.
+
+        QML hot paths (Fisher trace, Spectra weighted-data) read only
+        ``_V_N_inv`` and ``_V_Ninv_VT``. The remaining V consumers —
+        ``get_compressed_covariance``/``get_compressed_inverse``,
+        ``compress_data``, m-block compression, and PICSLike ``do_cross``
+        with the harmonic basis — must not be invoked after this call.
+        Raises if m-block compression was requested at construction.
+        """
+        if self._compress:
+            raise RuntimeError(
+                "release_pixel_projector incompatible with m-block compression"
+            )
+        self._harmonic_basis._V = None
+
     @property
     def n_compressed(self) -> int:
         """
@@ -167,6 +183,9 @@ class HarmonicBasis(ComputationBasis):
         # Build harmonic operator, ell-mode mapping, and derivative diagonals
         _t0 = _time.time()
         self._build_basis()
+        # _V_blocks is the C-order source PixelBasis re-reads during
+        # apply_compression. HarmonicBasis never does; release here.
+        self._harmonic_basis._V_blocks = None
         _t_basis = _time.time() - _t0
 
         # Compute effective noise matrix when switch optimization is enabled
@@ -323,9 +342,6 @@ class HarmonicBasis(ComputationBasis):
 
         # log|N| was set by _factorise_noise as 2 sum log diag L.
 
-        # Pre-allocate buffers for frequently called methods
-        self._allocate_buffers()
-
     @cached_property
     def _V_N_VT(self) -> np.ndarray:
         """Lazily compute V @ N @ V^T via the Cholesky factor.
@@ -335,23 +351,6 @@ class HarmonicBasis(ComputationBasis):
         """
         VL = matrix_mult(self._V, self._L)
         return matrix_mult(VL, VL.T)
-
-    def _allocate_buffers(self) -> None:
-        """
-        Pre-allocate reusable buffers for intermediate computations.
-
-        This reduces memory allocation overhead in frequently called methods
-        like get_projected_inverse and compute_fisher_matrix.
-        """
-        # For multi-field, use n_modes_total; for single-field, use n_modes
-        buffer_size = self.n_modes_total if self.n_components > 1 else self.n_modes
-
-        # Buffer for K matrix in SMW: (buffer_size, buffer_size)
-        self._K_buffer = np.empty((buffer_size, buffer_size), dtype=np.float64, order="F")
-        # Buffer for M @ kernel_inv @ M product: (buffer_size, buffer_size)
-        self._MKM_buffer = np.empty(
-            (buffer_size, buffer_size), dtype=np.float64, order="F"
-        )
 
     # =================================================================
     # SMW helpers
@@ -835,7 +834,6 @@ class HarmonicBasis(ComputationBasis):
 
         if is_single:
             lambda_inv_diag = self._lambda_inv_diag_from_array(c_ell_arr)
-            add_diagonal(self._V_Ninv_VT, lambda_inv_diag, out=self._K_buffer)
             return self._smw_projected_inverse(
                 self._V_Ninv_VT, lambda_inv_diag=lambda_inv_diag
             )
