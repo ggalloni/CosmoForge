@@ -719,9 +719,8 @@ class TestNoiseCovWithNonDiagonalN:
         return hc
 
     def _direct_noise_cov(self, hc, kernel_inv, N_orig=None):
-        # Reference: V_Cinv N V_Cinv^T using full pixel-space matmuls.
-        # N_orig is required when switch optimization is active, since the
-        # basis releases _N_original after building _noise_cov_T.
+        # With switch optimisation the basis overwrites N in-place with N_eff
+        # and never holds a raw-N copy, so the caller must supply N_orig.
         n = kernel_inv.shape[0]
         V_Cinv = (np.eye(n) - hc._V_Ninv_VT @ kernel_inv) @ hc._V_N_inv
         if N_orig is None:
@@ -798,9 +797,6 @@ class TestNoiseCovWithNonDiagonalN:
             fiducial_C_ell=fiducial_C_ell,
         )
         hc.setup()
-        # Switch optimization is active when lswitch_high < lmax; the basis
-        # releases _N_original after _noise_cov_T is precomputed, so we pass
-        # the raw N explicitly into the reference computation.
         assert hc.lswitch_high < hc.lmax
 
         C_ell = fiducial_C_ell.copy()
