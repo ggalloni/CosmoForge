@@ -114,13 +114,6 @@ def read_covmat_reduced(covmatfile, C):
     """
     Read a pre-reduced covariance matrix from binary file.
 
-    The file is written by :func:`write_covmat_reduced` as flat row-major
-    float64 bytes. Reads in row chunks so the in-process transient stays
-    at ``chunk_rows × n_pix × 8 B`` instead of the full ``n_pix² × 8 B``
-    that ``np.fromfile`` would allocate. Layout of ``C`` is preserved
-    (works for both C- and F-order destinations); covariance is symmetric,
-    so the row-major file content is unaffected by destination layout.
-
     Parameters
     ----------
     covmatfile : str
@@ -136,26 +129,20 @@ def read_covmat_reduced(covmatfile, C):
     """
     ntot = C.shape[0]
     filepath = covmatfile.strip()
-    expected_bytes = ntot * ntot * np.dtype(np.float64).itemsize
-    file_size = os.path.getsize(filepath)
-    if file_size != expected_bytes:
-        actual_count = file_size // np.dtype(np.float64).itemsize
+    data = np.fromfile(filepath, dtype=np.float64)
+    expected_size = ntot * ntot
+
+    if data.size != expected_size:
+        expected_bytes = expected_size * data.dtype.itemsize
+        actual_bytes = data.size * data.dtype.itemsize
         raise ValueError(
             f"Invalid reduced covariance matrix size in '{filepath}': "
-            f"expected {ntot * ntot} float64 values "
+            f"expected {expected_size} float64 values "
             f"({expected_bytes} bytes) for shape ({ntot}, {ntot}), "
-            f"but found {actual_count} values ({file_size} bytes)."
+            f"but found {data.size} values ({actual_bytes} bytes)."
         )
-
-    chunk_rows = max(1, min(ntot, 1024))
-    with open(filepath, "rb") as f:
-        for row_start in range(0, ntot, chunk_rows):
-            row_end = min(row_start + chunk_rows, ntot)
-            count = (row_end - row_start) * ntot
-            block = np.fromfile(f, dtype=np.float64, count=count).reshape(
-                row_end - row_start, ntot
-            )
-            C[row_start:row_end] = block
+    data = data.reshape((ntot, ntot))
+    C[:] = data
     return C
 
 
