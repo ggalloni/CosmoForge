@@ -7,6 +7,7 @@ from scipy.linalg import lapack
 
 from .linalg import (
     cholesky_decomposition,
+    cholesky_solve,
     matrix_inverse_symm,
     matrix_mult,
     matrix_slogdet_symm,
@@ -103,7 +104,7 @@ def smw_kernel(V_Ninv_VT, Lambda_diag, threshold=1e-30):
     return K
 
 
-def smw_quadratic_form(data, N_inv, V_N_inv, V_Ninv_VT, Lambda_diag, threshold=1e-30):
+def smw_quadratic_form(data, N_chol, V_N_inv, V_Ninv_VT, Lambda_diag, threshold=1e-30):
     """
     SMW quadratic form: d^T (N + V^T Lambda V)^{-1} d.
 
@@ -111,8 +112,9 @@ def smw_quadratic_form(data, N_inv, V_N_inv, V_Ninv_VT, Lambda_diag, threshold=1
     ----------
     data : numpy.ndarray
         Data vector d, shape (n,).
-    N_inv : numpy.ndarray
-        Precomputed inverse of N, shape (n, n).
+    N_chol : tuple
+        Cholesky factor ``(L, lower=True)`` of N as returned by
+        :func:`cholesky_factor`.
     V_N_inv : numpy.ndarray
         Precomputed V @ N^{-1}, shape (k, n).
     V_Ninv_VT : numpy.ndarray
@@ -127,8 +129,8 @@ def smw_quadratic_form(data, N_inv, V_N_inv, V_Ninv_VT, Lambda_diag, threshold=1
     float
         The quadratic form d^T C^{-1} d.
     """
-    # Term 1: d^T @ N^{-1} @ d
-    term1 = float(matrix_mult(data.T, matrix_mult(N_inv, data)))
+    # Term 1: d^T @ N^{-1} @ d  via Cholesky solve.
+    term1 = float(matrix_mult(data.T, cholesky_solve(N_chol, data)))
 
     # y = V @ N^{-1} @ d
     y = matrix_mult(V_N_inv, data)

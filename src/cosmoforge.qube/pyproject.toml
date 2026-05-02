@@ -15,6 +15,9 @@ dependencies = [
 [project.optional-dependencies]
 pcl = ["pymaster>=2.6"]
 
+[project.scripts]
+qube-memory-budget = "qube.memory_budget:_main"
+
 [tool.uv.sources]
 cosmocore = { workspace = true }
 

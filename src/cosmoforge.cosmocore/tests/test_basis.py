@@ -19,7 +19,6 @@ class TestCreateCompression:
         cm = create_computation_basis(
             method="harmonic",
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -39,7 +38,6 @@ class TestCreateCompression:
         cm = create_computation_basis(
             method="pixel",
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -62,7 +60,6 @@ class TestCreateCompression:
             create_computation_basis(
                 method="invalid",
                 N=setup["N"],
-                N_inv=setup["N_inv"],
                 theta=setup["theta"],
                 phi=setup["phi"],
                 lmax=setup["lmax"],
@@ -80,7 +77,6 @@ class TestCreateCompression:
         cm = create_computation_basis(
             method="harmonic",
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -89,7 +85,6 @@ class TestCreateCompression:
 
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -114,7 +109,6 @@ class TestCreateCompression:
         cm = create_computation_basis(
             method="harmonic",
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -137,7 +131,6 @@ class TestCreateCompression:
         cm = create_computation_basis(
             method="pixel",
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -165,7 +158,6 @@ class TestComputeFisherMatrix:
 
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=lmax,
@@ -187,7 +179,6 @@ class TestComputeFisherMatrix:
 
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=lmax,
@@ -209,7 +200,6 @@ class TestComputeFisherMatrix:
 
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=lmax,
@@ -234,7 +224,6 @@ class TestComputeFisherMatrix:
         cm = create_computation_basis(
             method="harmonic",
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=lmax,
@@ -257,7 +246,6 @@ class TestComputeFisherMatrix:
 
         ppc = PixelBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=lmax,
@@ -300,12 +288,11 @@ class TestPerFieldThreshold:
         lmax = 5
 
         N = np.eye(n_pix) * 0.01
-        N_inv = np.eye(n_pix) * 100.0
+        np.eye(n_pix) * 100.0
 
         # Scalar epsilon
         ppc1 = PixelBasis(
             N,
-            N_inv,
             theta,
             phi,
             lmax,
@@ -317,7 +304,6 @@ class TestPerFieldThreshold:
         # List epsilon (1-element)
         ppc2 = PixelBasis(
             N,
-            N_inv,
             theta,
             phi,
             lmax,
@@ -347,12 +333,11 @@ class TestPerFieldThreshold:
 
         total_pix = n_pix_a + n_pix_b
         N = np.eye(total_pix) * 0.01
-        N_inv = np.eye(total_pix) * 100.0
+        np.eye(total_pix) * 100.0
 
         # Tight threshold for field 0, loose for field 1
         ppc_split = PixelBasis(
             N,
-            N_inv,
             (theta_a, theta_b),
             (phi_a, phi_b),
             lmax,
@@ -364,7 +349,6 @@ class TestPerFieldThreshold:
         # Uniform threshold
         ppc_uniform = PixelBasis(
             N,
-            N_inv,
             (theta_a, theta_b),
             (phi_a, phi_b),
             lmax,
@@ -386,12 +370,11 @@ class TestPerFieldThreshold:
         lmax = 5
 
         N = np.eye(2 * n_pix) * 0.01
-        N_inv = np.eye(2 * n_pix) * 100.0
+        np.eye(2 * n_pix) * 100.0
 
         # Tight E threshold, loose B threshold → keep more B modes
         ppc_split = PixelBasis(
             N,
-            N_inv,
             theta,
             phi,
             lmax,
@@ -403,7 +386,6 @@ class TestPerFieldThreshold:
         # Uniform scalar → same threshold for both E and B
         ppc_uniform = PixelBasis(
             N,
-            N_inv,
             theta,
             phi,
             lmax,
@@ -438,14 +420,13 @@ class TestPerFieldThreshold:
         lmax = 5
 
         N = np.eye(2 * n_pix) * 0.01
-        N_inv = np.eye(2 * n_pix) * 100.0
+        np.eye(2 * n_pix) * 100.0
 
         eps = 1e-10  # Very tight → keeps essentially all modes
 
         # Scalar
         ppc_scalar = PixelBasis(
             N,
-            N_inv,
             theta,
             phi,
             lmax,
@@ -457,7 +438,6 @@ class TestPerFieldThreshold:
         # Tuple with same value for both E and B
         ppc_tuple = PixelBasis(
             N,
-            N_inv,
             theta,
             phi,
             lmax,
@@ -503,12 +483,11 @@ class TestPerFieldThreshold:
 
         total_pix = n_pix_t + 2 * n_pix_p
         N = np.eye(total_pix) * 0.01
-        N_inv = np.eye(total_pix) * 100.0
+        np.eye(total_pix) * 100.0
 
         # T: scalar epsilon, QU: E/B split tuple
         ppc = PixelBasis(
             N,
-            N_inv,
             (theta_t, theta_p),
             (phi_t, phi_p),
             lmax,
@@ -543,12 +522,11 @@ class TestPerFieldThreshold:
         lmax = 5
 
         N = np.eye(n_pix) * 0.01
-        N_inv = np.eye(n_pix) * 100.0
+        np.eye(n_pix) * 100.0
 
         with pytest.raises(ValueError, match="tuple.*E/B split.*spin.*not 2"):
             PixelBasis(
                 N,
-                N_inv,
                 theta,
                 phi,
                 lmax,
@@ -566,12 +544,11 @@ class TestPerFieldThreshold:
         lmax = 5
 
         N = np.eye(n_pix) * 0.01
-        N_inv = np.eye(n_pix) * 100.0
+        np.eye(n_pix) * 100.0
 
         with pytest.raises(ValueError, match="list length.*must match"):
             PixelBasis(
                 N,
-                N_inv,
                 theta,
                 phi,
                 lmax,
@@ -602,11 +579,10 @@ class TestPixelProjectedPICSLikeMethods:
 
         theta, phi = self._spiral(n_pix)
         N = np.eye(2 * n_pix) * 0.01
-        N_inv = np.eye(2 * n_pix) * 100.0
+        np.eye(2 * n_pix) * 100.0
 
         ppc = PixelBasis(
             N,
-            N_inv,
             theta,
             phi,
             lmax,
@@ -703,12 +679,11 @@ class TestPixelProjectedPICSLikeMethods:
         lmax = 5
 
         N = np.eye(2 * n_pix) * 0.01
-        N_inv = np.eye(2 * n_pix) * 100.0
+        np.eye(2 * n_pix) * 100.0
 
         # Aggressive single threshold (E signal >> B → kills B modes)
         ppc_aggressive = PixelBasis(
             N,
-            N_inv,
             theta,
             phi,
             lmax,
@@ -720,7 +695,6 @@ class TestPixelProjectedPICSLikeMethods:
         # E/B split: same aggressive E but loose B
         ppc_split = PixelBasis(
             N,
-            N_inv,
             theta,
             phi,
             lmax,

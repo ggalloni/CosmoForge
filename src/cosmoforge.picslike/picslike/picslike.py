@@ -59,12 +59,12 @@ from typing import Any
 
 import numpy as np
 from mpi4py import MPI
-from scipy.linalg import cho_solve
 
 from cosmocore import (
     Core,
     FieldCollection,
     MPISharedMemoryMixin,
+    cholesky_solve,
     compute_signal_matrix,
     matrix_inverse_symm,
     read_maps,
@@ -289,6 +289,10 @@ class PICSLike(Core, MPISharedMemoryMixin):
                 raise ValueError(
                     "Pixel information not available. Run setup_geometry first."
                 )
+
+            # Invalidate any cached parameter-independent SMW pieces; maps
+            # are about to be (re)loaded.
+            self._smw_data_cache = None
 
             # Read maps using the core functionality
             ntot = sum(self.collection.n_active)
@@ -540,15 +544,23 @@ class PICSLike(Core, MPISharedMemoryMixin):
                 # Batch: χ²_n = d1_c[:,n]^T @ C_c_inv @ d2_c[:,n]
                 chi_squared = np.einsum("in,ij,jn->n", d1_c, C_c_inv, d2_c)
             else:
+                # Cache the parameter-independent SMW pieces once. term1,
+                # projected, and ninv_maps1 depend only on the basis (N) and
+                # the data — not on the C_ell point — so we'd otherwise pay
+                # an O(n_pix * n_sims) allocation per parameter point.
+                if getattr(self, "_smw_data_cache", None) is None:
+                    projected = bm._V_N_inv @ self.maps1
+                    ninv_maps1 = cholesky_solve(bm._N_chol, self.maps1)
+                    term1 = np.einsum("in,in->n", self.maps1, ninv_maps1)
+                    self._smw_data_cache = (projected, term1)
+                projected, term1 = self._smw_data_cache
+
                 K_chol, logdet = bm.prepare_smw(
                     C_ell_dict if is_multi_field else {(0, 0, 0): C_ell_input}
                 )
-                # Batch SMW quadratic form across simulations:
                 # χ²_n = d_n^T N^{-1} d_n - y_n^T K^{-1} y_n
-                # where y = V N^{-1} d
-                term1 = np.einsum("in,ij,jn->n", self.maps1, bm.N_inv, self.maps1)
-                projected = bm._V_N_inv @ self.maps1
-                kernel_inv_y = cho_solve((K_chol, True), projected)
+                # where y = V N^{-1} d. Only y^T K^{-1} y depends on C_ell.
+                kernel_inv_y = cholesky_solve((K_chol, True), projected)
                 term2 = np.einsum("in,in->n", projected, kernel_inv_y)
                 chi_squared = term1 - term2
 

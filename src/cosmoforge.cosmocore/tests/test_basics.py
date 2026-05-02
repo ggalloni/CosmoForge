@@ -7,6 +7,8 @@ from cosmocore import (
 )
 from cosmocore.basics import (
     _project_and_norm,
+    cholesky_factor,
+    cholesky_solve,
     matrix_inverse_symm,
     matrix_slogdet,
     matrix_slogdet_symm,
@@ -364,6 +366,7 @@ class TestSMWQuadraticForm:
         A = np.random.randn(n, n)
         N = A @ A.T + np.eye(n)
         N_inv = matrix_inverse_symm(N.copy())
+        N_chol = cholesky_factor(N.copy())
 
         # Create projector V and diagonal Lambda
         V = np.random.randn(k, n)
@@ -377,7 +380,7 @@ class TestSMWQuadraticForm:
         data = np.random.randn(n)
 
         # SMW quadratic form
-        smw_result = smw_quadratic_form(data, N_inv, V_N_inv, V_Ninv_VT, Lambda_diag)
+        smw_result = smw_quadratic_form(data, N_chol, V_N_inv, V_Ninv_VT, Lambda_diag)
 
         # Direct: d^T C^{-1} d where C = N + V^T Λ V
         Lambda = np.diag(Lambda_diag)
@@ -395,6 +398,7 @@ class TestSMWQuadraticForm:
         A = np.random.randn(n, n)
         N = A @ A.T + np.eye(n)
         N_inv = matrix_inverse_symm(N.copy())
+        N_chol = cholesky_factor(N.copy())
 
         V = np.random.randn(k, n)
         Lambda_diag = np.abs(np.random.randn(k)) + 0.1
@@ -404,7 +408,7 @@ class TestSMWQuadraticForm:
 
         data = np.random.randn(n)
 
-        smw_result = smw_quadratic_form(data, N_inv, V_N_inv, V_Ninv_VT, Lambda_diag)
+        smw_result = smw_quadratic_form(data, N_chol, V_N_inv, V_Ninv_VT, Lambda_diag)
 
         # Direct computation
         Lambda = np.diag(Lambda_diag)
@@ -427,6 +431,7 @@ def test_smw_quadratic_form_performance(capsys):
     A = np.random.randn(n, n)
     N = A @ A.T + np.eye(n)
     N_inv = matrix_inverse_symm(np.asfortranarray(N.copy()))
+    N_chol = cholesky_factor(np.asfortranarray(N.copy()))
 
     V = np.random.randn(k, n)
 
@@ -443,7 +448,7 @@ def test_smw_quadratic_form_performance(capsys):
     # Time SMW quadratic form (multiple calls)
     t0 = time.perf_counter()
     for Lambda_diag, data in zip(Lambda_diags, data_vectors):
-        _ = smw_quadratic_form(data, N_inv, V_N_inv, V_Ninv_VT, Lambda_diag)
+        _ = smw_quadratic_form(data, N_chol, V_N_inv, V_Ninv_VT, Lambda_diag)
     smw_time = time.perf_counter() - t0
 
     # Time direct quadratic form (multiple calls)
@@ -473,3 +478,46 @@ def test_smw_quadratic_form_performance(capsys):
 
     # SMW should be faster for k << n
     assert smw_time < direct_time, "SMW should be faster than direct"
+
+
+class TestCholeskyFactorSolve:
+    """Tests for cholesky_factor / cholesky_solve wrappers."""
+
+    def test_factor_solve_matches_direct_inverse(self):
+        rng = np.random.default_rng(0)
+        n = 32
+        A = rng.standard_normal((n, n))
+        M = A @ A.T + np.eye(n)
+        b = rng.standard_normal(n)
+
+        N_chol = cholesky_factor(M)
+        x = cholesky_solve(N_chol, b)
+        x_ref = np.linalg.solve(M, b)
+        np.testing.assert_allclose(x, x_ref, rtol=1e-10, atol=1e-12)
+
+    def test_solve_matrix_rhs(self):
+        rng = np.random.default_rng(1)
+        n, k = 24, 7
+        A = rng.standard_normal((n, n))
+        M = A @ A.T + np.eye(n)
+        B = rng.standard_normal((n, k))
+
+        N_chol = cholesky_factor(M)
+        X = cholesky_solve(N_chol, B)
+        np.testing.assert_allclose(M @ X, B, rtol=1e-10, atol=1e-12)
+
+    def test_overwrite_a_aliases_input(self):
+        rng = np.random.default_rng(2)
+        n = 16
+        A = rng.standard_normal((n, n))
+        M = np.asfortranarray(A @ A.T + np.eye(n))
+        M_id = id(M)
+
+        c, lower = cholesky_factor(M, overwrite_a=True)
+        assert lower is True
+        assert id(c) == M_id  # in-place: factor shares storage with M
+
+    def test_non_positive_definite_raises(self):
+        M = np.array([[1.0, 2.0], [2.0, 1.0]])
+        with pytest.raises(np.linalg.LinAlgError):
+            cholesky_factor(M)

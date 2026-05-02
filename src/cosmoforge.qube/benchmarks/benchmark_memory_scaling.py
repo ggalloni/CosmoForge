@@ -203,8 +203,14 @@ def main():
             )
 
             run_label = f"{field_label}_nside{nside}_auto"
+            # Heavy transients (n_pix² noise covariance, n_fields × n_pix ×
+            # n_sims map array) land here. On the cluster, point
+            # CF_BENCH_TMP_DIR at scratch so killed jobs do not bloat the
+            # repo / quota directory.
+            tmp_root = os.environ.get("CF_BENCH_TMP_DIR", "sims")
+            os.makedirs(tmp_root, exist_ok=True)
             with tempfile.TemporaryDirectory(
-                dir="sims", prefix=f"memb_{run_label}_"
+                dir=tmp_root, prefix=f"memb_{run_label}_"
             ) as tmpdir:
                 config_file = write_temp_config(
                     tmpdir,

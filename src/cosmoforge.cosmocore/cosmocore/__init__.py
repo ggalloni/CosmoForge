@@ -45,6 +45,8 @@ Numerical Methods:
 """
 
 from .basics import (
+    cholesky_factor,
+    cholesky_solve,
     get_rotation_angle,
     idx2spec,
     legendre_00,
@@ -159,6 +161,8 @@ __all__ = [
     # mpi_utils
     "MPISharedMemoryMixin",
     # basics
+    "cholesky_factor",
+    "cholesky_solve",
     "get_rotation_angle",
     "idx2spec",
     "legendre_00",

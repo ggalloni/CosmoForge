@@ -94,7 +94,6 @@ class TestFieldBlockDetection:
         setup = _make_two_scalar_fields()
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -117,7 +116,6 @@ class TestFieldBlockDetection:
         setup = _make_two_scalar_fields()
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -141,7 +139,6 @@ class TestFieldBlockDetection:
         setup = _make_two_scalar_fields(noise_cross=True)
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -164,7 +161,6 @@ class TestFieldBlockDetection:
         setup = _make_tqu_setup()
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -189,7 +185,6 @@ class TestFieldBlockDetection:
         setup = _make_tqu_setup()
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -215,11 +210,11 @@ class TestFieldBlockDetection:
         np.random.seed(42)
         n_pix = 50
         N = np.eye(n_pix) * 0.01
-        N_inv = np.eye(n_pix) * 100.0
+        np.eye(n_pix) * 100.0
         theta = np.random.uniform(0.1, np.pi - 0.1, n_pix)
         phi = np.random.uniform(0, 2 * np.pi, n_pix)
 
-        hc = HarmonicBasis(N, N_inv, theta, phi, lmax=6)
+        hc = HarmonicBasis(N, theta, phi, lmax=6)
 
         C_ell_dict = {(0, 0): np.ones(4) * 1e-6}
         groups = hc._detect_field_blocks(C_ell_dict)
@@ -233,12 +228,12 @@ class TestFieldBlockDetection:
         n_pix = [30, 30, 30]
         n_total = sum(n_pix)
         N = np.eye(n_total) * 0.01
-        N_inv = np.eye(n_total) * 100.0
+        np.eye(n_total) * 100.0
 
         thetas = tuple(np.random.uniform(0.1, np.pi - 0.1, n) for n in n_pix)
         phis = tuple(np.random.uniform(0, 2 * np.pi, n) for n in n_pix)
 
-        hc = HarmonicBasis(N, N_inv, thetas, phis, lmax=5)
+        hc = HarmonicBasis(N, thetas, phis, lmax=5)
 
         n_ell = 5 - 1
         # 0-1 cross-spectrum, no 0-2 or 1-2
@@ -268,7 +263,6 @@ class TestFieldBlockFisherExact:
         setup = _make_two_scalar_fields(lmax=6)
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -307,7 +301,6 @@ class TestFieldBlockFisherExact:
         setup = _make_two_scalar_fields(lmax=6)
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -380,7 +373,6 @@ class TestFieldBlockFisherExact:
         setup = _make_two_scalar_fields(lmax=6)
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -425,7 +417,6 @@ class TestFieldBlockSpeedup:
         setup = _make_two_scalar_fields(n_pix_1=100, n_pix_2=80, lmax=10)
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],

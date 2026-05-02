@@ -19,7 +19,6 @@ class TestHarmonicBasisInitialization:
         setup = simple_compression_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -35,7 +34,6 @@ class TestHarmonicBasisInitialization:
         setup = simple_compression_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -56,7 +54,6 @@ class TestHarmonicBasisSetup:
         setup = simple_compression_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -85,7 +82,6 @@ class TestHarmonicBasisSetup:
         setup = simple_compression_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -104,7 +100,6 @@ class TestHarmonicBasisSetup:
         setup = simple_compression_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -126,7 +121,6 @@ class TestHarmonicBasisOperations:
         setup = uniform_sky_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -146,7 +140,6 @@ class TestHarmonicBasisOperations:
         setup = uniform_sky_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -168,7 +161,6 @@ class TestHarmonicBasisOperations:
         setup = uniform_sky_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -190,7 +182,6 @@ class TestHarmonicBasisOperations:
         setup = uniform_sky_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -217,7 +208,6 @@ class TestHarmonicBasisOperations:
         setup = uniform_sky_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -249,7 +239,6 @@ class TestHarmonicBasisFisher:
         setup = uniform_sky_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -272,7 +261,6 @@ class TestHarmonicBasisFisher:
         setup = uniform_sky_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -298,7 +286,6 @@ class TestHarmonicBasisPixelSpace:
         setup = simple_compression_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -320,7 +307,6 @@ class TestHarmonicBasisPixelSpace:
         setup = simple_compression_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -342,7 +328,6 @@ class TestHarmonicBasisPixelSpace:
         setup = simple_compression_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -408,7 +393,6 @@ class TestHarmonicBasisValidation:
         setup = validation_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -435,7 +419,6 @@ class TestHarmonicBasisValidation:
         setup = validation_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -462,7 +445,6 @@ class TestHarmonicBasisValidation:
         setup = validation_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -491,7 +473,6 @@ class TestHarmonicBasisValidation:
         setup = validation_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -536,7 +517,6 @@ class TestHarmonicBasisBeam:
 
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=lmax,
@@ -559,7 +539,6 @@ class TestHarmonicBasisBeam:
         with pytest.raises(ValueError, match="Beam must have length"):
             HarmonicBasis(
                 N=setup["N"],
-                N_inv=setup["N_inv"],
                 theta=setup["theta"],
                 phi=setup["phi"],
                 lmax=lmax,
@@ -578,7 +557,6 @@ class TestHarmonicBasisBeam:
 
         hc_no_beam = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=lmax,
@@ -587,7 +565,6 @@ class TestHarmonicBasisBeam:
 
         hc_unit_beam = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=lmax,
@@ -617,7 +594,6 @@ class TestHarmonicDictOperations:
         setup = uniform_sky_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -648,7 +624,6 @@ class TestHarmonicDictOperations:
         lmax = setup["lmax"]
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=lmax,
@@ -695,7 +670,6 @@ class TestHarmonicDictOperations:
         lmax = setup["lmax"]
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=lmax,
@@ -739,19 +713,18 @@ class TestNoiseCovWithNonDiagonalN:
         rng = np.random.default_rng(7)
         theta = rng.uniform(0, np.pi, n_pix)
         phi = rng.uniform(0, 2 * np.pi, n_pix)
-        N_inv = matrix_inverse_symm(np.asfortranarray(N))
-        hc = HarmonicBasis(N=N, N_inv=N_inv, theta=theta, phi=phi, lmax=lmax)
+        matrix_inverse_symm(np.asfortranarray(N))
+        hc = HarmonicBasis(N=N, theta=theta, phi=phi, lmax=lmax)
         hc.setup()
         return hc
 
     def _direct_noise_cov(self, hc, kernel_inv, N_orig=None):
-        # Reference: V_Cinv N V_Cinv^T using full pixel-space matmuls.
-        # N_orig is required when switch optimization is active, since the
-        # basis releases _N_original after building _noise_cov_T.
+        # With switch optimisation the basis overwrites N in-place with N_eff
+        # and never holds a raw-N copy, so the caller must supply N_orig.
         n = kernel_inv.shape[0]
         V_Cinv = (np.eye(n) - hc._V_Ninv_VT @ kernel_inv) @ hc._V_N_inv
         if N_orig is None:
-            N_orig = hc._N
+            N_orig = hc._N_symmetric
         return V_Cinv @ N_orig @ V_Cinv.T
 
     def _compressed_noise_cov(self, hc, kernel_inv):
@@ -802,7 +775,6 @@ class TestNoiseCovWithNonDiagonalN:
         assert_allclose(got, ref, rtol=1e-10, atol=1e-12)
 
     def test_nondiagonal_n_with_switch_optimization(self):
-        from cosmocore.basics import matrix_inverse_symm
         from cosmocore.basis import HarmonicBasis
 
         n_pix = 60
@@ -817,7 +789,6 @@ class TestNoiseCovWithNonDiagonalN:
         # Switch optimization active: N_eff = N + S_fixed for ℓ > lswitch_high.
         hc = HarmonicBasis(
             N=N,
-            N_inv=matrix_inverse_symm(np.asfortranarray(N)),
             theta=theta,
             phi=phi,
             lmax=lmax,
@@ -826,9 +797,6 @@ class TestNoiseCovWithNonDiagonalN:
             fiducial_C_ell=fiducial_C_ell,
         )
         hc.setup()
-        # Switch optimization is active when lswitch_high < lmax; the basis
-        # releases _N_original after _noise_cov_T is precomputed, so we pass
-        # the raw N explicitly into the reference computation.
         assert hc.lswitch_high < hc.lmax
 
         C_ell = fiducial_C_ell.copy()

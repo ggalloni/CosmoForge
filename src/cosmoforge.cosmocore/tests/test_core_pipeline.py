@@ -170,7 +170,9 @@ def test_compressed_pipeline_via_core(method, nside, basis_lmax):
         logdet = core.get_covariance_logdet(cls)
         assert np.isfinite(logdet)
 
-        n = core.noise_cov1.shape[0]
+        # noise_cov1 is dropped after setup_computation_basis (basis owns it).
+        # Use the basis's pixel count instead.
+        n = core.basis_manager.n_pix
         rng = np.random.default_rng(0)
         d = rng.standard_normal(n)
         q = core.compute_quadratic_form(d, cls)

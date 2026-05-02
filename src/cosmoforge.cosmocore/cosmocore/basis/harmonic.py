@@ -10,11 +10,11 @@ from __future__ import annotations
 from functools import cached_property
 
 import numpy as np
-from scipy.linalg import cho_solve
 
 from ..basics import (
     add_diagonal,
     cholesky_decomposition,
+    cholesky_solve,
     matrix_inverse_symm,
     matrix_mult,
     matrix_slogdet_symm,
@@ -23,6 +23,7 @@ from ..basics import (
     smw_kernel,
     smw_logdet,
     smw_quadratic_form,
+    symmetrize_inplace,
 )
 from .base import (
     _LAMBDA_INV_CAP,
@@ -48,9 +49,9 @@ class HarmonicBasis(ComputationBasis):
     Parameters
     ----------
     N : numpy.ndarray
-        Noise covariance matrix of shape (n_pix, n_pix).
-    N_inv : numpy.ndarray
-        Precomputed noise inverse matrix of shape (n_pix, n_pix).
+        Noise covariance matrix of shape (n_pix, n_pix). The basis takes
+        ownership of this buffer; ``_factorise_noise()`` overwrites it
+        in place during setup.
     theta : numpy.ndarray
         Colatitude angles for active pixels in radians.
     phi : numpy.ndarray
@@ -72,8 +73,7 @@ class HarmonicBasis(ComputationBasis):
     --------
     >>> import numpy as np
     >>> from cosmocore.basis import HarmonicBasis
-    >>> N_inv = np.diag(1.0 / noise_variance)
-    >>> hc = HarmonicBasis(N_inv, theta, phi, lmax=100)
+    >>> hc = HarmonicBasis(N, theta, phi, lmax=100)
     >>> hc.setup()
     >>> fisher_element = hc.compute_fisher_element(C_ell, ell_i=10, ell_j=10)
 
@@ -86,7 +86,6 @@ class HarmonicBasis(ComputationBasis):
     def __init__(
         self,
         N: np.ndarray,
-        N_inv: np.ndarray,
         theta: np.ndarray | tuple[np.ndarray, ...],
         phi: np.ndarray | tuple[np.ndarray, ...],
         lmax: int,
@@ -101,7 +100,6 @@ class HarmonicBasis(ComputationBasis):
     ):
         super().__init__(
             N=N,
-            N_inv=N_inv,
             theta=theta,
             phi=phi,
             lmax=lmax,
@@ -139,6 +137,22 @@ class HarmonicBasis(ComputationBasis):
         """Projection matrix V (n_modes × n_pix)."""
         return self._V
 
+    def release_pixel_projector(self) -> None:
+        """Drop V after SMW components are built.
+
+        QML hot paths (Fisher trace, Spectra weighted-data) read only
+        ``_V_N_inv`` and ``_V_Ninv_VT``. The remaining V consumers —
+        ``get_compressed_covariance``/``get_compressed_inverse``,
+        ``compress_data``, m-block compression, and PICSLike ``do_cross``
+        with the harmonic basis — must not be invoked after this call.
+        Raises if m-block compression was requested at construction.
+        """
+        if self._compress:
+            raise RuntimeError(
+                "release_pixel_projector incompatible with m-block compression"
+            )
+        self._harmonic_basis._V = None
+
     @property
     def n_compressed(self) -> int:
         """
@@ -169,6 +183,9 @@ class HarmonicBasis(ComputationBasis):
         # Build harmonic operator, ell-mode mapping, and derivative diagonals
         _t0 = _time.time()
         self._build_basis()
+        # _V_blocks is the C-order source PixelBasis re-reads during
+        # apply_compression. HarmonicBasis never does; release here.
+        self._harmonic_basis._V_blocks = None
         _t_basis = _time.time() - _t0
 
         # Compute effective noise matrix when switch optimization is enabled
@@ -177,6 +194,11 @@ class HarmonicBasis(ComputationBasis):
             _t0 = _time.time()
             self._compute_effective_noise()
             _t_eff = _time.time() - _t0
+
+        # Factor the (effective) noise in place; releases the symmetric N
+        # buffer and any caller-provided dense N_inv. After this call,
+        # cholesky_solve via self._N_chol is the only path to N^{-1}.
+        self._factorise_noise()
 
         _t0 = _time.time()
         self._compute_smw_components()
@@ -212,11 +234,9 @@ class HarmonicBasis(ComputationBasis):
         fiducial_C_ell (legacy). The direct approach ensures consistency
         with the parent class's signal matrix computation.
         """
-        # Prefer S_fixed if provided (computed by Core using existing infrastructure)
         if self._S_fixed is not None:
             S_fixed = np.asarray(self._S_fixed, dtype=np.float64)
         elif self._fiducial_C_ell is not None:
-            # Legacy path: compute S_fixed from fiducial_C_ell
             S_fixed = self._compute_s_fixed_from_fiducial()
         else:
             raise ValueError(
@@ -224,23 +244,11 @@ class HarmonicBasis(ComputationBasis):
                 "switch optimization (lswitch_high < lmax)"
             )
 
-        # Preserve original N before overwriting; noise-bias precomputation
-        # in _compute_smw_components reads it once, then it can be released.
-        self._N_original = self._N
-
-        # Build N_eff = N + S_fixed straight into a preallocated F-order
-        # buffer to avoid the C-order intermediate that `_N + S_fixed`
-        # would otherwise produce (one extra n_pix^2 alloc at peak).
-        N_eff = np.empty_like(self._N, order="F")
-        np.add(self._N, S_fixed, out=N_eff)
-        self._N = N_eff
-        self.N_inv = matrix_inverse_symm(self._N)
-
-        # log|N_eff| for determinant calculations
-        _, self._log_det_N_eff = matrix_slogdet_symm(self._N)
-
-        # S_fixed has been absorbed into N_eff and is not read again; release.
-        self._S_fixed = None
+        # In-place — _compute_smw_components rebuilds T from S_fixed via the
+        # identity T = V_Ninv_VT − V_N_inv S_fixed V_N_inv^T, so we don't need
+        # an _N_original copy.
+        np.add(self._N, S_fixed, out=self._N)
+        self._S_fixed = S_fixed
 
     def _compute_s_fixed_from_fiducial(self) -> np.ndarray:
         """
@@ -251,13 +259,11 @@ class HarmonicBasis(ComputationBasis):
         """
         from ..pixel import compute_00_contribution
 
-        # Create C_ell array with zeros for varied multipoles, fiducial for fixed
         cl_fixed = np.zeros(self.lmax - 1, dtype=np.float64)
         for ell in range(self.lswitch_high + 1, self.lmax + 1):
             if ell - 2 < len(self._fiducial_C_ell):
                 cl_fixed[ell - 2] = self._fiducial_C_ell[ell - 2]
 
-        # Build point vectors from theta, phi (shape: n_pix x 3)
         point_vectors = np.column_stack(
             [
                 np.sin(self.theta) * np.cos(self.phi),
@@ -266,7 +272,6 @@ class HarmonicBasis(ComputationBasis):
             ]
         )
 
-        # Compute S_fixed using existing signal matrix infrastructure
         S_fixed = np.zeros((self.n_pix, self.n_pix), dtype=np.float64)
         legendre_buffer = np.empty(self.lmax, dtype=np.float64)
 
@@ -276,11 +281,11 @@ class HarmonicBasis(ComputationBasis):
             point_vectors,
             point_vectors,
             legendre_buffer,
-            mode=0,  # Symmetric matrix
+            mode=0,
             remove_dipole=False,
         )
 
-        # Make S_fixed symmetric (compute_00_contribution fills lower triangle)
+        # compute_00_contribution fills lower triangle only; symmetrise.
         S_fixed = S_fixed + S_fixed.T - np.diag(np.diag(S_fixed))
 
         return S_fixed
@@ -297,58 +302,34 @@ class HarmonicBasis(ComputationBasis):
         Note: V @ N @ V^T is computed lazily when needed (get_compressed_covariance)
         to avoid expensive O(n_pix³) inversion when only Fisher is needed.
         """
-        # V @ N^{-1}
-        self._V_N_inv = matrix_mult(self._V, self.N_inv)
+        self._V_N_inv = cholesky_solve(self._N_chol, self._V.T).T
 
-        # V @ N^{-1} @ V^T (SMW kernel)
+        # Symmetrise in place: M+M.T and 0.5*(...) each allocate a fresh
+        # n_modes² buffer (~88 GB transient at QU/nside=64/lmax=192).
         self._V_Ninv_VT = matrix_mult(self._V_N_inv, self._V.T)
-        self._V_Ninv_VT = 0.5 * (self._V_Ninv_VT + self._V_Ninv_VT.T)
+        symmetrize_inplace(self._V_Ninv_VT)
 
-        # V @ N @ V^T is computed lazily via the _V_N_VT cached_property
-        # (only consumed by get_compressed_covariance, never on the hot path).
-
-        # T = V N_eff^{-1} N_orig N_eff^{-1} V^T (n_modes x n_modes).
-        # Used by Spectra._compute_noise_cov_compressed: Cov(w|noise) =
-        # A T A^T with A = I - M K^{-1}. Without switch optimization
-        # N_eff = N_orig and T reduces to V_Ninv_VT (alias, no work).
-        N_original = getattr(self, "_N_original", None)
-        if N_original is not None:
-            T = matrix_mult(matrix_mult(self._V_N_inv, N_original), self._V_N_inv.T)
-            self._noise_cov_T = 0.5 * (T + T.T)
-            # _N_original consumed; release the n_pix x n_pix reference.
-            del self._N_original
+        # T = V N_eff^{-1} N_orig N_eff^{-1} V^T, consumed by
+        # Spectra._compute_noise_cov_compressed. With N_orig = N_eff − S_fixed
+        # the algebra reduces to T = V_Ninv_VT − V_N_inv S_fixed V_N_inv^T,
+        # avoiding an n_pix² N_orig copy. Without switch optimisation, T = V_Ninv_VT.
+        if self._S_fixed is not None:
+            corr = matrix_mult(matrix_mult(self._V_N_inv, self._S_fixed), self._V_N_inv.T)
+            T = self._V_Ninv_VT - corr
+            self._noise_cov_T = symmetrize_inplace(T)
+            self._S_fixed = None
         else:
             self._noise_cov_T = self._V_Ninv_VT
 
-        # log|N| = -log|N^{-1}|
-        _, logdet_N_inv = matrix_slogdet_symm(self.N_inv)
-        self._log_det_N = -logdet_N_inv
-
-        # Pre-allocate buffers for frequently called methods
-        self._allocate_buffers()
-
     @cached_property
     def _V_N_VT(self) -> np.ndarray:
-        """Lazily compute V @ N @ V^T; only get_compressed_covariance reads it."""
-        VNT = matrix_mult(matrix_mult(self._V, self._N), self._V.T)
-        return 0.5 * (VNT + VNT.T)
+        """Lazily compute V @ N @ V^T via the Cholesky factor.
 
-    def _allocate_buffers(self) -> None:
+        Uses N = L L^T so V N V^T = (V L)(V L)^T — cheaper than building
+        N from L and tolerant of in-place factor storage in commit 3.
         """
-        Pre-allocate reusable buffers for intermediate computations.
-
-        This reduces memory allocation overhead in frequently called methods
-        like get_projected_inverse and compute_fisher_matrix.
-        """
-        # For multi-field, use n_modes_total; for single-field, use n_modes
-        buffer_size = self.n_modes_total if self.n_components > 1 else self.n_modes
-
-        # Buffer for K matrix in SMW: (buffer_size, buffer_size)
-        self._K_buffer = np.empty((buffer_size, buffer_size), dtype=np.float64, order="F")
-        # Buffer for M @ kernel_inv @ M product: (buffer_size, buffer_size)
-        self._MKM_buffer = np.empty(
-            (buffer_size, buffer_size), dtype=np.float64, order="F"
-        )
+        VL = matrix_mult(self._V, self._L)
+        return matrix_mult(VL, VL.T)
 
     # =================================================================
     # SMW helpers
@@ -461,7 +442,7 @@ class HarmonicBasis(ComputationBasis):
             inner = lambda_matrix @ M
             inner[np.diag_indices_from(inner)] += 1.0
             VCVT = np.linalg.solve(inner.T, M.T).T
-            VCVT = 0.5 * (VCVT + VCVT.T)
+            symmetrize_inplace(VCVT)
             return np.asfortranarray(VCVT)
 
         if K is None:
@@ -832,7 +813,6 @@ class HarmonicBasis(ComputationBasis):
 
         if is_single:
             lambda_inv_diag = self._lambda_inv_diag_from_array(c_ell_arr)
-            add_diagonal(self._V_Ninv_VT, lambda_inv_diag, out=self._K_buffer)
             return self._smw_projected_inverse(
                 self._V_Ninv_VT, lambda_inv_diag=lambda_inv_diag
             )
@@ -976,7 +956,7 @@ class HarmonicBasis(ComputationBasis):
             K, _ = self._build_smw_kernel(c_ell_dict)
 
         L = cholesky_decomposition(K)
-        kernel_inv_y = cho_solve((L, True), y)
+        kernel_inv_y = cholesky_solve((L, True), y)
         return y - matrix_mult(self._V_Ninv_VT, kernel_inv_y)
 
     def compute_quadratic_form(self, data: np.ndarray, C_ell) -> float:
@@ -1001,7 +981,7 @@ class HarmonicBasis(ComputationBasis):
             return self.quadratic_form_from_prepared(data, K_chol)
         Lambda_diag = self._build_lambda_diagonal(c_ell_arr)
         return smw_quadratic_form(
-            data, self.N_inv, self._V_N_inv, self._V_Ninv_VT, Lambda_diag
+            data, self._N_chol, self._V_N_inv, self._V_Ninv_VT, Lambda_diag
         )
 
     def _build_smw_kernel(self, C_ell_dict: dict) -> tuple[np.ndarray, np.ndarray]:
@@ -1029,9 +1009,9 @@ class HarmonicBasis(ComputationBasis):
 
     def quadratic_form_from_prepared(self, data: np.ndarray, K_chol: np.ndarray) -> float:
         """Compute d^T C^{-1} d using precomputed K Cholesky factor."""
-        term1 = float(data.T @ self.N_inv @ data)
+        term1 = float(data.T @ cholesky_solve(self._N_chol, data))
         y = self._V_N_inv @ data
-        kernel_inv_y = cho_solve((K_chol, True), y)
+        kernel_inv_y = cholesky_solve((K_chol, True), y)
         term2 = float(y.T @ kernel_inv_y)
         return term1 - term2
 
