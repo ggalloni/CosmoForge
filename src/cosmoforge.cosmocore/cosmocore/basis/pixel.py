@@ -18,7 +18,13 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.linalg import eigh
 
-from ..basics import matrix_inverse_symm, matrix_mult, matrix_trace
+from ..basics import (
+    cholesky_solve,
+    matrix_inverse_symm,
+    matrix_mult,
+    matrix_trace,
+    symmetrize_inplace,
+)
 from .base import ComputationBasis, SMWPrepared
 
 if TYPE_CHECKING:
@@ -62,9 +68,9 @@ class PixelBasis(ComputationBasis):
     Parameters
     ----------
     N : numpy.ndarray
-        Noise covariance matrix of shape (n_pix, n_pix).
-    N_inv : numpy.ndarray
-        Precomputed noise inverse matrix of shape (n_pix, n_pix).
+        Noise covariance matrix of shape (n_pix, n_pix). The basis takes
+        ownership of this buffer; ``_factorise_noise()`` overwrites it
+        in place during setup (V-based mode only; pixel-direct keeps it).
     theta : numpy.ndarray
         Colatitude angles for active pixels in radians.
     phi : numpy.ndarray
@@ -97,8 +103,7 @@ class PixelBasis(ComputationBasis):
     >>> import numpy as np
     >>> from cosmocore.basis import PixelBasis
     >>> N = np.diag(noise_variance)  # Noise covariance matrix
-    >>> N_inv = np.diag(1.0 / noise_variance)
-    >>> ppc = PixelBasis(N, N_inv, theta, phi, lmax=100)
+    >>> ppc = PixelBasis(N, theta, phi, lmax=100)
     >>> ppc.setup()
     >>> # Inspect eigenvalue spectrum to choose threshold
     >>> fig, axes = ppc.plot_eigenvalue_spectrum(basis="noise_weighted")
@@ -115,7 +120,6 @@ class PixelBasis(ComputationBasis):
     def __init__(
         self,
         N: np.ndarray,
-        N_inv: np.ndarray,
         theta: np.ndarray,
         phi: np.ndarray,
         lmax: int,
@@ -133,7 +137,6 @@ class PixelBasis(ComputationBasis):
     ):
         super().__init__(
             N,
-            N_inv,
             theta,
             phi,
             lmax,
@@ -435,8 +438,10 @@ class PixelBasis(ComputationBasis):
         pix_start = self._pix_offsets[comp_idx]
         pix_end = self._pix_offsets[comp_idx + 1]
 
-        # Extract field noise blocks
-        N_field = self._N[pix_start:pix_end, pix_start:pix_end]
+        # Extract field noise blocks. Reads via _N_symmetric and N_inv so the
+        # method works whether called during setup (symmetric N still alive)
+        # or post-setup (lazy reconstruction via Cholesky factor).
+        N_field = self._N_symmetric[pix_start:pix_end, pix_start:pix_end]
         N_field_inv = self.N_inv[pix_start:pix_end, pix_start:pix_end]
 
         V_comp = self._V_blocks[comp_idx]
@@ -577,13 +582,35 @@ class PixelBasis(ComputationBasis):
                 basis=self._basis,
                 C_ell=self._C_ell_for_basis,
             )
+        # Precompute U^T N_raw U so _N_original can be released; the
+        # noise-bias path reads only the compressed form thereafter.
+        self._precompute_compressed_noise()
+        # Factor self._N in place. After this point the symmetric N buffer
+        # is gone; consumers go through cholesky_solve via _N_chol or the
+        # lazy _N_symmetric reconstruction (deferred compression-basis paths).
+        self._factorise_noise()
+
+    def _precompute_compressed_noise(self) -> None:
+        """Cache U^T N_orig U and release the n_pix x n_pix raw N reference.
+
+        Only possible when compression is active (``_eigenvectors`` is set)
+        and switch optimization captured a raw ``_N_original``. Otherwise
+        ``get_compressed_noise`` falls back to ``_N`` / ``_N_original``.
+        """
+        N_original = getattr(self, "_N_original", None)
+        if N_original is None or self._eigenvectors is None:
+            return
+        U = self._eigenvectors
+        UN_raw_U = U.T @ N_original @ U
+        self._compressed_noise_cache = symmetrize_inplace(UN_raw_U)
+        del self._N_original
 
     def _compute_effective_noise(self) -> None:
         """Absorb high-ℓ signal into N_eff (mirrors HarmonicBasis).
 
-        Replaces ``self._N`` and ``self.N_inv`` with N_eff = N + S_fixed and
-        its inverse. Saves the original N as ``self._N_original`` so
-        noise-bias computations can still access raw N.
+        Replaces ``self._N`` with ``N_eff = N + S_fixed``. The factorisation
+        happens later, in ``_factorise_noise`` at the end of setup, after
+        compression-basis selection has read symmetric N for U^T N U.
         """
         if self._S_fixed is None:
             raise ValueError(
@@ -592,15 +619,19 @@ class PixelBasis(ComputationBasis):
             )
         S_fixed = np.asarray(self._S_fixed, dtype=np.float64)
 
-        N_eff = self._N + S_fixed
-        N_eff_inv = matrix_inverse_symm(np.asfortranarray(N_eff))
-
-        # Preserve raw N for noise-bias computations
+        # Preserve raw N for noise-bias computations (still read lazily by
+        # get_compressed_noise, so we cannot release it here).
         self._N_original = self._N
 
-        # Replace N and N_inv with N_eff for compression / SMW operations
-        self._N = np.asfortranarray(N_eff)
-        self.N_inv = np.asfortranarray(N_eff_inv)
+        # Build N_eff = N + S_fixed straight into a preallocated F-order
+        # buffer to avoid the C-order intermediate that `_N + S_fixed`
+        # would otherwise produce (one extra n_pix^2 alloc at peak).
+        N_eff = np.empty_like(self._N, order="F")
+        np.add(self._N, S_fixed, out=N_eff)
+        self._N = N_eff
+
+        # S_fixed has been absorbed into N_eff and is not read again; release.
+        self._S_fixed = None
 
     def get_compressed_noise(self) -> np.ndarray:
         """U^T N_raw U — compressed *raw* noise covariance.
@@ -612,12 +643,15 @@ class PixelBasis(ComputationBasis):
         Without switch optimization, N_eff = N and this is identical to
         ``get_compressed_covariance(0)``.
         """
-        N_raw = getattr(self, "_N_original", self._N)
+        cached = getattr(self, "_compressed_noise_cache", None)
+        if cached is not None:
+            return cached
+        N_raw = getattr(self, "_N_original", self._N_symmetric)
         if self._eigenvectors is None:
             return N_raw
         U = self._eigenvectors
         UN_raw_U = U.T @ N_raw @ U
-        return 0.5 * (UN_raw_U + UN_raw_U.T)
+        return symmetrize_inplace(UN_raw_U)
 
     def _setup_direct(self) -> None:
         """Direct pixel-space setup. No V operator, no harmonic machinery.
@@ -925,8 +959,9 @@ class PixelBasis(ComputationBasis):
             # (n_modes, n_pix) * (n_modes, 1)
             V_scaled = self._V * Lambda_diag[:, np.newaxis]
             S = matrix_mult(self._V.T, V_scaled)
-            # Total covariance C = N + S
-            C = self._N + S
+            # Total covariance C = N + S (symmetric N via lazy reconstruction
+            # if the basis has been factorised in place).
+            C = self._N_symmetric + S
             # C^{-1}
             C_inv = matrix_inverse_symm(C, overwrite=True)
             # P_h C^{-1} P_h
@@ -1035,7 +1070,7 @@ class PixelBasis(ComputationBasis):
             pix_start = self._pix_offsets[comp_idx]
             pix_end = self._pix_offsets[comp_idx + 1]
 
-            N_field = self._N[pix_start:pix_end, pix_start:pix_end]
+            N_field = self._N_symmetric[pix_start:pix_end, pix_start:pix_end]
             N_field_inv = self.N_inv[pix_start:pix_end, pix_start:pix_end]
             V_comp = self._V_blocks[comp_idx]
 
@@ -1496,22 +1531,25 @@ class PixelBasis(ComputationBasis):
         """
         U = self._eigenvectors  # (n_pix, n_kept)
 
-        # U^T @ N @ U - compressed noise covariance (independent of C_ell)
-        self._U_N_U = U.T @ self._N @ U
+        # U^T @ N @ U - compressed noise covariance (independent of C_ell).
+        # Goes through _N_symmetric so a post-setup apply_compression call
+        # still works after _factorise_noise has overwritten self._N.
+        self._U_N_U = U.T @ self._N_symmetric @ U
 
         # V @ U - used for signal covariance transformation (independent of C_ell)
         # VU has shape (n_modes, n_kept)
         self._VU = self._V @ U
 
-        # Make U_N_U symmetric (numerical stability)
-        self._U_N_U = 0.5 * (self._U_N_U + self._U_N_U.T)
+        # Make U_N_U symmetric (numerical stability) — in place to avoid
+        # the n_kept² broadcast temporaries.
+        symmetrize_inplace(self._U_N_U)
 
         # SMW components for get_weighted_compressed_data
-        # V @ N^{-1} (n_modes, n_pix)
-        self._V_N_inv = matrix_mult(self._V, self.N_inv)
+        # V @ N^{-1} via Cholesky solve: (N^{-1} V^T)^T = cholesky_solve(N_chol, V^T)^T
+        self._V_N_inv = cholesky_solve(self._N_chol, self._V.T).T
         # V @ N^{-1} @ V^T (n_modes, n_modes) - the M matrix in SMW
         self._V_Ninv_VT = matrix_mult(self._V_N_inv, self._V.T)
-        self._V_Ninv_VT = 0.5 * (self._V_Ninv_VT + self._V_Ninv_VT.T)
+        symmetrize_inplace(self._V_Ninv_VT)
 
         # Precompute derivative diagonals (from base class)
         self._precompute_derivative_diagonals()
@@ -1532,10 +1570,6 @@ class PixelBasis(ComputationBasis):
         )
         # Buffer for U_S_U computation: (n_kept, n_kept)
         self._U_S_U_buffer = np.empty(
-            (self.n_kept, self.n_kept), dtype=np.float64, order="F"
-        )
-        # Buffer for compressed covariance: (n_kept, n_kept)
-        self._C_compressed_buffer = np.empty(
             (self.n_kept, self.n_kept), dtype=np.float64, order="F"
         )
 

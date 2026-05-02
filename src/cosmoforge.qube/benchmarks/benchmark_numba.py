@@ -86,12 +86,18 @@ def benchmark_signal_matrix():
 
     from cosmocore.pixel import compute_signal_matrix
 
+    # Match the production call site (qube/fisher.py:204): the kernel's
+    # internal `cl * legendre[1:]` only broadcasts if the legendre buffer
+    # length matches the cls length, which means `lmax` here must equal
+    # `lmax_signal` (typically 4*nside), not the analysis `lmax`.
+    lmax_signal = fisher.lmax_signal
+
     ntot = sum(fisher.collection.n_active)
     S = np.zeros((ntot, ntot), dtype=np.float64)
 
     # Warmup
     t0 = time.perf_counter()
-    compute_signal_matrix(S, lmax=lmax, fields=fisher.collection)
+    compute_signal_matrix(S, lmax=lmax_signal, fields=fisher.collection)
     t_warmup = time.perf_counter() - t0
 
     # Timed run
@@ -100,18 +106,19 @@ def benchmark_signal_matrix():
     for _ in range(n_repeats):
         S[:] = 0
         t0 = time.perf_counter()
-        compute_signal_matrix(S, lmax=lmax, fields=fisher.collection)
+        compute_signal_matrix(S, lmax=lmax_signal, fields=fisher.collection)
         times.append(time.perf_counter() - t0)
 
     return {
         "function": "compute_signal_matrix",
-        "description": f"S matrix ({ntot}x{ntot}), lmax={lmax}",
+        "description": f"S matrix ({ntot}x{ntot}), lmax_signal={lmax_signal}",
         "warmup": t_warmup,
         "mean": np.mean(times),
         "std": np.std(times),
         "n_repeats": n_repeats,
         "nside": nside,
         "lmax": lmax,
+        "lmax_signal": lmax_signal,
         "n_pix_active": ntot,
     }
 

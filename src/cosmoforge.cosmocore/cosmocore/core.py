@@ -609,15 +609,13 @@ class Core(ABC):
             lswitch_high = None
             S_fixed = None
 
-        # When SMW optimization defers N_eff inversion (the basis computes it
-        # lazily from N + S_fixed), N_inv is None upfront. Otherwise compute it.
-        need_n_inv = lswitch_high is None or lswitch_high >= basis_lmax
-        N_inv = matrix_inverse_symm(self.noise_cov1) if need_n_inv else None
-
+        # The basis takes ownership of the noise buffer end-to-end. After
+        # setup, we drop our reference so any post-setup read of
+        # self.noise_cov1 fails loudly (the basis has since overwritten the
+        # buffer with its in-place Cholesky factor).
         self.basis_manager = create_computation_basis(
             method=method,
             N=self.noise_cov1,
-            N_inv=N_inv,
             theta=theta_arr,
             phi=phi_arr,
             lmax=basis_lmax,
@@ -638,6 +636,12 @@ class Core(ABC):
 
         # Build harmonic operator and precompute SMW components
         self.basis_manager.setup()
+
+        # Pixel-direct mode never factorises self._N, so noise_cov1 is still
+        # the symmetric matrix and Core code can keep using it. Other modes
+        # have overwritten it in place; drop the reference as a tripwire.
+        if not getattr(self.basis_manager, "_use_direct", False):
+            self.noise_cov1 = None
 
         return self.basis_manager
 

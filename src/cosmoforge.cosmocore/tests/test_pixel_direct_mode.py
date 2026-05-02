@@ -78,10 +78,9 @@ def _build_direct_basis(core, lmax):
     """Construct a PixelBasis with use_direct=True from a configured Core."""
     spins = [field.spin for field in core.collection.fields]
     n_pix = core.noise_cov1.shape[0]
-    N_inv = np.diag(1.0 / np.diag(core.noise_cov1))
+    np.diag(1.0 / np.diag(core.noise_cov1))
     bm = PixelBasis(
         N=core.noise_cov1,
-        N_inv=N_inv,
         theta=core.theta,
         phi=core.phi,
         lmax=lmax,
@@ -116,13 +115,12 @@ def test_setup_direct_requires_fields():
     rng = np.random.default_rng(1)
     diag = rng.uniform(0.5, 1.5, size=n_pix)
     N = np.diag(diag)
-    N_inv = np.diag(1.0 / diag)
+    np.diag(1.0 / diag)
     theta = rng.uniform(0, np.pi, n_pix)
     phi = rng.uniform(0, 2 * np.pi, n_pix)
 
     bm = PixelBasis(
         N=N,
-        N_inv=N_inv,
         theta=theta,
         phi=phi,
         lmax=8,

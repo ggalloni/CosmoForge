@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 from numba import njit
-from scipy.linalg import lapack
+from scipy.linalg import cho_solve, lapack
 
 
 def matrix_mult(A, B):
@@ -97,6 +97,35 @@ def _copy_lower_to_upper(M):
     for i in range(n):
         for j in range(i):
             M[j, i] = M[i, j]
+    return M
+
+
+@njit
+def symmetrize_inplace(M):
+    """
+    Symmetrize ``M`` in place: ``M[i,j] = M[j,i] = (M[i,j] + M[j,i]) / 2``.
+
+    Equivalent to ``M = 0.5 * (M + M.T)`` but without the two ``n²`` temporary
+    allocations of the broadcast form. Important on the QML hot path where
+    M is the SMW kernel ``V N⁻¹ Vᵀ`` (n_modes × n_modes); at production scale
+    the temporaries can dominate the basis-setup memory peak.
+
+    Parameters
+    ----------
+    M : numpy.ndarray
+        2D square matrix.
+
+    Returns
+    -------
+    numpy.ndarray
+        The same array, now symmetric (lower and upper triangles agree).
+    """
+    n = M.shape[0]
+    for i in range(n):
+        for j in range(i + 1, n):
+            avg = 0.5 * (M[i, j] + M[j, i])
+            M[i, j] = avg
+            M[j, i] = avg
     return M
 
 
@@ -250,6 +279,74 @@ def cholesky_decomposition(M):
         raise ValueError(f"dpotrf failed with info={info}")
 
     return L
+
+
+def cholesky_factor(M, overwrite_a=False, clean=True):
+    """
+    Cholesky factor (L, lower=True) of a symmetric positive definite matrix.
+
+    Pairs with :func:`cholesky_solve`. With ``clean=True`` (default) the
+    upper triangle is zeroed so consumers that treat the factor as a dense
+    matrix (e.g., ``L @ L.T``) get correct results without reading garbage.
+
+    Parameters
+    ----------
+    M : numpy.ndarray
+        2D square symmetric positive definite matrix.
+    overwrite_a : bool, optional
+        If True, M is overwritten with the factor in place (no extra
+        n×n allocation). Default is False.
+    clean : bool, optional
+        If True, zero the upper triangle of the result. Default is True.
+
+    Returns
+    -------
+    tuple
+        ``(c, True)`` where c is the n×n array holding L in its lower
+        triangle. Suitable as the first argument to :func:`cholesky_solve`.
+
+    Raises
+    ------
+    numpy.linalg.LinAlgError
+        If M is not positive definite.
+    ValueError
+        If ``overwrite_a=True`` but M is not F-contiguous (LAPACK would
+        silently ignore overwrite_a and copy, defeating the in-place intent).
+    """
+    if overwrite_a and not M.flags.f_contiguous:
+        raise ValueError(
+            "cholesky_factor(overwrite_a=True) requires F-contiguous input; "
+            "got C-contiguous. Use np.asfortranarray(M) at the allocation "
+            "site or set overwrite_a=False."
+        )
+
+    L, info = lapack.dpotrf(M, lower=True, overwrite_a=overwrite_a, clean=clean)
+    if info != 0:
+        raise np.linalg.LinAlgError(
+            f"dpotrf failed: matrix is not positive definite (info={info})"
+        )
+    return (L, True)
+
+
+def cholesky_solve(c_and_lower, b, overwrite_b=False):
+    """
+    Solve A x = b given the Cholesky factor of A from :func:`cholesky_factor`.
+
+    Parameters
+    ----------
+    c_and_lower : tuple
+        ``(c, lower)`` tuple as returned by :func:`cholesky_factor`.
+    b : numpy.ndarray
+        Right-hand side, shape ``(n,)`` or ``(n, k)``.
+    overwrite_b : bool, optional
+        If True, b may be overwritten with the solution. Default is False.
+
+    Returns
+    -------
+    numpy.ndarray
+        Solution x with the same shape as b.
+    """
+    return cho_solve(c_and_lower, b, overwrite_b=overwrite_b)
 
 
 def matrix_slogdet_symm(M):

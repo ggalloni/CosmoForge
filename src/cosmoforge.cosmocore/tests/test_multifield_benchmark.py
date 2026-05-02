@@ -167,7 +167,6 @@ class TestTEBScalarBenchmark:
         # Setup compression
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=lmax,
@@ -225,7 +224,6 @@ class TestTEBScalarBenchmark:
 
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=lmax,
@@ -296,7 +294,6 @@ class TestTEBScalarBenchmark:
 
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=lmax,
@@ -360,7 +357,6 @@ class TestTEBScalarBenchmark:
 
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=lmax,

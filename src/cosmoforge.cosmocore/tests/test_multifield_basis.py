@@ -20,7 +20,6 @@ class TestMultiFieldCompressionInitialization:
         setup = two_scalar_field_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -42,7 +41,6 @@ class TestMultiFieldCompressionInitialization:
         setup = simple_compression_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],  # 1D array, not tuple
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -64,7 +62,6 @@ class TestMultiFieldVBlockStructure:
         setup = two_scalar_field_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -90,7 +87,6 @@ class TestMultiFieldVBlockStructure:
         setup = two_scalar_field_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -129,7 +125,6 @@ class TestMultiFieldCompressedOperations:
         setup = two_scalar_field_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -159,7 +154,6 @@ class TestMultiFieldCompressedOperations:
         setup = two_scalar_field_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -188,7 +182,6 @@ class TestMultiFieldFisher:
         setup = two_scalar_field_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -217,7 +210,6 @@ class TestMultiFieldFisher:
         setup = two_scalar_field_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -243,7 +235,6 @@ class TestMultiFieldFisher:
         setup = two_scalar_field_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -275,7 +266,6 @@ class TestMultiFieldManager:
         cm = create_computation_basis(
             method="harmonic",
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -301,7 +291,6 @@ class TestMultiFieldManager:
         cm = create_computation_basis(
             method="harmonic",
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -332,7 +321,6 @@ class TestMultiFieldIntegration:
         setup = three_scalar_field_realistic_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -366,7 +354,6 @@ class TestMultiFieldIntegration:
         setup = three_scalar_field_realistic_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -403,7 +390,6 @@ class TestMultiFieldIntegration:
         # Multi-field setup
         hc_multi = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -413,13 +399,12 @@ class TestMultiFieldIntegration:
         # Single-field setup using only field 1
         n_pix_1 = setup["n_pix_1"]
         N_single = setup["N"][:n_pix_1, :n_pix_1]
-        N_inv_single = setup["N_inv"][:n_pix_1, :n_pix_1]
+        setup["N_inv"][:n_pix_1, :n_pix_1]
         theta_single = setup["theta"][0]
         phi_single = setup["phi"][0]
 
         hc_single = HarmonicBasis(
             N=N_single,
-            N_inv=N_inv_single,
             theta=theta_single,
             phi=phi_single,
             lmax=setup["lmax"],
@@ -456,7 +441,6 @@ class TestMultiFieldIntegration:
         setup = three_scalar_field_realistic_setup
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -480,7 +464,6 @@ class TestMultiFieldIntegration:
         cm = create_computation_basis(
             method="harmonic",
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -520,7 +503,6 @@ class TestMultiFieldIntegration:
         # Setup compression
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=lmax,

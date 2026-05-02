@@ -8,6 +8,7 @@ for all computation basis methods used in CMB Fisher matrix computation.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from functools import cached_property
 from typing import NamedTuple
 
 import numpy as np
@@ -34,6 +35,10 @@ class SMWPrepared(NamedTuple):
 
 
 from ..basics import (
+    cholesky_decomposition,
+    cholesky_factor,
+    cholesky_solve,
+    matrix_inverse_symm,
     matrix_mult,
     matrix_slogdet_symm,
 )
@@ -54,8 +59,10 @@ class ComputationBasis(ABC):
 
     Parameters
     ----------
-    N_inv : numpy.ndarray
-        Precomputed noise inverse matrix of shape (n_pix_total, n_pix_total).
+    N : numpy.ndarray
+        Noise covariance matrix of shape (n_pix_total, n_pix_total). The
+        basis takes ownership of this buffer; the in-place Cholesky factor
+        overwrites it during setup.
     theta : numpy.ndarray or tuple of numpy.ndarray
         Colatitude angles for active pixels in radians. Single array for
         single-field, tuple of arrays for multi-field.
@@ -90,7 +97,6 @@ class ComputationBasis(ABC):
     def __init__(
         self,
         N: np.ndarray,
-        N_inv: np.ndarray | None,
         theta: np.ndarray | tuple[np.ndarray, ...],
         phi: np.ndarray | tuple[np.ndarray, ...],
         lmax: int,
@@ -107,11 +113,9 @@ class ComputationBasis(ABC):
         Parameters
         ----------
         N : numpy.ndarray
-            Noise covariance matrix (n_pix_total, n_pix_total).
-        N_inv : numpy.ndarray or None
-            Precomputed noise inverse matrix (n_pix_total, n_pix_total).
-            Can be None when switch optimization is enabled — the effective
-            noise inverse N_eff⁻¹ will be computed instead.
+            Noise covariance matrix (n_pix_total, n_pix_total). The basis
+            takes ownership; ``_factorise_noise()`` overwrites this buffer
+            in place during setup.
         theta : numpy.ndarray or tuple of numpy.ndarray
             Colatitude angles for active pixels in radians. Single array for
             single-field, tuple of arrays for multi-field (one per component).
@@ -142,9 +146,11 @@ class ComputationBasis(ABC):
             Shape should be (n_pix_total, n_pix_total).
         """
         self._N = np.asfortranarray(N, dtype=np.float64)
-        self.N_inv = (
-            np.asfortranarray(N_inv, dtype=np.float64) if N_inv is not None else None
-        )
+        # Pre-factor cache slot for the lazy N_inv property (populated on
+        # first read of self.N_inv before _factorise_noise runs, then
+        # released by _factorise_noise). The basis owns the noise buffer
+        # end-to-end; the constructor no longer accepts a precomputed inverse.
+        self._N_inv_dense = None
         self.lmax = lmax
 
         # Normalize theta/phi to tuple format for consistent handling
@@ -269,6 +275,120 @@ class ComputationBasis(ABC):
         Must be called after initialization before using any other methods.
         """
         pass
+
+    @cached_property
+    def _L(self) -> np.ndarray:
+        # Pre-_factorise_noise fallback. Load-bearing: PixelBasis
+        # _setup_compressed_arrays reads cholesky_solve(self._N_chol, V.T)
+        # to build _V_N_inv during apply_compression, which runs *before*
+        # _factorise_noise in _setup_v_based. Without this fallback, that
+        # access would AttributeError. _factorise_noise then writes the
+        # in-place factor into __dict__["_L"], which shadows this descriptor
+        # and orphans the separate buffer allocated here (~1× cov, GC'd at
+        # the next allocation). Net cost: one transient cov-sized buffer
+        # during apply_compression. Removing it requires reordering setup
+        # so the in-place factor exists before any consumer reads _N_chol.
+        return cholesky_decomposition(self._N)
+
+    @property
+    def _N_chol(self) -> tuple:
+        return (self._L, True)
+
+    @property
+    def _N_symmetric(self) -> np.ndarray:
+        # If self._N still exists, return it directly. Once _factorise_noise
+        # has overwritten and deleted it, reconstruct L @ L.T on demand
+        # (transient n_pix² allocation; only deferred consumers hit this).
+        N = getattr(self, "_N", None)
+        if N is not None:
+            return N
+        return self._L @ self._L.T
+
+    @property
+    def N_inv(self) -> np.ndarray | None:
+        # Caller-provided / pre-factor cached dense N_inv if available.
+        stored = getattr(self, "_N_inv_dense", None)
+        if stored is not None:
+            return stored
+        # Pre-factor: materialise from symmetric N once and cache, so
+        # apply_compression's repeated reads share one allocation. The
+        # cache is freed in _factorise_noise.
+        N = getattr(self, "_N", None)
+        if N is not None:
+            self._N_inv_dense = matrix_inverse_symm(N)
+            return self._N_inv_dense
+        # Post-factor: lazy materialise from L, do not cache (would re-add
+        # the 1× cov footprint we just eliminated). Reachable from the
+        # deferred compression-basis paths in pixel.py (compute_compression_matrix
+        # for "noise_weighted"/"snr"/per-field), and from the test-only
+        # HarmonicBasis.get_inverse via smw_inverse. Never on the QML hot
+        # path after the refactor.
+        L = self.__dict__.get("_L")
+        if L is None:
+            return None
+        return cholesky_solve((L, True), np.eye(L.shape[0]))
+
+    def _factorise_noise(self) -> None:
+        """In-place Cholesky factor of self._N.
+
+        Replaces self._N's buffer contents with the lower-triangular factor
+        L (upper triangle becomes garbage; no consumer reads it because all
+        access goes through cholesky_solve or the _N_symmetric reconstruction).
+        After this method, ``self._L`` is the in-place factor, ``self._N_chol``
+        is the (L, True) tuple, ``self._log_det_N`` is set, and the original
+        symmetric-N attribute ``self._N`` is removed so any stale read
+        raises AttributeError. Calling twice is a programming error.
+        """
+        if not hasattr(self, "_N"):
+            raise RuntimeError(
+                "_factorise_noise called twice (or after self._N was removed). "
+                "The basis is meant to factorise once during setup."
+            )
+
+        # Scan off-diagonal noise blocks for cross-field coupling while N is
+        # still symmetric. The result is C_ell-independent and consumed by
+        # _detect_field_blocks; computing it here avoids a later
+        # _N_symmetric reconstruction (n_pix² transient buffer).
+        self._noise_block_adjacency = self._compute_noise_block_adjacency()
+
+        L_buf = self._N
+        L, lower = cholesky_factor(L_buf, overwrite_a=True)
+        # Bind into __dict__ to shadow the cached_property fallback. If the
+        # fallback ran earlier (e.g., during apply_compression), its separate
+        # buffer is orphaned here and GC'd at the next allocation.
+        self.__dict__["_L"] = L
+        self._log_det_N = 2.0 * float(np.sum(np.log(np.diag(L))))
+        # Free the caller-provided dense inverse if any: the factor replaces it.
+        self._N_inv_dense = None
+        del self._N
+
+    def _compute_noise_block_adjacency(self) -> set[tuple[int, int]]:
+        """Return ``{(ci, cj)}`` pairs (ci<cj) with non-zero off-diagonal noise.
+
+        Scans ``self._N`` once while symmetric. Empty for single-field bases.
+        Uses a relative threshold scaled by the diagonal magnitude so that
+        float32-loaded noise covariances do not flip the decision on
+        spuriously tiny pivot fill.
+        """
+        pairs: set[tuple[int, int]] = set()
+        if self.n_components <= 1:
+            return pairs
+        N_sym = self._N_symmetric
+        diag_max = float(np.max(np.abs(np.diag(N_sym)))) if N_sym.size else 0.0
+        # Floor the absolute threshold for the (unphysical) all-zero diagonal
+        # case; otherwise scale by the dominant noise magnitude.
+        rel_tol = 1e-12
+        threshold = max(diag_max * rel_tol, _LAMBDA_ZERO_THRESHOLD)
+        for ci in range(self.n_components):
+            for cj in range(ci + 1, self.n_components):
+                ri = self._pix_offsets[ci]
+                re = self._pix_offsets[ci + 1]
+                cj_start = self._pix_offsets[cj]
+                cj_end = self._pix_offsets[cj + 1]
+                N_block = N_sym[ri:re, cj_start:cj_end]
+                if np.any(np.abs(N_block) > threshold):
+                    pairs.add((ci, cj))
+        return pairs
 
     def _build_basis(self) -> None:
         """Build harmonic operator V, mode mappings, and derivative diagonals."""
@@ -473,18 +593,14 @@ class ComputationBasis(ABC):
                 adj[ci].add(cj)
                 adj[cj].add(ci)
 
-        for ci in range(self.n_components):
-            for cj in range(ci + 1, self.n_components):
-                if cj in adj[ci]:
-                    continue
-                ri = self._pix_offsets[ci]
-                re = self._pix_offsets[ci + 1]
-                ci_start = self._pix_offsets[cj]
-                ci_end = self._pix_offsets[cj + 1]
-                N_block = self._N[ri:re, ci_start:ci_end]
-                if np.any(np.abs(N_block) > _LAMBDA_ZERO_THRESHOLD):
-                    adj[ci].add(cj)
-                    adj[cj].add(ci)
+        # Merge noise off-diagonal coupling (precomputed by _factorise_noise
+        # while N was symmetric; falls back to an on-demand scan if absent).
+        noise_pairs = getattr(self, "_noise_block_adjacency", None)
+        if noise_pairs is None:
+            noise_pairs = self._compute_noise_block_adjacency()
+        for ci, cj in noise_pairs:
+            adj[ci].add(cj)
+            adj[cj].add(ci)
 
         visited: set[int] = set()
         groups: list[list[int]] = []
@@ -615,6 +731,10 @@ class ComputationBasis(ABC):
     def _precompute_derivative_diagonals(self) -> None:
         """Precompute derivative diagonals. Delegates to HarmonicBasis."""
         self._harmonic_basis._precompute_derivative_diagonals()
+
+    def release_pixel_projector(self) -> None:
+        """No-op default. HarmonicBasis overrides to drop V post-SMW build."""
+        return None
 
     def compress_data(self, data: np.ndarray) -> np.ndarray:
         """

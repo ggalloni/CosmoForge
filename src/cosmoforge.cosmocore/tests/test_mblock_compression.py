@@ -89,7 +89,6 @@ class TestMblockVNinvVT:
 
         hc_full = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -98,7 +97,6 @@ class TestMblockVNinvVT:
 
         hc_comp = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -135,7 +133,6 @@ class TestMblockFisherSymmetricMask:
 
         hc_full = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -145,7 +142,6 @@ class TestMblockFisherSymmetricMask:
 
         hc_comp = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -185,7 +181,6 @@ class TestMblockFisherConvergence:
 
         hc_full = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -198,7 +193,6 @@ class TestMblockFisherConvergence:
         for dm in delta_ms:
             hc = HarmonicBasis(
                 N=setup["N"],
-                N_inv=setup["N_inv"],
                 theta=setup["theta"],
                 phi=setup["phi"],
                 lmax=setup["lmax"],
@@ -236,7 +230,6 @@ class TestMblockCompressFalseUnchanged:
 
         hc_default = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -245,7 +238,6 @@ class TestMblockCompressFalseUnchanged:
 
         hc_explicit = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -290,12 +282,12 @@ class TestMblockKInversionSpeedup:
 
             noise_variance = np.ones(n_pix) * 0.1
             N = np.diag(noise_variance)
-            N_inv = np.diag(1.0 / noise_variance)
+            np.diag(1.0 / noise_variance)
 
             C_ell = 1e-3 / (np.arange(2, lmax + 1) ** 2)
 
             # Full
-            hc_full = HarmonicBasis(N=N, N_inv=N_inv, theta=theta, phi=phi, lmax=lmax)
+            hc_full = HarmonicBasis(N=N, theta=theta, phi=phi, lmax=lmax)
             hc_full.setup()
 
             t0 = time.time()
@@ -305,7 +297,6 @@ class TestMblockKInversionSpeedup:
             # Compressed
             hc_comp = HarmonicBasis(
                 N=N,
-                N_inv=N_inv,
                 theta=theta,
                 phi=phi,
                 lmax=lmax,
@@ -339,7 +330,6 @@ class TestMblockMultifieldRejection:
         with pytest.raises(NotImplementedError, match="single-field"):
             HarmonicBasis(
                 N=setup["N"],
-                N_inv=setup["N_inv"],
                 theta=setup["theta"],
                 phi=setup["phi"],
                 lmax=setup["lmax"],
@@ -359,7 +349,6 @@ class TestMblockFactoryIntegration:
         hc = create_computation_basis(
             method="harmonic",
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -377,7 +366,6 @@ class TestMblockFactoryIntegration:
         hc = create_computation_basis(
             method="harmonic",
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -397,7 +385,6 @@ class TestMblockFisherProperties:
 
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],
@@ -418,7 +405,6 @@ class TestMblockFisherProperties:
 
         hc = HarmonicBasis(
             N=setup["N"],
-            N_inv=setup["N_inv"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax=setup["lmax"],

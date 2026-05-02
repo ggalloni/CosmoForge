@@ -26,9 +26,9 @@ class TestSpin2HarmonicOperator:
 
         # Noise for 2*n_pix (Q and U)
         N = np.eye(2 * n_pix) * 0.01
-        N_inv = np.eye(2 * n_pix) * 100.0
+        np.eye(2 * n_pix) * 100.0
 
-        hc = HarmonicBasis(N, N_inv, theta, phi, lmax, spins=[2])
+        hc = HarmonicBasis(N, theta, phi, lmax, spins=[2])
         hc.setup()
 
         n_modes_base = (lmax + 1) ** 2 - 4
@@ -50,9 +50,9 @@ class TestSpin2HarmonicOperator:
         lmax = 5
 
         N = np.eye(2 * n_pix) * 0.01
-        N_inv = np.eye(2 * n_pix) * 100.0
+        np.eye(2 * n_pix) * 100.0
 
-        hc = HarmonicBasis(N, N_inv, theta, phi, lmax, spins=[2])
+        hc = HarmonicBasis(N, theta, phi, lmax, spins=[2])
         hc.setup()
 
         # Both E and B blocks should have non-zero entries
@@ -74,9 +74,9 @@ class TestSpin2HarmonicOperator:
         lmax = 5
 
         N = np.eye(2 * n_pix) * 0.01
-        N_inv = np.eye(2 * n_pix) * 100.0
+        np.eye(2 * n_pix) * 100.0
 
-        hc = HarmonicBasis(N, N_inv, theta, phi, lmax, spins=[2])
+        hc = HarmonicBasis(N, theta, phi, lmax, spins=[2])
 
         n_modes_base = (lmax + 1) ** 2 - 4
 
@@ -97,13 +97,13 @@ class TestSpin2HarmonicOperator:
         lmax = 4
 
         N = np.eye(n_pix) * 0.01
-        N_inv = np.eye(n_pix) * 100.0
+        np.eye(n_pix) * 100.0
 
         with pytest.raises(ValueError, match="Spin must be 0"):
-            HarmonicBasis(N, N_inv, theta, phi, lmax, spins=[1])
+            HarmonicBasis(N, theta, phi, lmax, spins=[1])
 
         with pytest.raises(ValueError, match="spins list length"):
-            HarmonicBasis(N, N_inv, theta, phi, lmax, spins=[0, 2])
+            HarmonicBasis(N, theta, phi, lmax, spins=[0, 2])
 
 
 class TestSpin2Lambda:
@@ -120,9 +120,9 @@ class TestSpin2Lambda:
         lmax = 5
 
         N = np.eye(2 * n_pix) * 0.01
-        N_inv = np.eye(2 * n_pix) * 100.0
+        np.eye(2 * n_pix) * 100.0
 
-        hc = HarmonicBasis(N, N_inv, theta, phi, lmax, spins=[2])
+        hc = HarmonicBasis(N, theta, phi, lmax, spins=[2])
 
         n_modes_base = (lmax + 1) ** 2 - 4
         C_ell = np.ones(lmax - 1) * 1e-3
@@ -142,9 +142,9 @@ class TestSpin2Lambda:
         lmax = 4
 
         N = np.eye(2 * n_pix) * 0.01
-        N_inv = np.eye(2 * n_pix) * 100.0
+        np.eye(2 * n_pix) * 100.0
 
-        hc = HarmonicBasis(N, N_inv, theta, phi, lmax, spins=[2])
+        hc = HarmonicBasis(N, theta, phi, lmax, spins=[2])
 
         n = hc._n_modes_base
         C_EE = np.ones(lmax - 1) * 2.0
@@ -180,11 +180,9 @@ class TestSpin2Lambda:
         # Total pixels: n_pix_t + 2*n_pix_p
         total_pix = n_pix_t + 2 * n_pix_p
         N = np.eye(total_pix) * 0.01
-        N_inv = np.eye(total_pix) * 100.0
+        np.eye(total_pix) * 100.0
 
-        hc = HarmonicBasis(
-            N, N_inv, (theta_t, theta_p), (phi_t, phi_p), lmax, spins=[0, 2]
-        )
+        hc = HarmonicBasis(N, (theta_t, theta_p), (phi_t, phi_p), lmax, spins=[0, 2])
         hc.setup()
 
         n_base = hc._n_modes_base
@@ -235,11 +233,9 @@ class TestSpin2Derivatives:
 
         total_pix = n_pix_t + 2 * n_pix_p
         N = np.eye(total_pix) * 0.01
-        N_inv = np.eye(total_pix) * 100.0
+        np.eye(total_pix) * 100.0
 
-        hc = HarmonicBasis(
-            N, N_inv, (theta_t, theta_p), (phi_t, phi_p), lmax, spins=[0, 2]
-        )
+        hc = HarmonicBasis(N, (theta_t, theta_p), (phi_t, phi_p), lmax, spins=[0, 2])
         hc.setup()
 
         n_base = hc._n_modes_base
@@ -284,11 +280,9 @@ class TestSpin2Derivatives:
 
         total_pix = n_pix_t + 2 * n_pix_p
         N = np.eye(total_pix) * 0.01
-        N_inv = np.eye(total_pix) * 100.0
+        np.eye(total_pix) * 100.0
 
-        hc = HarmonicBasis(
-            N, N_inv, (theta_t, theta_p), (phi_t, phi_p), lmax, spins=[0, 2]
-        )
+        hc = HarmonicBasis(N, (theta_t, theta_p), (phi_t, phi_p), lmax, spins=[0, 2])
         hc.setup()
 
         n_base = hc._n_modes_base
@@ -323,11 +317,9 @@ class TestSpin2Fisher:
 
         total_pix = n_pix_t + 2 * n_pix_p
         N = np.eye(total_pix) * 0.01
-        N_inv = np.eye(total_pix) * 100.0
+        np.eye(total_pix) * 100.0
 
-        hc = HarmonicBasis(
-            N, N_inv, (theta_t, theta_p), (phi_t, phi_p), lmax, spins=[0, 2]
-        )
+        hc = HarmonicBasis(N, (theta_t, theta_p), (phi_t, phi_p), lmax, spins=[0, 2])
         hc.setup()
 
         C_ell_dict = {
@@ -369,11 +361,9 @@ class TestSpin2Fisher:
 
         total_pix = n_pix_t + 2 * n_pix_p
         N = np.eye(total_pix) * 0.01
-        N_inv = np.eye(total_pix) * 100.0
+        np.eye(total_pix) * 100.0
 
-        hc = HarmonicBasis(
-            N, N_inv, (theta_t, theta_p), (phi_t, phi_p), lmax, spins=[0, 2]
-        )
+        hc = HarmonicBasis(N, (theta_t, theta_p), (phi_t, phi_p), lmax, spins=[0, 2])
         hc.setup()
 
         C_ell_dict = {
@@ -403,9 +393,9 @@ class TestSpin2Fisher:
         lmax = 5
 
         N = np.eye(2 * n_pix) * 0.01
-        N_inv = np.eye(2 * n_pix) * 100.0
+        np.eye(2 * n_pix) * 100.0
 
-        hc = HarmonicBasis(N, N_inv, theta, phi, lmax, spins=[2])
+        hc = HarmonicBasis(N, theta, phi, lmax, spins=[2])
         hc.setup()
 
         C_ell_dict = {
@@ -498,9 +488,9 @@ class TestSpin2Benchmark:
         # Noise for Q, U pixels
         noise_level = 1e-2
         N = np.eye(2 * n_pix) * noise_level
-        N_inv = np.eye(2 * n_pix) / noise_level
+        np.eye(2 * n_pix) / noise_level
 
-        hc = HarmonicBasis(N, N_inv, theta, phi, lmax, spins=[2])
+        hc = HarmonicBasis(N, theta, phi, lmax, spins=[2])
         hc.setup()
 
         n_modes_total = hc.n_modes_total
@@ -598,11 +588,9 @@ class TestSpin2Benchmark:
         N = np.eye(total_pix)
         N[:n_pix_t, :n_pix_t] *= 1e-3
         N[n_pix_t:, n_pix_t:] *= 5e-3
-        N_inv = np.linalg.inv(N)
+        np.linalg.inv(N)
 
-        hc = HarmonicBasis(
-            N, N_inv, (theta_t, theta_p), (phi_t, phi_p), lmax, spins=[0, 2]
-        )
+        hc = HarmonicBasis(N, (theta_t, theta_p), (phi_t, phi_p), lmax, spins=[0, 2])
         hc.setup()
 
         n_modes_total = hc.n_modes_total
@@ -694,11 +682,10 @@ class TestPixelProjectedSpin2:
         lmax = 5
 
         N = np.eye(2 * n_pix) * 0.01
-        N_inv = np.eye(2 * n_pix) * 100.0
+        np.eye(2 * n_pix) * 100.0
 
         ppc = PixelBasis(
             N,
-            N_inv,
             theta,
             phi,
             lmax,
@@ -724,11 +711,10 @@ class TestPixelProjectedSpin2:
         lmax = 5
 
         N = np.eye(2 * n_pix) * 0.01
-        N_inv = np.eye(2 * n_pix) * 100.0
+        np.eye(2 * n_pix) * 100.0
 
         ppc = PixelBasis(
             N,
-            N_inv,
             theta,
             phi,
             lmax,
@@ -758,11 +744,10 @@ class TestPixelProjectedSpin2:
         lmax = 5
 
         N = np.eye(2 * n_pix) * 0.01
-        N_inv = np.eye(2 * n_pix) * 100.0
+        np.eye(2 * n_pix) * 100.0
 
         ppc = PixelBasis(
             N,
-            N_inv,
             theta,
             phi,
             lmax,
@@ -801,11 +786,10 @@ class TestPixelProjectedSpin2:
 
         total_pix = n_pix_t + 2 * n_pix_p
         N = np.eye(total_pix) * 0.01
-        N_inv = np.eye(total_pix) * 100.0
+        np.eye(total_pix) * 100.0
 
         ppc = PixelBasis(
             N,
-            N_inv,
             (theta_t, theta_p),
             (phi_t, phi_p),
             lmax,
@@ -847,11 +831,10 @@ class TestPixelProjectedSpin2:
         lmax = 5
 
         N = np.eye(2 * n_pix) * 0.01
-        N_inv = np.eye(2 * n_pix) * 100.0
+        np.eye(2 * n_pix) * 100.0
 
         ppc = PixelBasis(
             N,
-            N_inv,
             theta,
             phi,
             lmax,
@@ -880,12 +863,11 @@ class TestPixelProjectedSpin2:
         lmax = 5
 
         N = np.eye(2 * n_pix) * 0.01
-        N_inv = np.eye(2 * n_pix) * 100.0
+        np.eye(2 * n_pix) * 100.0
 
         cm = create_computation_basis(
             method="pixel",
             N=N,
-            N_inv=N_inv,
             theta=theta,
             phi=phi,
             lmax=lmax,
@@ -1041,12 +1023,11 @@ class TestPixelProjectedSpin2Benchmark:
 
         noise_level = 1e-2
         N = np.eye(2 * n_pix) * noise_level
-        N_inv = np.eye(2 * n_pix) / noise_level
+        np.eye(2 * n_pix) / noise_level
 
         # Keep all modes (no truncation) for most accurate comparison
         ppc = PixelBasis(
             N,
-            N_inv,
             theta,
             phi,
             lmax,
@@ -1133,11 +1114,10 @@ class TestPixelProjectedSpin2Benchmark:
         N = np.eye(total_pix)
         N[:n_pix_t, :n_pix_t] *= 1e-3
         N[n_pix_t:, n_pix_t:] *= 5e-3
-        N_inv = np.linalg.inv(N)
+        np.linalg.inv(N)
 
         ppc = PixelBasis(
             N,
-            N_inv,
             (theta_t, theta_p),
             (phi_t, phi_p),
             lmax,

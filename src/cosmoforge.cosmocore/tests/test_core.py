@@ -693,24 +693,34 @@ def test_uncompressed_covariance_api():
 
 
 def test_setup_computation_basis_basic(uniform_sky_setup):
-    """Test setup_computation_basis creates a basis manager."""
+    """Test setup_computation_basis creates a basis manager.
+
+    The basis takes ownership of noise_cov1 (in-place Cholesky factor),
+    so each basis method needs a fresh Core instance with its own copy.
+    """
     setup = uniform_sky_setup
-    core = CoreWithSignal(
-        {"nside": 16, "lmax": setup["lmax"], "spins": [0], "labels": ["T"]}
-    )
-    core.noise_cov1 = setup["N"]
-    core.theta = (setup["theta"],)
-    core.phi = (setup["phi"],)
 
     # Harmonic compression
-    cm = core.setup_computation_basis(
+    core_h = CoreWithSignal(
+        {"nside": 16, "lmax": setup["lmax"], "spins": [0], "labels": ["T"]}
+    )
+    core_h.noise_cov1 = setup["N"].copy()
+    core_h.theta = (setup["theta"],)
+    core_h.phi = (setup["phi"],)
+    cm = core_h.setup_computation_basis(
         method="harmonic", lmax=setup["lmax"], use_smw_optimization=False
     )
     assert cm is not None
-    assert core.basis_manager is cm
+    assert core_h.basis_manager is cm
 
-    # Pixel-projected compression
-    cm2 = core.setup_computation_basis(
+    # Pixel-projected compression (fresh core: noise buffer was consumed above)
+    core_p = CoreWithSignal(
+        {"nside": 16, "lmax": setup["lmax"], "spins": [0], "labels": ["T"]}
+    )
+    core_p.noise_cov1 = setup["N"].copy()
+    core_p.theta = (setup["theta"],)
+    core_p.phi = (setup["phi"],)
+    cm2 = core_p.setup_computation_basis(
         method="pixel",
         lmax=setup["lmax"],
         use_smw_optimization=False,
