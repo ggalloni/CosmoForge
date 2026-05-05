@@ -411,6 +411,7 @@ class Core(ABC):
         use_smw_optimization: bool = True,
         compress: bool = False,
         delta_m: int = 0,
+        use_direct: bool = False,
     ):
         """
         Create and configure a computation basis for SMW-based operations.
@@ -452,6 +453,13 @@ class Core(ABC):
         use_smw_optimization : bool, default True
             For harmonic basis, whether to absorb high-ℓ signal (ℓ > params.lmax)
             into effective noise. Reduces computation while preserving accuracy.
+        use_direct : bool, default False
+            For ``method="pixel"`` only: bypass the V-projection / eigenvalue
+            truncation and run the direct pixel-space pipeline (no harmonic
+            machinery, full $n_\\mathrm{pix}$-dimensional matrices). This is
+            the same internal path that ``method="auto"`` selects when the
+            cost model picks pixel-direct, exposed here for explicit user
+            control. Ignored for ``method="harmonic"``.
 
         Returns
         -------
@@ -602,8 +610,11 @@ class Core(ABC):
 
         # Pixel-direct mode operates on full pixel-space matrices and doesn't
         # need lswitch / S_fixed (the high-ℓ signal is naturally included via
-        # the pixel-space S construction).
-        is_pixel_direct = method == "auto" and resolved_method == "pixel"
+        # the pixel-space S construction). Triggered when auto picks pixel-direct
+        # OR when the user explicitly requests method="pixel" with use_direct=True.
+        is_pixel_direct = (method == "auto" and resolved_method == "pixel") or (
+            method == "pixel" and use_direct
+        )
         if is_pixel_direct:
             lswitch_low = None
             lswitch_high = None
@@ -632,6 +643,7 @@ class Core(ABC):
             delta_m=delta_m,
             fields=getattr(self, "collection", None),
             n_bins=n_bins,
+            use_direct=use_direct,
         )
 
         # Build harmonic operator and precompute SMW components

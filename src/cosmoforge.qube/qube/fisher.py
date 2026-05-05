@@ -607,6 +607,7 @@ class Fisher(Core, MPISharedMemoryMixin):
                     "mode_fraction",
                     "basis",
                     "C_ell",
+                    "use_direct",
                 )
                 kwargs = {
                     k: self._basis_config[k]

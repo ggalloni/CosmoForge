@@ -1,23 +1,38 @@
 """
-Benchmark: Harmonic vs pixel basis at small fsky.
+Benchmark: Harmonic vs pixel-direct basis at small fsky.
 
-The pixel basis becomes competitive when n_kept < n_modes. At fixed
-nside, n_pix shrinks with the mask while n_modes ~ lmax^2 grows. The
-crossover therefore sits at small fsky and increasing lmax — the regime
-this benchmark targets.
+The pixel-direct path becomes competitive when n_pix^3 (with the per-bin
+prefactor) drops below n_modes^3. At fixed nside, n_pix shrinks with
+the mask while n_modes ~ lmax^2 grows, so the crossover sits at small
+fsky and increasing lmax — the regime this benchmark targets.
 
 Geometry: polar cap centred on the north pole, fsky ~ 0.1.
 Sweep: lmax in {8, 16, 24, 32, 48}, T-only and QU.
 Methods:
-  - harmonic: V-based, full SMW pipeline
-  - pixel:    V-based eigenvalue truncation (default epsilon=1e-6, noise_weighted)
-  - auto:     factory picks harmonic when n_pix > n_modes, otherwise
-              pixel in direct mode (no V, full pixel-space ops)
+  - harmonic:     V-based, full SMW pipeline
+  - pixel_direct: pixel basis in direct mode (use_direct=True, no V,
+                  full pixel-space ops)
+  - auto:         factory picks harmonic vs pixel-direct via the cost
+                  model (n_modes^3 vs (n_bins+1)*n_pix^3)
 
-Usage: mpirun -n 1 uv run python -u benchmark_pixel_vs_harmonic.py
+Each (field, lmax, method) triple runs in a fresh Python subprocess so
+every measurement pays a full Numba JIT warmup. This eliminates the
+within-process JIT-cache bias that would otherwise systematically favour
+methods invoked later in a single-process run.
+
+Usage:
+    mpirun -n 1 uv run python -u benchmark_pixel_vs_harmonic.py
+        # driver: spawns one subprocess per config, accumulates JSON
+    uv run python benchmark_pixel_vs_harmonic.py \\
+        --field T --lmax 8 --method harmonic
+        # worker: runs a single config, prints one-line JSON to stdout
 """
 
+import argparse
+import json
 import os
+import subprocess
+import sys
 import tempfile
 import time
 
@@ -165,16 +180,16 @@ def write_temp_config(
 
 
 def _compression_dict(method):
-    """Build the compression config for a method.
+    """Build the basis-construction config for a method label.
 
-    Pixel V-based path uses an extremely small epsilon so the eigenvalue
-    truncation is effectively disabled — we want to measure pure pixel-basis
-    cost, not compression. Harmonic and auto don't use epsilon.
+    The benchmark labels are ``harmonic``, ``pixel_direct``, ``auto``.
+    The label ``pixel_direct`` maps to ``method='pixel'`` plus
+    ``use_direct=True`` so the basis runs the no-V direct pixel-space
+    path that the auto selector picks at high lmax.
     """
-    cfg = {"method": method}
-    if method == "pixel":
-        cfg["epsilon"] = 1e-30
-    return cfg
+    if method == "pixel_direct":
+        return {"method": "pixel", "use_direct": True}
+    return {"method": method}
 
 
 def benchmark_fisher(config_file, method, bins=None):
@@ -222,89 +237,148 @@ FIELDS = [
     ("QU", [2], ["E", "B"], ["Q", "U"]),
 ]
 
-METHODS = ["harmonic", "pixel", "auto"]
+METHODS = ["harmonic", "pixel_direct", "auto"]
 
 
-def main():
+def _field_spec(field_label):
+    """Resolve a CLI ``--field`` label to (spins, labels, physical_labels)."""
+    for label, spins, labels, physical in FIELDS:
+        if label == field_label:
+            return spins, labels, physical
+    raise SystemExit(
+        f"unknown field label {field_label!r}; choose from {[f[0] for f in FIELDS]}"
+    )
+
+
+def run_one_config(field_label, lmax, method):
+    """Run a single (field, lmax, method) configuration and return its timings.
+
+    Each call regenerates inputs locally; intended to be invoked from a
+    fresh Python subprocess so every JIT-compiled kernel pays its full
+    warmup cost. Sharing inputs across methods inside one process would
+    cache the JIT compilations and bias the second/third method.
+    """
+    spins, labels, physical_labels = _field_spec(field_label)
+    cov, mask, sim_maps, fwhmarcmin = generate_test_inputs(
+        NSIDE, lmax, spins, physical_labels, lmax_sim=4 * NSIDE, fsky=FSKY
+    )
+    delta_ell_used = min(DELTA_ELL, max(2, (lmax - 1) // 2))
+    with tempfile.TemporaryDirectory(
+        dir="sims", prefix=f"bench_{field_label}_lmax{lmax}_{method}_"
+    ) as tmpdir:
+        config_file = write_temp_config(
+            tmpdir,
+            NSIDE,
+            lmax,
+            spins,
+            labels,
+            physical_labels,
+            cov,
+            mask,
+            sim_maps,
+            fwhmarcmin=fwhmarcmin,
+        )
+        bins = Bins.fromdeltal(2, lmax, delta_ell_used)
+        timings, fisher = benchmark_fisher(config_file, method, bins=bins)
+        timings.update(
+            nside=NSIDE,
+            fsky=FSKY,
+            lmax=lmax,
+            method=method,
+            spins=spins,
+            field_label=field_label,
+            delta_ell=DELTA_ELL,
+        )
+        try:
+            qml_timings = benchmark_spectra(config_file, fisher, method, bins=bins)
+            timings.update(qml_timings)
+        except Exception as qml_err:
+            timings["qml_total"] = None
+            timings["qml_error"] = str(qml_err)
+    return timings
+
+
+def _run_worker(field_label, lmax, method):
+    """Worker entry point: emit one JSON document on stdout."""
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        result = run_one_config(field_label, lmax, method)
+    except Exception as e:
+        result = {"error": str(e)}
+    sys.stdout.write(json.dumps(result) + "\n")
+    sys.stdout.flush()
 
+
+def _drive_subprocesses():
+    """Driver entry point: spawn one cold subprocess per config, accumulate."""
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
     results = {}
-    lmax_sim = 4 * NSIDE
-
-    for field_label, spins, labels, physical_labels in FIELDS:
+    script = os.path.abspath(__file__)
+    for field_label, _spins, _labels, _physical in FIELDS:
         for lmax in LMAX_VALUES:
-            print(f"\n{'=' * 60}")
-            print(
-                f"{field_label} lmax={lmax} (nside={NSIDE}, fsky={FSKY}, "
-                f"{physical_labels})"
-            )
-            print(f"{'=' * 60}")
-
-            cov, mask, sim_maps, fwhmarcmin = generate_test_inputs(
-                NSIDE,
-                lmax,
-                spins,
-                physical_labels,
-                lmax_sim=lmax_sim,
-                fsky=FSKY,
-            )
-
+            header = f"{field_label} lmax={lmax} (nside={NSIDE}, fsky={FSKY})"
+            print(f"\n{'=' * 60}\n{header}\n{'=' * 60}")
             for method in METHODS:
                 run_label = f"{field_label}_lmax{lmax}_{method}"
-                print(f"\n--- Method: {method} ---")
-                with tempfile.TemporaryDirectory(
-                    dir="sims", prefix=f"bench_{run_label}_"
-                ) as tmpdir:
-                    config_file = write_temp_config(
-                        tmpdir,
-                        NSIDE,
-                        lmax,
-                        spins,
-                        labels,
-                        physical_labels,
-                        cov,
-                        mask,
-                        sim_maps,
-                        fwhmarcmin=fwhmarcmin,
+                print(f"\n--- Method: {method} (cold subprocess) ---")
+                t0 = time.perf_counter()
+                proc = subprocess.run(
+                    [
+                        sys.executable,
+                        "-u",
+                        script,
+                        "--field",
+                        field_label,
+                        "--lmax",
+                        str(lmax),
+                        "--method",
+                        method,
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                wall = time.perf_counter() - t0
+                if proc.returncode != 0:
+                    print(
+                        f"  SUBPROCESS FAILED (rc={proc.returncode}, wall={wall:.1f}s):"
                     )
-                    # Cap delta_ell so we always get at least 2 bins
-                    delta_ell_used = min(DELTA_ELL, max(2, (lmax - 1) // 2))
-                    bins = Bins.fromdeltal(2, lmax, delta_ell_used)
-                    try:
-                        timings, fisher = benchmark_fisher(config_file, method, bins=bins)
-                        print(f"  n_modes/n_kept = {timings['n_modes']}")
-                        print(f"  n_pix          = {timings['n_pix']}")
-                        print(f"  Fisher run:    {timings['total']:.2f}s")
-                        timings.update(
-                            {
-                                "nside": NSIDE,
-                                "fsky": FSKY,
-                                "lmax": lmax,
-                                "method": method,
-                                "spins": spins,
-                                "field_label": field_label,
-                                "delta_ell": DELTA_ELL,
-                            }
-                        )
-                        # QML is optional: catch any failure (e.g. singular
-                        # Fisher when both fsky and ℓ-coverage push the limits).
+                    print(proc.stderr[-2000:])
+                    results[run_label] = {
+                        "error": f"subprocess rc={proc.returncode}",
+                        "stderr_tail": proc.stderr[-500:],
+                    }
+                    continue
+                # Worker emits one JSON document on stdout — take the last
+                # well-formed JSON line so any benign info prints don't break parsing.
+                payload = None
+                for line in reversed(proc.stdout.strip().splitlines()):
+                    line = line.strip()
+                    if line.startswith("{") and line.endswith("}"):
                         try:
-                            qml_timings = benchmark_spectra(
-                                config_file, fisher, method, bins=bins
-                            )
-                            print(
-                                f"  QML ({qml_timings['nsims']} sims): "
-                                f"{qml_timings['qml_total']:.2f}s"
-                            )
-                            timings.update(qml_timings)
-                        except Exception as qml_err:
-                            print(f"  QML SKIPPED: {qml_err}")
-                            timings["qml_total"] = None
-                            timings["qml_error"] = str(qml_err)
-                        results[run_label] = timings
-                    except Exception as e:
-                        print(f"  FAILED: {e}")
-                        results[run_label] = {"error": str(e)}
+                            payload = json.loads(line)
+                            break
+                        except json.JSONDecodeError:
+                            continue
+                if payload is None:
+                    print(f"  NO JSON IN STDOUT (wall={wall:.1f}s)")
+                    results[run_label] = {"error": "no JSON in worker stdout"}
+                    continue
+                payload["wall_subprocess_total"] = wall
+                if "error" in payload:
+                    print(f"  WORKER ERROR: {payload['error']} (wall={wall:.1f}s)")
+                else:
+                    print(f"  n_modes/n_kept = {payload.get('n_modes')}")
+                    print(f"  n_pix          = {payload.get('n_pix')}")
+                    print(
+                        f"  Fisher run:    {payload.get('total', float('nan')):.2f}s "
+                        f"(subprocess wall {wall:.1f}s)"
+                    )
+                    if payload.get("qml_total") is not None:
+                        print(
+                            f"  QML ({payload.get('nsims')} sims): "
+                            f"{payload['qml_total']:.2f}s"
+                        )
+                results[run_label] = payload
 
     from _bench_utils import save_results
 
@@ -321,12 +395,43 @@ def main():
         if "error" in t:
             print(f"{key:<22} FAILED: {t['error']}")
             continue
-        qml_per_sim = t["qml_total"] / t["nsims"] if t["nsims"] > 0 else 0
+        nsims = t.get("nsims") or 0
+        qml_per_sim = (
+            t["qml_total"] / nsims
+            if (t.get("qml_total") is not None and nsims > 0)
+            else 0
+        )
         print(
             f"{key:<22} {t['method']:<10} {t.get('n_modes', '?'):>9} "
-            f"{t['n_pix']:>7} {t['total']:>9.1f}s "
+            f"{t['n_pix']:>7} {t.get('total', float('nan')):>9.1f}s "
             f"{qml_per_sim:>9.3f}s"
         )
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--field", type=str, default=None, help="(worker mode) field label, e.g. T or QU"
+    )
+    parser.add_argument(
+        "--lmax", type=int, default=None, help="(worker mode) analysis lmax"
+    )
+    parser.add_argument(
+        "--method",
+        type=str,
+        default=None,
+        choices=METHODS,
+        help="(worker mode) basis method",
+    )
+    args = parser.parse_args()
+
+    is_worker = any(x is not None for x in (args.field, args.lmax, args.method))
+    if is_worker:
+        if not all((args.field, args.lmax, args.method)):
+            parser.error("worker mode requires --field, --lmax, and --method together")
+        _run_worker(args.field, args.lmax, args.method)
+    else:
+        _drive_subprocesses()
 
 
 if __name__ == "__main__":
