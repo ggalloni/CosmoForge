@@ -2,15 +2,18 @@
 Validation tests comparing Python QML implementation against Fortran reference.
 
 These tests ensure that the Python qube package produces results consistent
-with the original Fortran implementation to within expected numerical precision.
+with the original Fortran implementation to machine precision. The reference
+data was regenerated from a high-precision Fortran build (format e25.17 in
+all ASCII outputs and full-precision pixel-coordinate exchange) to remove
+the ASCII-serialization floor that previously masked sub-1e-3 agreement.
 
-Tolerances (empirically determined):
-- NCov (noise covariance): ~1e-10 (exact match expected)
-- invCov (inverse covariance): ~1e-12 (machine precision after inversion)
-- Signal covariance: ~1e-10 (numerical precision in Legendre computation)
-- Fisher diagonal: ~1e-6 (accumulated numerical precision)
-- Spectra: ~1e-4 (accumulated through full pipeline)
-- Noise bias: ~2e-3 (small absolute values lead to larger relative diff)
+Tolerances (empirically determined against the HP reference):
+- NCov (noise covariance): exact (same file)
+- invCov (inverse covariance): ~1e-13 (LAPACK Cholesky roundoff)
+- Signal covariance: ~1e-11 (Legendre-sum accumulation)
+- Fisher diagonal: ~1e-7 (Numba-vs-Fortran summation order)
+- Spectra: ~1e-12 (matches Python production)
+- Noise bias: ~1e-7 (Numba-vs-Fortran summation order)
 """
 
 import os
@@ -23,12 +26,12 @@ from qube import Spectra
 FORTRAN_REF_DIR = "tests/data/nside8/B/fortran_reference"
 
 TOLERANCES = {
-    "ncov": 1e-10,
+    "ncov": 1e-12,
     "invcov": 1e-12,
     "signal": 1e-10,
     "fisher_diag": 1e-6,
-    "spectra": 1e-4,
-    "noise_bias": 2e-3,
+    "spectra": 1e-10,
+    "noise_bias": 1e-6,
 }
 
 
@@ -148,8 +151,7 @@ def test_fortran_validation(python_spectra, fortran_data):
     for key, val in results.items():
         tol = TOLERANCES[key]
         status = "PASS" if val < tol else "FAIL"
-        if val >= tol:
-            print(f"{key:<20} {val:<15.2e} {tol:<15.2e} {status}")
+        print(f"{key:<20} {val:<15.2e} {tol:<15.2e} {status}")
 
     print("=" * 70)
 
