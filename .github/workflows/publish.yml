@@ -1,0 +1,73 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Publish target'
+        type: choice
+        options: ['testpypi', 'pypi']
+        default: 'testpypi'
+
+jobs:
+  build:
+    name: Build ${{ matrix.dist }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dist: [cosmocore, qube-qml, picslike, cosmoforge]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Build distribution
+        run: uv build --package ${{ matrix.dist }} --out-dir dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.dist }}
+          path: dist/
+
+  publish-children:
+    name: Publish ${{ matrix.dist }}
+    needs: build
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target == 'testpypi' && 'testpypi' || 'pypi' }}
+    permissions:
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        dist: [cosmocore, qube-qml, picslike]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ matrix.dist }}
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: ${{ inputs.target == 'testpypi' && 'https://test.pypi.org/legacy/' || 'https://upload.pypi.org/legacy/' }}
+
+  publish-umbrella:
+    name: Publish cosmoforge (umbrella)
+    needs: publish-children
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target == 'testpypi' && 'testpypi' || 'pypi' }}
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-cosmoforge
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: ${{ inputs.target == 'testpypi' && 'https://test.pypi.org/legacy/' || 'https://upload.pypi.org/legacy/' }}

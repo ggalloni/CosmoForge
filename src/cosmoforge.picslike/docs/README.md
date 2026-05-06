@@ -2,7 +2,7 @@
 
 ## Overview
 
-PICSLike is a comprehensive Python package for pixel-based likelihood analysis of spin-0 and spin-2 fields on the sphere. It provides tools for computing the likelihood of observational data given theoretical predictions directly in pixel space, offering an alternative approach to traditional harmonic-space methods. While applicable to any spherical field (e.g. CMB, galaxy surveys, 21 cm), it is especially suited for partial-sky analyses with complex noise properties.
+PICSLike (Pixel-based Inference with Correlated-Skies Likelihood) is a comprehensive Python package for pixel-based likelihood analysis of spin-0 and spin-2 fields on the sphere. It provides tools for computing the likelihood of observational data given theoretical predictions directly in pixel space, offering an alternative approach to traditional harmonic-space methods. While applicable to any spherical field (e.g. CMB, galaxy surveys, 21 cm), it is especially suited for partial-sky analyses with complex noise properties.
 
 ## Key Features
 

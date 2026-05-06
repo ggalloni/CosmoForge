@@ -23,7 +23,7 @@ CosmoForge consists of several interconnected packages designed for efficient an
 
 - **cosmocore**: Core functionality for cosmological analysis including field management, matrix operations, and I/O utilities
 - **qube**: QML and Fisher matrix implementations for power spectrum estimation
-- **picslike**: Pixel-based likelihood analysis for parameter estimation
+- **picslike**: Pixel-based Inference with Correlated-Skies Likelihood — pixel-space likelihood analysis for parameter estimation
 - **meta**: Metadata and utilities package
 
 ## Features

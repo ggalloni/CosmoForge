@@ -1,14 +1,3 @@
-[project]
-name = "cosmoforge"
-version = "0.1.0"
-description = "CosmoForge: collection of codes for Cosmology."
-readme = "README.md"
-authors = [
-    { name = "Giacomo Galloni", email = "giacomo.galloni@unife.it" }
-]
-requires-python = ">=3.11,<3.14"
-dependencies = []
-
 [dependency-groups]
 dev = [
     "matplotlib>=3.10.5",
@@ -24,9 +13,6 @@ docs = [
     "myst-parser>=4.0.1",
     "sphinx-autodoc-typehints>=2.6.1",
 ]
-
-[tool.uv]
-package = false  # Don't treat the root directory as a package
 
 [tool.uv.workspace]
 members = [

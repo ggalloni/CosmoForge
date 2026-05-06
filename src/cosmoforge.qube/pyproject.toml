@@ -1,5 +1,5 @@
 [project]
-name = "qube"
+name = "qube-qml"
 version = "0.1.0"
 description = "QUBE: Quadratic maximum likelihood UnBiased Estimator"
 readme = "README.md"

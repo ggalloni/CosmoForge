@@ -8,8 +8,8 @@ CosmoForge.PICSLike Package
 
 |
 
-PICSLike is a pixel-based likelihood analysis package for spin-0 and spin-2 fields on
-the sphere. It provides tools for computing the likelihood of observations given theoretical
+PICSLike (Pixel-based Inference with Correlated-Skies Likelihood) is a pixel-based
+likelihood analysis package for spin-0 and spin-2 fields on the sphere. It provides tools for computing the likelihood of observations given theoretical
 predictions directly in pixel space, offering an alternative to harmonic-space methods.
 Applications include CMB temperature and polarization, galaxy surveys, and any other signal
 described by angular power spectra.

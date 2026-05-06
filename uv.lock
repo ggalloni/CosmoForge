@@ -6,9 +6,24 @@ requires-python = ">=3.11, <3.14"
 members = [
     "cosmocore",
     "cosmoforge",
-    "meta",
     "picslike",
-    "qube",
+    "qube-qml",
+]
+
+[manifest.dependency-groups]
+dev = [
+    { name = "matplotlib", specifier = ">=3.10.5" },
+    { name = "pyqt6", specifier = ">=6.10.2" },
+    { name = "pytest", specifier = ">=8.4.1" },
+    { name = "pytest-cov", specifier = ">=6.2.1" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "ruff", specifier = ">=0.12.9" },
+]
+docs = [
+    { name = "myst-parser", specifier = ">=4.0.1" },
+    { name = "sphinx", specifier = ">=8.2.3" },
+    { name = "sphinx-autodoc-typehints", specifier = ">=2.6.1" },
+    { name = "sphinx-rtd-theme", specifier = ">=3.0.2" },
 ]
 
 [[package]]
@@ -249,40 +264,18 @@ dev = [
 [[package]]
 name = "cosmoforge"
 version = "0.1.0"
-source = { virtual = "." }
-
-[package.dev-dependencies]
-dev = [
-    { name = "matplotlib" },
-    { name = "pyqt6" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "pyyaml" },
-    { name = "ruff" },
-]
-docs = [
-    { name = "myst-parser" },
-    { name = "sphinx" },
-    { name = "sphinx-autodoc-typehints" },
-    { name = "sphinx-rtd-theme" },
+source = { editable = "src/cosmoforge.meta" }
+dependencies = [
+    { name = "cosmocore" },
+    { name = "picslike" },
+    { name = "qube-qml" },
 ]
 
 [package.metadata]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "matplotlib", specifier = ">=3.10.5" },
-    { name = "pyqt6", specifier = ">=6.10.2" },
-    { name = "pytest", specifier = ">=8.4.1" },
-    { name = "pytest-cov", specifier = ">=6.2.1" },
-    { name = "pyyaml", specifier = ">=6.0.2" },
-    { name = "ruff", specifier = ">=0.12.9" },
-]
-docs = [
-    { name = "myst-parser", specifier = ">=4.0.1" },
-    { name = "sphinx", specifier = ">=8.2.3" },
-    { name = "sphinx-autodoc-typehints", specifier = ">=2.6.1" },
-    { name = "sphinx-rtd-theme", specifier = ">=3.0.2" },
+requires-dist = [
+    { name = "cosmocore", editable = "src/cosmoforge.cosmocore" },
+    { name = "picslike", editable = "src/cosmoforge.picslike" },
+    { name = "qube-qml", editable = "src/cosmoforge.qube" },
 ]
 
 [[package]]
@@ -723,23 +716,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d6/54/cfe61301667036ec958cb99bd3efefba235e65cdeb9c84d24a8293ba1d90/mdurl-0.1.2.tar.gz", hash = "sha256:bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba", size = 8729, upload-time = "2022-08-14T12:40:10.846Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl", hash = "sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8", size = 9979, upload-time = "2022-08-14T12:40:09.779Z" },
-]
-
-[[package]]
-name = "meta"
-version = "0.1.0"
-source = { virtual = "src/cosmoforge.meta" }
-dependencies = [
-    { name = "cosmocore" },
-    { name = "picslike" },
-    { name = "qube" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "cosmocore", editable = "src/cosmoforge.cosmocore" },
-    { name = "picslike", editable = "src/cosmoforge.picslike" },
-    { name = "qube", editable = "src/cosmoforge.qube" },
 ]
 
 [[package]]
@@ -1200,7 +1176,7 @@ wheels = [
 ]
 
 [[package]]
-name = "qube"
+name = "qube-qml"
 version = "0.1.0"
 source = { editable = "src/cosmoforge.qube" }
 dependencies = [

@@ -1,7 +1,7 @@
 [project]
 name = "picslike"
 version = "0.1.0"
-description = "PICSLike: Pixel-based likelihood for cosmological parameter inference"
+description = "PICSLike: Pixel-based Inference with Correlated-Skies Likelihood"
 readme = "README.md"
 authors = [
     { name = "Giacomo Galloni", email = "giacomo.galloni@unife.it" }

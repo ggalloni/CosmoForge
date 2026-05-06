@@ -19,7 +19,7 @@ CosmoForge is organized as a namespace package containing four main subpackages:
 
 * **cosmoforge.cosmocore**: Core functionality for cosmological analysis including field management, matrix operations, and mathematical utilities
 * **cosmoforge.qube**: QML and Fisher matrix implementations for power spectrum estimation
-* **cosmoforge.picslike**: Pixel-based likelihood analysis for parameter estimation
+* **cosmoforge.picslike**: Pixel-based Inference with Correlated-Skies Likelihood — pixel-space likelihood analysis for parameter estimation
 * **cosmoforge.meta**: Metadata and utilities package for project-wide configuration
 
 Key Features

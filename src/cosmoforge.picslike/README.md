@@ -12,7 +12,7 @@
 
 > **[PICSLike Documentation](https://ggalloni.github.io/CosmoForge/api/picslike.html) | [Main Documentation](https://ggalloni.github.io/CosmoForge/)**
 
-PICSLike is the pixel-based likelihood analysis engine of CosmoForge, implementing direct likelihood evaluation in map pixel space for cosmological parameter inference from CMB data.
+PICSLike (Pixel-based Inference with Correlated-Skies Likelihood) is the pixel-based likelihood analysis engine of CosmoForge, implementing direct likelihood evaluation in map pixel space for cosmological parameter inference from CMB data.
 
 ## Overview
 

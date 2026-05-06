@@ -1,5 +1,5 @@
 """
-PICSLike: Pixel-based likelihood for cosmological parameter inference.
+PICSLike: Pixel-based Inference with Correlated-Skies Likelihood.
 
 This package implements pixel-based likelihood analysis for cosmological parameter
 estimation, providing an alternative to harmonic-space methods. The approach is
