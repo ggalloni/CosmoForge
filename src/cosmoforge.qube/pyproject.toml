@@ -1,6 +1,6 @@
 [project]
 name = "qube-qml"
-version = "0.1.0"
+version = "0.1.1"
 description = "QUBE: Quadratic maximum likelihood UnBiased Estimator"
 readme = "README.md"
 authors = [
@@ -22,17 +22,14 @@ qube-memory-budget = "qube.memory_budget:_main"
 cosmocore = { workspace = true }
 
 [build-system]
-requires = ["setuptools>=64", "setuptools_scm>=8"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.setuptools.packages.find]
-include = [
-    "qube",
-    "tests",
-]
+[tool.hatch.build.targets.wheel]
+packages = ["qube"]
 
-[tool.setuptools.package-data]
-"tests" = ["data/**/*"]
+[tool.hatch.build.targets.sdist]
+include = ["qube"]
 
 [tool.ruff.lint]
 select = ["E713", "E703", "E714", "E741", "E10", "E11", "E20", "E22", "E23", "E25", "E262", "E27", "E301", "E302", "E304", "E9", "F405", "F406", "F5", "F6", "F7", "F8", "E501", "W191", "F401", "W1", "W292", "W293", "W3"]
