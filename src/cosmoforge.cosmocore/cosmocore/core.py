@@ -507,8 +507,8 @@ class Core(ABC):
             first_label = self.collection.fields[0].labels[0]
             beam = beam_dict[first_label]
 
-        # Truncate beam to match basis_lmax (beam is for ell=2 to lmax)
-        expected_beam_len = basis_lmax - 1
+        # Truncate beam to match basis_lmax (beam is ℓ-indexed, length lmax+1)
+        expected_beam_len = basis_lmax + 1
         if beam is not None and len(beam) > expected_beam_len:
             beam = beam[:expected_beam_len]
 
@@ -563,8 +563,8 @@ class Core(ABC):
                     for key, cl_array in fiducial_spectrum.items():
                         cl_fixed = np.zeros_like(cl_array)
                         for ell in range(lswitch_high + 1, basis_lmax + 1):
-                            if ell - 2 < len(cl_array):
-                                cl_fixed[ell - 2] = cl_array[ell - 2]
+                            if ell < len(cl_array):
+                                cl_fixed[ell] = cl_array[ell]
                         fixed_spectra[key] = cl_fixed
 
                     # Save original spectra (already beam-smoothed)
@@ -842,7 +842,7 @@ class Core(ABC):
             )
             weight = 1.0
             if beam_smoothing is not None:
-                weight = beam_smoothing[ell - 2]
+                weight = beam_smoothing[ell]
             if dC_b is None:
                 dC_b = weight * dC_ell
             else:
