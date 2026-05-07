@@ -153,7 +153,7 @@ class TestComputeFisherMatrix:
 
         setup = uniform_sky_setup
         lmax = setup["lmax"]
-        n_ell = lmax - 1
+        n_ell = lmax + 1
         C_ell = np.ones(n_ell) * 1e-6
 
         hc = HarmonicBasis(
@@ -174,7 +174,7 @@ class TestComputeFisherMatrix:
 
         setup = uniform_sky_setup
         lmax = setup["lmax"]
-        n_ell = lmax - 1
+        n_ell = lmax + 1
         C_ell = np.ones(n_ell) * 1e-6
 
         hc = HarmonicBasis(
@@ -195,7 +195,7 @@ class TestComputeFisherMatrix:
 
         setup = uniform_sky_setup
         lmax = setup["lmax"]
-        n_ell = lmax - 1
+        n_ell = lmax + 1
         C_ell = np.ones(n_ell) * 1e-6
 
         hc = HarmonicBasis(
@@ -218,7 +218,7 @@ class TestComputeFisherMatrix:
 
         setup = uniform_sky_setup
         lmax = setup["lmax"]
-        n_ell = lmax - 1
+        n_ell = lmax + 1
         C_ell = np.ones(n_ell) * 1e-6
 
         cm = create_computation_basis(
@@ -241,7 +241,7 @@ class TestComputeFisherMatrix:
 
         setup = uniform_sky_setup
         lmax = setup["lmax"]
-        n_ell = lmax - 1
+        n_ell = lmax + 1
         C_ell = np.ones(n_ell) * 1e-6
 
         ppc = PixelBasis(
@@ -315,7 +315,7 @@ class TestPerFieldThreshold:
         assert ppc1.n_kept == ppc2.n_kept
 
         # Fisher must match
-        C_ell = np.ones(lmax - 1) * 1e-4
+        C_ell = np.ones(lmax + 1) * 1e-4
         f1 = ppc1.compute_fisher_matrix(C_ell, ell_min=2, ell_max=lmax)
         f2 = ppc2.compute_fisher_matrix(C_ell, ell_min=2, ell_max=lmax)
         assert_allclose(f1, f2, rtol=1e-12)
@@ -399,8 +399,8 @@ class TestPerFieldThreshold:
 
         # Fisher should still be PSD and symmetric
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 5e-4,
-            (0, 0, 1): np.ones(lmax - 1) * 1e-4,
+            (0, 0, 0): np.ones(lmax + 1) * 5e-4,
+            (0, 0, 1): np.ones(lmax + 1) * 1e-4,
         }
         spectra_list = [(0, 0, 0), (0, 0, 1)]
         fisher = ppc_split.compute_fisher_matrix(
@@ -448,8 +448,8 @@ class TestPerFieldThreshold:
 
         # Fisher matrices should match closely
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 5e-4,
-            (0, 0, 1): np.ones(lmax - 1) * 1e-4,
+            (0, 0, 0): np.ones(lmax + 1) * 5e-4,
+            (0, 0, 1): np.ones(lmax + 1) * 1e-4,
         }
         spectra_list = [(0, 0, 0), (0, 0, 1)]
 
@@ -501,10 +501,10 @@ class TestPerFieldThreshold:
 
         # Fisher should work and be valid
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 1e-3,
-            (1, 1, 0): np.ones(lmax - 1) * 5e-4,
-            (1, 1, 1): np.ones(lmax - 1) * 1e-4,
-            (0, 1, 0): np.ones(lmax - 1) * 2e-4,
+            (0, 0, 0): np.ones(lmax + 1) * 1e-3,
+            (1, 1, 0): np.ones(lmax + 1) * 5e-4,
+            (1, 1, 1): np.ones(lmax + 1) * 1e-4,
+            (0, 1, 0): np.ones(lmax + 1) * 2e-4,
         }
         spectra_list = [(0, 0, 0), (1, 1, 0), (1, 1, 1), (0, 1, 0)]
         fisher = ppc.compute_fisher_matrix(
@@ -592,8 +592,8 @@ class TestPixelProjectedPICSLikeMethods:
         ppc.setup()
 
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 5e-4,
-            (0, 0, 1): np.ones(lmax - 1) * 1e-4,
+            (0, 0, 0): np.ones(lmax + 1) * 5e-4,
+            (0, 0, 1): np.ones(lmax + 1) * 1e-4,
         }
         return ppc, C_ell_dict, N
 
@@ -707,8 +707,8 @@ class TestPixelProjectedPICSLikeMethods:
         assert ppc_split.n_kept >= ppc_aggressive.n_kept
 
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 5e-4,  # EE
-            (0, 0, 1): np.ones(lmax - 1) * 1e-4,  # BB
+            (0, 0, 0): np.ones(lmax + 1) * 5e-4,  # EE
+            (0, 0, 1): np.ones(lmax + 1) * 1e-4,  # BB
         }
         spectra_list = [(0, 0, 0), (0, 0, 1)]  # EE, BB
 
@@ -720,7 +720,7 @@ class TestPixelProjectedPICSLikeMethods:
         )
 
         # BB block of Fisher: last n_ell rows/cols
-        n_ell = lmax - 1
+        n_ell = lmax + 1
         bb_diag_agg = np.diag(fisher_agg[n_ell:, n_ell:])
         bb_diag_split = np.diag(fisher_split[n_ell:, n_ell:])
 

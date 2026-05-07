@@ -125,7 +125,7 @@ class TestSpin2Lambda:
         hc = HarmonicBasis(N, theta, phi, lmax, spins=[2])
 
         n_modes_base = (lmax + 1) ** 2 - 4
-        C_ell = np.ones(lmax - 1) * 1e-3
+        C_ell = np.ones(lmax + 1) * 1e-3
 
         Lambda = hc._build_lambda_block_spin2(C_ell, C_ell * 0.5, C_ell * 0.1)
 
@@ -147,9 +147,9 @@ class TestSpin2Lambda:
         hc = HarmonicBasis(N, theta, phi, lmax, spins=[2])
 
         n = hc._n_modes_base
-        C_EE = np.ones(lmax - 1) * 2.0
-        C_BB = np.ones(lmax - 1) * 1.0
-        C_EB = np.ones(lmax - 1) * 0.5
+        C_EE = np.ones(lmax + 1) * 2.0
+        C_BB = np.ones(lmax + 1) * 1.0
+        C_EB = np.ones(lmax + 1) * 0.5
 
         Lambda = hc._build_lambda_block_spin2(C_EE, C_BB, C_EB)
 
@@ -189,12 +189,12 @@ class TestSpin2Lambda:
 
         # Build C_ell_dict with 3-tuple keys
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 1e-3,  # TT
-            (1, 1, 0): np.ones(lmax - 1) * 5e-4,  # EE
-            (1, 1, 1): np.ones(lmax - 1) * 1e-4,  # BB
-            (1, 1, 2): np.ones(lmax - 1) * 1e-5,  # EB
-            (0, 1, 0): np.ones(lmax - 1) * 2e-4,  # TE
-            (0, 1, 1): np.zeros(lmax - 1),  # TB
+            (0, 0, 0): np.ones(lmax + 1) * 1e-3,  # TT
+            (1, 1, 0): np.ones(lmax + 1) * 5e-4,  # EE
+            (1, 1, 1): np.ones(lmax + 1) * 1e-4,  # BB
+            (1, 1, 2): np.ones(lmax + 1) * 1e-5,  # EB
+            (0, 1, 0): np.ones(lmax + 1) * 2e-4,  # TE
+            (0, 1, 1): np.zeros(lmax + 1),  # TB
         }
 
         Lambda = hc._build_lambda_matrix_3tuple(C_ell_dict)
@@ -323,12 +323,12 @@ class TestSpin2Fisher:
         hc.setup()
 
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 1e-3,
-            (1, 1, 0): np.ones(lmax - 1) * 5e-4,
-            (1, 1, 1): np.ones(lmax - 1) * 1e-4,
-            (1, 1, 2): np.zeros(lmax - 1),
-            (0, 1, 0): np.ones(lmax - 1) * 2e-4,
-            (0, 1, 1): np.zeros(lmax - 1),
+            (0, 0, 0): np.ones(lmax + 1) * 1e-3,
+            (1, 1, 0): np.ones(lmax + 1) * 5e-4,
+            (1, 1, 1): np.ones(lmax + 1) * 1e-4,
+            (1, 1, 2): np.zeros(lmax + 1),
+            (0, 1, 0): np.ones(lmax + 1) * 2e-4,
+            (0, 1, 1): np.zeros(lmax + 1),
         }
 
         spectra_list = [
@@ -342,7 +342,7 @@ class TestSpin2Fisher:
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
         )
 
-        n_ell = lmax - 1
+        n_ell = lmax + 1
         n_spec = len(spectra_list)
         assert fisher.shape == (n_spec * n_ell, n_spec * n_ell)
 
@@ -367,9 +367,9 @@ class TestSpin2Fisher:
         hc.setup()
 
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 1e-3,
-            (1, 1, 0): np.ones(lmax - 1) * 5e-4,
-            (1, 1, 1): np.ones(lmax - 1) * 1e-4,
+            (0, 0, 0): np.ones(lmax + 1) * 1e-3,
+            (1, 1, 0): np.ones(lmax + 1) * 5e-4,
+            (1, 1, 1): np.ones(lmax + 1) * 1e-4,
         }
 
         spectra_list = [(0, 0, 0), (1, 1, 0), (1, 1, 1)]
@@ -399,8 +399,8 @@ class TestSpin2Fisher:
         hc.setup()
 
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 5e-4,  # EE
-            (0, 0, 1): np.ones(lmax - 1) * 1e-4,  # BB
+            (0, 0, 0): np.ones(lmax + 1) * 5e-4,  # EE
+            (0, 0, 1): np.ones(lmax + 1) * 1e-4,  # BB
         }
 
         spectra_list = [(0, 0, 0), (0, 0, 1)]
@@ -430,7 +430,7 @@ def _pixel_space_fisher_with_spins(C_inv, V, hc, lmax, spectra_list):
     """
     from cosmocore.basics import matrix_mult, matrix_trace
 
-    n_ell = lmax - 1
+    n_ell = lmax + 1
     n_spectra = len(spectra_list)
     fisher = np.zeros((n_spectra * n_ell, n_spectra * n_ell))
 
@@ -724,8 +724,8 @@ class TestPixelProjectedSpin2:
         ppc.setup()
 
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 5e-4,  # EE
-            (0, 0, 1): np.ones(lmax - 1) * 1e-4,  # BB
+            (0, 0, 0): np.ones(lmax + 1) * 5e-4,  # EE
+            (0, 0, 1): np.ones(lmax + 1) * 1e-4,  # BB
         }
 
         C_c = ppc.get_compressed_covariance(C_ell_dict)
@@ -757,8 +757,8 @@ class TestPixelProjectedSpin2:
         ppc.setup()
 
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 5e-4,  # EE
-            (0, 0, 1): np.ones(lmax - 1) * 1e-4,  # BB
+            (0, 0, 0): np.ones(lmax + 1) * 5e-4,  # EE
+            (0, 0, 1): np.ones(lmax + 1) * 1e-4,  # BB
         }
         spectra_list = [(0, 0, 0), (0, 0, 1)]
 
@@ -766,7 +766,7 @@ class TestPixelProjectedSpin2:
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
         )
 
-        n_ell = lmax - 1
+        n_ell = lmax + 1
         n_spec = len(spectra_list)
         assert fisher.shape == (n_spec * n_ell, n_spec * n_ell)
         assert_allclose(fisher, fisher.T, atol=1e-12)
@@ -799,10 +799,10 @@ class TestPixelProjectedSpin2:
         ppc.setup()
 
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 1e-3,  # TT
-            (1, 1, 0): np.ones(lmax - 1) * 5e-4,  # EE
-            (1, 1, 1): np.ones(lmax - 1) * 1e-4,  # BB
-            (0, 1, 0): np.ones(lmax - 1) * 2e-4,  # TE
+            (0, 0, 0): np.ones(lmax + 1) * 1e-3,  # TT
+            (1, 1, 0): np.ones(lmax + 1) * 5e-4,  # EE
+            (1, 1, 1): np.ones(lmax + 1) * 1e-4,  # BB
+            (0, 1, 0): np.ones(lmax + 1) * 2e-4,  # TE
         }
         spectra_list = [
             (0, 0, 0),  # TT
@@ -815,7 +815,7 @@ class TestPixelProjectedSpin2:
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
         )
 
-        n_ell = lmax - 1
+        n_ell = lmax + 1
         n_spec = len(spectra_list)
         assert fisher.shape == (n_spec * n_ell, n_spec * n_ell)
         assert_allclose(fisher, fisher.T, atol=1e-12)
@@ -844,8 +844,8 @@ class TestPixelProjectedSpin2:
         ppc.setup()
 
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 5e-4,
-            (0, 0, 1): np.ones(lmax - 1) * 1e-4,
+            (0, 0, 0): np.ones(lmax + 1) * 5e-4,
+            (0, 0, 1): np.ones(lmax + 1) * 1e-4,
         }
 
         data = np.random.randn(2 * n_pix)
@@ -877,8 +877,8 @@ class TestPixelProjectedSpin2:
         cm.setup()
 
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 5e-4,
-            (0, 0, 1): np.ones(lmax - 1) * 1e-4,
+            (0, 0, 0): np.ones(lmax + 1) * 5e-4,
+            (0, 0, 1): np.ones(lmax + 1) * 1e-4,
         }
         spectra_list = [(0, 0, 0), (0, 0, 1)]
 
@@ -886,7 +886,7 @@ class TestPixelProjectedSpin2:
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
         )
 
-        n_ell = lmax - 1
+        n_ell = lmax + 1
         n_spec = len(spectra_list)
         assert fisher.shape == (n_spec * n_ell, n_spec * n_ell)
         assert_allclose(fisher, fisher.T, atol=1e-12)
@@ -912,7 +912,7 @@ def _pixel_space_fisher_with_spins_raw(
     """
     from cosmocore.basics import matrix_mult, matrix_trace
 
-    n_ell = lmax - 1
+    n_ell = lmax + 1
     n_spectra = len(spectra_list)
     fisher = np.zeros((n_spectra * n_ell, n_spectra * n_ell))
 

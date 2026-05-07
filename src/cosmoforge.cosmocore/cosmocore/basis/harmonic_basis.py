@@ -565,8 +565,8 @@ class HarmonicBasisBuilder:
                         lambda_matrix[col_start + k, row_start + k] = val
 
             elif spin_i == 2 and spin_j == 2:
-                C_EE = mode_dict.get(0, np.zeros(self.lmax - 1))
-                C_BB = mode_dict.get(1, np.zeros(self.lmax - 1))
+                C_EE = mode_dict.get(0, np.zeros(self.lmax + 1))
+                C_BB = mode_dict.get(1, np.zeros(self.lmax + 1))
                 C_EB = mode_dict.get(2, None)
                 block = self._build_lambda_block_spin2(C_EE, C_BB, C_EB)
                 n_block = 2 * self._n_modes_base

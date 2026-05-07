@@ -352,7 +352,7 @@ class TestCompressionCrossValidation:
         theta = np.arccos(1 - 2 * (indices + 0.5) / n_pix)
         phi = (2 * np.pi * indices / golden_ratio) % (2 * np.pi)
 
-        C_ell = np.ones(lmax - 1) * 1e-5
+        C_ell = np.ones(lmax + 1) * 1e-5
 
         return {
             "N": N,
@@ -895,7 +895,7 @@ class TestComputeEigenspectrumPerField:
 
         setup = two_scalar_field_setup
         lmax = setup["lmax"]
-        n_ell = lmax - 1
+        n_ell = lmax + 1
         C_ell_dict = {
             (0, 0): np.ones(n_ell) * 1e-5,
             (1, 1): np.ones(n_ell) * 0.8e-5,
@@ -1098,9 +1098,9 @@ class TestPPCOperationChain:
         ppc.apply_compression(epsilon=1e-6)
 
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 1e-5,
-            (1, 1, 0): np.ones(lmax - 1) * 1e-5,
-            (0, 1, 0): np.ones(lmax - 1) * 5e-6,
+            (0, 0, 0): np.ones(lmax + 1) * 1e-5,
+            (1, 1, 0): np.ones(lmax + 1) * 1e-5,
+            (0, 1, 0): np.ones(lmax + 1) * 5e-6,
         }
         spectra_list = [(0, 0, 0), (1, 1, 0), (0, 1, 0)]
 
@@ -1113,7 +1113,7 @@ class TestPPCOperationChain:
         assert dC.shape == (ppc.n_kept, ppc.n_kept)
 
         # Multi-field Fisher
-        n_ell = lmax - 1
+        n_ell = lmax + 1
         fisher = ppc.compute_fisher_matrix(C_ell_dict, spectra_list)
         assert fisher.shape == (3 * n_ell, 3 * n_ell)
         assert_allclose(fisher, fisher.T, atol=1e-12)

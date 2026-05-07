@@ -146,7 +146,7 @@ def test_compressed_pipeline_via_core(method, nside, basis_lmax):
         core.set_binning(Bins.fromdeltal(2, basis_lmax, 4))
 
         # Binned derivative through the basis-aware dispatch.
-        beam = np.ones(basis_lmax - 1, dtype=np.float64)
+        beam = np.ones(basis_lmax + 1, dtype=np.float64)
         dC_b = core.get_binned_derivative_matrix(
             bin_idx=1,
             beam_smoothing=beam,
@@ -161,7 +161,7 @@ def test_compressed_pipeline_via_core(method, nside, basis_lmax):
         # Build a Cls vector (ell=2..basis_lmax) and exercise the C-aware
         # wrappers. For T-only single-spectrum, compressed and uncompressed
         # paths both accept a 1-D array.
-        cls = np.ones(basis_lmax - 1, dtype=np.float64) * 1e-3
+        cls = np.ones(basis_lmax + 1, dtype=np.float64) * 1e-3
 
         cov = core.get_total_covariance(cls)
         assert cov is not None
@@ -218,6 +218,6 @@ def test_setup_computation_basis_smw_lswitch():
         assert np.all(np.isfinite(cls_after))
         # And the basis must still produce a finite log-determinant (S_fixed
         # was correctly absorbed).
-        cls = np.ones(basis_lmax - 1, dtype=np.float64) * 1e-3
+        cls = np.ones(basis_lmax + 1, dtype=np.float64) * 1e-3
         logdet = core.get_covariance_logdet(cls)
         assert np.isfinite(logdet)

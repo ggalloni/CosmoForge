@@ -763,9 +763,9 @@ class ComputationBasis(ABC):
         Returns
         -------
         numpy.ndarray
-            Array of zeros with length (lmax - 1).
+            ℓ-indexed array of zeros with length ``lmax + 1``.
         """
-        return np.zeros(self.lmax - 1)
+        return np.zeros(self.lmax + 1)
 
     @property
     def compression_ratio(self) -> float:

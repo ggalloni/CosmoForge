@@ -147,7 +147,7 @@ class TestHarmonicBasisOperations:
 
         hc.setup()
 
-        n_ell = setup["lmax"] - 1
+        n_ell = setup["lmax"] + 1
         C_ell = np.ones(n_ell) * 1e-6
 
         C_bar = hc.get_compressed_covariance(C_ell)
@@ -168,7 +168,7 @@ class TestHarmonicBasisOperations:
 
         hc.setup()
 
-        n_ell = setup["lmax"] - 1
+        n_ell = setup["lmax"] + 1
         C_ell = np.ones(n_ell) * 1e-6
 
         C_bar = hc.get_compressed_covariance(C_ell)
@@ -189,7 +189,7 @@ class TestHarmonicBasisOperations:
 
         hc.setup()
 
-        n_ell = setup["lmax"] - 1
+        n_ell = setup["lmax"] + 1
         C_ell = np.ones(n_ell) * 1e-6
 
         C_bar = hc.get_compressed_covariance(C_ell)
@@ -215,7 +215,7 @@ class TestHarmonicBasisOperations:
 
         hc.setup()
 
-        n_ell = setup["lmax"] - 1
+        n_ell = setup["lmax"] + 1
         C_ell = np.ones(n_ell) * 1e-6
 
         logdet = hc.get_compressed_logdet(C_ell)
@@ -246,7 +246,7 @@ class TestHarmonicBasisFisher:
 
         hc.setup()
 
-        n_ell = setup["lmax"] - 1
+        n_ell = setup["lmax"] + 1
         C_ell = np.ones(n_ell) * 1e-6
 
         fisher = hc.compute_fisher_matrix(C_ell)
@@ -268,7 +268,7 @@ class TestHarmonicBasisFisher:
 
         hc.setup()
 
-        n_ell = setup["lmax"] - 1
+        n_ell = setup["lmax"] + 1
         C_ell = np.ones(n_ell) * 1e-6
 
         fisher = hc.compute_fisher_matrix(C_ell)
@@ -293,7 +293,7 @@ class TestHarmonicBasisPixelSpace:
 
         hc.setup()
 
-        n_ell = setup["lmax"] - 1
+        n_ell = setup["lmax"] + 1
         C_ell = np.ones(n_ell) * 1e-6
 
         C_inv = hc.get_inverse(C_ell)
@@ -314,7 +314,7 @@ class TestHarmonicBasisPixelSpace:
 
         hc.setup()
 
-        n_ell = setup["lmax"] - 1
+        n_ell = setup["lmax"] + 1
         C_ell = np.ones(n_ell) * 1e-6
 
         C_inv = hc.get_inverse(C_ell)
@@ -335,7 +335,7 @@ class TestHarmonicBasisPixelSpace:
 
         hc.setup()
 
-        n_ell = setup["lmax"] - 1
+        n_ell = setup["lmax"] + 1
         C_ell = np.ones(n_ell) * 1e-6
 
         logdet = hc.get_logdet(C_ell)
@@ -363,7 +363,8 @@ class TestHarmonicBasisValidation:
         theta = np.arccos(1 - 2 * (indices + 0.5) / n_pix)
         phi = (2 * np.pi * indices / golden_ratio) % (2 * np.pi)
 
-        C_ell = 1e-3 / (np.arange(2, lmax + 1) ** 2)
+        C_ell = np.zeros(lmax + 1, dtype=np.float64)
+        C_ell[2:] = 1e-3 / (np.arange(2, lmax + 1) ** 2)
 
         return {
             "N": N,
@@ -380,7 +381,7 @@ class TestHarmonicBasisValidation:
         n_modes = V.shape[0]
         Lambda_diag = np.zeros(n_modes)
         for ell in range(2, lmax + 1):
-            c_ell_value = C_ell[ell - 2] if ell - 2 < len(C_ell) else 0.0
+            c_ell_value = C_ell[ell] if ell < len(C_ell) else 0.0
             for idx in ell_to_modes[ell]:
                 Lambda_diag[idx] = c_ell_value
         Lambda = np.diag(Lambda_diag)
@@ -524,7 +525,7 @@ class TestHarmonicBasisBeam:
         )
 
         assert hc._beam is not None
-        assert len(hc._beam) == lmax - 1
+        assert len(hc._beam) == lmax + 1
         assert_allclose(hc._beam, beam)
 
     def test_beam_validation_wrong_length(self, simple_compression_setup):
@@ -552,8 +553,8 @@ class TestHarmonicBasisBeam:
         setup = simple_compression_setup
         lmax = setup["lmax"]
 
-        beam = np.ones(lmax - 1)
-        C_ell = np.ones(lmax - 1) * 1e-5
+        beam = np.ones(lmax + 1)
+        C_ell = np.ones(lmax + 1) * 1e-5
 
         hc_no_beam = HarmonicBasis(
             N=setup["N"],
@@ -632,9 +633,9 @@ class TestHarmonicDictOperations:
         hc.setup()
 
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 1e-5,
-            (1, 1, 0): np.ones(lmax - 1) * 1e-5,
-            (0, 1, 0): np.ones(lmax - 1) * 5e-6,
+            (0, 0, 0): np.ones(lmax + 1) * 1e-5,
+            (1, 1, 0): np.ones(lmax + 1) * 1e-5,
+            (0, 1, 0): np.ones(lmax + 1) * 5e-6,
         }
 
         np.random.seed(42)
@@ -676,7 +677,7 @@ class TestHarmonicDictOperations:
         )
         hc.setup()
 
-        C_ell_arr = np.ones(lmax - 1) * 1e-6
+        C_ell_arr = np.ones(lmax + 1) * 1e-6
         C_ell_dict = {(0, 0, 0): C_ell_arr}
 
         # These should hit the single-entry dict fast paths
@@ -756,7 +757,7 @@ class TestNoiseCovWithNonDiagonalN:
         rng = np.random.default_rng(1)
         N = np.diag(rng.uniform(0.5, 1.5, n_pix))
         hc = self._build_basis(N)
-        C_ell = np.full(hc.lmax - 1, 0.05)
+        C_ell = np.full(hc.lmax + 1, 0.05)
         kernel_inv = self._make_kernel_inv(hc, C_ell)
         ref = self._direct_noise_cov(hc, kernel_inv)
         got = self._compressed_noise_cov(hc, kernel_inv)
@@ -768,7 +769,7 @@ class TestNoiseCovWithNonDiagonalN:
         # Sanity: N is genuinely non-diagonal
         assert np.max(np.abs(N - np.diag(np.diag(N)))) > 1e-3
         hc = self._build_basis(N)
-        C_ell = np.full(hc.lmax - 1, 0.05)
+        C_ell = np.full(hc.lmax + 1, 0.05)
         kernel_inv = self._make_kernel_inv(hc, C_ell)
         ref = self._direct_noise_cov(hc, kernel_inv)
         got = self._compressed_noise_cov(hc, kernel_inv)
@@ -784,7 +785,7 @@ class TestNoiseCovWithNonDiagonalN:
         rng = np.random.default_rng(4)
         theta = rng.uniform(0, np.pi, n_pix)
         phi = rng.uniform(0, 2 * np.pi, n_pix)
-        fiducial_C_ell = np.full(lmax - 1, 0.05)
+        fiducial_C_ell = np.full(lmax + 1, 0.05)
 
         # Switch optimization active: N_eff = N + S_fixed for ℓ > lswitch_high.
         hc = HarmonicBasis(

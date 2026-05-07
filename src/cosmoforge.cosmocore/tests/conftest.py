@@ -295,7 +295,7 @@ def three_scalar_field_realistic_setup():
     lmax = 10
 
     # Realistic power spectra (physical C_ell values, no pre-normalization)
-    n_ell = lmax - 1  # ell = 2 to lmax
+    n_ell = lmax + 1  # ell = 2 to lmax
     ells = np.arange(2, lmax + 1)
 
     # Auto-spectra: different amplitudes for different fields

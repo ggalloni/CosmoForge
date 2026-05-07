@@ -360,7 +360,7 @@ class BaseField(ABC):
         >>> beam_window = load_beam_function(lmax=field.lmax)
         >>> field.set_beam(beam_window)
         """
-        expected_rows = self.lmax - 1
+        expected_rows = self.lmax + 1
         if beam.shape[0] != expected_rows:
             raise ValueError(f"Beam must have {expected_rows} rows, got {beam.shape[0]}")
         self._beam = beam.copy()

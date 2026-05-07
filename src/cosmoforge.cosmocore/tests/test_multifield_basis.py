@@ -489,7 +489,7 @@ class TestMultiFieldIntegration:
 
         setup = two_scalar_field_setup
         lmax = setup["lmax"]
-        n_ell = lmax - 1
+        n_ell = lmax + 1
 
         # Different spectra per field (physical C_ell values)
         ells = np.arange(2, lmax + 1)
