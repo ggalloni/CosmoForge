@@ -765,9 +765,9 @@ class PixelBasis(ComputationBasis):
         results with weights ``beam²(ℓ)`` over ℓ ∈ [bins.lmins[bin_idx],
         bins.lmaxs[bin_idx]], but uses one ``compute_*_contribution`` call
         instead of N (where N = bin width). The contribution functions
-        already accumulate ``Σ_k cl[k] × kernel[k+1]`` per pixel pair, so
-        passing ``cl[ell-2] = beam²(ell)`` (zero outside bin) yields the
-        exact binned derivative.
+        accumulate ``Σ_ℓ cl[ell] × kernel[ell]`` per pixel pair on
+        ℓ-indexed arrays, so populating ``cl[ell] = beam²(ell)`` inside the
+        bin (zero elsewhere) yields the exact binned derivative.
         """
         from ..pixel import (
             compute_00_contribution,
@@ -778,20 +778,17 @@ class PixelBasis(ComputationBasis):
         lmin_b = bins.lmins[bin_idx]
         lmax_b = bins.lmaxs[bin_idx]
 
-        # Build per-ell weight array w[k] for k = ell - 2 (k=0 → ell=2).
-        # The contribution functions evaluate Σ_k w[k] × kernel[k+1], where
-        # kernel[k+1] = legendre/Wigner at ell = k + 2. So setting w[k] to
-        # beam²(ell) inside the bin and 0 elsewhere produces exactly
-        # Σ_{ell∈bin} beam²(ell) × dC/dC_ell.
-        n_cl = self.lmax - 1  # ell = 2 .. lmax → length lmax - 1
-        weights = np.zeros(n_cl, dtype=np.float64)
+        # Build ℓ-indexed weight array w[ell] = beam²(ell) inside the bin and
+        # 0 elsewhere. The contribution functions evaluate Σ_ℓ w[ell] ×
+        # kernel[ell] for ell=2..lmax, giving Σ_{ell∈bin} beam²(ell) × dC/dC_ell.
+        weights = np.zeros(self.lmax + 1, dtype=np.float64)
         for ell in range(lmin_b, lmax_b + 1):
             if ell < 2 or ell > self.lmax:
                 continue
             w = 1.0
             if beam_smoothing is not None:
-                w = beam_smoothing[ell - 2]
-            weights[ell - 2] = w
+                w = beam_smoothing[ell]
+            weights[ell] = w
 
         fi = self._fields.fields[comp_i]
         fj = self._fields.fields[comp_j]
@@ -821,8 +818,8 @@ class PixelBasis(ComputationBasis):
         # binned calls without aliasing.
         dS = np.asfortranarray(np.zeros((self.n_pix, self.n_pix), dtype=np.float64))
         block = dS[rj : rj + ncol, ri : ri + nrow]
-        legendre = np.empty(self.lmax, dtype=np.float64)
-        zeros = np.zeros(n_cl, dtype=np.float64)
+        legendre = np.empty(self.lmax + 1, dtype=np.float64)
+        zeros = np.zeros(self.lmax + 1, dtype=np.float64)
 
         if spin_i == 0 and spin_j == 0:
             sub_mode = 0 if comp_i == comp_j else 1
@@ -839,8 +836,8 @@ class PixelBasis(ComputationBasis):
                 # do_derivative_step's outer-level mirror.
                 dS[ri : ri + nrow, rj : rj + ncol] = block.T
         elif spin_i == 2 and spin_j == 2 and comp_i == comp_j:
-            f1 = np.empty(self.lmax, dtype=np.float64)
-            f2 = np.empty(self.lmax, dtype=np.float64)
+            f1 = np.empty(self.lmax + 1, dtype=np.float64)
+            f2 = np.empty(self.lmax + 1, dtype=np.float64)
             if mode == 0:  # EE
                 cl11, cl22, cl12 = weights, zeros, zeros
             elif mode == 1:  # BB

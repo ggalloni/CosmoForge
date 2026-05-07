@@ -456,7 +456,7 @@ class HarmonicBasisBuilder:
             self._build_ell_mode_mapping()
         Lambda_diag = np.zeros(self.n_modes)
         for ell in range(self._lmin_smw, self._lmax_smw + 1):
-            c_ell_value = C_ell[ell - 2] if ell - 2 < len(C_ell) else 0.0
+            c_ell_value = C_ell[ell] if ell < len(C_ell) else 0.0
             for idx in self._ell_to_modes_local[ell]:
                 Lambda_diag[idx] = c_ell_value
         return Lambda_diag
@@ -517,11 +517,11 @@ class HarmonicBasisBuilder:
         Lambda = np.zeros((2 * n, 2 * n), dtype=np.float64)
 
         for ell in range(self._lmin_smw, self._lmax_smw + 1):
-            c_ee = C_ell_EE[ell - 2] if ell - 2 < len(C_ell_EE) else 0.0
-            c_bb = C_ell_BB[ell - 2] if ell - 2 < len(C_ell_BB) else 0.0
+            c_ee = C_ell_EE[ell] if ell < len(C_ell_EE) else 0.0
+            c_bb = C_ell_BB[ell] if ell < len(C_ell_BB) else 0.0
             c_eb = 0.0
-            if C_ell_EB is not None and ell - 2 < len(C_ell_EB):
-                c_eb = C_ell_EB[ell - 2]
+            if C_ell_EB is not None and ell < len(C_ell_EB):
+                c_eb = C_ell_EB[ell]
 
             for idx in self._ell_to_modes_local[ell]:
                 Lambda[idx, idx] = c_ee  # E-E block

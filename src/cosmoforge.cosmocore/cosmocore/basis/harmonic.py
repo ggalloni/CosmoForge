@@ -259,10 +259,10 @@ class HarmonicBasis(ComputationBasis):
         """
         from ..pixel import compute_00_contribution
 
-        cl_fixed = np.zeros(self.lmax - 1, dtype=np.float64)
+        cl_fixed = np.zeros(self.lmax + 1, dtype=np.float64)
         for ell in range(self.lswitch_high + 1, self.lmax + 1):
-            if ell - 2 < len(self._fiducial_C_ell):
-                cl_fixed[ell - 2] = self._fiducial_C_ell[ell - 2]
+            if ell < len(self._fiducial_C_ell):
+                cl_fixed[ell] = self._fiducial_C_ell[ell]
 
         point_vectors = np.column_stack(
             [
@@ -273,7 +273,7 @@ class HarmonicBasis(ComputationBasis):
         )
 
         S_fixed = np.zeros((self.n_pix, self.n_pix), dtype=np.float64)
-        legendre_buffer = np.empty(self.lmax, dtype=np.float64)
+        legendre_buffer = np.empty(self.lmax + 1, dtype=np.float64)
 
         compute_00_contribution(
             cl_fixed,
