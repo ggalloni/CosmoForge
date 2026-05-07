@@ -254,9 +254,9 @@ class ParameterGrid:
 
         Notes
         -----
-        The arrays are indexed from l=2 (index 0 corresponds to l=2).
-        For l < lswitch_low or l > lswitch_high, the fiducial is used.
-        For lswitch_low <= l <= lswitch_high, the parameter spectrum is used.
+        Arrays are ℓ-indexed: ``arr[ell]`` is the spectrum value at multipole ℓ.
+        For ℓ < lswitch_low or ℓ > lswitch_high, the fiducial is used.
+        For lswitch_low ≤ ℓ ≤ lswitch_high, the parameter spectrum is used.
         """
         blended = {}
         for key in param_spectrum:
@@ -274,14 +274,9 @@ class ParameterGrid:
             # Start with fiducial
             result = fid_arr[:min_len].copy()
 
-            # Index conversion: array index i corresponds to l = i + 2
-            # lswitch_low=2 means index 0, lswitch_high=16 means index 14
-            idx_low = lswitch_low - 2
-            idx_high = lswitch_high - 2
-
-            # Clamp indices to valid range
-            idx_low = max(0, idx_low)
-            idx_high = min(min_len - 1, idx_high)
+            # Clamp the switch range to the available indices.
+            idx_low = max(0, lswitch_low)
+            idx_high = min(min_len - 1, lswitch_high)
 
             # Replace with parameter spectrum in switch range
             if idx_low <= idx_high:
