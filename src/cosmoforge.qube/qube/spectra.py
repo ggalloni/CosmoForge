@@ -1402,7 +1402,7 @@ class Spectra(Core, MPISharedMemoryMixin):
         -----
         With binning enabled, n_params = nspectra * nbins. The theory
         input to convolve_theory must be binned (one value per bin),
-        e.g. via bins.bin_spectra(cl_theory, lmin=2).
+        e.g. via ``bins.bin_spectra(cl_theory)`` (cl_theory ℓ-indexed).
         """
         y = self.qml_results
 
