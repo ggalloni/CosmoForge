@@ -247,7 +247,9 @@ def test_binned_derivative_direct_with_beam_smoothing():
     try:
         bm = _build_direct_basis(core, lmax=core.params.lmax)
         bins = Bins.fromdeltal(2, core.params.lmax, 3)
-        n_ell = core.params.lmax + 1  # ell = 2 .. lmax
+        # Inference-range beam of length lmax-1 (ell=2..lmax, offset-from-2);
+        # this matches Fisher's per-spectrum beam_smoothing layout.
+        n_ell = core.params.lmax - 1
         beam = np.linspace(1.0, 0.5, n_ell) ** 2
         dC_b = bm.get_binned_derivative_direct(
             bin_idx=1,

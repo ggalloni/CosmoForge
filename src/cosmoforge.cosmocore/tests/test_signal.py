@@ -79,7 +79,10 @@ def test_signal_covmat(data_resolver):
 
     collection.set_pointing_vectors(point_vectors)
 
-    Cls = np.zeros((Par.lmax + 1, collection.n_spectra + 1), dtype=np.float64)
+    # ℓ-indexed file format: rows for ell = 2 .. lmax (ell=0,1 omitted from
+    # the file; readcl zero-pads them on read).
+    n_rows = Par.lmax - 1
+    Cls = np.zeros((n_rows, collection.n_spectra + 1), dtype=np.float64)
     Cls[:, 0] = np.arange(2, Par.lmax + 1)  # ell values
     Cls[:, 1] = 1e-4 / np.arange(2, Par.lmax + 1) ** 2  # TT
     Cls[:, 2] = 0.5e-4 / np.arange(2, Par.lmax + 1) ** 2  # EE
@@ -177,7 +180,8 @@ def test_signal_covmat_multiple_scalar_fields(data_resolver):
 
     collection.set_pointing_vectors(point_vectors)
 
-    Cls = np.zeros((Par.lmax + 1, collection.n_spectra + 1), dtype=np.float64)
+    n_rows = Par.lmax - 1
+    Cls = np.zeros((n_rows, collection.n_spectra + 1), dtype=np.float64)
     Cls[:, 0] = np.arange(2, Par.lmax + 1)  # ell values
     Cls[:, 1] = 1e-4 / np.arange(2, Par.lmax + 1) ** 2  # T1-T1
     Cls[:, 2] = 0.8e-4 / np.arange(2, Par.lmax + 1) ** 2  # T2-T2

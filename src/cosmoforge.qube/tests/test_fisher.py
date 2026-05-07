@@ -82,8 +82,8 @@ def test_fisher_computation(fields, local_path, config_resolver):
     assert fisher_matrix is not None
     assert error_bars is not None
 
-    # Fisher is beam-smoothed. Divide out beam smoothing
-    # to compare against raw reference files.
+    # Fisher is beam-smoothed. Divide out beam smoothing to compare against
+    # raw reference files.
     beam_smoothing = fisher_inst.beam_smoothing
     fisher_raw = fisher_matrix / np.outer(beam_smoothing, beam_smoothing)
 

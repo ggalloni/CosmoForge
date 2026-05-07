@@ -781,13 +781,15 @@ class PixelBasis(ComputationBasis):
         # Build ℓ-indexed weight array w[ell] = beam²(ell) inside the bin and
         # 0 elsewhere. The contribution functions evaluate Σ_ℓ w[ell] ×
         # kernel[ell] for ell=2..lmax, giving Σ_{ell∈bin} beam²(ell) × dC/dC_ell.
+        # beam_smoothing (when provided) is the inference-range slice
+        # (ell=2..lmax, offset-from-2 in PR1).
         weights = np.zeros(self.lmax + 1, dtype=np.float64)
         for ell in range(lmin_b, lmax_b + 1):
             if ell < 2 or ell > self.lmax:
                 continue
             w = 1.0
             if beam_smoothing is not None:
-                w = beam_smoothing[ell]
+                w = beam_smoothing[ell - 2]
             weights[ell] = w
 
         fi = self._fields.fields[comp_i]

@@ -335,12 +335,16 @@ def correctness():
     lmax = 50
     rtol = 1e-14
 
-    # Test 00 case
+    # Test 00 case. Reference impls preserve the legacy convention
+    # (length lmax, index 0 → ℓ=1). The production in-place legendre_00
+    # uses ℓ-indexed storage of length lmax+1; index 0 holds the
+    # placeholder for the (currently disabled) monopole and indices 1..lmax
+    # match the legacy impls 1:1.
     orig_00 = original_legendre_00(scalar_prod, lmax)
     opt_00 = legendre_00_non_inplace(scalar_prod, lmax)
     unified_00 = legendre_unified_non_inplace(scalar_prod, lmax, "00")
 
-    buffer_00 = np.empty(lmax, dtype=np.float64)
+    buffer_00 = np.empty(lmax + 1, dtype=np.float64)
     legendre_00(scalar_prod, buffer_00)
 
     buffer_unified_00 = np.empty(lmax, dtype=np.float64)
@@ -348,7 +352,7 @@ def correctness():
 
     np.testing.assert_allclose(orig_00, opt_00, rtol=rtol)
     np.testing.assert_allclose(orig_00, unified_00, rtol=rtol)
-    np.testing.assert_allclose(orig_00, buffer_00, rtol=rtol)
+    np.testing.assert_allclose(orig_00, buffer_00[1:], rtol=rtol)
     np.testing.assert_allclose(orig_00, buffer_unified_00, rtol=rtol)
     print("✓ 00 case: All implementations match")
 
@@ -357,9 +361,9 @@ def correctness():
     opt_22 = legendre_22_non_inplace(scalar_prod, lmax)
     unified_22 = legendre_unified_non_inplace(scalar_prod, lmax, "22")
 
-    buffer_22 = np.empty(lmax, dtype=np.float64)
-    buffer_f1 = np.empty(lmax, dtype=np.float64)
-    buffer_f2 = np.empty(lmax, dtype=np.float64)
+    buffer_22 = np.empty(lmax + 1, dtype=np.float64)
+    buffer_f1 = np.empty(lmax + 1, dtype=np.float64)
+    buffer_f2 = np.empty(lmax + 1, dtype=np.float64)
     legendre_22(scalar_prod, buffer_22, buffer_f1, buffer_f2)
 
     buffer_unified_22 = np.empty(lmax, dtype=np.float64)
@@ -367,7 +371,7 @@ def correctness():
 
     np.testing.assert_allclose(orig_22, opt_22, rtol=rtol)
     np.testing.assert_allclose(orig_22, unified_22, rtol=rtol)
-    np.testing.assert_allclose(orig_22, buffer_22, rtol=rtol)
+    np.testing.assert_allclose(orig_22, buffer_22[1:], rtol=rtol)
     np.testing.assert_allclose(orig_22, buffer_unified_22, rtol=rtol)
     print("✓ 22 case: All implementations match")
 
@@ -376,7 +380,7 @@ def correctness():
     opt_02 = legendre_02_non_inplace(scalar_prod, lmax)
     unified_02 = legendre_unified_non_inplace(scalar_prod, lmax, "02")
 
-    buffer_02 = np.empty(lmax, dtype=np.float64)
+    buffer_02 = np.empty(lmax + 1, dtype=np.float64)
     legendre_02(scalar_prod, buffer_02)
 
     buffer_unified_02 = np.empty(lmax, dtype=np.float64)
@@ -384,7 +388,7 @@ def correctness():
 
     np.testing.assert_allclose(orig_02, opt_02, rtol=rtol)
     np.testing.assert_allclose(orig_02, unified_02, rtol=rtol)
-    np.testing.assert_allclose(orig_02, buffer_02, rtol=rtol)
+    np.testing.assert_allclose(orig_02, buffer_02[1:], rtol=rtol)
     np.testing.assert_allclose(orig_02, buffer_unified_02, rtol=rtol)
     print("✓ 02 case: All implementations match")
 
@@ -416,16 +420,21 @@ def test_all_legendre():
             legendre_unified_non_inplace, (scalar_prod, lmax, "00"), "Unified", n_runs
         )
 
-        buffer = np.empty(lmax, dtype=np.float64)
-        buffer_f1 = np.empty(lmax, dtype=np.float64)
-        buffer_f2 = np.empty(lmax, dtype=np.float64)
+        # The production legendre_* in-place functions are ℓ-indexed
+        # (length lmax+1); the legacy legendre_unified_inplace still
+        # uses the offset-from-2 convention (length lmax).
+        buffer_ell = np.empty(lmax + 1, dtype=np.float64)
+        buffer_f1 = np.empty(lmax + 1, dtype=np.float64)
+        buffer_f2 = np.empty(lmax + 1, dtype=np.float64)
+        buffer_legacy = np.empty(lmax, dtype=np.float64)
+
         benchmark_inplace(
-            legendre_00, scalar_prod, buffer, "Optimized (in-place)", n_runs
+            legendre_00, scalar_prod, buffer_ell, "Optimized (in-place)", n_runs
         )
         benchmark_inplace(
             legendre_unified_inplace,
             scalar_prod,
-            buffer,
+            buffer_legacy,
             "Unified (in-place)",
             n_runs,
             spin_case="00",
@@ -444,7 +453,7 @@ def test_all_legendre():
         benchmark_inplace_22(
             legendre_22,
             scalar_prod,
-            buffer,
+            buffer_ell,
             buffer_f1,
             buffer_f2,
             "Optimized (in-place)",
@@ -453,7 +462,7 @@ def test_all_legendre():
         benchmark_inplace(
             legendre_unified_inplace,
             scalar_prod,
-            buffer,
+            buffer_legacy,
             "Unified (in-place)",
             n_runs,
             spin_case="22",
@@ -470,12 +479,12 @@ def test_all_legendre():
         )
 
         benchmark_inplace(
-            legendre_02, scalar_prod, buffer, "Optimized (in-place)", n_runs
+            legendre_02, scalar_prod, buffer_ell, "Optimized (in-place)", n_runs
         )
         benchmark_inplace(
             legendre_unified_inplace,
             scalar_prod,
-            buffer,
+            buffer_legacy,
             "Unified (in-place)",
             n_runs,
             spin_case="02",

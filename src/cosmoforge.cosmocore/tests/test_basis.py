@@ -153,7 +153,7 @@ class TestComputeFisherMatrix:
 
         setup = uniform_sky_setup
         lmax = setup["lmax"]
-        n_ell = lmax + 1
+        n_ell = lmax - 1
         C_ell = np.ones(n_ell) * 1e-6
 
         hc = HarmonicBasis(
@@ -174,7 +174,7 @@ class TestComputeFisherMatrix:
 
         setup = uniform_sky_setup
         lmax = setup["lmax"]
-        n_ell = lmax + 1
+        n_ell = lmax - 1
         C_ell = np.ones(n_ell) * 1e-6
 
         hc = HarmonicBasis(
@@ -195,7 +195,7 @@ class TestComputeFisherMatrix:
 
         setup = uniform_sky_setup
         lmax = setup["lmax"]
-        n_ell = lmax + 1
+        n_ell = lmax - 1
         C_ell = np.ones(n_ell) * 1e-6
 
         hc = HarmonicBasis(
@@ -218,7 +218,7 @@ class TestComputeFisherMatrix:
 
         setup = uniform_sky_setup
         lmax = setup["lmax"]
-        n_ell = lmax + 1
+        n_ell = lmax - 1
         C_ell = np.ones(n_ell) * 1e-6
 
         cm = create_computation_basis(
@@ -241,7 +241,7 @@ class TestComputeFisherMatrix:
 
         setup = uniform_sky_setup
         lmax = setup["lmax"]
-        n_ell = lmax + 1
+        n_ell = lmax - 1
         C_ell = np.ones(n_ell) * 1e-6
 
         ppc = PixelBasis(
@@ -720,7 +720,7 @@ class TestPixelProjectedPICSLikeMethods:
         )
 
         # BB block of Fisher: last n_ell rows/cols
-        n_ell = lmax + 1
+        n_ell = lmax - 1
         bb_diag_agg = np.diag(fisher_agg[n_ell:, n_ell:])
         bb_diag_split = np.diag(fisher_split[n_ell:, n_ell:])
 

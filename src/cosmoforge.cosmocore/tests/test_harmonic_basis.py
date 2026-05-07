@@ -511,10 +511,13 @@ class TestHarmonicBasisBeam:
         setup = simple_compression_setup
         lmax = setup["lmax"]
 
-        ell = np.arange(2, lmax + 1)
+        # ℓ-indexed beam of length lmax+1; ℓ=0,1 are zero-padded since the
+        # spectrum floor here is ℓ≥2.
+        ell = np.arange(lmax + 1)
         fwhm_rad = np.deg2rad(30.0 / 60.0)
         sigma = fwhm_rad / np.sqrt(8 * np.log(2))
         beam = np.exp(-0.5 * ell * (ell + 1) * sigma**2)
+        beam[:2] = 0.0
 
         hc = HarmonicBasis(
             N=setup["N"],

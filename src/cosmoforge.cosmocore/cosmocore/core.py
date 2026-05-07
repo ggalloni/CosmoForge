@@ -842,7 +842,9 @@ class Core(ABC):
             )
             weight = 1.0
             if beam_smoothing is not None:
-                weight = beam_smoothing[ell]
+                # beam_smoothing is the inference-range slice (ell=2..lmax,
+                # offset-from-2 in PR1).
+                weight = beam_smoothing[ell - 2]
             if dC_b is None:
                 dC_b = weight * dC_ell
             else:

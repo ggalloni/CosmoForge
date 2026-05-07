@@ -209,13 +209,13 @@ class ComputationBasis(ABC):
         self._S_fixed = S_fixed
         self._use_switch_optimization = lswitch_high is not None and lswitch_high < lmax
 
-        # Store beam window function
+        # Store beam window function (ℓ-indexed: beam[ell] for ell=0..lmax).
         if beam is not None:
             beam = np.asarray(beam, dtype=np.float64)
-            expected_len = lmax - 1  # ell = 2 to lmax
+            expected_len = lmax + 1
             if beam.shape[0] != expected_len:
                 raise ValueError(
-                    f"Beam must have length {expected_len} (ell=2 to lmax={lmax}), "
+                    f"Beam must have length {expected_len} (ell=0..lmax={lmax}), "
                     f"got {beam.shape[0]}"
                 )
             self._beam = beam

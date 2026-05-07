@@ -385,7 +385,7 @@ class Fisher(Core, MPISharedMemoryMixin):
                         for ell in range(
                             self.bins.lmins[bin_idx], self.bins.lmaxs[bin_idx] + 1
                         ):
-                            weight = self.beam_smoothing[beam_offset + ell]
+                            weight = self.beam_smoothing[beam_offset + ell - 2]
                             E_b_diag += weight * bm._get_derivative_diagonal(
                                 ell, comp_i, comp_j, spec_mode
                             )
@@ -399,7 +399,7 @@ class Fisher(Core, MPISharedMemoryMixin):
                         for ell in range(
                             self.bins.lmins[bin_idx], self.bins.lmaxs[bin_idx] + 1
                         ):
-                            weight = self.beam_smoothing[beam_offset + ell]
+                            weight = self.beam_smoothing[beam_offset + ell - 2]
                             if abs(weight) < _WEIGHT_ZERO_THRESHOLD:
                                 continue
                             dC_ell = bm.get_derivative_matrix(
@@ -725,12 +725,12 @@ class Fisher(Core, MPISharedMemoryMixin):
                     level=1,
                 )
 
-            # Beam smoothing factors b²_ell for each spectrum (product of beam
-            # and pixel window functions). Flat vector with each per-spectrum
-            # block ℓ-indexed of length lmax+1: [spec0_ell0, ..., spec0_ellmax,
-            # spec1_ell0, ..., spec1_ellmax, ...]. Entries below the spectrum's
-            # physical floor are zero.
-            self.n_ell = self.params.lmax + 1
+            # Beam smoothing factors b²_ell for each Fisher row. Flat vector
+            # with each per-spectrum block holding the inference-range beams
+            # (ell = 2..lmax in PR1): [spec0_ell2, ..., spec0_ellmax,
+            # spec1_ell2, ..., spec1_ellmax, ...]. For delta_ell=1 (unbinned)
+            # this matches Fisher's n_params layout 1:1.
+            self.n_ell = self.params.lmax - 1
             smoothing_dict = self.collection.spectra_manager.compute_smoothing_factors(
                 self.collection.beam_manager
             )
@@ -738,8 +738,13 @@ class Fisher(Core, MPISharedMemoryMixin):
                 self.params.nspectra * self.n_ell, dtype=np.float64
             )
             idx = 0
+            lmax = self.params.lmax
             for label in self.collection.spectra_manager.labels:
-                self.beam_smoothing[idx : idx + self.n_ell] = smoothing_dict[label]
+                # smoothing_dict[label] is ℓ-indexed length lmax+1; extract
+                # the inference range ell=2..lmax for the per-Fisher-row layout.
+                self.beam_smoothing[idx : idx + self.n_ell] = smoothing_dict[label][
+                    2 : lmax + 1
+                ]
                 idx += self.n_ell
 
             # Setup Fisher matrices dimensions

@@ -33,7 +33,7 @@ def compute_pixel_space_fisher(C_inv, V, lambda_matrix, lmax, spectra_list, hc):
 
     where dS_i = V^T E_i V is the derivative of signal matrix.
     """
-    n_ell = lmax + 1
+    n_ell = lmax - 1
     n_spectra = len(spectra_list)
     fisher = np.zeros((n_spectra * n_ell, n_spectra * n_ell))
 
@@ -117,7 +117,7 @@ def teb_scalar_setup():
     lmax = 8  # Same as nside=4 tests
 
     # Realistic power spectra (physical C_ell values, no pre-normalization)
-    n_ell = lmax + 1
+    n_ell = lmax - 1
     ells = np.arange(2, lmax + 1)
 
     # Auto-spectra (TT, EE, BB)
