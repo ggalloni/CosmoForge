@@ -242,39 +242,44 @@ def _parse_convention(value):
     return canonical[key]
 
 
-def convert_spectra_normalization(cls_dict, from_norm, to_norm, lstart=2):
+def convert_spectra_normalization(cls_dict, from_norm, to_norm):
     """Convert between Cl and Dl = l(l+1)/(2pi) Cl conventions.
 
-    Modifies cls_dict in place and returns it.
+    Operates on ℓ-indexed arrays: ``cls_dict[label][ell]`` is the spectrum
+    value at multipole ``ell``. Indices below the physical floor of the
+    spectrum are expected to be zero. Modifies ``cls_dict`` in place and
+    returns it.
 
     Parameters
     ----------
     cls_dict : dict
-        Dictionary mapping spectrum labels to power spectrum arrays.
+        Dictionary mapping spectrum labels to ℓ-indexed power-spectrum arrays.
     from_norm : str
         Input convention ("Cl" or "Dl", case-insensitive).
     to_norm : str
         Output convention ("Cl" or "Dl", case-insensitive).
-    lstart : int, optional
-        Starting multipole (default: 2).
 
     Returns
     -------
     dict
-        The same cls_dict, modified in place.
+        The same ``cls_dict``, modified in place.
     """
     from_norm = _parse_convention(from_norm)
     to_norm = _parse_convention(to_norm)
     if from_norm == to_norm:
         return cls_dict
     n_ell = next(iter(cls_dict.values())).shape[0]
-    ell = np.arange(lstart, lstart + n_ell, dtype=np.float64)
+    ell = np.arange(n_ell, dtype=np.float64)
     if from_norm == "Dl" and to_norm == "Cl":
-        factor = 2 * np.pi / (ell * (ell + 1))
+        # Dl[ell] = ell*(ell+1)/(2pi) * Cl[ell]; inversion undefined at ell=0.
+        # Convention: Dl[0] = 0 ⇒ Cl[0] = 0, so factor[0] = 0 is safe.
+        factor = np.zeros_like(ell)
+        nz = ell >= 1
+        factor[nz] = 2 * np.pi / (ell[nz] * (ell[nz] + 1))
     else:  # Cl -> Dl
         factor = ell * (ell + 1) / (2 * np.pi)
     for label in cls_dict:
-        cls_dict[label] = cls_dict[label] * factor[: len(cls_dict[label])]
+        cls_dict[label] = cls_dict[label] * factor
     return cls_dict
 
 
@@ -297,8 +302,9 @@ def readcl(inputclfile, Params: InputParams, logger=None, lmax: int | None = Non
     Returns
     -------
     dict
-        Dictionary mapping spectrum labels to power spectrum arrays.
-        Each array has length (lmax-1) corresponding to l=2 to lmax.
+        Dictionary mapping spectrum labels to ℓ-indexed power-spectrum arrays.
+        Each array has length ``effective_lmax + 1``: ``cls_dict[label][ell]``
+        is C_ℓ. Indices below the file's lowest available ℓ are zero-padded.
 
     Raises
     ------
@@ -310,8 +316,9 @@ def readcl(inputclfile, Params: InputParams, logger=None, lmax: int | None = Non
     Expected file format:
     - First line: header starting with '#' containing column labels
     - Subsequent lines: numerical data with columns for different spectra
-    - 'ell' column is automatically skipped if present
-    - Power spectra are truncated to the specified lmax
+    - 'ell' column is used to position rows at the correct ℓ index when
+      present; otherwise the file is assumed to start at ℓ=2.
+    - Rows for ℓ > ``effective_lmax`` are dropped silently.
     """
     effective_lmax = lmax if lmax is not None else Params.lmax
     with open(inputclfile.strip()) as f:
@@ -322,25 +329,31 @@ def readcl(inputclfile, Params: InputParams, logger=None, lmax: int | None = Non
         arr = np.loadtxt(f, dtype=np.float64)
         if logger is not None:
             logger.log_with_feedback(f"Read Cls: {arr.shape} {labels}", level=4)
-        # Find where ell=2 starts (files may begin at ell=0 or ell=2)
         ell_col = None
         for i, label in enumerate(labels):
             if label.lower() == "ell":
                 ell_col = i
                 break
 
+        n_out = effective_lmax + 1
+        cls_dict = {}
         if ell_col is not None:
             ell_values = arr[:, ell_col].astype(int)
-            start_row = int(np.searchsorted(ell_values, 2))
+            keep = (ell_values >= 0) & (ell_values <= effective_lmax)
+            target_ells = ell_values[keep]
         else:
-            start_row = 0  # assume data starts at ell=2
-
-        n_ell = effective_lmax - 1  # number of multipoles from ell=2 to lmax
-        cls_dict = {}
+            # No ell column: assume data starts at ell=2.
+            n_fit = max(0, min(arr.shape[0], effective_lmax - 1))
+            target_ells = None  # indicates the "start at ell=2" branch
         for i, label in enumerate(labels):
             if label.lower() == "ell":
                 continue
-            cls_dict[label] = arr[start_row : start_row + n_ell, i]
+            arr_out = np.zeros(n_out, dtype=np.float64)
+            if target_ells is not None:
+                arr_out[target_ells] = arr[keep, i]
+            elif n_fit > 0:
+                arr_out[2 : 2 + n_fit] = arr[:n_fit, i]
+            cls_dict[label] = arr_out
 
     input_conv = _parse_convention(getattr(Params, "input_convention", "Cl"))
     if input_conv != "Cl":
