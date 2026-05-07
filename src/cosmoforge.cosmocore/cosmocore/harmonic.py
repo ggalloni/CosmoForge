@@ -53,31 +53,28 @@ if TYPE_CHECKING:
 @njit(cache=True)
 def cl_to_vec(cl, vec):
     """
-    Convert power spectra matrix to vectorized form.
-
-    This function flattens a 2D power spectra matrix (multipoles × spectra)
-    into a 1D vector. The vectorization follows the order: all multipoles for
-    spectrum 0, then all multipoles for spectrum 1, etc. Only multipoles ℓ ≥ 2
-    are included.
+    Convert a per-bin (or inference-range per-multipole) spectra matrix into
+    a flat vector, ordered spectrum-major.
 
     Parameters
     ----------
-    cl : numpy.ndarray, shape (lmax-1, n_spec)
-        Input power spectra matrix. First dimension corresponds to multipoles
-        ℓ=2 to ℓ=lmax, second dimension corresponds to different power spectra.
-    vec : numpy.ndarray, shape ((lmax-1) * n_spec,)
-        Output vector to be filled. Must be pre-allocated with correct size.
+    cl : numpy.ndarray, shape (n_bins, n_spec)
+        Input matrix indexed by bin (or by inference multipole when
+        delta_ell=1, in which case row ``k`` corresponds to ℓ = k + 2).
+        This is a Fisher-row representation, NOT an ℓ-indexed cl array.
+    vec : numpy.ndarray, shape (n_bins * n_spec,)
+        Output vector to be filled. Must be pre-allocated.
 
     Notes
     -----
-    This function is JIT-compiled with Numba for performance. The input vector
-    `vec` is modified in-place.
+    JIT-compiled. Caller is responsible for the bin ↔ ℓ mapping; this
+    function just relayouts the matrix.
 
     Examples
     --------
     >>> import numpy as np
-    >>> cl = np.random.random((10, 3))  # lmax=12, 3 spectra
-    >>> vec = np.zeros(30)  # 10 * 3
+    >>> cl = np.random.random((10, 3))  # 10 bins, 3 spectra
+    >>> vec = np.zeros(30)
     >>> cl_to_vec(cl, vec)
     """
     lmax = cl.shape[0] + 1
@@ -92,31 +89,25 @@ def cl_to_vec(cl, vec):
 @njit(cache=True)
 def vec_to_cl(vec, cl):
     """
-    Convert vectorized power spectra back to matrix form.
-
-    This function is the inverse of cl_to_vec, converting a 1D vector of power
-    spectra back to a 2D matrix format. The devectorization follows the same
-    ordering convention: all multipoles for spectrum 0, then all multipoles
-    for spectrum 1, etc.
+    Inverse of :func:`cl_to_vec`: scatter a flat spectrum-major vector into
+    a per-bin (or inference-range per-multipole) matrix.
 
     Parameters
     ----------
-    vec : numpy.ndarray, shape ((lmax-1) * n_spec,)
-        Input vector containing flattened power spectra.
-    cl : numpy.ndarray, shape (lmax-1, n_spec)
-        Output power spectra matrix to be filled. Must be pre-allocated with
-        correct shape.
+    vec : numpy.ndarray, shape (n_bins * n_spec,)
+        Input flat vector (Fisher-row ordering, spectrum-major).
+    cl : numpy.ndarray, shape (n_bins, n_spec)
+        Output matrix to be filled. Must be pre-allocated.
 
     Notes
     -----
-    This function is JIT-compiled with Numba for performance. The input matrix
-    `cl` is modified in-place.
+    JIT-compiled. Bin ↔ ℓ mapping is the caller's responsibility.
 
     Examples
     --------
     >>> import numpy as np
-    >>> vec = np.random.random(30)  # 10 * 3 elements
-    >>> cl = np.zeros((10, 3))  # lmax=12, 3 spectra
+    >>> vec = np.random.random(30)
+    >>> cl = np.zeros((10, 3))
     >>> vec_to_cl(vec, cl)
     """
     lmax = cl.shape[0] + 1
@@ -386,8 +377,9 @@ class SpectraManager:
         Returns
         -------
         np.ndarray
-            Power spectrum array of length (lmax-1) containing C_ℓ values
-            for multipoles ℓ = 2 to ℓ = lmax.
+            ℓ-indexed power-spectrum array of length ``lmax + 1``: index
+            ``ell`` holds C_ℓ. Indices below the spectrum's physical floor
+            (ℓ < 2 for spin-0, ℓ < |s| for spin-s) are zero.
 
         Raises
         ------

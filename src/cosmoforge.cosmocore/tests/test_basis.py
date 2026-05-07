@@ -70,8 +70,9 @@ class TestCreateCompression:
         from cosmocore.basis import HarmonicBasis, create_computation_basis
 
         setup = uniform_sky_setup
-        n_ell = setup["lmax"] - 1
-        C_ell = np.ones(n_ell) * 1e-6
+        # ℓ-indexed C_ell of length lmax+1; ℓ<2 entries zero (spin-0 floor).
+        C_ell = np.zeros(setup["lmax"] + 1, dtype=np.float64)
+        C_ell[2:] = 1e-6
 
         # Create both directly and via factory
         cm = create_computation_basis(
@@ -103,8 +104,9 @@ class TestCreateCompression:
         from cosmocore.basis import create_computation_basis
 
         setup = uniform_sky_setup
-        n_ell = setup["lmax"] - 1
-        C_ell = np.ones(n_ell) * 1e-6
+        # ℓ-indexed C_ell of length lmax+1; ℓ<2 entries zero (spin-0 floor).
+        C_ell = np.zeros(setup["lmax"] + 1, dtype=np.float64)
+        C_ell[2:] = 1e-6
 
         cm = create_computation_basis(
             method="harmonic",
@@ -125,8 +127,9 @@ class TestCreateCompression:
         from cosmocore.basis import create_computation_basis
 
         setup = uniform_sky_setup
-        n_ell = setup["lmax"] - 1
-        C_ell = np.ones(n_ell) * 1e-6
+        # ℓ-indexed C_ell of length lmax+1; ℓ<2 entries zero (spin-0 floor).
+        C_ell = np.zeros(setup["lmax"] + 1, dtype=np.float64)
+        C_ell[2:] = 1e-6
 
         cm = create_computation_basis(
             method="pixel",
@@ -154,7 +157,9 @@ class TestComputeFisherMatrix:
         setup = uniform_sky_setup
         lmax = setup["lmax"]
         n_ell = lmax - 1
-        C_ell = np.ones(n_ell) * 1e-6
+        # ℓ-indexed C_ell of length lmax+1; ℓ<2 entries zero (spin-0 floor).
+        C_ell = np.zeros(lmax + 1, dtype=np.float64)
+        C_ell[2:] = 1e-6
 
         hc = HarmonicBasis(
             N=setup["N"],
@@ -174,8 +179,9 @@ class TestComputeFisherMatrix:
 
         setup = uniform_sky_setup
         lmax = setup["lmax"]
-        n_ell = lmax - 1
-        C_ell = np.ones(n_ell) * 1e-6
+        # ℓ-indexed C_ell of length lmax+1; ℓ<2 entries zero (spin-0 floor).
+        C_ell = np.zeros(lmax + 1, dtype=np.float64)
+        C_ell[2:] = 1e-6
 
         hc = HarmonicBasis(
             N=setup["N"],
@@ -195,8 +201,9 @@ class TestComputeFisherMatrix:
 
         setup = uniform_sky_setup
         lmax = setup["lmax"]
-        n_ell = lmax - 1
-        C_ell = np.ones(n_ell) * 1e-6
+        # ℓ-indexed C_ell of length lmax+1; ℓ<2 entries zero (spin-0 floor).
+        C_ell = np.zeros(lmax + 1, dtype=np.float64)
+        C_ell[2:] = 1e-6
 
         hc = HarmonicBasis(
             N=setup["N"],
@@ -219,7 +226,9 @@ class TestComputeFisherMatrix:
         setup = uniform_sky_setup
         lmax = setup["lmax"]
         n_ell = lmax - 1
-        C_ell = np.ones(n_ell) * 1e-6
+        # ℓ-indexed C_ell of length lmax+1; ℓ<2 entries zero (spin-0 floor).
+        C_ell = np.zeros(lmax + 1, dtype=np.float64)
+        C_ell[2:] = 1e-6
 
         cm = create_computation_basis(
             method="harmonic",
@@ -242,7 +251,9 @@ class TestComputeFisherMatrix:
         setup = uniform_sky_setup
         lmax = setup["lmax"]
         n_ell = lmax - 1
-        C_ell = np.ones(n_ell) * 1e-6
+        # ℓ-indexed C_ell of length lmax+1; ℓ<2 entries zero (spin-0 floor).
+        C_ell = np.zeros(lmax + 1, dtype=np.float64)
+        C_ell[2:] = 1e-6
 
         ppc = PixelBasis(
             N=setup["N"],
