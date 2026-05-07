@@ -1,6 +1,6 @@
 [project]
 name = "qube-qml"
-version = "0.1.2"
+version = "0.1.3"
 description = "QUBE: Quadratic maximum likelihood UnBiased Estimator"
 readme = "README.md"
 authors = [
