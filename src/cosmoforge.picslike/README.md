@@ -1,4 +1,4 @@
-# CosmoForge.PICSLike
+# PICSLike
 
 [![Python](https://img.shields.io/badge/python-3.11%7C3.12%7C3.13-blue.svg)](https://www.python.org/downloads/)
 [![Documentation](https://img.shields.io/badge/docs-picslike-blue.svg)](https://ggalloni.github.io/CosmoForge/api/picslike.html)

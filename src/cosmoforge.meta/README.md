@@ -1,443 +1,216 @@
-# CosmoForge.Meta
+# CosmoForge
 
+[![Build Status](https://github.com/ggalloni/CosmoForge/workflows/Test%20CosmoForge%20Packages/badge.svg?branch=master)](https://github.com/ggalloni/CosmoForge/actions)
+[![Documentation](https://github.com/ggalloni/CosmoForge/workflows/Build%20and%20Deploy%20Documentation/badge.svg?branch=master)](https://ggalloni.github.io/CosmoForge/)
+[![codecov](https://codecov.io/gh/ggalloni/CosmoForge/branch/master/graph/badge.svg?token=UOm3LdvL7J)](https://codecov.io/gh/ggalloni/CosmoForge)
+[![PyPI](https://img.shields.io/pypi/v/cosmoforge.svg)](https://pypi.org/project/cosmoforge/)
+[![Code style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/charliermarsh/ruff)
 [![Python](https://img.shields.io/badge/python-3.11%7C3.12%7C3.13-blue.svg)](https://www.python.org/downloads/)
-[![Documentation](https://img.shields.io/badge/docs-meta-blue.svg)](https://ggalloni.github.io/CosmoForge/api/meta.html)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-> **📚 [Meta Documentation](https://ggalloni.github.io/CosmoForge/api/meta.html) | [Main Documentation](https://ggalloni.github.io/CosmoForge/) | [Contributing Guide](https://ggalloni.github.io/CosmoForge/contributing.html)**
+<p align="center">
+  <img src="logos/logo_cosmoforge_light.png#gh-light-mode-only" alt="CosmoForge logo (light)" style="max-width:30%; height:auto;"/>
+  <img src="logos/logo_cosmoforge_dark.png#gh-dark-mode-only" alt="CosmoForge logo (dark)" style="max-width:30%; height:auto;"/>
+</p>
 
-Meta is the metadata and utilities package for CosmoForge, providing project-wide configuration, version management, and helper utilities that support the entire CosmoForge ecosystem.
+> **📚 [Complete Documentation](https://ggalloni.github.io/CosmoForge/) | [Installation Guide](https://ggalloni.github.io/CosmoForge/installation.html) | [Quick Start](https://ggalloni.github.io/CosmoForge/quickstart.html) | [API Reference](https://ggalloni.github.io/CosmoForge/api/cosmocore.html)**
+
+CosmoForge is a comprehensive Python framework for power spectrum estimation and likelihood analysis of spin-0 and spin-2 fields on the sphere, using Fisher matrix, Quadratic Maximum Likelihood (QML), and pixel-based likelihood methods. While widely applicable to any sky signal (e.g. CMB, galaxy surveys, 21 cm), it is particularly optimized for the analysis of partial-sky, noisy observations with complex noise covariance.
 
 ## Overview
 
-The Meta package serves as the organizational hub for CosmoForge, containing:
+CosmoForge consists of several interconnected packages designed for efficient and accurate cosmological parameter estimation:
 
-- **Project Metadata**: Version information, authorship, and project details
-- **Configuration Management**: Global configuration utilities and defaults
-- **Utility Functions**: Helper functions used across packages
-- **Documentation Assets**: Shared documentation resources
-- **Build Configuration**: Setup and installation configurations
+- **cosmocore**: Core functionality for cosmological analysis including field management, matrix operations, and I/O utilities
+- **qube-qml**: QML and Fisher matrix implementations for power spectrum estimation (imported as `qube`)
+- **picslike**: Pixel-based Inference with Correlated-Skies Likelihood — pixel-space likelihood analysis for parameter estimation
 
 ## Features
 
-### Metadata Management
-
-- **Version Control**: Centralized version management for all packages
-- **Author Information**: Contributor and maintainer details
-- **License Information**: Project licensing and copyright details
-- **Dependencies**: Shared dependency specifications
-
-### Configuration Utilities
-
-- **Global Settings**: Project-wide configuration management
-- **Environment Detection**: System and environment information
-- **Path Management**: Standardized path handling across packages
-- **Logging Configuration**: Centralized logging setup
-
-### Development Tools
-
-- **Build Helpers**: Utilities for package building and distribution
-- **Testing Utilities**: Shared testing infrastructure
-- **Documentation Tools**: Helpers for documentation generation
-- **CI/CD Support**: Continuous integration utilities
+- **Fisher Matrix Analysis**: Fast Fisher matrix computation for cosmological parameter forecasting
+- **QML Power Spectrum Estimation**: Quadratic Maximum Likelihood estimation for optimal power spectrum recovery
+- **Pixel-Based Likelihood**: Direct likelihood evaluation in map pixel space for parameter estimation
+- **MPI Parallelization**: Efficient parallel computation support for large-scale analyses
+- **HEALPix Integration**: Full support for HEALPix pixelization scheme
+- **Flexible Field Management**: Support for scalar (spin-0) and tensor (spin-2) fields
+- **Beam and Noise Modeling**: Comprehensive instrumental effects modeling
 
 ## Installation
 
-Meta is automatically installed as part of CosmoForge:
+> **📖 For detailed installation instructions, see the [Installation Guide](https://ggalloni.github.io/CosmoForge/installation.html)**
+
+### Requirements
+
+- Python 3.11–3.13
+- NumPy, SciPy
+- healpy
+- mpi4py (for parallel computation)
+
+### Install from PyPI
+
+The umbrella distribution installs all three subpackages:
 
 ```bash
-pip install -e /path/to/CosmoForge
+pip install cosmoforge
 ```
 
-## Documentation
+Or pick subpackages individually:
 
-For comprehensive project documentation:
-
-- **[Meta API Documentation](https://ggalloni.github.io/CosmoForge/api/meta.html)** - Meta package utilities and configuration
-- **[Contributing Guide](https://ggalloni.github.io/CosmoForge/contributing.html)** - How to contribute to CosmoForge
-- **[Project Documentation](https://ggalloni.github.io/CosmoForge/)** - Complete CosmoForge documentation
-- **[Installation Guide](https://ggalloni.github.io/CosmoForge/installation.html)** - Detailed installation instructions
-
-## Usage
-
-### Version Information
-
-```python
-from cosmoforge.meta import __version__, get_version_info
-
-# Get version string
-print(f"CosmoForge version: {__version__}")
-
-# Get detailed version information
-version_info = get_version_info()
-print(version_info)
+```bash
+pip install cosmocore       # core utilities only
+pip install qube-qml        # adds QML / Fisher (imported as `qube`)
+pip install picslike        # adds pixel-space likelihood
 ```
 
-### Configuration Management
+### Install from source
 
-```python
-from cosmoforge.meta import get_global_config, set_global_option
-
-# Get global configuration
-config = get_global_config()
-
-# Set global options
-set_global_option('logging_level', 'DEBUG')
-set_global_option('parallel_backend', 'mpi')
+```bash
+git clone https://github.com/ggalloni/CosmoForge.git
+cd CosmoForge
+uv sync --all-packages --all-extras --dev
 ```
 
-### Path Management
+## Quick Start
+
+> **🚀 For comprehensive tutorials and examples, visit the [Quick Start Guide](https://ggalloni.github.io/CosmoForge/quickstart.html) and [Tutorials](https://ggalloni.github.io/CosmoForge/tutorials/index.html)**
+
+### Fisher Matrix Analysis
 
 ```python
-from cosmoforge.meta import get_package_root, get_data_dir
+from qube import Fisher
 
-# Get package root directory
-root_dir = get_package_root()
+# Initialize Fisher analysis
+fisher = Fisher("config/fisher_config.yaml")
+fisher.run()
 
-# Get data directory
-data_dir = get_data_dir()
-
-# Get test data path
-test_data = get_data_dir() / "test_data"
+# Get Fisher matrix
+fisher_matrix = fisher.get_fisher_matrix()
 ```
 
-### Logging Setup
+### QML Power Spectrum Estimation
 
 ```python
-from cosmoforge.meta import setup_logging
+from qube import Spectra
 
-# Setup centralized logging
-logger = setup_logging(
-    level='INFO',
-    log_file='cosmoforge.log',
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Initialize QML analysis
+qml = Spectra("config/qml_config.yaml")
+qml.run()
+
+# Get power spectra
+power_spectra = qml.get_power_spectra()
+noise_bias = qml.get_noise_bias()
+```
+
+### Pixel-Based Likelihood Analysis
+
+```python
+from picslike import PICSLike
+
+# Initialize pixel-based likelihood
+picslike = PICSLike(params_file="config/picslike_config.yaml")
+picslike.run()
+
+# Get results
+chi_squared = picslike.get_chi_squared()
+best_fit = picslike.get_best_fit()
+```
+
+### Using with Precomputed Fisher
+
+```python
+from qube import Fisher, Spectra
+
+# Compute Fisher matrix first
+fisher = Fisher("config/fisher_config.yaml")
+fisher.run()
+
+# Reuse Fisher computation for QML
+qml = Spectra("config/qml_config.yaml", fisher=fisher)
+qml.run()
 ```
 
 ## Package Structure
 
 ```text
-cosmoforge.meta/
-├── __init__.py          # Main package interface
-├── version.py           # Version management
-├── config.py            # Configuration utilities
-├── paths.py             # Path management
-├── logging.py           # Logging configuration
-├── build_utils.py       # Build and installation helpers
-├── testing.py           # Testing utilities
-└── docs/               # Documentation assets
-    ├── templates/       # Documentation templates
-    ├── assets/         # Images and other assets
-    └── examples/       # Usage examples
+CosmoForge/
+├── src/
+│   ├── cosmoforge.cosmocore/    # Core functionality (published as `cosmocore`)
+│   ├── cosmoforge.qube/         # QML and Fisher analysis (published as `qube-qml`, imported as `qube`)
+│   ├── cosmoforge.picslike/     # Pixel-space likelihood (published as `picslike`)
+│   └── cosmoforge.meta/         # Umbrella metapackage (published as `cosmoforge`)
+├── tests/                       # Test suite
+├── docs/                        # Documentation
+└── examples/                    # Example configurations
 ```
 
-## Version Management
+## Configuration
 
-### Version String Format
-
-CosmoForge follows semantic versioning (SemVer):
-
-```text
-MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
-
-Examples:
-- 1.0.0          (stable release)
-- 1.1.0-alpha.1  (pre-release)
-- 1.0.1+git.abc123 (development build)
-```
-
-### Version API
-
-```python
-from cosmoforge.meta.version import (
-    __version__,
-    version_info,
-    is_development,
-    get_git_info
-)
-
-# Version components
-major, minor, patch = version_info[:3]
-
-# Check if development version
-if is_development():
-    git_info = get_git_info()
-    print(f"Development build: {git_info['commit']}")
-```
-
-## Configuration System
-
-### Global Configuration
-
-The meta package provides a hierarchical configuration system:
-
-```python
-from cosmoforge.meta.config import GlobalConfig
-
-# Access global configuration
-config = GlobalConfig()
-
-# Set configuration values
-config.set('computation.backend', 'numpy')
-config.set('computation.n_threads', 4)
-config.set('logging.level', 'INFO')
-
-# Get configuration values
-backend = config.get('computation.backend', default='numpy')
-n_threads = config.get('computation.n_threads', default=1)
-```
-
-### Configuration Files
-
-Configuration can be loaded from files:
+CosmoForge uses YAML configuration files to specify analysis parameters:
 
 ```yaml
-# ~/.cosmoforge/config.yaml
-computation:
-  backend: "numba"
-  n_threads: 8
-  use_mpi: true
-
-logging:
-  level: "INFO"
-  file: "cosmoforge.log"
-
-paths:
-  data_dir: "/path/to/data"
-  cache_dir: "/path/to/cache"
+# Example configuration
+nside: 4
+lmax: 16
+fields: "TEB"
+maskfile: "data/mask.fits"
+inputclfile: "data/fiducial_cls.txt"
+# ... additional parameters
 ```
 
-## Environment Detection
+## Testing
 
-### System Information
+Run the test suite:
 
-```python
-from cosmoforge.meta.environment import get_system_info
+```bash
+# Run all tests
+uv run pytest
 
-# Get system information
-sys_info = get_system_info()
-print(f"Platform: {sys_info['platform']}")
-print(f"Python version: {sys_info['python_version']}")
-print(f"NumPy version: {sys_info['numpy_version']}")
-print(f"MPI available: {sys_info['mpi_available']}")
+# Run specific package tests
+uv run --package cosmocore pytest src/cosmoforge.cosmocore/tests/
+uv run --package qube pytest src/cosmoforge.qube/tests/
+uv run --package picslike pytest src/cosmoforge.picslike/tests/
 ```
 
-### Resource Detection
+## Performance
 
-```python
-from cosmoforge.meta.environment import detect_resources
+CosmoForge is designed for high-performance cosmological analysis:
 
-# Detect available resources
-resources = detect_resources()
-print(f"CPU cores: {resources['cpu_cores']}")
-print(f"Memory: {resources['memory_gb']:.1f} GB")
-print(f"MPI processes: {resources['mpi_size']}")
-```
-
-## Testing Utilities
-
-### Test Data Management
-
-```python
-from cosmoforge.meta.testing import get_test_data, create_mock_data
-
-# Get test data path
-test_mask = get_test_data("masks/test_mask_nside32.fits")
-
-# Create mock data for testing
-mock_cl = create_mock_data(
-    data_type="power_spectrum",
-    lmax=100,
-    noise_level=0.1
-)
-```
-
-### Test Configuration
-
-```python
-from cosmoforge.meta.testing import TestConfig
-
-# Setup test environment
-test_config = TestConfig(
-    data_dir="test_data",
-    output_dir="test_output",
-    cleanup=True
-)
-
-with test_config:
-    # Run tests with temporary environment
-    pass
-```
-
-## Build and Distribution
-
-### Build Utilities
-
-```python
-from cosmoforge.meta.build_utils import (
-    get_build_info,
-    check_dependencies,
-    compile_extensions
-)
-
-# Get build information
-build_info = get_build_info()
-
-# Check if all dependencies are available
-deps_ok = check_dependencies()
-
-# Compile native extensions
-if deps_ok:
-    compile_extensions()
-```
-
-### Package Information
-
-```python
-from cosmoforge.meta import get_package_info
-
-# Get comprehensive package information
-pkg_info = get_package_info()
-print(f"Name: {pkg_info['name']}")
-print(f"Version: {pkg_info['version']}")
-print(f"Author: {pkg_info['author']}")
-print(f"License: {pkg_info['license']}")
-```
-
-### Code Quality
-
-```python
-from cosmoforge.meta.dev_tools import run_checks
-
-# Run code quality checks
-results = run_checks(
-    check_style=True,
-    check_types=True,
-    check_tests=True
-)
-```
-
-### Performance Monitoring
-
-```python
-from cosmoforge.meta.performance import ProfilerContext
-
-# Profile code execution
-with ProfilerContext("analysis_profile"):
-    # Run analysis code
-    pass
-
-# Get profiling results
-results = ProfilerContext.get_results("analysis_profile")
-```
-
-## API Reference
-
-### Core Functions
-
-```python
-def get_version_info() -> dict:
-    """Get detailed version information."""
-
-def get_global_config() -> GlobalConfig:
-    """Get global configuration instance."""
-
-def setup_logging(level='INFO', **kwargs) -> logging.CosmoLogger:
-    """Setup centralized logging."""
-
-def get_package_root() -> Path:
-    """Get CosmoForge package root directory."""
-```
-
-### Configuration Classes
-
-```python
-class GlobalConfig:
-    """Global configuration management."""
-    
-    def get(self, key: str, default=None):
-        """Get configuration value."""
-        
-    def set(self, key: str, value):
-        """Set configuration value."""
-        
-    def load_file(self, filename: str):
-        """Load configuration from file."""
-```
-
-## Integration Examples
-
-### Package Initialization
-
-```python
-# Example: Initialize a CosmoForge package
-from cosmoforge.meta import setup_package_environment
-
-def initialize_package():
-    # Setup package environment
-    env = setup_package_environment(
-        package_name="qube",
-        logging_level="INFO"
-    )
-    
-    # Package-specific initialization
-    return env
-```
-
-### Cross-Package Communication
-
-```python
-# Example: Share configuration between packages
-from cosmoforge.meta import get_shared_config
-
-def get_analysis_config():
-    # Get configuration shared across packages
-    config = get_shared_config()
-    
-    # Extract relevant settings
-    return {
-        'backend': config.get('computation.backend'),
-        'n_threads': config.get('computation.n_threads'),
-        'cache_dir': config.get('paths.cache_dir')
-    }
-```
-
-## Extending Meta
-
-### Custom Configuration
-
-```python
-# Add custom configuration sections
-from cosmoforge.meta.config import register_config_section
-
-register_config_section('my_analysis', {
-    'parameter_1': 'default_value',
-    'parameter_2': 42
-})
-```
-
-### Custom Utilities
-
-```python
-# Add custom utilities
-from cosmoforge.meta import register_utility
-
-@register_utility('my_helper')
-def my_helper_function():
-    """Custom helper function."""
-    pass
-```
-
-## Changelog
-
-See `CHANGELOG.md` for version history and changes.
+- **Numba JIT compilation** for critical mathematical operations
+- **MPI parallelization** for distributed computing
+- **Optimized matrix operations** using LAPACK/BLAS
+- **Memory-efficient algorithms** for large datasets
 
 ## Contributing
 
-Meta package contributions should focus on:
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Submit a pull request
 
-- Cross-package utilities
-- Configuration management improvements
-- Build and deployment enhancements
-- Documentation infrastructure
+## License
 
-Follow the main CosmoForge contribution guidelines.
+[Add license information]
+
+## Citation
+
+If you use CosmoForge in your research, please cite:
+
+[Add citation information]
+
+## Support
+
+> **📖 Complete documentation is available at: [https://ggalloni.github.io/CosmoForge/](https://ggalloni.github.io/CosmoForge/)**
+
+For questions and support:
+
+- Open an issue on GitHub
+- Contact: [contact information]
+
+## Acknowledgments
+
+CosmoForge builds upon established cosmological analysis methods and libraries:
+
+- HEALPix for pixelization
+- NumPy/SciPy for numerical computations
+- MPI for parallelization

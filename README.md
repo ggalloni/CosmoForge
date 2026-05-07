@@ -22,9 +22,8 @@ CosmoForge is a comprehensive Python framework for power spectrum estimation and
 CosmoForge consists of several interconnected packages designed for efficient and accurate cosmological parameter estimation:
 
 - **cosmocore**: Core functionality for cosmological analysis including field management, matrix operations, and I/O utilities
-- **qube**: QML and Fisher matrix implementations for power spectrum estimation
+- **qube-qml**: QML and Fisher matrix implementations for power spectrum estimation (imported as `qube`)
 - **picslike**: Pixel-based Inference with Correlated-Skies Likelihood — pixel-space likelihood analysis for parameter estimation
-- **meta**: Metadata and utilities package
 
 ## Features
 
@@ -42,20 +41,33 @@ CosmoForge consists of several interconnected packages designed for efficient an
 
 ### Requirements
 
-- Python 3.8+
-- NumPy
-- SciPy
+- Python 3.11–3.13
+- NumPy, SciPy
 - healpy
 - mpi4py (for parallel computation)
-- matplotlib (for plotting)
-- pytest (for testing)
+
+### Install from PyPI
+
+The umbrella distribution installs all three subpackages:
+
+```bash
+pip install cosmoforge
+```
+
+Or pick subpackages individually:
+
+```bash
+pip install cosmocore       # core utilities only
+pip install qube-qml        # adds QML / Fisher (imported as `qube`)
+pip install picslike        # adds pixel-space likelihood
+```
 
 ### Install from source
 
 ```bash
 git clone https://github.com/ggalloni/CosmoForge.git
 cd CosmoForge
-pip install -e .
+uv sync --all-packages --all-extras --dev
 ```
 
 ## Quick Start
@@ -122,10 +134,10 @@ qml.run()
 ```text
 CosmoForge/
 ├── src/
-│   ├── cosmoforge.cosmocore/    # Core functionality
-│   ├── cosmoforge.qube/         # QML and Fisher analysis
-│   ├── cosmoforge.picslike/     # Pixel-based likelihood
-│   └── cosmoforge.meta/         # Metadata package
+│   ├── cosmoforge.cosmocore/    # Core functionality (published as `cosmocore`)
+│   ├── cosmoforge.qube/         # QML and Fisher analysis (published as `qube-qml`, imported as `qube`)
+│   ├── cosmoforge.picslike/     # Pixel-space likelihood (published as `picslike`)
+│   └── cosmoforge.meta/         # Umbrella metapackage (published as `cosmoforge`)
 ├── tests/                       # Test suite
 ├── docs/                        # Documentation
 └── examples/                    # Example configurations
