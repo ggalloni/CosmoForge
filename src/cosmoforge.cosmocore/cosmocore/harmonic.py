@@ -322,10 +322,11 @@ class SpectraManager:
         Parameters
         ----------
         cls_data : dict[str, np.ndarray] or np.ndarray
-            Power spectra data. If dict, keys should be spectrum labels
-            (e.g., 'TT', 'EE', 'TE') and values should be 1D arrays of length
-            (lmax-1). If array, should have shape (lmax-1, n_spectra) with
-            columns corresponding to the spectrum labels in order.
+            Power spectra data. ℓ-indexed: ``cls_data[label][ell]`` is C_ℓ.
+            If dict, keys should be spectrum labels (e.g., 'TT', 'EE', 'TE')
+            and values should be 1D arrays of length ``lmax + 1``. If array,
+            should have shape ``(lmax + 1, n_spectra)`` with columns
+            corresponding to the spectrum labels in order.
         lmax : int, optional
             Maximum multipole to use. If None, uses the field's lmax.
             This allows setting Cls up to a different lmax than the field's lmax.
@@ -347,21 +348,22 @@ class SpectraManager:
         >>> spectra_mgr.set_cls(cls_matrix)
         """
         effective_lmax = lmax if lmax is not None else self.fields[0].lmax
+        n_ell = effective_lmax + 1
         if isinstance(cls_data, dict):
             self._cls_dict = cls_data.copy()
             # Build matrix from dictionary
-            self._cls_matrix = np.zeros((effective_lmax - 1, self.n_spectra))
+            self._cls_matrix = np.zeros((n_ell, self.n_spectra))
             for idx, label in enumerate(self._spectra_labels):
                 if label not in cls_data:
                     raise ValueError(f"Missing power spectrum for {label}")
-                self._cls_matrix[:, idx] = cls_data[label][: effective_lmax - 1]
+                self._cls_matrix[:, idx] = cls_data[label][:n_ell]
 
         elif isinstance(cls_data, np.ndarray):
             if cls_data.shape[1] != self.n_spectra:
                 raise ValueError(
                     f"Expected {self.n_spectra} spectra columns, got {cls_data.shape[1]}"
                 )
-            self._cls_matrix = cls_data[: effective_lmax - 1].copy()
+            self._cls_matrix = cls_data[:n_ell].copy()
             # Build dictionary from matrix
             self._cls_dict = {
                 label: self._cls_matrix[:, idx]
@@ -446,7 +448,7 @@ class SpectraManager:
             Dictionary mapping spectrum labels to smoothing factor arrays
         """
         effective_lmax = lmax if lmax is not None else self.fields[0].lmax
-        n_ell = effective_lmax - 1  # ell from 2 to lmax
+        n_ell = effective_lmax + 1  # ℓ-indexed: indices 0..lmax
 
         # Get beam dictionary
         beam_dict = beam_manager.get_beam_dict()
@@ -567,17 +569,19 @@ class BeamManager:
         import healpy as hp
 
         if smoothtype == "none":
-            beam = np.ones((3, lmax - 1), dtype=np.float64)
+            beam = np.ones((3, lmax + 1), dtype=np.float64)
         elif smoothtype == "gaussian":
-            # fwhmarcmin in arcminutes → fwhm_rad
+            # fwhmarcmin in arcminutes → fwhm_rad. healpy's gauss_beam returns
+            # an ℓ-indexed array of shape (lmax+1, 4) for (T, E, B, TE);
+            # drop the TE column and transpose to (3, lmax+1).
             beam = np.array(
-                hp.gauss_beam(np.deg2rad(fwhmarcmin / 60.0), lmax=lmax + 1, pol=True)[
-                    2 : lmax + 1, :-1
+                hp.gauss_beam(np.deg2rad(fwhmarcmin / 60.0), lmax=lmax, pol=True)[
+                    : lmax + 1, :-1
                 ],
                 dtype=np.float64,
             ).T
         elif smoothtype == "cosine":
-            b = coswinbeam(nside)[2 : lmax + 1]
+            b = coswinbeam(nside)[: lmax + 1]
             beam = np.column_stack([b] * 3).T
         elif smoothtype == "file":
             # Beam file must contain at least 3 columns: T, E, B window functions.
@@ -589,13 +593,13 @@ class BeamManager:
                     f"Beam file must have at least 3 columns (T, E, B), "
                     f"got {bls.shape[0]}"
                 )
-            beam = np.column_stack([bls[i][2 : lmax + 1] for i in range(3)]).T
+            beam = np.column_stack([bls[i][: lmax + 1] for i in range(3)]).T
         else:
             raise ValueError(f"Unknown smoothtype='{smoothtype}'")
 
-        if beam.shape[0] != 3 or beam.shape[1] != lmax - 1:
+        if beam.shape[0] != 3 or beam.shape[1] != lmax + 1:
             raise ValueError(
-                f"Beam shape mismatch: expected (3, {lmax - 1}), got {beam.shape}"
+                f"Beam shape mismatch: expected (3, {lmax + 1}), got {beam.shape}"
             )
 
         return {
