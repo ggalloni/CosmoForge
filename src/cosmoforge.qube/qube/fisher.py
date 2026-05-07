@@ -385,7 +385,7 @@ class Fisher(Core, MPISharedMemoryMixin):
                         for ell in range(
                             self.bins.lmins[bin_idx], self.bins.lmaxs[bin_idx] + 1
                         ):
-                            weight = self.beam_smoothing[beam_offset + ell - 2]
+                            weight = self.beam_smoothing[beam_offset + ell]
                             E_b_diag += weight * bm._get_derivative_diagonal(
                                 ell, comp_i, comp_j, spec_mode
                             )
@@ -399,7 +399,7 @@ class Fisher(Core, MPISharedMemoryMixin):
                         for ell in range(
                             self.bins.lmins[bin_idx], self.bins.lmaxs[bin_idx] + 1
                         ):
-                            weight = self.beam_smoothing[beam_offset + ell - 2]
+                            weight = self.beam_smoothing[beam_offset + ell]
                             if abs(weight) < _WEIGHT_ZERO_THRESHOLD:
                                 continue
                             dC_ell = bm.get_derivative_matrix(
@@ -726,9 +726,11 @@ class Fisher(Core, MPISharedMemoryMixin):
                 )
 
             # Beam smoothing factors b²_ell for each spectrum (product of beam
-            # and pixel window functions). Flat vector: [spec0_ell2, ..., spec0_ellmax,
-            # spec1_ell2, ..., spec1_ellmax, ...].
-            self.n_ell = self.params.lmax - 1
+            # and pixel window functions). Flat vector with each per-spectrum
+            # block ℓ-indexed of length lmax+1: [spec0_ell0, ..., spec0_ellmax,
+            # spec1_ell0, ..., spec1_ellmax, ...]. Entries below the spectrum's
+            # physical floor are zero.
+            self.n_ell = self.params.lmax + 1
             smoothing_dict = self.collection.spectra_manager.compute_smoothing_factors(
                 self.collection.beam_manager
             )

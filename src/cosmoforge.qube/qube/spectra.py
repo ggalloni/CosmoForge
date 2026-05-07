@@ -636,7 +636,8 @@ class Spectra(Core, MPISharedMemoryMixin):
                 if key in cache:
                     return cache[key]
 
-        n_ell = self.params.lmax - 1
+        # beam_smoothing per-spectrum blocks are ℓ-indexed (length lmax+1).
+        n_ell = self.params.lmax + 1
         beam_offset = spectrum_idx * n_ell
         beam = self.beam_smoothing[beam_offset : beam_offset + n_ell]
 
