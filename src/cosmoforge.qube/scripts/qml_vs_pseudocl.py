@@ -1,47 +1,24 @@
 """Compare QML vs pseudo-Cl scatter at two sky fractions (TT, galactic strip).
 
 Paper I §Performance figure: demonstrates the optimality gap between QML and
-PCL across moderate-fsky and low-fsky configurations, with the noise-corrected
-full-sky Knox bound as the absolute reference. A full-sky PCL pass is run as a
-sanity reference (PCL recovers Knox in the no-mask limit).
+PCL across moderate-fsky and low-fsky configurations.
 
-Methodology demonstration:
-  - QML approaches the optimal Knox bound for the available information
-  - PCL is suboptimal at low fsky due to mode coupling
-  - QML decorrelated mode produces empirically identity covariance
-  - Empirical covariances match analytic predictions (F^-1, F)
-
-Two galactic-strip configurations (TT only, nside=32, lmax=3*nside-1=95):
-  - low fsky  ~ 0.10  (gal cut 64 deg)
-  - high fsky ~ 0.60  (gal cut 24 deg)
+Two galactic-strip configurations (TT only, nside=32, lmax=2*nside=64):
+  - low fsky  ~ 0.10  (gal cut 64 deg, delta_ell=5, invvar weights)
+  - high fsky ~ 0.60  (gal cut 24 deg, delta_ell=1, per-ell)
 
 For each configuration:
-  - PCL via NaMaster (single decoupled mode)
-  - QML via CosmoForge in three normalization modes
-    (deconvolved, decorrelated, convolved)
-  - Sims include CMB signal + diagonal white noise so that the Knox
-    bound is a meaningful absolute reference
-
-Plus a single full-sky PCL pass as the asymptotic-optimality reference.
-
-Diagnostics per case:
-  - Per-bin mean and standard deviation
-  - Full empirical bandpower covariance vs analytic prediction
-  - chi^2 of the sample mean against the windowed theory (tests bias)
-  - Mean per-realisation chi^2 against analytic covariance (tests cov)
-  - QML decorrelated: off-diagonal RMS of empirical correlation matrix
-  - Variance ratio against Knox at this fsky and at full sky
-  - Wall-clock timings
+  - PCL via NaMaster (deconvolved/decorrelated bandpowers via M^-1)
+  - QML via CosmoForge (deconvolved, decorrelated, convolved modes)
+  - Sims = CMB signal + diagonal white noise; sigma_pix rescaled from
+    a 2 µK·arcmin polarisation sensitivity to the TT-equivalent S/N at
+    ell = 50 (i.e. C_TT/C_BB rescaling) so the TT analysis sits in the
+    same regime as a polarisation experiment's BB measurement.
 
 Outputs:
   - qml_vs_pcl_results.json   — all numbers (full covariances included)
-  - qml_vs_pcl_dl_variance.png — Dl bandpowers + variance ratios per case
-  - qml_vs_pcl_correlations.png — bandpower correlation heatmaps
-
-DELTA_ELL fallback rules: this run starts at delta_ell=5. Drop to 10 if any of:
-  (i) Fisher eigenvalue regulariser zeros modes at fsky=0.10
-  (ii) chi^2/dof of the sample mean exceeds ~few-sigma at fsky=0.10
-  (iii) Decorrelated off-diagonal correlation RMS > 5%
+  - qml_vs_pcl_dl_variance.png — D_ell bandpowers + sigma_PCL/sigma_QML
+  - qml_vs_pcl_correlations.png — split-triangle bandpower correlations
 
 Run: ``uv run --extra pcl python src/cosmoforge.qube/scripts/qml_vs_pseudocl.py``
 """
@@ -91,15 +68,6 @@ NOISE_SENS_UKARCMIN_POL = 2.0
 NOISE_REF_ELL = 50
 # SIGMA_NOISE is computed in main() once theory is loaded.
 
-# LMAX_BUFFER is calibrated from the beam: smallest ell >= LMAX_SCIENCE
-# at which b^2(ell) drops below B2_THRESHOLD. This guarantees that
-# residual signal above the buffer is suppressed by 1/B2_THRESHOLD before
-# it can leak into science bins, otherwise it biases the QML mean
-# (validated against the independent NaMaster pipeline).
-# The beam FWHM is chosen so this crossover lands just under LMAX_SIM,
-# i.e. just under the CosmoCore 4*nside lmax cap.
-B2_THRESHOLD = 0.01
-
 CASES = [
     {
         "name": "low_fsky",
@@ -139,27 +107,12 @@ def sigma_noise_tt_matching_bb(cl_full, sens_ukarcmin_pol, ref_ell, n_pix):
     return float(np.sqrt(n_tt * n_pix / (4.0 * np.pi)))
 
 
-# Moderate beam: b^2(lmax_science) ~= 0.25, so signal at the top science
-# multipole is ~half-suppressed. No buffer needed: sims are band-limited
-# to lmax_science, and QUBE config["lmax"] = lmax_science.
+# Beam tuned so b^2(lmax_science) ~= 0.25 — signal at the top science
+# multipole is half-suppressed. No buffer: sims are band-limited to
+# lmax_science and QUBE config["lmax"] = lmax_science.
 FWHM_ARCMIN = gaussian_fwhm_for_lmax(LMAX_SCIENCE, beam_at_lmax=0.5)
 FWHM_RAD = np.radians(FWHM_ARCMIN / 60.0)
 NPIX = 12 * NSIDE**2
-
-
-def choose_lmax_buffer(fwhm_rad, lmax_sim, lmax_science, b2_threshold):
-    """Smallest ell >= lmax_science at which b^2(ell) <= b2_threshold."""
-    beam = hp.gauss_beam(fwhm_rad, lmax=lmax_sim)
-    b2 = beam**2
-    candidates = np.where(
-        (np.arange(lmax_sim + 1) >= lmax_science) & (b2 <= b2_threshold)
-    )[0]
-    if len(candidates) == 0:
-        return lmax_sim
-    return int(candidates[0])
-
-
-LMAX_BUFFER = choose_lmax_buffer(FWHM_RAD, LMAX_SIM, LMAX_SCIENCE, B2_THRESHOLD)
 
 
 # ---------------------------------------------------------------------------
@@ -356,7 +309,6 @@ def run_qml(
     sigma_noise,
     raw_cls,
     nside,
-    lmax_buffer,
     lmax_science,
     fwhm_arcmin,
     delta_ell,
@@ -416,12 +368,6 @@ def run_qml(
         with open(config_file, "w") as f:
             yaml.dump(config, f)
 
-        # Bin Fisher only over the science range. Buffer multipoles
-        # (lmax_science < ell <= lmax_buffer) still contribute to the
-        # signal covariance and noise model, but are not estimated as
-        # free bandpowers — the buffer's poorly-constrained modes would
-        # otherwise inflate the variance of the highest science bins via
-        # Schur-complement coupling in F^{-1}.
         bins = Bins.fromdeltal(2, lmax_science, delta_ell)
 
         t0 = time.perf_counter()
@@ -569,7 +515,6 @@ def analyze_case(
     cl_full,
     beam,
     lmax_science,
-    lmax_buffer,
     nside,
     npix,
     sigma_noise,
@@ -616,7 +561,6 @@ def analyze_case(
         sigma_noise,
         raw_cls,
         nside,
-        lmax_buffer,
         lmax_science,
         fwhm_arcmin,
         delta_ell,
@@ -762,59 +706,9 @@ def analyze_case(
 
 
 # ---------------------------------------------------------------------------
-# Full-sky PCL reference (sanity: PCL recovers Knox at fsky=1)
-# ---------------------------------------------------------------------------
-def run_fullsky_pcl_reference(
-    sim_maps,
-    beam,
-    nside,
-    delta_ell,
-    lmax_sim,
-    cl_tt_full,
-    lmax_science,
-    sigma_noise=0.0,
-    use_invvar_bin=False,
-    var_per_ell_for_weights=None,
-    case_label="",
-):
-    """Run PCL on full-sky sims to obtain the asymptotic optimality reference.
-
-    Returned bin grid is filtered to ells <= lmax_science to align with the
-    analyzed cases.
-    """
-    print(
-        f"\n{'=' * 70}\n  Full-sky PCL reference [{case_label}] (mask=ones)\n{'=' * 70}"
-    )
-    npix = 12 * nside**2
-    mask = np.ones(npix)
-    pcl = run_pcl(
-        sim_maps,
-        mask,
-        beam,
-        nside,
-        delta_ell,
-        lmax_sim,
-        cl_tt_full,
-        sigma_noise=sigma_noise,
-        npix=npix,
-        use_invvar_bin=use_invvar_bin,
-        var_per_ell_for_weights=var_per_ell_for_weights,
-    )
-    keep = (pcl["ells_all"] >= 2) & (pcl["ells_all"] <= lmax_science)
-    spec = pcl["spectra"][:, keep]
-    return {
-        "ells": pcl["ells_all"][keep],
-        "mean": spec.mean(0),
-        "std": spec.std(0, ddof=1),
-        "windowed_theory": pcl["windowed_theory_all"][keep],
-        "time_s": pcl["time_s"],
-    }
-
-
-# ---------------------------------------------------------------------------
 # Plotting
 # ---------------------------------------------------------------------------
-def make_dl_variance_figure(results, fullsky_pcl, lmax_science, fname):
+def make_dl_variance_figure(results, lmax_science, fname):
     """Two-panel layout (one row): bandpowers + sigma_PCL/sigma_QML ratio.
 
     Both fsky cases overlaid in each panel: color encodes fsky (low -> blue
@@ -1013,10 +907,8 @@ def _to_jsonable(obj):
     return obj
 
 
-def save_results_json(results, path, config, fullsky_pcl=None):
+def save_results_json(results, path, config):
     out = {"config": _to_jsonable(config), "cases": _to_jsonable(results)}
-    if fullsky_pcl is not None:
-        out["fullsky_pcl_reference"] = _to_jsonable(fullsky_pcl)
     with open(path, "w") as f:
         json.dump(out, f, indent=2)
     print(f"  Wrote {path}")
@@ -1033,9 +925,6 @@ def main():
     )
     print(
         f"Config: nside={NSIDE}, lmax_science={LMAX_SCIENCE}, "
-        f"lmax_buffer={LMAX_BUFFER} "
-        f"(b^2={hp.gauss_beam(FWHM_RAD, lmax=LMAX_SIM)[LMAX_BUFFER] ** 2:.4f}, "
-        f"target<={B2_THRESHOLD}), "
         f"lmax_sim={LMAX_SIM}, nsims={NSIMS}, sigma={sigma_noise:.4f} muK "
         f"(equiv {NOISE_SENS_UKARCMIN_POL} muK*arcmin pol on BB at ell={NOISE_REF_ELL}), "
         f"FWHM={FWHM_ARCMIN:.1f} arcmin, "
@@ -1059,7 +948,6 @@ def main():
             cl_full,
             beam,
             LMAX_SCIENCE,
-            LMAX_BUFFER,
             NSIDE,
             NPIX,
             sigma_noise,
@@ -1068,16 +956,10 @@ def main():
             LMAX_SIM,
         )
 
-    fullsky_pcl = (
-        None  # full-sky PCL was a methodology sanity check; dropped from final figure
-    )
-
     print(f"\n{'=' * 70}\n  Outputs\n{'=' * 70}")
     config = {
         "nside": NSIDE,
         "lmax_science": LMAX_SCIENCE,
-        "lmax_buffer": LMAX_BUFFER,
-        "lmax_buffer_b2_threshold": B2_THRESHOLD,
         "lmax_sim": LMAX_SIM,
         "nsims": NSIMS,
         "sigma_noise": sigma_noise,
@@ -1087,10 +969,8 @@ def main():
         "delta_ell": DELTA_ELL,
         "add_noise_to_sims": ADD_NOISE_TO_SIMS,
     }
-    save_results_json(results, "qml_vs_pcl_results.json", config, fullsky_pcl=fullsky_pcl)
-    make_dl_variance_figure(
-        results, fullsky_pcl, LMAX_SCIENCE, "qml_vs_pcl_dl_variance.png"
-    )
+    save_results_json(results, "qml_vs_pcl_results.json", config)
+    make_dl_variance_figure(results, LMAX_SCIENCE, "qml_vs_pcl_dl_variance.png")
     make_correlation_figure(results, "qml_vs_pcl_correlations.png")
 
 
