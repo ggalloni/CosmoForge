@@ -297,8 +297,9 @@ class BaseField(ABC):
         Returns
         -------
         numpy.ndarray or None
-            Beam window function(s). For scalar fields: 1D array of length (lmax-1).
-            For polarization fields: 2D array of shape (lmax-1, 2) for E and B modes.
+            Beam window function(s). For scalar fields: 1D array of length
+            ``lmax + 1`` (ℓ-indexed: ``beam[ell]``). For polarization fields:
+            2D array of shape ``(lmax + 1, 2)`` for E and B modes.
             Returns None if beam has not been set.
         """
         return self._beam
@@ -346,8 +347,9 @@ class BaseField(ABC):
         ----------
         beam : numpy.ndarray
             Beam window function. Expected shape depends on field type:
-            - Scalar fields: 1D array of length (lmax-1)
-            - Polarization fields: 2D array of shape (lmax-1, 2) for E and B modes
+            - Scalar fields: 1D array of length ``lmax + 1`` (ℓ-indexed)
+            - Polarization fields: 2D array of shape ``(lmax + 1, 2)``
+              for E and B modes
 
         Raises
         ------

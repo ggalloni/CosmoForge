@@ -9,6 +9,10 @@ predicted variance.
 This is the only smoke test that exercises the lifted ``_lmin_smw`` floor
 end-to-end; if it fails the lift in PR2 has reintroduced an off-by-one
 somewhere on the V-fill / Lambda / derivative path.
+
+Stability: pass-verified across seeds {12345, 1, 42, 99, 31415} at the
+default tolerances (3σ_mean recovery, std ratio in [0.7, 1.3]). NSIMS=200
+gives σ_mean ≈ σ/14, so the 3σ window is comfortable but not loose.
 """
 
 from __future__ import annotations

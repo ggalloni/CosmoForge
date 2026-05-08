@@ -122,7 +122,8 @@ class Fisher(Core, MPISharedMemoryMixin):
     fisher : numpy.ndarray
         Computed Fisher information matrix.
     n_ell : int
-        Number of multipole moments in analysis (lmax - 1).
+        Number of multipole moments in the inference window
+        (``params.lmax - params.lmin + 1``).
     n_params : int
         Total number of Fisher matrix parameters (nspectra * n_ell).
 

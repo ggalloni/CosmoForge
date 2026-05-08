@@ -60,7 +60,8 @@ def cl_to_vec(cl, vec):
     ----------
     cl : numpy.ndarray, shape (n_bins, n_spec)
         Input matrix indexed by bin (or by inference multipole when
-        delta_ell=1, in which case row ``k`` corresponds to ℓ = k + 2).
+        delta_ell=1, in which case row ``k`` corresponds to ℓ = k + lmin
+        where lmin is the inference floor — see ``params.lmin``).
         This is a Fisher-row representation, NOT an ℓ-indexed cl array.
     vec : numpy.ndarray, shape (n_bins * n_spec,)
         Output vector to be filled. Must be pre-allocated.
@@ -689,8 +690,8 @@ class BeamManager:
         -------
         dict[str, np.ndarray]
             Dictionary with field labels as keys (e.g., 'T', 'E', 'B') and
-            corresponding beam window functions as values. Each beam is a
-            1D array of length (lmax-1) containing B(ℓ) for ℓ = 2 to ℓ = lmax.
+            corresponding beam window functions as values. Each beam is an
+            ℓ-indexed 1D array of length ``lmax + 1`` (``beam[ell]``).
 
         Raises
         ------

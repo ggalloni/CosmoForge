@@ -608,12 +608,18 @@ class Core(ABC):
                         lmax=basis_lmax,
                     )
 
-                    # Populate fiducial outside [lmin, lmax]; zero inside. The
-                    # low-band floor is the minimum lmin_signal across
-                    # components (ADR 0009): ell in [lmin_signal_min, lmin) is
-                    # absorbed into S_fixed for components that allow it; the
-                    # signal kernels self-zero for components below their own
-                    # lmin_signal[i] floor.
+                    # Populate fiducial outside [lmin, lmax]; zero inside.
+                    # ADR 0009 §"S_fixed accumulates both bands": for each
+                    # spectrum key the low band is [lmin_signal_min, lmin)
+                    # and the high band is (lmax, lmax_signal]. The user's
+                    # fiducial file is responsible for being zero where it
+                    # shouldn't carry power (e.g. cl_EE[0]=cl_EE[1]=0 by
+                    # representation theory) — the signal kernels in
+                    # cosmocore.pixel sum cl[ell]·legendre[ell] over all
+                    # ell without per-component-floor filtering, so a
+                    # non-zero unphysical entry in the fiducial would land
+                    # in S_fixed unchanged. Heterogeneous lmin_signal[i]
+                    # support is deferred to PR3.
                     fixed_spectra = {}
                     for key, cl_array in fiducial_spectrum.items():
                         cl_fixed = np.zeros_like(cl_array)
@@ -626,28 +632,35 @@ class Core(ABC):
                                 cl_fixed[ell] = cl_array[ell]
                         fixed_spectra[key] = cl_fixed
 
-                    # Save original spectra (already beam-smoothed)
+                    # Save original (already beam-smoothed) spectra; restore
+                    # under finally so a raise during S_fixed assembly does
+                    # not leave the collection holding the zero-inside-window
+                    # spectra for the rest of the analysis.
                     original_spectra_smoothed = {
                         k: v.copy()
                         for k, v in self.collection.spectra_manager._cls_dict.items()
                     }
 
-                    self.collection.set_cls(fixed_spectra, lmax=basis_lmax)
-                    self.collection.beam_manager.apply_smoothing(
-                        self.collection.spectra_manager, lmax=basis_lmax
-                    )
+                    try:
+                        self.collection.set_cls(fixed_spectra, lmax=basis_lmax)
+                        self.collection.beam_manager.apply_smoothing(
+                            self.collection.spectra_manager, lmax=basis_lmax
+                        )
 
-                    from .pixel import compute_signal_matrix as _compute_signal_matrix
+                        from .pixel import compute_signal_matrix as _compute_signal_matrix
 
-                    S_fixed = np.zeros_like(self.noise_cov1, dtype=np.float64)
-                    _compute_signal_matrix(
-                        S=S_fixed,
-                        lmax=basis_lmax,
-                        fields=self.collection,
-                    )
-
-                    # Restore original spectra (already smoothed - don't re-apply beam)
-                    self.collection.spectra_manager._cls_dict = original_spectra_smoothed
+                        S_fixed = np.zeros_like(self.noise_cov1, dtype=np.float64)
+                        _compute_signal_matrix(
+                            S=S_fixed,
+                            lmax=basis_lmax,
+                            fields=self.collection,
+                        )
+                    finally:
+                        # Restore original (smoothed) spectra; do NOT re-apply
+                        # the beam — the saved copy was already smoothed.
+                        self.collection.spectra_manager._cls_dict = (
+                            original_spectra_smoothed
+                        )
 
         # Pre-resolve method="auto" with the *same* cost model the factory
         # uses (harmonic ~ n_modes^3 vs pixel-direct ~ (n_bins+1) * n_pix^3).
@@ -841,7 +854,29 @@ class Core(ABC):
         ----------
         bins : Bins
             Binning specification defining multipole ranges and weights.
+            Must satisfy ``bins.lmin == params.lmin`` and
+            ``bins.lmax <= params.lmax``: the per-spectrum
+            ``beam_smoothing`` block built by ``Fisher.run`` is keyed by
+            ``params.lmin`` and has length ``params.lmax - params.lmin + 1``,
+            and the binned-derivative paths index it as
+            ``beam_smoothing[ell - bins.lmin]``. A binning that drifts
+            below the inference floor or above the ceiling silently
+            misaligns the beam weights.
         """
+        if hasattr(self, "params") and self.params is not None:
+            params_lmin = getattr(self.params, "lmin", None)
+            params_lmax = getattr(self.params, "lmax", None)
+            if params_lmin is not None and bins.lmin != params_lmin:
+                raise ValueError(
+                    f"bins.lmin={bins.lmin} != params.lmin={params_lmin}; "
+                    "binning floor must match the inference window floor "
+                    "(beam_smoothing is keyed by params.lmin)."
+                )
+            if params_lmax is not None and bins.lmax > params_lmax:
+                raise ValueError(
+                    f"bins.lmax={bins.lmax} > params.lmax={params_lmax}; "
+                    "binning cannot extend above the inference ceiling."
+                )
         self.bins = bins
 
     def get_binned_derivative_matrix(
