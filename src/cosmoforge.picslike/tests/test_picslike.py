@@ -489,8 +489,8 @@ class TestCompressedLikelihood:
     def test_compressed_likelihood_consistency_single_field(self, local_path):
         """Test compressed vs traditional for B-only (single-field, nside=8).
 
-        This tests the lswitch optimization which computes S_fixed for multipoles
-        above lswitch_high and uses SMW formula for the varying multipoles.
+        Exercises the inference-window optimisation: S_fixed absorbs
+        multipoles outside ``[lmin, lmax]``; SMW handles the varying band.
         """
         import tempfile
 
