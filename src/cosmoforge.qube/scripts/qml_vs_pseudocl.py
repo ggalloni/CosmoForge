@@ -812,7 +812,9 @@ def make_correlation_figure(results, fname):
 
     Upper triangle = QML deconvolved (F^-1 q), lower triangle = PCL — both
     estimators of the same bandpower observable, so the comparison is
-    apples-to-apples. Diagonal is set to NaN to render as a clear divider.
+    apples-to-apples. A narrow band around the diagonal is left as NaN to
+    render a clear divider between the two triangle halves; its half-width is
+    controlled by ``gap = max(1, nbin // 40)``.
     """
     n = len(results)
     fig, axes = plt.subplots(1, n, figsize=(6.4 * n, 5.6), constrained_layout=True)
