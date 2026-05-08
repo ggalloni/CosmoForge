@@ -98,7 +98,7 @@ def _setup_through_basis(params, *, basis_lmax, method, use_smw_optimization):
     core.setup_beams(lmax=basis_lmax)
     cm = core.setup_computation_basis(
         method=method,
-        lmax=basis_lmax,
+        lmax_signal=basis_lmax,
         use_smw_optimization=use_smw_optimization,
     )
     return core, cm
@@ -181,21 +181,21 @@ def test_compressed_pipeline_via_core(method, nside, basis_lmax):
 
 
 # =========================================================================
-# 2. SMW lswitch + S_fixed setup branch
+# 2. SMW inference-window + S_fixed setup branch
 # =========================================================================
 
 
 def test_setup_computation_basis_smw_lswitch():
-    """Force the SMW lswitch branch: params.lmax < basis_lmax with a fiducial Cls.
+    """Force the SMW inference-window branch: params.lmax < basis_lmax + fiducial.
 
-    Covers the auto-QML lswitch path in setup_computation_basis: lswitch_low=2,
-    lswitch_high=params.lmax, and the S_fixed build that reads the inputclfile,
-    zeroes ℓ ≤ lswitch_high, applies the beam, builds S_fixed, and restores
-    the original spectra.
+    Covers the auto-QML path in setup_computation_basis where ``params.lmax``
+    narrows the inference window below ``basis_lmax``; the S_fixed build reads
+    the inputclfile, zeroes the inference range, applies the beam, builds
+    S_fixed, and restores the original spectra.
     """
     nside = 8
     basis_lmax = 16
-    params_lmax = 10  # < basis_lmax → triggers automatic lswitch in QML mode
+    params_lmax = 10  # < basis_lmax → triggers automatic inference-window narrowing
 
     with tempfile.TemporaryDirectory() as tmpdir:
         params = _make_params(

@@ -12,7 +12,8 @@ import pytest
 from numpy.testing import assert_allclose
 
 
-def _make_symmetric_mask_setup(lmax=10, n_pix=80):
+def _make_symmetric_mask_setup(lmax_signal=10, n_pix=80):
+    lmax = lmax_signal
     """Create a test setup with a symmetric galactic cut (azimuthal symmetry).
 
     Pixels are placed on rings at various colatitudes, with all phi values
@@ -55,7 +56,8 @@ def _make_symmetric_mask_setup(lmax=10, n_pix=80):
     }
 
 
-def _make_random_setup(lmax=8, n_pix=50):
+def _make_random_setup(lmax_signal=8, n_pix=50):
+    lmax = lmax_signal
     """Create a test setup with random pixel positions (no symmetry)."""
     np.random.seed(42)
 
@@ -91,7 +93,7 @@ class TestMblockVNinvVT:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc_full.setup()
 
@@ -99,7 +101,7 @@ class TestMblockVNinvVT:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
             compress=True,
             delta_m=0,
         )
@@ -128,14 +130,14 @@ class TestMblockFisherSymmetricMask:
         """For a symmetric mask, m-block Fisher should be more accurate than random."""
         from cosmocore.basis import HarmonicBasis
 
-        setup = _make_symmetric_mask_setup(lmax=6, n_pix=160)
+        setup = _make_symmetric_mask_setup(lmax_signal=6, n_pix=160)
         C_ell = 1e-3 / (np.arange(2, setup["lmax"] + 1) ** 2)
 
         hc_full = HarmonicBasis(
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc_full.setup()
         fisher_full = hc_full.compute_fisher_matrix(C_ell)
@@ -144,7 +146,7 @@ class TestMblockFisherSymmetricMask:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
             compress=True,
             delta_m=0,
         )
@@ -176,14 +178,14 @@ class TestMblockFisherConvergence:
         """Increasing delta_m should reduce Fisher error toward zero."""
         from cosmocore.basis import HarmonicBasis
 
-        setup = _make_random_setup(lmax=8)
+        setup = _make_random_setup(lmax_signal=8)
         C_ell = 1e-3 / (np.arange(2, setup["lmax"] + 1) ** 2)
 
         hc_full = HarmonicBasis(
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc_full.setup()
         fisher_full = hc_full.compute_fisher_matrix(C_ell)
@@ -195,7 +197,7 @@ class TestMblockFisherConvergence:
                 N=setup["N"],
                 theta=setup["theta"],
                 phi=setup["phi"],
-                lmax=setup["lmax"],
+                lmax_signal=setup["lmax"],
                 compress=True,
                 delta_m=dm,
             )
@@ -232,7 +234,7 @@ class TestMblockCompressFalseUnchanged:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc_default.setup()
 
@@ -240,7 +242,7 @@ class TestMblockCompressFalseUnchanged:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
             compress=False,
         )
         hc_explicit.setup()
@@ -287,7 +289,7 @@ class TestMblockKInversionSpeedup:
             C_ell = 1e-3 / (np.arange(2, lmax + 1) ** 2)
 
             # Full
-            hc_full = HarmonicBasis(N=N, theta=theta, phi=phi, lmax=lmax)
+            hc_full = HarmonicBasis(N=N, theta=theta, phi=phi, lmax_signal=lmax)
             hc_full.setup()
 
             t0 = time.time()
@@ -299,7 +301,7 @@ class TestMblockKInversionSpeedup:
                 N=N,
                 theta=theta,
                 phi=phi,
-                lmax=lmax,
+                lmax_signal=lmax,
                 compress=True,
                 delta_m=0,
             )
@@ -332,7 +334,7 @@ class TestMblockMultifieldRejection:
                 N=setup["N"],
                 theta=setup["theta"],
                 phi=setup["phi"],
-                lmax=setup["lmax"],
+                lmax_signal=setup["lmax"],
                 spins=[0, 0],
                 compress=True,
             )
@@ -345,13 +347,13 @@ class TestMblockFactoryIntegration:
         """create_computation_basis should pass compress and delta_m."""
         from cosmocore.basis import create_computation_basis
 
-        setup = _make_random_setup(lmax=6)
+        setup = _make_random_setup(lmax_signal=6)
         hc = create_computation_basis(
             method="harmonic",
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
             compress=True,
             delta_m=2,
         )
@@ -362,13 +364,13 @@ class TestMblockFactoryIntegration:
         """Default compress should be False."""
         from cosmocore.basis import create_computation_basis
 
-        setup = _make_random_setup(lmax=6)
+        setup = _make_random_setup(lmax_signal=6)
         hc = create_computation_basis(
             method="harmonic",
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         assert hc._compress is False
 
@@ -387,7 +389,7 @@ class TestMblockFisherProperties:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
             compress=True,
             delta_m=0,
         )
@@ -407,7 +409,7 @@ class TestMblockFisherProperties:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
             compress=True,
             delta_m=0,
         )

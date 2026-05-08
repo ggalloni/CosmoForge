@@ -47,10 +47,15 @@ _BASIS_CLASSES: dict[str, type[ComputationBasis]] = {
 def _problem_dimensions(
     theta: np.ndarray | tuple[np.ndarray, ...],
     spins: list[int] | None,
-    lmax: int,
-    lswitch_high: int | None = None,
+    lmax_signal: int,
+    lmax: int | None = None,
 ) -> tuple[int, int]:
-    """Compute (n_pix, n_modes) at the effective lmax (after lswitch)."""
+    """Compute (n_pix, n_modes) at the effective inference window upper.
+
+    ``lmax`` is the inference-window upper bound; modes above it are absorbed
+    into ``S_fixed``. Falls back to ``lmax_signal`` when no inference
+    narrowing is configured.
+    """
     if isinstance(theta, np.ndarray):
         thetas = (theta,)
     else:
@@ -62,7 +67,7 @@ def _problem_dimensions(
 
     n_pix = sum(2 * len(t) if spins[i] == 2 else len(t) for i, t in enumerate(thetas))
 
-    effective_lmax = lswitch_high if lswitch_high is not None else lmax
+    effective_lmax = lmax if lmax is not None else lmax_signal
     n_modes_base = (effective_lmax + 1) ** 2 - 4
     n_modes = sum(
         2 * n_modes_base if spins[i] == 2 else n_modes_base for i in range(n_components)
@@ -107,7 +112,7 @@ def create_computation_basis(
     N: np.ndarray,
     theta: np.ndarray,
     phi: np.ndarray,
-    lmax: int,
+    lmax_signal: int,
     **kwargs,
 ) -> ComputationBasis:
     """
@@ -136,7 +141,7 @@ def create_computation_basis(
     **kwargs
         Additional keyword arguments passed to the basis constructor
         (beam, spins, basis, C_ell, epsilon, mode_fraction, fields,
-        lswitch_low, lswitch_high, etc.). Arguments not accepted by the
+        lmin_signal, lmin, lmax, etc.). Arguments not accepted by the
         chosen class are silently ignored.
 
     Returns
@@ -145,19 +150,19 @@ def create_computation_basis(
         Configured basis instance (not yet set up — call .setup()).
     """
     spins = kwargs.get("spins")
-    lswitch_high = kwargs.get("lswitch_high")
-    n_pix, n_modes = _problem_dimensions(theta, spins, lmax, lswitch_high)
+    lmax_b = kwargs.get("lmax")
+    n_pix, n_modes = _problem_dimensions(theta, spins, lmax_signal, lmax_b)
     n_bins = kwargs.pop("n_bins", None)
     if n_bins is None:
         # Worst case for pixel-direct: assume one bandpower per multipole.
-        n_bins = max(lmax - 1, 1)
+        n_bins = max(lmax_signal - 1, 1)
 
     from ..logger import get_logger
 
     logger = get_logger("basis", feedback_level=4)
 
     if method == "auto":
-        method, extra, costs = _auto_pick_method(n_pix, n_modes, lmax, n_bins)
+        method, extra, costs = _auto_pick_method(n_pix, n_modes, lmax_signal, n_bins)
         kwargs.update(extra)
         ratio = costs["cost_pixel"] / max(costs["cost_harmonic"], 1.0)
         # Auto-selection diagnostic: debug-level so the default Core flow
@@ -171,7 +176,7 @@ def create_computation_basis(
         # Sparse traces make harmonic competitive even when n_pix < n_modes.
         # Only warn when the cost model also disagrees with the user's
         # explicit choice — a real action item, not a default-path notice.
-        _, _, costs = _auto_pick_method(n_pix, n_modes, lmax, n_bins)
+        _, _, costs = _auto_pick_method(n_pix, n_modes, lmax_signal, n_bins)
         if costs["cost_pixel"] < costs["cost_harmonic"]:
             warnings.warn(
                 f"harmonic basis chosen but pixel-direct estimated "
@@ -196,7 +201,7 @@ def create_computation_basis(
         if p.kind in (p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY)
     }
     filtered = {k: v for k, v in kwargs.items() if k in accepted}
-    return cls(N, theta, phi, lmax, **filtered)
+    return cls(N, theta, phi, lmax_signal, **filtered)
 
 
 __all__ = [

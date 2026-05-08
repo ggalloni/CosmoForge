@@ -15,7 +15,8 @@ from numpy.testing import assert_allclose
 # ---------------------------------------------------------------------------
 
 
-def _make_single_field_setup(lmax=8, n_pix=50, seed=42):
+def _make_single_field_setup(lmax_signal=8, n_pix=50, seed=42):
+    lmax = lmax_signal
     """Single spin-0 field with random pixels."""
     np.random.seed(seed)
     theta = np.random.uniform(0.3, 2.8, n_pix)
@@ -34,7 +35,8 @@ def _make_single_field_setup(lmax=8, n_pix=50, seed=42):
     }
 
 
-def _make_symmetric_setup(lmax=10, n_rings=10, pix_per_ring=20, seed=42):
+def _make_symmetric_setup(lmax_signal=10, n_rings=10, pix_per_ring=20, seed=42):
+    lmax = lmax_signal
     """Setup with azimuthally symmetric pixel distribution."""
     np.random.seed(seed)
     theta_list = []
@@ -61,7 +63,8 @@ def _make_symmetric_setup(lmax=10, n_rings=10, pix_per_ring=20, seed=42):
     }
 
 
-def _make_two_field_independent(lmax=6, n_pix_1=40, n_pix_2=30, seed=42):
+def _make_two_field_independent(lmax_signal=6, n_pix_1=40, n_pix_2=30, seed=42):
+    lmax = lmax_signal
     """Two independent spin-0 fields (no cross-spectra, independent noise)."""
     np.random.seed(seed)
     n_pix_total = n_pix_1 + n_pix_2
@@ -107,7 +110,9 @@ class TestBasisCombinations:
         from cosmocore.basis import HarmonicBasis
 
         s = _make_single_field_setup()
-        hb = HarmonicBasis(N=s["N"], theta=s["theta"], phi=s["phi"], lmax=s["lmax"])
+        hb = HarmonicBasis(
+            N=s["N"], theta=s["theta"], phi=s["phi"], lmax_signal=s["lmax"]
+        )
         hb.setup()
         F = hb.compute_fisher_matrix(s["C_ell"], ell_min=2, ell_max=s["lmax"])
         assert F.shape == (s["lmax"] - 1, s["lmax"] - 1)
@@ -122,7 +127,7 @@ class TestBasisCombinations:
             N=s["N"],
             theta=s["theta"],
             phi=s["phi"],
-            lmax=s["lmax"],
+            lmax_signal=s["lmax"],
             compress=True,
             delta_m=0,
         )
@@ -141,7 +146,7 @@ class TestBasisCombinations:
             N=s["N"],
             theta=s["theta"],
             phi=s["phi"],
-            lmax=s["lmax"],
+            lmax_signal=s["lmax"],
             epsilon=0.0,
         )
         pb.setup()
@@ -159,7 +164,7 @@ class TestBasisCombinations:
             N=s["N"],
             theta=s["theta"],
             phi=s["phi"],
-            lmax=s["lmax"],
+            lmax_signal=s["lmax"],
             epsilon=1e-6,
         )
         pb.setup()
@@ -173,8 +178,10 @@ class TestBasisCombinations:
         """Harmonic and pixel basis give same Fisher."""
         from cosmocore.basis import HarmonicBasis, PixelBasis
 
-        s = _make_single_field_setup(lmax=6, n_pix=40)
-        hb = HarmonicBasis(N=s["N"], theta=s["theta"], phi=s["phi"], lmax=s["lmax"])
+        s = _make_single_field_setup(lmax_signal=6, n_pix=40)
+        hb = HarmonicBasis(
+            N=s["N"], theta=s["theta"], phi=s["phi"], lmax_signal=s["lmax"]
+        )
         hb.setup()
         F_h = hb.compute_fisher_matrix(s["C_ell"], ell_min=2, ell_max=s["lmax"])
 
@@ -182,7 +189,7 @@ class TestBasisCombinations:
             N=s["N"],
             theta=s["theta"],
             phi=s["phi"],
-            lmax=s["lmax"],
+            lmax_signal=s["lmax"],
             epsilon=0.0,
         )
         pb.setup()
@@ -204,8 +211,10 @@ class TestMblockApproximationQuality:
         """Azimuthally symmetric mask: m-block is near-exact."""
         from cosmocore.basis import HarmonicBasis
 
-        s = _make_symmetric_setup(lmax=8, n_rings=8, pix_per_ring=20)
-        hb_full = HarmonicBasis(N=s["N"], theta=s["theta"], phi=s["phi"], lmax=s["lmax"])
+        s = _make_symmetric_setup(lmax_signal=8, n_rings=8, pix_per_ring=20)
+        hb_full = HarmonicBasis(
+            N=s["N"], theta=s["theta"], phi=s["phi"], lmax_signal=s["lmax"]
+        )
         hb_full.setup()
         F_full = hb_full.compute_fisher_matrix(s["C_ell"], ell_min=2, ell_max=s["lmax"])
 
@@ -213,7 +222,7 @@ class TestMblockApproximationQuality:
             N=s["N"],
             theta=s["theta"],
             phi=s["phi"],
-            lmax=s["lmax"],
+            lmax_signal=s["lmax"],
             compress=True,
             delta_m=0,
         )
@@ -232,8 +241,10 @@ class TestMblockApproximationQuality:
         """Random (asymmetric) mask: error is bounded."""
         from cosmocore.basis import HarmonicBasis
 
-        s = _make_single_field_setup(lmax=8, n_pix=60)
-        hb_full = HarmonicBasis(N=s["N"], theta=s["theta"], phi=s["phi"], lmax=s["lmax"])
+        s = _make_single_field_setup(lmax_signal=8, n_pix=60)
+        hb_full = HarmonicBasis(
+            N=s["N"], theta=s["theta"], phi=s["phi"], lmax_signal=s["lmax"]
+        )
         hb_full.setup()
         F_full = hb_full.compute_fisher_matrix(s["C_ell"], ell_min=2, ell_max=s["lmax"])
 
@@ -241,7 +252,7 @@ class TestMblockApproximationQuality:
             N=s["N"],
             theta=s["theta"],
             phi=s["phi"],
-            lmax=s["lmax"],
+            lmax_signal=s["lmax"],
             compress=True,
             delta_m=0,
         )
@@ -261,8 +272,10 @@ class TestMblockApproximationQuality:
         """Increasing delta_m monotonically improves accuracy."""
         from cosmocore.basis import HarmonicBasis
 
-        s = _make_single_field_setup(lmax=8, n_pix=60)
-        hb_full = HarmonicBasis(N=s["N"], theta=s["theta"], phi=s["phi"], lmax=s["lmax"])
+        s = _make_single_field_setup(lmax_signal=8, n_pix=60)
+        hb_full = HarmonicBasis(
+            N=s["N"], theta=s["theta"], phi=s["phi"], lmax_signal=s["lmax"]
+        )
         hb_full.setup()
         F_full = hb_full.compute_fisher_matrix(s["C_ell"], ell_min=2, ell_max=s["lmax"])
 
@@ -272,7 +285,7 @@ class TestMblockApproximationQuality:
                 N=s["N"],
                 theta=s["theta"],
                 phi=s["phi"],
-                lmax=s["lmax"],
+                lmax_signal=s["lmax"],
                 compress=True,
                 delta_m=dm,
             )
@@ -314,7 +327,7 @@ class TestScalingBenchmarks:
             C_ell = np.ones(lmax + 1) * 1e-3
 
             # Full
-            hb_full = HarmonicBasis(N=N, theta=theta, phi=phi, lmax=lmax)
+            hb_full = HarmonicBasis(N=N, theta=theta, phi=phi, lmax_signal=lmax)
             hb_full.setup()
             t0 = time.perf_counter()
             for _ in range(3):
@@ -326,7 +339,7 @@ class TestScalingBenchmarks:
                 N=N,
                 theta=theta,
                 phi=phi,
-                lmax=lmax,
+                lmax_signal=lmax,
                 compress=True,
                 delta_m=0,
             )
@@ -358,7 +371,7 @@ class TestScalingBenchmarks:
             C_ell = np.ones(lmax + 1) * 1e-3
 
             # Full
-            hb_full = HarmonicBasis(N=N, theta=theta, phi=phi, lmax=lmax)
+            hb_full = HarmonicBasis(N=N, theta=theta, phi=phi, lmax_signal=lmax)
             hb_full.setup()
             t0 = time.perf_counter()
             F_full = hb_full.compute_fisher_matrix(C_ell, ell_min=2, ell_max=lmax)
@@ -369,7 +382,7 @@ class TestScalingBenchmarks:
                 N=N,
                 theta=theta,
                 phi=phi,
-                lmax=lmax,
+                lmax_signal=lmax,
                 compress=True,
                 delta_m=0,
             )
@@ -414,7 +427,7 @@ class TestScalingBenchmarks:
                 N=N,
                 theta=tuple(thetas),
                 phi=tuple(phis),
-                lmax=lmax,
+                lmax_signal=lmax,
                 spins=[0] * n_fields,
             )
             hb.setup()

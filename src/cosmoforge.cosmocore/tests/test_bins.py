@@ -17,6 +17,27 @@ class TestBinsCreation:
         np.testing.assert_array_equal(bins.lmins, [2, 5, 8])
         np.testing.assert_array_equal(bins.lmaxs, [4, 7, 10])
 
+    def test_lmin_below_two(self):
+        """``Bins.fromdeltal(1, 4, 1)`` keeps the dipole bin (ADR 0009)."""
+        bins = Bins.fromdeltal(1, 4, 1)
+        assert bins.nbins == 4
+        np.testing.assert_array_equal(bins.lmins, [1, 2, 3, 4])
+        np.testing.assert_array_equal(bins.lmaxs, [1, 2, 3, 4])
+        assert bins.lmin == 1
+        assert bins.lmin_floor == 1
+
+    def test_lmin_floor_zero_keeps_monopole(self):
+        """Explicit ``lmin_floor=0`` is honoured for foreground templates."""
+        bins = Bins([0, 1, 2], [0, 1, 2], lmin_floor=0)
+        np.testing.assert_array_equal(bins.lmins, [0, 1, 2])
+        np.testing.assert_array_equal(bins.lmaxs, [0, 1, 2])
+
+    def test_default_lmin_floor_drops_below_two(self):
+        """Default ``lmin_floor=2`` drops bins below 2 (legacy behaviour)."""
+        bins = Bins([0, 1, 2, 3], [0, 1, 2, 3])
+        np.testing.assert_array_equal(bins.lmins, [2, 3])
+        np.testing.assert_array_equal(bins.lmaxs, [2, 3])
+
     def test_fromdeltal_delta1(self):
         """delta_ell=1 gives one bin per multipole."""
         bins = Bins.fromdeltal(2, 8, 1)

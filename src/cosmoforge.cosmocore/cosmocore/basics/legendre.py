@@ -16,9 +16,11 @@ def legendre_00(scalar_prod, legendre):
     scalar_prod : float
         Argument x for the Legendre polynomials.
     legendre : numpy.ndarray
-        Pre-allocated buffer of length ``lmax + 1``. On output, ``legendre[ell]``
-        contains the normalized P_ℓ(x) for ℓ = 1..lmax. Index 0 is left at zero
-        (P_0 will be added in the lmin extension).
+        Pre-allocated buffer of length ``lmax + 1``. On output,
+        ``legendre[ell]`` contains the normalized P_ℓ(x) for
+        ℓ = 0..lmax. ``legendre[0] = 1/(4π)`` (the monopole base case)
+        is now populated so ``lmin_signal=0`` callers (e.g. foreground
+        templates) sum the P_0 contribution correctly.
 
     Notes
     -----
@@ -27,7 +29,7 @@ def legendre_00(scalar_prod, legendre):
     functions ready for signal matrix construction.
     """
     lmax = len(legendre) - 1
-    legendre[0] = 0.0
+    legendre[0] = 1.0
     if lmax >= 1:
         legendre[1] = scalar_prod
     if lmax >= 2:
@@ -41,7 +43,7 @@ def legendre_00(scalar_prod, legendre):
         ) / ell
 
     # Absorb (2ℓ+1)/(4π) normalization into the polynomials
-    for ell in range(1, lmax + 1):
+    for ell in range(0, lmax + 1):
         legendre[ell] *= (2 * ell + 1) / (4 * np.pi)
 
 

@@ -122,15 +122,16 @@ class PixelBasis(ComputationBasis):
         N: np.ndarray,
         theta: np.ndarray,
         phi: np.ndarray,
-        lmax: int,
+        lmax_signal: int,
         beam: np.ndarray | None = None,
         spins: list[int] | None = None,
         basis: str = "noise_weighted",
         C_ell: np.ndarray | None = None,
         epsilon: float | list[float | tuple[float, float]] | None = None,
         mode_fraction: float | list[float | tuple[float, float]] | None = None,
-        lswitch_low: int | None = None,
-        lswitch_high: int | None = None,
+        lmin_signal: list[int] | None = None,
+        lmin: int | None = None,
+        lmax: int | None = None,
         S_fixed: np.ndarray | None = None,
         fields=None,
         use_direct: bool = False,
@@ -139,11 +140,12 @@ class PixelBasis(ComputationBasis):
             N,
             theta,
             phi,
-            lmax,
+            lmax_signal,
             beam,
             spins=spins,
-            lswitch_low=lswitch_low,
-            lswitch_high=lswitch_high,
+            lmin_signal=lmin_signal,
+            lmin=lmin,
+            lmax=lmax,
             S_fixed=S_fixed,
         )
         self._fields = fields
@@ -780,16 +782,16 @@ class PixelBasis(ComputationBasis):
 
         # Build ℓ-indexed weight array w[ell] = beam²(ell) inside the bin and
         # 0 elsewhere. The contribution functions evaluate Σ_ℓ w[ell] ×
-        # kernel[ell] for ell=2..lmax, giving Σ_{ell∈bin} beam²(ell) × dC/dC_ell.
-        # beam_smoothing (when provided) is the inference-range slice
-        # (ell=2..lmax, offset-from-2 in PR1).
+        # kernel[ell] for ell=lmin..lmax, giving Σ_{ell∈bin} beam²(ell) ×
+        # dC/dC_ell. beam_smoothing (when provided) is the inference-range
+        # slice (ell=bins.lmin..lmax, offset-from-bins.lmin; ADR 0009).
         weights = np.zeros(self.lmax + 1, dtype=np.float64)
         for ell in range(lmin_b, lmax_b + 1):
-            if ell < 2 or ell > self.lmax:
+            if ell > self.lmax:
                 continue
             w = 1.0
             if beam_smoothing is not None:
-                w = beam_smoothing[ell - 2]
+                w = beam_smoothing[ell - bins.lmin]
             weights[ell] = w
 
         fi = self._fields.fields[comp_i]
@@ -907,7 +909,7 @@ class PixelBasis(ComputationBasis):
 
         S = np.zeros((self.n_pix, self.n_pix), dtype=np.float64)
         S = np.asfortranarray(S)
-        compute_signal_matrix(S, self.lmax, self._fields)
+        compute_signal_matrix(S, self.lmax_signal, self._fields)
         return S
 
     def _build_compression_matrix(

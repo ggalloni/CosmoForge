@@ -22,7 +22,7 @@ class TestPixelBasisInitialization:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         assert ppc.n_pix == setup["n_pix"]
@@ -43,7 +43,7 @@ class TestPixelBasisSetup:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         ppc.setup()
@@ -75,7 +75,7 @@ class TestPixelBasisSetup:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         ppc.setup()
@@ -98,7 +98,7 @@ class TestPixelBasisApply:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         ppc.setup()
@@ -118,7 +118,7 @@ class TestPixelBasisApply:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         ppc.setup()
@@ -137,7 +137,7 @@ class TestPixelBasisApply:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         ppc.setup()
@@ -156,7 +156,7 @@ class TestPixelBasisApply:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         ppc.setup()
 
@@ -172,7 +172,7 @@ class TestPixelBasisApply:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         ppc.setup()
 
@@ -195,7 +195,7 @@ class TestPixelBasisOperations:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         ppc.setup()
@@ -215,7 +215,7 @@ class TestPixelBasisOperations:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         ppc.setup()
@@ -237,7 +237,7 @@ class TestPixelBasisOperations:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         ppc.setup()
@@ -260,7 +260,7 @@ class TestPixelBasisOperations:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         ppc.setup()
@@ -290,7 +290,7 @@ class TestPixelBasisFisher:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         ppc.setup()
@@ -313,7 +313,7 @@ class TestPixelBasisFisher:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         ppc.setup()
@@ -377,7 +377,7 @@ class TestCompressionCrossValidation:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=lmax,
+            lmax_signal=lmax,
         )
         hc.setup()
         fisher_hc = hc.compute_fisher_matrix(C_ell)
@@ -387,7 +387,7 @@ class TestCompressionCrossValidation:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=lmax,
+            lmax_signal=lmax,
         )
         ppc.setup()
         ppc.apply_compression(epsilon=1e-10)  # Keep almost all modes
@@ -420,7 +420,7 @@ class TestCompressionCrossValidation:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=lmax,
+            lmax_signal=lmax,
         )
         hc.setup()
         fisher_hc = hc.compute_fisher_matrix(C_ell)
@@ -430,7 +430,7 @@ class TestCompressionCrossValidation:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=lmax,
+            lmax_signal=lmax,
         )
         ppc.setup()
         ppc.apply_compression(epsilon=1e-15)  # Keep all significant modes
@@ -478,7 +478,7 @@ class TestPixelBasisBases:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         ppc.setup()
@@ -498,7 +498,7 @@ class TestPixelBasisBases:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         ppc.setup()
@@ -519,7 +519,7 @@ class TestPixelBasisBases:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         ppc.setup()
@@ -540,7 +540,7 @@ class TestPixelBasisBases:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         ppc.setup()
@@ -558,7 +558,7 @@ class TestPixelBasisBases:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         ppc.setup()
@@ -575,7 +575,7 @@ class TestPixelBasisBases:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         ppc.setup()
@@ -592,7 +592,7 @@ class TestPixelBasisBases:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         ppc.setup()
@@ -614,7 +614,7 @@ class TestPixelBasisBases:
                 N=setup["N"],
                 theta=setup["theta"],
                 phi=setup["phi"],
-                lmax=setup["lmax"],
+                lmax_signal=setup["lmax"],
             )
             ppc.setup()
 
@@ -641,7 +641,7 @@ class TestPixelBasisEigenspectrum:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         ppc.setup()
 
@@ -659,7 +659,7 @@ class TestPixelBasisEigenspectrum:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         ppc.setup()
 
@@ -676,7 +676,7 @@ class TestPixelBasisEigenspectrum:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         ppc.setup()
 
@@ -697,7 +697,7 @@ class TestPixelBasisEigenspectrum:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         ppc.setup()
 
@@ -725,7 +725,7 @@ class TestPixelBasisEigenspectrum:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         ppc.setup()
 
@@ -753,7 +753,7 @@ class TestPixelBasisEigenspectrum:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         ppc.setup()
 
@@ -776,7 +776,7 @@ class TestPixelBasisEigenspectrum:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         ppc.setup()
 
@@ -799,7 +799,7 @@ class TestComputeEigenspectrumPerField:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         ppc.setup()
 
@@ -824,7 +824,7 @@ class TestComputeEigenspectrumPerField:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         ppc.setup()
 
@@ -878,7 +878,7 @@ class TestComputeEigenspectrumPerField:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         ppc.setup()
 
@@ -906,7 +906,7 @@ class TestComputeEigenspectrumPerField:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=lmax,
+            lmax_signal=lmax,
         )
         ppc.setup()
 
@@ -927,7 +927,7 @@ class TestComputeEigenspectrumPerField:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         ppc.setup()
 
@@ -952,7 +952,7 @@ class TestPlotMultiField:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         ppc.setup()
 
@@ -1008,7 +1008,7 @@ class TestPlotMultiField:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         ppc.setup()
 
@@ -1042,7 +1042,7 @@ class TestPPCOperationChain:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         ppc.setup()
         ppc.apply_compression(epsilon=1e-6)
@@ -1091,7 +1091,7 @@ class TestPPCOperationChain:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=lmax,
+            lmax_signal=lmax,
             spins=[0, 0],
         )
         ppc.setup()
@@ -1139,7 +1139,7 @@ class TestPPCOperationChain:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         ppc.setup()
         ppc.apply_compression()
@@ -1154,7 +1154,7 @@ class TestPPCOperationChain:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         ppc.setup()
 
@@ -1187,7 +1187,7 @@ class TestPPCOperationChain:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         ppc.setup()
         ppc.apply_compression(epsilon=1e-6)
@@ -1205,7 +1205,7 @@ class TestPPCOperationChain:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         ppc.setup()
         ppc.apply_compression(epsilon=1e-6)

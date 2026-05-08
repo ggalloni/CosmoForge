@@ -112,8 +112,14 @@ class FieldConfig:
             raise ValueError(f"Invalid spin {self.spin}. Must be 0 or 2.")
         if self.mask.ndim != 1:
             raise ValueError("Mask must be a 1D array.")
-        if self.lmax < 2:
-            raise ValueError("lmax must be at least 2.")
+        # ADR 0009: spin-0 fields can carry monopole/dipole multipoles
+        # (lmax >= 0). Spin-2 still requires lmax >= 2 by representation
+        # theory.
+        spin_floor = 2 if self.spin == 2 else 0
+        if self.lmax < spin_floor:
+            raise ValueError(
+                f"lmax={self.lmax} below spin-{self.spin} floor {spin_floor}."
+            )
         if self.lmax > self.nside * 4:
             raise ValueError("lmax is too large for the given nside.")
 

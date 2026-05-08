@@ -154,7 +154,7 @@ def compute_pointings(
 
 
 @njit
-def compute_00_contribution(cl, S_slice, vec1, vec2, legendre, mode, remove_dipole=False):
+def compute_00_contribution(cl, S_slice, vec1, vec2, legendre, mode):
     """
     Compute spin-0 x spin-0 field contribution to signal matrix.
 
@@ -170,38 +170,34 @@ def compute_00_contribution(cl, S_slice, vec1, vec2, legendre, mode, remove_dipo
         Temporary array for Legendre polynomial computation.
     mode : int
         Computation mode (0 for symmetric, 1 for general).
-    remove_dipole : bool, optional
-        Whether to suppress dipole contribution for temperature autocorrelation.
 
     Notes
     -----
     Implements the pixel-space covariance for scalar fields (e.g., temperature).
-    Uses Legendre polynomials to compute angular correlations. The dipole
-    removal is applied for temperature-temperature correlations to handle
-    coordinate system effects.
+    Uses Legendre polynomials to compute angular correlations.
 
     The outer pixel loop uses prange for thread-level parallelism.
     """
     npix = S_slice.shape[0]
     if mode == 0:
         legendre_00(1.0, legendre)
-        # cl and legendre are ℓ-indexed (length lmax+1); cl[0]=cl[1]=0 in PR1.
+        # cl and legendre are ℓ-indexed (length lmax_signal+1). Loop from
+        # ℓ=0 so foreground/dipole components (lmin_signal=0/1) contribute;
+        # default CMB usage zero-pads cl below lmin_signal so this is a no-op.
         entry = np.float64(0.0)
-        for ell in range(2, len(cl)):
+        for ell in range(len(cl)):
             entry += cl[ell] * legendre[ell]
-        if remove_dipole:
-            entry += 1000.0 * cl[2] * 2.0
         for i in range(npix):
             S_slice[i, i] = entry
 
-        _compute_00_symmetric(cl, S_slice, vec1, vec2, npix, remove_dipole)
+        _compute_00_symmetric(cl, S_slice, vec1, vec2, npix)
 
     elif mode == 1:
         _compute_00_general(cl, S_slice, vec1, vec2, npix)
 
 
 @njit(parallel=True)
-def _compute_00_symmetric(cl, S_slice, vec1, vec2, npix, remove_dipole):
+def _compute_00_symmetric(cl, S_slice, vec1, vec2, npix):
     """Parallel pixel-pair loop for symmetric spin-0 signal matrix."""
     n_ell = len(cl)
     for i in prange(npix):
@@ -214,10 +210,8 @@ def _compute_00_symmetric(cl, S_slice, vec1, vec2, npix, remove_dipole):
             )
             legendre_00(x, leg)
             val = np.float64(0.0)
-            for ell in range(2, n_ell):
+            for ell in range(n_ell):
                 val += cl[ell] * leg[ell]
-            if remove_dipole:
-                val += 1000.0 * cl[2] * (1.0 + x)
             S_slice[j, i] = val
 
 
@@ -235,7 +229,7 @@ def _compute_00_general(cl, S_slice, vec1, vec2, npix):
             )
             legendre_00(x, leg)
             val = np.float64(0.0)
-            for ell in range(2, n_ell):
+            for ell in range(n_ell):
                 val += cl[ell] * leg[ell]
             S_slice[j, i] = val
 
@@ -434,13 +428,6 @@ def compute_signal_matrix(
             lf_j = fields.fields[j]
             legendre = np.empty(lmax + 1, dtype=np.float64)
             if spin_i == 0 and spin_j == 0:
-                # FIXME: remove_dipole feature is broken - it uses cl[0] (ell=2)
-                # instead of the actual dipole (ell=1). Disabling for now.
-                # The original code was:
-                # remove_dipole = (
-                #     True if lf_i.maps_label + lf_j.maps_label == "TT" else False
-                # )
-                remove_dipole = False
                 if i == j:
                     compute_00_contribution(
                         fields.get_cls(i, j, 0),
@@ -449,7 +436,6 @@ def compute_signal_matrix(
                         lf_j.point_vectors[:, :],
                         legendre,
                         mode=0,
-                        remove_dipole=remove_dipole,
                     )
                 else:
                     compute_00_contribution(

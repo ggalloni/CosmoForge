@@ -3,6 +3,7 @@ import tempfile
 
 import healpy as hp
 import numpy as np
+import pytest
 
 from cosmocore import (
     FieldCollection,
@@ -12,6 +13,18 @@ from cosmocore import (
     create_field,
     read_mask,
 )
+from cosmocore.core import Core
+from cosmocore.pixel import compute_00_contribution
+
+
+class _StubCore(Core):
+    """Concrete Core for exercising ``read_params`` validation paths."""
+
+    def compute(self):
+        pass
+
+    def run(self):
+        pass
 
 
 def test_signal_covmat(data_resolver):
@@ -212,3 +225,194 @@ def test_signal_covmat_multiple_scalar_fields(data_resolver):
     os.remove(Par.inputclfile)
 
     np.testing.assert_allclose(signal_covmat, ref, rtol=1e-12, atol=1e-20)
+
+
+# =============================================================================
+# ADR 0009 — multipole-range API: per-component lmin_signal validation
+# =============================================================================
+
+
+def _labels_for_spins(spins):
+    labels = []
+    for s in spins:
+        if s == 0:
+            labels.append("T")
+        else:
+            labels.extend(["Q", "U"])
+    return labels
+
+
+def _minimal_core(lmin_signal, spins=(0,), nside=4, lmax=8):
+    """Build a Core wrapper exercising the requested ``lmin_signal``."""
+    params = InputParams()
+    cfg = {
+        "nside": nside,
+        "lmax": lmax,
+        "spins": list(spins),
+        "labels": _labels_for_spins(spins),
+        "lmin_signal": lmin_signal,
+    }
+    params.update(cfg)
+    return _StubCore(params)
+
+
+def test_lmin_signal_scalar_broadcast():
+    """Scalar ``lmin_signal=N`` is normalised to ``[N]*n_components``."""
+    core = _minimal_core(lmin_signal=2, spins=(0, 2))
+    assert core.params.lmin_signal == [2, 2]
+
+
+def test_lmin_signal_per_component_list_accepted():
+    """Per-component lists pass through unchanged when within spin floors."""
+    core = _minimal_core(lmin_signal=[1, 2], spins=(0, 2))
+    assert core.params.lmin_signal == [1, 2]
+
+
+def test_lmin_signal_below_spin_floor_rejected():
+    """``lmin_signal[i] < |spin|`` fails fast with a per-component message."""
+    with pytest.raises(ValueError, match=r"lmin_signal\[1\]=1 invalid for spin-2"):
+        _minimal_core(lmin_signal=[1, 1], spins=(0, 2))
+
+
+def test_lmin_signal_length_mismatch_rejected():
+    """Per-component lists must match ``len(spins)``."""
+    with pytest.raises(ValueError, match=r"len\(lmin_signal\)=3 != len\(spins\)=2"):
+        _minimal_core(lmin_signal=[2, 2, 2], spins=(0, 2))
+
+
+def test_lmax_above_lmax_signal_clamped():
+    """``lmax > lmax_signal`` is silently clamped to ``lmax_signal``.
+
+    The legacy ``InputParams.lmax`` default (64) predates ADR 0009 and
+    routinely exceeds ``lmax_signal=4*nside`` for small nside; clamping
+    keeps existing analyses running while still pinning the inference
+    window to the signal-cov band.
+    """
+    params = InputParams()
+    cfg = {
+        "nside": 4,
+        "lmax": 64,
+        "lmax_signal": 16,
+        "spins": [0],
+        "labels": ["T"],
+    }
+    params.update(cfg)
+    core = _StubCore(params)
+    assert core.params.lmax == 16
+
+
+def test_lmin_above_lmax_rejected():
+    """Explicit conflicts between ``lmin`` and ``lmax`` still raise."""
+    params = InputParams()
+    cfg = {
+        "nside": 4,
+        "lmin": 6,
+        "lmax": 4,
+        "lmax_signal": 16,
+        "spins": [0],
+        "labels": ["T"],
+    }
+    params.update(cfg)
+    with pytest.raises(ValueError, match=r"lmax=4 < lmin=6"):
+        _StubCore(params)
+
+
+# =============================================================================
+# ADR 0009 — foreground/template support via lmin_signal=0/1
+# =============================================================================
+
+
+def test_compute_00_contribution_includes_monopole():
+    """A pure monopole template (``cl[0]=c0``) gives a constant ``c0/(4π)``.
+
+    P_0(x)=1 for every pixel pair, so a foreground template carrying
+    only a monopole produces a uniform offset on the signal matrix.
+    Before ADR 0009 the loop hard-coded ``ell ≥ 2`` and silently dropped
+    this contribution.
+    """
+    rng = np.random.default_rng(42)
+    n_pix = 16
+    theta = rng.uniform(0.3, np.pi - 0.3, n_pix)
+    phi = rng.uniform(0, 2 * np.pi, n_pix)
+    vec = np.column_stack(
+        [np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)]
+    )
+
+    lmax = 6
+    cl = np.zeros(lmax + 1, dtype=np.float64)
+    c0 = 1.5
+    cl[0] = c0
+    legendre = np.empty(lmax + 1, dtype=np.float64)
+
+    S = np.zeros((n_pix, n_pix), dtype=np.float64)
+    compute_00_contribution(cl, S, vec, vec, legendre, mode=0)
+    S_full = S + S.T - np.diag(np.diag(S))
+
+    expected = c0 / (4 * np.pi)
+    np.testing.assert_allclose(S_full, np.full_like(S_full, expected), rtol=1e-13)
+
+
+def test_compute_00_contribution_dipole_template_matches_closed_form():
+    """A pure dipole template (``cl[1]=c1``) reproduces ``3·c1·x_ij/(4π)``.
+
+    With the per-component low-ℓ floor lifted, ``lmin_signal=1`` lets a
+    foreground component carry its dipole into the signal matrix; the
+    result must equal the closed-form Legendre sum on every pixel pair.
+    """
+    rng = np.random.default_rng(7)
+    n_pix = 12
+    theta = rng.uniform(0.3, np.pi - 0.3, n_pix)
+    phi = rng.uniform(0, 2 * np.pi, n_pix)
+    vec = np.column_stack(
+        [np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)]
+    )
+
+    lmax = 4
+    cl = np.zeros(lmax + 1, dtype=np.float64)
+    c1 = 0.7
+    cl[1] = c1
+    legendre = np.empty(lmax + 1, dtype=np.float64)
+
+    S = np.zeros((n_pix, n_pix), dtype=np.float64)
+    compute_00_contribution(cl, S, vec, vec, legendre, mode=0)
+    S_full = S + S.T - np.diag(np.diag(S))
+
+    cos_pair = vec @ vec.T
+    expected = c1 * 3.0 * cos_pair / (4 * np.pi)
+    np.testing.assert_allclose(S_full, expected, rtol=1e-12)
+
+
+def test_compute_00_contribution_default_skips_monopole():
+    """With ``cl[0]=cl[1]=0`` the ℓ-from-0 loop is a no-op.
+
+    Default CMB usage has ``lmin_signal=2``; cl arrays are zero-padded
+    below ℓ=2. The new loop bound must produce results identical to the
+    legacy ``ell ≥ 2`` summation when those entries are zero.
+    """
+    rng = np.random.default_rng(13)
+    n_pix = 10
+    theta = rng.uniform(0.3, np.pi - 0.3, n_pix)
+    phi = rng.uniform(0, 2 * np.pi, n_pix)
+    vec = np.column_stack(
+        [np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)]
+    )
+
+    lmax = 6
+    cl = np.zeros(lmax + 1, dtype=np.float64)
+    cl[2:] = rng.uniform(0.1, 1.0, lmax - 1)
+    legendre = np.empty(lmax + 1, dtype=np.float64)
+
+    S = np.zeros((n_pix, n_pix), dtype=np.float64)
+    compute_00_contribution(cl, S, vec, vec, legendre, mode=0)
+    S_full = S + S.T - np.diag(np.diag(S))
+
+    cos_pair = vec @ vec.T
+    expected = np.zeros_like(S_full)
+    P_prev = np.ones_like(cos_pair)  # P_0
+    P_curr = cos_pair.copy()  # P_1
+    for ell in range(2, lmax + 1):
+        P_next = ((2 * ell - 1) * cos_pair * P_curr - (ell - 1) * P_prev) / ell
+        P_prev, P_curr = P_curr, P_next
+        expected += cl[ell] * (2 * ell + 1) / (4 * np.pi) * P_curr
+
+    np.testing.assert_allclose(S_full, expected, rtol=1e-12)

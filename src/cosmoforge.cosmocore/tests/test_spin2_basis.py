@@ -470,7 +470,7 @@ class TestSpin2Benchmark:
         Single spin-2 field (Q, U) → (E, B) decomposition.
         Sizes chosen so n_pix_total >> n_modes for compression speedup:
         - n_pix=120 physical → 240 total (Q+U)
-        - lmax=6 → n_modes_base=45 → 90 total (E+B)
+        - lmax_signal=6 → n_modes_base=45 → 90 total (E+B)
         """
         import time
 
@@ -561,7 +561,7 @@ class TestSpin2Benchmark:
         Mixed spin-0 (T) + spin-2 (Q, U) fields → TT, EE, BB, TE spectra.
         Sizes chosen so n_pix_total >> n_modes for compression speedup:
         - n_pix_t=50, n_pix_p=45 → total_pix = 50 + 2*45 = 140
-        - lmax=6 → n_modes_base=45 → 45 (T) + 90 (E+B) = 135 modes
+        - lmax_signal=6 → n_modes_base=45 → 45 (T) + 90 (E+B) = 135 modes
         """
         import time
 
@@ -870,7 +870,7 @@ class TestPixelProjectedSpin2:
             N=N,
             theta=theta,
             phi=phi,
-            lmax=lmax,
+            lmax_signal=lmax,
             spins=[2],
             epsilon=1e-6,
         )

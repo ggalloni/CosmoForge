@@ -88,11 +88,12 @@ class HarmonicBasis(ComputationBasis):
         N: np.ndarray,
         theta: np.ndarray | tuple[np.ndarray, ...],
         phi: np.ndarray | tuple[np.ndarray, ...],
-        lmax: int,
+        lmax_signal: int,
         beam: np.ndarray | None = None,
         spins: list[int] | None = None,
-        lswitch_low: int | None = None,
-        lswitch_high: int | None = None,
+        lmin_signal: list[int] | None = None,
+        lmin: int | None = None,
+        lmax: int | None = None,
         fiducial_C_ell: np.ndarray | None = None,
         S_fixed: np.ndarray | None = None,
         compress: bool = False,
@@ -102,11 +103,12 @@ class HarmonicBasis(ComputationBasis):
             N=N,
             theta=theta,
             phi=phi,
-            lmax=lmax,
+            lmax_signal=lmax_signal,
             beam=beam,
             spins=spins,
-            lswitch_low=lswitch_low,
-            lswitch_high=lswitch_high,
+            lmin_signal=lmin_signal,
+            lmin=lmin,
+            lmax=lmax,
             fiducial_C_ell=fiducial_C_ell,
             S_fixed=S_fixed,
         )
@@ -259,8 +261,8 @@ class HarmonicBasis(ComputationBasis):
         """
         from ..pixel import compute_00_contribution
 
-        cl_fixed = np.zeros(self.lmax + 1, dtype=np.float64)
-        for ell in range(self.lswitch_high + 1, self.lmax + 1):
+        cl_fixed = np.zeros(self.lmax_signal + 1, dtype=np.float64)
+        for ell in range(self.lmax + 1, self.lmax_signal + 1):
             if ell < len(self._fiducial_C_ell):
                 cl_fixed[ell] = self._fiducial_C_ell[ell]
 
@@ -273,7 +275,7 @@ class HarmonicBasis(ComputationBasis):
         )
 
         S_fixed = np.zeros((self.n_pix, self.n_pix), dtype=np.float64)
-        legendre_buffer = np.empty(self.lmax + 1, dtype=np.float64)
+        legendre_buffer = np.empty(self.lmax_signal + 1, dtype=np.float64)
 
         compute_00_contribution(
             cl_fixed,
@@ -282,7 +284,6 @@ class HarmonicBasis(ComputationBasis):
             point_vectors,
             legendre_buffer,
             mode=0,
-            remove_dipole=False,
         )
 
         # compute_00_contribution fills lower triangle only; symmetrise.

@@ -169,7 +169,7 @@ class TestTEBScalarBenchmark:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=lmax,
+            lmax_signal=lmax,
         )
         hc.setup()
 
@@ -226,7 +226,7 @@ class TestTEBScalarBenchmark:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=lmax,
+            lmax_signal=lmax,
         )
         hc.setup()
 
@@ -296,7 +296,7 @@ class TestTEBScalarBenchmark:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=lmax,
+            lmax_signal=lmax,
         )
 
         # Time setup
@@ -359,7 +359,7 @@ class TestTEBScalarBenchmark:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=lmax,
+            lmax_signal=lmax,
         )
         hc.setup()
 

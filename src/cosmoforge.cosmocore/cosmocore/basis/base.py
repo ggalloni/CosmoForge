@@ -99,11 +99,12 @@ class ComputationBasis(ABC):
         N: np.ndarray,
         theta: np.ndarray | tuple[np.ndarray, ...],
         phi: np.ndarray | tuple[np.ndarray, ...],
-        lmax: int,
+        lmax_signal: int,
         beam: np.ndarray | None = None,
         spins: list[int] | None = None,
-        lswitch_low: int | None = None,
-        lswitch_high: int | None = None,
+        lmin_signal: list[int] | None = None,
+        lmin: int | None = None,
+        lmax: int | None = None,
         fiducial_C_ell: np.ndarray | None = None,
         S_fixed: np.ndarray | None = None,
     ):
@@ -122,28 +123,34 @@ class ComputationBasis(ABC):
         phi : numpy.ndarray or tuple of numpy.ndarray
             Longitude angles for active pixels in radians. Single array for
             single-field, tuple of arrays for multi-field (one per component).
-        lmax : int
-            Maximum multipole for harmonic expansion.
+        lmax_signal : int
+            Signal-cov ceiling. The basis represents multipoles up to and
+            including this value.
         beam : numpy.ndarray or None, optional
-            Beam window function B_ℓ for ℓ=2 to lmax.
+            Beam window function B_ℓ for ℓ=0..lmax_signal.
         spins : list of int or None, optional
             Spin weight for each component (0 for scalar, 2 for polarization).
             Default is [0, ...] for all components. For spin-2 components,
             theta/phi represent physical pixel locations but V is built for
             (Q, U) → (E, B) transformation with doubled dimensions.
-        lswitch_low : int or None, optional
-            Minimum multipole where signal varies with parameters.
-            If provided with lswitch_high, enables switch optimization.
-        lswitch_high : int or None, optional
-            Maximum multipole where signal varies with parameters.
-            Multipoles above this use fixed fiducial spectrum.
+        lmin_signal : list of int or None, optional
+            Per-component signal-cov floor. Defaults to ``[2]*n_components``.
+            Each entry must satisfy ``lmin_signal[i] >= |spins[i]|``.
+        lmin : int or None, optional
+            Inference window lower bound. Defaults to ``min(lmin_signal)``.
+            Together with ``lmax`` enables the switch optimisation:
+            ``S_fixed`` absorbs the signal contribution outside
+            ``[lmin, lmax]``.
+        lmax : int or None, optional
+            Inference window upper bound. Defaults to ``lmax_signal``.
+            Multipoles in ``(lmax, lmax_signal]`` are absorbed into ``S_fixed``.
         fiducial_C_ell : numpy.ndarray or None, optional
             Deprecated: Use S_fixed instead. Fiducial power spectrum for
-            fixed multipoles (ℓ > lswitch_high).
+            fixed multipoles (ℓ outside ``[lmin, lmax]``).
         S_fixed : numpy.ndarray or None, optional
-            Precomputed signal matrix for fixed multipoles (ℓ > lswitch_high).
-            This is the recommended way to pass the fixed signal contribution.
-            Shape should be (n_pix_total, n_pix_total).
+            Precomputed signal matrix for fixed multipoles outside
+            ``[lmin, lmax]``. Recommended way to pass the fixed signal
+            contribution. Shape ``(n_pix_total, n_pix_total)``.
         """
         self._N = np.asfortranarray(N, dtype=np.float64)
         # Pre-factor cache slot for the lazy N_inv property (populated on
@@ -151,7 +158,7 @@ class ComputationBasis(ABC):
         # released by _factorise_noise). The basis owns the noise buffer
         # end-to-end; the constructor no longer accepts a precomputed inverse.
         self._N_inv_dense = None
-        self.lmax = lmax
+        self.lmax_signal = lmax_signal
 
         # Normalize theta/phi to tuple format for consistent handling
         # Single-field: 1D array → wrap as single-element tuple
@@ -202,21 +209,43 @@ class ComputationBasis(ABC):
             self.theta = np.concatenate(self._theta_tuple)
             self.phi = np.concatenate(self._phi_tuple)
 
-        # Store lswitch parameters for reduced-dimension SMW
-        self.lswitch_low = lswitch_low if lswitch_low is not None else 2
-        self.lswitch_high = lswitch_high if lswitch_high is not None else lmax
+        # Multipole-range bookkeeping (see ADR 0009). lmin_signal is
+        # per-component; lmin/lmax are scalar inference window edges.
+        # Spin-floor validation lives at the user-facing layer (Fisher /
+        # PICSLike __init__); a defensive check still runs here.
+        if lmin_signal is None:
+            self._lmin_signal = [2] * self.n_components
+        else:
+            if len(lmin_signal) != self.n_components:
+                raise ValueError(
+                    f"lmin_signal length ({len(lmin_signal)}) must match "
+                    f"number of components ({self.n_components})"
+                )
+            for i, (lm, s) in enumerate(zip(lmin_signal, self._spins)):
+                if lm < abs(s):
+                    raise ValueError(
+                        f"lmin_signal[{i}]={lm} < |spin|={abs(s)} "
+                        f"(component {i} is spin-{s})"
+                    )
+            self._lmin_signal = list(lmin_signal)
+        self.lmin = lmin if lmin is not None else min(self._lmin_signal)
+        self.lmax = lmax if lmax is not None else lmax_signal
         self._fiducial_C_ell = fiducial_C_ell
         self._S_fixed = S_fixed
-        self._use_switch_optimization = lswitch_high is not None and lswitch_high < lmax
+        # Switch optimization triggers when the inference window is strictly
+        # narrower than the signal-cov band on either side.
+        self._use_switch_optimization = (
+            self.lmin > min(self._lmin_signal) or self.lmax < lmax_signal
+        )
 
-        # Store beam window function (ℓ-indexed: beam[ell] for ell=0..lmax).
+        # Store beam window function (ℓ-indexed: beam[ell] for ell=0..lmax_signal).
         if beam is not None:
             beam = np.asarray(beam, dtype=np.float64)
-            expected_len = lmax + 1
+            expected_len = lmax_signal + 1
             if beam.shape[0] != expected_len:
                 raise ValueError(
-                    f"Beam must have length {expected_len} (ell=0..lmax={lmax}), "
-                    f"got {beam.shape[0]}"
+                    f"Beam must have length {expected_len} "
+                    f"(ell=0..lmax_signal={lmax_signal}), got {beam.shape[0]}"
                 )
             self._beam = beam
         else:
@@ -231,23 +260,25 @@ class ComputationBasis(ABC):
         Subclasses that need harmonic machinery (V operator, Lambda, derivatives)
         must call this after ``super().__init__()``.
         """
-        # n_modes per component depends on whether switch optimization is used
-        if self._use_switch_optimization:
-            # Only modes for ℓ in [lswitch_low, lswitch_high]
-            self._n_modes_base = (self.lswitch_high + 1) ** 2 - (self.lswitch_low) ** 2
-            self._lmin_smw = self.lswitch_low
-            self._lmax_smw = self.lswitch_high
-        else:
-            # All modes from ℓ=2 to lmax
-            self._n_modes_base = (self.lmax + 1) ** 2 - 4
-            self._lmin_smw = 2
-            self._lmax_smw = self.lmax
-
-        # Mode count per component: spin-2 has 2x modes (E, B)
+        # Mode count per component over the inference window, applying the
+        # per-component lmin_signal floor. The V-fill loops sweep
+        # [_lmin_smw.._lmax_smw] and zero rows below lmin_signal[i] for any
+        # component i with lmin_signal[i] > _lmin_smw.
+        self._lmin_smw = self.lmin
+        self._lmax_smw = self.lmax
         self._n_modes_per_component_list = [
-            2 * self._n_modes_base if self._spins[i] == 2 else self._n_modes_base
-            for i in range(self.n_components)
+            (
+                2 * ((self._lmax_smw + 1) ** 2 - max(self._lmin_smw, lm) ** 2)
+                if self._spins[i] == 2
+                else (self._lmax_smw + 1) ** 2 - max(self._lmin_smw, lm) ** 2
+            )
+            for i, lm in enumerate(self._lmin_signal)
         ]
+        # Single-field convenience: a scalar base mode count drives the legacy
+        # spin-0 paths (Lambda diagonals, single-component derivative slabs).
+        self._n_modes_base = (self._lmax_smw + 1) ** 2 - max(
+            self._lmin_smw, self._lmin_signal[0]
+        ) ** 2
 
         # For backward compatibility (single-field case)
         self._n_modes_per_component = self._n_modes_base
@@ -758,14 +789,14 @@ class ComputationBasis(ABC):
 
     def get_cls_vector(self) -> np.ndarray:
         """
-        Get a placeholder C_ell vector for the configured lmax.
+        Get a placeholder C_ell vector for the configured lmax_signal.
 
         Returns
         -------
         numpy.ndarray
-            ℓ-indexed array of zeros with length ``lmax + 1``.
+            ℓ-indexed array of zeros with length ``lmax_signal + 1``.
         """
-        return np.zeros(self.lmax + 1)
+        return np.zeros(self.lmax_signal + 1)
 
     @property
     def compression_ratio(self) -> float:

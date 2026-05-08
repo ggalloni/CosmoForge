@@ -72,7 +72,7 @@ class Bins:
     array([3, 5, 11])
     """
 
-    def __init__(self, lmins, lmaxs):
+    def __init__(self, lmins, lmaxs, lmin_floor=2):
         if len(lmins) != len(lmaxs):
             raise ValueError(
                 f"lmins and lmaxs must have the same length, "
@@ -81,23 +81,35 @@ class Bins:
 
         lmins = np.asarray(lmins, dtype=int)
         lmaxs = np.asarray(lmaxs, dtype=int)
-        cutfirst = np.logical_and(lmaxs >= 2, lmins >= 2)
-        self.lmins = lmins[cutfirst]
-        self.lmaxs = lmaxs[cutfirst]
+        if lmin_floor < 0:
+            raise ValueError(f"lmin_floor must be >= 0, got {lmin_floor}")
+        # Reject bins entirely below lmin_floor (default 2 reproduces the
+        # legacy spin-2 floor; pass lmin_floor=1 for dipole or 0 for
+        # monopole-aware analyses).
+        keep = np.logical_and(lmaxs >= lmin_floor, lmins >= lmin_floor)
+        self.lmins = lmins[keep]
+        self.lmaxs = lmaxs[keep]
+        self.lmin_floor = int(lmin_floor)
 
         self._validate_and_derive()
 
     @classmethod
     def fromdeltal(cls, lmin, lmax, delta_ell):
-        """Create uniform bins with constant width."""
+        """Create uniform bins with constant width.
+
+        ``lmin`` doubles as the bin floor; values below 2 are honoured
+        (e.g. ``Bins.fromdeltal(1, 4, 1)`` includes the dipole).
+        """
         nbins = (lmax - lmin + 1) // delta_ell
         lmins = lmin + np.arange(nbins) * delta_ell
         lmaxs = lmins + delta_ell - 1
-        return cls(lmins, lmaxs)
+        return cls(lmins, lmaxs, lmin_floor=lmin)
 
     def _validate_and_derive(self):
         if len(self.lmins) == 0:
-            raise ValueError("No valid bins (all bins have lmax < 2)")
+            raise ValueError(
+                f"No valid bins (all bins below lmin_floor={self.lmin_floor})"
+            )
 
         for i, (l1, l2) in enumerate(zip(self.lmins, self.lmaxs)):
             if l1 > l2:

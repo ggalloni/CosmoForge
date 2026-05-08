@@ -493,5 +493,24 @@ def test_all_legendre():
         print("\n" + "=" * 60 + "\n")
 
 
+def test_legendre_00_monopole_base_case():
+    """legendre_00 populates the ℓ=0 slot with (2·0+1)/(4π) × P_0 = 1/(4π).
+
+    P_0(x)=1 for any x, so after normalisation the monopole entry is the
+    constant 1/(4π). Foreground/template paths with ``lmin_signal=0`` rely
+    on this slot to sum the C_0 contribution into S.
+    """
+    rtol = 1e-14
+    expected = 1.0 / (4 * np.pi)
+    for x in (-0.7, -0.1, 0.0, 0.3, 1.0):
+        buf = np.empty(8, dtype=np.float64)
+        legendre_00(x, buf)
+        np.testing.assert_allclose(buf[0], expected, rtol=rtol)
+    # P_1(x)=x, normalised = 3x/(4π); spot-check a non-trivial ℓ=1 value
+    buf = np.empty(8, dtype=np.float64)
+    legendre_00(0.3, buf)
+    np.testing.assert_allclose(buf[1], 3 * 0.3 / (4 * np.pi), rtol=rtol)
+
+
 if __name__ == "__main__":
     test_all_legendre()

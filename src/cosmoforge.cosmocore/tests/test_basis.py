@@ -21,7 +21,7 @@ class TestCreateCompression:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         cm.setup()
@@ -40,7 +40,7 @@ class TestCreateCompression:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
             epsilon=1e-6,
         )
 
@@ -62,7 +62,7 @@ class TestCreateCompression:
                 N=setup["N"],
                 theta=setup["theta"],
                 phi=setup["phi"],
-                lmax=setup["lmax"],
+                lmax_signal=setup["lmax"],
             )
 
     def test_facade_delegates_correctly(self, uniform_sky_setup):
@@ -80,7 +80,7 @@ class TestCreateCompression:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         cm.setup()
 
@@ -88,7 +88,7 @@ class TestCreateCompression:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc.setup()
 
@@ -113,7 +113,7 @@ class TestCreateCompression:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         cm.setup()
 
@@ -136,7 +136,7 @@ class TestCreateCompression:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
             basis="snr",
             C_ell=C_ell,
             epsilon=1e-4,
@@ -165,7 +165,7 @@ class TestComputeFisherMatrix:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=lmax,
+            lmax_signal=lmax,
         )
         hc.setup()
 
@@ -187,7 +187,7 @@ class TestComputeFisherMatrix:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=lmax,
+            lmax_signal=lmax,
         )
         hc.setup()
 
@@ -209,7 +209,7 @@ class TestComputeFisherMatrix:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=lmax,
+            lmax_signal=lmax,
         )
         hc.setup()
 
@@ -235,7 +235,7 @@ class TestComputeFisherMatrix:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=lmax,
+            lmax_signal=lmax,
         )
         cm.setup()
 
@@ -259,7 +259,7 @@ class TestComputeFisherMatrix:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=lmax,
+            lmax_signal=lmax,
         )
         ppc.setup()
         ppc.apply_compression(epsilon=1e-6)

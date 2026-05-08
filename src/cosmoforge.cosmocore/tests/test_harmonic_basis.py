@@ -21,11 +21,11 @@ class TestHarmonicBasisInitialization:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         assert hc.n_pix == setup["n_pix"]
-        assert hc.lmax == setup["lmax"]
+        assert hc.lmax_signal == setup["lmax"]
 
     def test_mode_count(self, simple_compression_setup):
         """Test that n_modes is computed correctly."""
@@ -36,7 +36,7 @@ class TestHarmonicBasisInitialization:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         # n_modes = (lmax+1)^2 - 4 for ell >= 2
@@ -56,7 +56,7 @@ class TestHarmonicBasisSetup:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         hc.setup()
@@ -84,7 +84,7 @@ class TestHarmonicBasisSetup:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         hc.setup()
@@ -102,7 +102,7 @@ class TestHarmonicBasisSetup:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         hc.setup()
@@ -123,7 +123,7 @@ class TestHarmonicBasisOperations:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         hc.setup()
@@ -142,7 +142,7 @@ class TestHarmonicBasisOperations:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         hc.setup()
@@ -163,7 +163,7 @@ class TestHarmonicBasisOperations:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         hc.setup()
@@ -184,7 +184,7 @@ class TestHarmonicBasisOperations:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         hc.setup()
@@ -210,7 +210,7 @@ class TestHarmonicBasisOperations:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         hc.setup()
@@ -241,7 +241,7 @@ class TestHarmonicBasisFisher:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         hc.setup()
@@ -263,7 +263,7 @@ class TestHarmonicBasisFisher:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         hc.setup()
@@ -288,7 +288,7 @@ class TestHarmonicBasisPixelSpace:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         hc.setup()
@@ -309,7 +309,7 @@ class TestHarmonicBasisPixelSpace:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         hc.setup()
@@ -330,7 +330,7 @@ class TestHarmonicBasisPixelSpace:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         hc.setup()
@@ -396,7 +396,7 @@ class TestHarmonicBasisValidation:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc.setup()
 
@@ -422,7 +422,7 @@ class TestHarmonicBasisValidation:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc.setup()
 
@@ -448,7 +448,7 @@ class TestHarmonicBasisValidation:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc.setup()
 
@@ -476,7 +476,7 @@ class TestHarmonicBasisValidation:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc.setup()
 
@@ -523,7 +523,7 @@ class TestHarmonicBasisBeam:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=lmax,
+            lmax_signal=lmax,
             beam=beam,
         )
 
@@ -545,7 +545,7 @@ class TestHarmonicBasisBeam:
                 N=setup["N"],
                 theta=setup["theta"],
                 phi=setup["phi"],
-                lmax=lmax,
+                lmax_signal=lmax,
                 beam=wrong_beam,
             )
 
@@ -563,7 +563,7 @@ class TestHarmonicBasisBeam:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=lmax,
+            lmax_signal=lmax,
         )
         hc_no_beam.setup()
 
@@ -571,7 +571,7 @@ class TestHarmonicBasisBeam:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=lmax,
+            lmax_signal=lmax,
             beam=beam,
         )
         hc_unit_beam.setup()
@@ -600,7 +600,7 @@ class TestHarmonicDictOperations:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc.setup()
 
@@ -630,7 +630,7 @@ class TestHarmonicDictOperations:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=lmax,
+            lmax_signal=lmax,
             spins=[0, 0],
         )
         hc.setup()
@@ -676,7 +676,7 @@ class TestHarmonicDictOperations:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=lmax,
+            lmax_signal=lmax,
         )
         hc.setup()
 
@@ -718,7 +718,7 @@ class TestNoiseCovWithNonDiagonalN:
         theta = rng.uniform(0, np.pi, n_pix)
         phi = rng.uniform(0, 2 * np.pi, n_pix)
         matrix_inverse_symm(np.asfortranarray(N))
-        hc = HarmonicBasis(N=N, theta=theta, phi=phi, lmax=lmax)
+        hc = HarmonicBasis(N=N, theta=theta, phi=phi, lmax_signal=lmax)
         hc.setup()
         return hc
 
@@ -760,7 +760,7 @@ class TestNoiseCovWithNonDiagonalN:
         rng = np.random.default_rng(1)
         N = np.diag(rng.uniform(0.5, 1.5, n_pix))
         hc = self._build_basis(N)
-        C_ell = np.full(hc.lmax + 1, 0.05)
+        C_ell = np.full(hc.lmax_signal + 1, 0.05)
         kernel_inv = self._make_kernel_inv(hc, C_ell)
         ref = self._direct_noise_cov(hc, kernel_inv)
         got = self._compressed_noise_cov(hc, kernel_inv)
@@ -772,7 +772,7 @@ class TestNoiseCovWithNonDiagonalN:
         # Sanity: N is genuinely non-diagonal
         assert np.max(np.abs(N - np.diag(np.diag(N)))) > 1e-3
         hc = self._build_basis(N)
-        C_ell = np.full(hc.lmax + 1, 0.05)
+        C_ell = np.full(hc.lmax_signal + 1, 0.05)
         kernel_inv = self._make_kernel_inv(hc, C_ell)
         ref = self._direct_noise_cov(hc, kernel_inv)
         got = self._compressed_noise_cov(hc, kernel_inv)
@@ -790,18 +790,18 @@ class TestNoiseCovWithNonDiagonalN:
         phi = rng.uniform(0, 2 * np.pi, n_pix)
         fiducial_C_ell = np.full(lmax + 1, 0.05)
 
-        # Switch optimization active: N_eff = N + S_fixed for ℓ > lswitch_high.
+        # Switch optimization active: N_eff = N + S_fixed for ℓ > inference upper.
         hc = HarmonicBasis(
             N=N,
             theta=theta,
             phi=phi,
-            lmax=lmax,
-            lswitch_low=2,
-            lswitch_high=6,
+            lmax_signal=lmax,
+            lmin=2,
+            lmax=6,
             fiducial_C_ell=fiducial_C_ell,
         )
         hc.setup()
-        assert hc.lswitch_high < hc.lmax
+        assert hc.lmax < hc.lmax_signal
 
         C_ell = fiducial_C_ell.copy()
         kernel_inv = self._make_kernel_inv(hc, C_ell)

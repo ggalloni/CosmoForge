@@ -74,7 +74,7 @@ def _make_core(spins, labels, nfields, nside=8, lmax=16, mask_half=True):
     return core, params.maskfile
 
 
-def _build_direct_basis(core, lmax):
+def _build_direct_basis(core, lmax_signal):
     """Construct a PixelBasis with use_direct=True from a configured Core."""
     spins = [field.spin for field in core.collection.fields]
     n_pix = core.noise_cov1.shape[0]
@@ -83,7 +83,7 @@ def _build_direct_basis(core, lmax):
         N=core.noise_cov1,
         theta=core.theta,
         phi=core.phi,
-        lmax=lmax,
+        lmax_signal=lmax_signal,
         spins=spins,
         fields=core.collection,
         use_direct=True,
@@ -123,7 +123,7 @@ def test_setup_direct_requires_fields():
         N=N,
         theta=theta,
         phi=phi,
-        lmax=8,
+        lmax_signal=8,
         use_direct=True,
     )
     with pytest.raises(ValueError, match="fields"):
@@ -139,7 +139,7 @@ def test_binned_derivative_direct_spin0():
     """Spin-0 binned direct derivative matches per-ℓ direct sum."""
     core, mask_file = _make_core(spins=[0], labels=["T"], nfields=1)
     try:
-        bm = _build_direct_basis(core, lmax=core.params.lmax)
+        bm = _build_direct_basis(core, lmax_signal=core.params.lmax)
         bins = Bins.fromdeltal(2, core.params.lmax, 3)
         dC_b = bm.get_binned_derivative_direct(
             bin_idx=1,
@@ -167,7 +167,7 @@ def test_binned_derivative_direct_spin2(mode, name):
     """Spin-2 EE/BB/EB binned direct derivative matches per-ℓ direct sum."""
     core, mask_file = _make_core(spins=[2], labels=["E", "B"], nfields=2)
     try:
-        bm = _build_direct_basis(core, lmax=core.params.lmax)
+        bm = _build_direct_basis(core, lmax_signal=core.params.lmax)
         bins = Bins.fromdeltal(2, core.params.lmax, 3)
         dC_b = bm.get_binned_derivative_direct(
             bin_idx=1,
@@ -209,7 +209,7 @@ def test_binned_derivative_direct_cross_spin(mode, name):
         nfields=3,
     )
     try:
-        bm = _build_direct_basis(core, lmax=core.params.lmax)
+        bm = _build_direct_basis(core, lmax_signal=core.params.lmax)
         bins = Bins.fromdeltal(2, core.params.lmax, 3)
         dC_te = bm.get_binned_derivative_direct(
             bin_idx=1,
@@ -245,7 +245,7 @@ def test_binned_derivative_direct_with_beam_smoothing():
     """beam_smoothing argument scales each ℓ in the bin."""
     core, mask_file = _make_core(spins=[0], labels=["T"], nfields=1)
     try:
-        bm = _build_direct_basis(core, lmax=core.params.lmax)
+        bm = _build_direct_basis(core, lmax_signal=core.params.lmax)
         bins = Bins.fromdeltal(2, core.params.lmax, 3)
         # Inference-range beam of length lmax-1 (ell=2..lmax, offset-from-2);
         # this matches Fisher's per-spectrum beam_smoothing layout.

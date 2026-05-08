@@ -39,6 +39,13 @@ in issue titles, plans, hypotheses, and test names. Do not paraphrase.
 - **delta_ell** — Bin width. `delta_ell=1` recovers per-ℓ estimation (the default).
 - **Binned derivative** — `dC^b = Σ_ℓ w_{b,ℓ} b²_ℓ dC^ℓ` (beam-smoothed).
 
+## Multipole ranges (ADR 0009)
+
+- **Signal-cov band** `[min(lmin_signal), lmax_signal]` — what the basis represents (V, Λ, S). `lmax_signal` defaults to `4·nside`.
+- **Inference window** `[lmin, lmax]` — where C_ℓ vary; outside this band but inside the signal-cov band, the fiducial spectrum is used and the contribution is precomputed into `S_fixed`.
+- **Per-component low-ℓ floor** `lmin_signal[i]` — must satisfy `lmin_signal[i] >= |spins[i]|`. Enables direct dipole estimation (`lmin_signal=[1, 2]` for T+QU) and foreground/template handling (`lmin_signal=0`).
+- **Constraint chain** — `max(lmin_signal) <= lmin <= lmax <= lmax_signal` enforced at params load.
+
 ## Spin and polarisation
 
 - **Spin-0 / spin-2** — Spin-0 covers temperature T; spin-2 covers polarisation Q/U → E/B.
@@ -49,7 +56,7 @@ in issue titles, plans, hypotheses, and test names. Do not paraphrase.
 
 - **PICSLike** — Full Gaussian pixel-space log-likelihood: `ln L = −½ [d^T C⁻¹ d + ln|C|]` evaluated over a parameter grid.
 - **ParameterGrid** — Cartesian product of parameter ranges; loads spectra from files; supports fiducial blending and MPI distribution.
-- **Fiducial blending / lswitch** — Above ℓ=lswitch the covariance uses the fiducial spectrum (not the test point's). Stabilises the inversion at high ℓ.
+- **Fiducial blending** — Outside the inference window `[lmin, lmax]` the covariance uses the fiducial spectrum (not the test point's). Stabilises the inversion at high ℓ and lets foreground/template components live in `S_fixed`.
 - **LikelihoodResult** — Stores χ², log-L, best-fit, marginalised likelihoods, confidence intervals; serialisable.
 
 ## Inputs and conventions
