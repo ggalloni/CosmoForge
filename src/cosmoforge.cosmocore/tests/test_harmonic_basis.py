@@ -779,6 +779,29 @@ class TestNoiseCovWithNonDiagonalN:
         assert_allclose(got, ref, rtol=1e-10, atol=1e-12)
 
     def test_nondiagonal_n_with_switch_optimization(self):
+        """Lock the Tegmark noise-bias convention with ``S_fixed`` active.
+
+        QUBE follows the Tegmark form
+        ``bias = ½ Tr[E_b · V C⁻¹ N C⁻¹ V^T]`` with the *raw* noise N,
+        not ``N_eff = N + S_fixed``. The basis materialises this through
+        the algebraic identity
+        ``T = V N_eff⁻¹ N N_eff⁻¹ V^T = V_Ninv_VT − V_N_inv·S_fixed·V_N_inv^T``
+        so it never has to carry a second ``n_pix²`` buffer for raw N.
+
+        This test exercises the switch path (``lmax < lmax_signal`` →
+        ``S_fixed`` non-zero) with a non-diagonal noise covariance and
+        compares ``A·_noise_cov_T·A^T`` (production) against
+        ``V C⁻¹ N_orig C⁻¹ V^T`` evaluated *directly* with ``N_orig``
+        passed in. They must agree to machine precision.
+
+        If the convention is ever switched (e.g. someone "fixes" the
+        residual ``S_fixed`` leakage by replacing ``T`` with
+        ``V_Ninv_VT``), this test fails with ~100 % mismatched elements.
+        That's not a bug in the test; the residual is the documented
+        Tegmark behaviour (see ADR 0009 and the project memory). To
+        change it, every consumer of ``_noise_cov_T`` plus the
+        traditional pixel-space path must be migrated together.
+        """
         from cosmocore.basis import HarmonicBasis
 
         n_pix = 60
