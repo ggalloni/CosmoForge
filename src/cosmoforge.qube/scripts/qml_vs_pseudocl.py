@@ -205,14 +205,20 @@ def run_pcl(
     use_invvar_bin=False,
     var_per_ell_for_weights=None,
 ):
-    """PCL pipeline. The expected bandpower includes a noise-bias term
-    `N_ell / B**2` because NaMaster does not auto-subtract noise; we add
-    it to the theory comparison so that <PCL> can be compared meaningfully.
+    """PCL pipeline.
 
-    If `use_invvar_bin` is True, NaMaster bandpowers are formed with per-
-    ell weights proportional to `1/var_per_ell_for_weights` (normalised
+    When both ``sigma_noise`` and ``npix`` are provided, the corresponding
+    white-noise bandpower bias is computed and subtracted from the measured
+    ``pcl_spectra``. In that case, the returned PCL estimates are
+    noise-subtracted, i.e. signal-only bandpowers, and should be compared
+    against the signal-only theory prediction. If these noise inputs are
+    not provided, no noise subtraction is applied and the returned
+    bandpowers retain their noise bias.
+
+    If ``use_invvar_bin`` is True, NaMaster bandpowers are formed with per-
+    ell weights proportional to ``1 / var_per_ell_for_weights`` (normalised
     per bin). This matches QUBE's native binning, where the bandpower is
-    the inverse-variance-weighted average of per-ell C_ell, so PCL and
+    the inverse-variance-weighted average of per-ell ``C_ell``, so PCL and
     QML produce the *same* bandpower observable rather than two
     different bandpower definitions.
     """
