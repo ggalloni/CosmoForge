@@ -492,15 +492,17 @@ def _read_maps_numpy(maps, filename, pixact, nsims):
         raise ValueError(
             f"Numpy map file has {all_data.shape[0]} fields, need at least {n_fields}"
         )
-    if all_data.shape[2] != nsims:
-        raise ValueError(f"Numpy map file has {all_data.shape[2]} sims, expected {nsims}")
+    if all_data.shape[2] < nsims:
+        raise ValueError(
+            f"Numpy map file has {all_data.shape[2]} sims, need at least {nsims}"
+        )
 
     pixact_int = [p.astype(int) for p in pixact]
     counter = 0
     for field_idx in range(n_fields):
         pixels = pixact_int[field_idx]
         n_active = pixels.size
-        maps[counter : counter + n_active, :] = all_data[field_idx][pixels, :]
+        maps[counter : counter + n_active, :] = all_data[field_idx][pixels, :nsims]
         counter += n_active
 
 
