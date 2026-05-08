@@ -637,8 +637,8 @@ class Spectra(Core, MPISharedMemoryMixin):
                     return cache[key]
 
         # beam_smoothing per-spectrum blocks hold the inference-range beams
-        # (ell=2..lmax in PR1, offset-from-2).
-        n_ell = self.params.lmax - 1
+        # (ell=lmin..lmax, offset-from-lmin; ADR 0009).
+        n_ell = self.params.lmax - self.params.lmin + 1
         beam_offset = spectrum_idx * n_ell
         beam = self.beam_smoothing[beam_offset : beam_offset + n_ell]
 
@@ -1110,7 +1110,9 @@ class Spectra(Core, MPISharedMemoryMixin):
                 # Setup binning: Fisher > set_binning() > config > default
                 if not hasattr(self, "bins") or self.bins is None:
                     delta_ell = getattr(self.params, "delta_ell", 1)
-                    self.set_binning(Bins.fromdeltal(2, self.params.lmax, delta_ell))
+                    self.set_binning(
+                        Bins.fromdeltal(self.params.lmin, self.params.lmax, delta_ell)
+                    )
 
             with self._stage("spectra.setup_maps"):
                 self.setup_maps()
@@ -1470,9 +1472,9 @@ class Spectra(Core, MPISharedMemoryMixin):
         ----------
         cl_theory : np.ndarray
             Per-ℓ theory C_ℓ. Two formats accepted:
-            - shape ``(n_ell,)`` for ℓ=2..lmax (length lmax-1)
-            - shape ``(lmax+1,)`` starting at ℓ=0 (leading entries for
-              ℓ=0,1 are ignored)
+            - shape ``(n_ell,)`` for ℓ=lmin..lmax (length lmax-lmin+1)
+            - shape ``(lmax+1,)`` starting at ℓ=0 (entries below ``lmin``
+              are ignored)
             Must be **unbeamed** physical C_ℓ — beam² is already absorbed
             into the window.
 
@@ -1525,18 +1527,19 @@ class Spectra(Core, MPISharedMemoryMixin):
                 "(and spectra.run()) before convolve_theory_for_inference()."
             )
 
-        n_ell = self.params.lmax - 1
+        lmin = self.params.lmin
+        n_ell = self.params.lmax - lmin + 1
         cl = np.asarray(cl_theory, dtype=np.float64)
         if cl.ndim != 1:
             raise ValueError(f"cl_theory must be 1D, got shape {cl.shape}")
         if cl.size == n_ell:
             cl_vec = cl
         elif cl.size >= self.params.lmax + 1:
-            cl_vec = cl[2 : self.params.lmax + 1]
+            cl_vec = cl[lmin : self.params.lmax + 1]
         else:
             raise ValueError(
                 f"cl_theory length {cl.size} does not match expected "
-                f"{n_ell} (ℓ=2..lmax) or {self.params.lmax + 1} (ℓ=0..lmax)"
+                f"{n_ell} (ℓ=lmin..lmax) or {self.params.lmax + 1} (ℓ=0..lmax)"
             )
 
         W = self.fisher_instance.get_bandpower_window_function()
@@ -1855,7 +1858,7 @@ class Spectra(Core, MPISharedMemoryMixin):
             mean_spectra = np.mean(spectra, axis=0)
 
             # Convert to Cl format and write
-            n_ell = self.params.lmax - 1
+            n_ell = self.params.lmax - self.params.lmin + 1
             nspectra = len(mean_spectra) // n_ell
             cl_array = np.zeros((n_ell, nspectra), dtype=np.float64)
             vec_to_cl(mean_spectra, cl_array)

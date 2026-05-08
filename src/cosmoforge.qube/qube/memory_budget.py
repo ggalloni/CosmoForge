@@ -32,8 +32,8 @@ dominates at small ``n_pix``.
 
 Calibration points:
 
-- **Harmonic** at eclipse-QU (n_pix=59136, n_modes=33274, lmax=256,
-  lswitch_high=128; mem_eclipse_qu_20114986.out, commit d11ab0b):
+- **Harmonic** at eclipse-QU (n_pix=59136, n_modes=33274, lmax_signal=256,
+  lmax=128; mem_eclipse_qu_20114986.out, commit d11ab0b):
   basis_setup persistent 57.21 GiB predicted vs 57.80 GiB measured;
   basis_setup peak 112.6 GiB predicted vs 113.2 GiB measured.
 - **Pixel-direct** at QU_nside64 fsky=0.1 (n_pix=9800, lmax=128,
@@ -56,21 +56,23 @@ class BudgetConfig:
     n_pix: total pixel count (2 × n_pix_observed for QU spin-2;
         n_pix_observed for T spin-0; sum for TQU).
     n_modes: total mode count after V projection. The calculator does not
-        derive this from lmax because mode counting depends on spin and
-        m=0 exclusions.
-    lmax: basis lmax (max ℓ in V), not the parameter-grid lmax.
-    lswitch_high: switch boundary. None or equal to lmax disables the
-        switch optimisation. Below lmax activates _compute_effective_noise
-        and adds ``T`` (separate from ``V_Ninv_VT``) plus ``S_fixed`` and
-        the corr intermediate to basis_setup.
+        derive this from lmax_signal because mode counting depends on spin
+        and m=0 exclusions.
+    lmax_signal: signal-cov ceiling (Layer A; max ℓ in V), not the
+        parameter-grid lmax.
+    lmax: inference window upper (Layer B). None or equal to ``lmax_signal``
+        disables the switch optimisation. Below ``lmax_signal`` activates
+        ``_compute_effective_noise`` and adds ``T`` (separate from
+        ``V_Ninv_VT``) plus ``S_fixed`` and the corr intermediate to
+        basis_setup.
     release_pixel_projector: True matches PR #16's Fisher path (V freed
         after SMW build). False reproduces the legacy keep-V behaviour.
     """
 
     n_pix: int
     n_modes: int
-    lmax: int
-    lswitch_high: int | None = None
+    lmax_signal: int
+    lmax: int | None = None
     release_pixel_projector: bool = True
 
     def __post_init__(self) -> None:
@@ -78,14 +80,14 @@ class BudgetConfig:
             raise ValueError(f"n_pix must be positive (got {self.n_pix})")
         if self.n_modes <= 0:
             raise ValueError(f"n_modes must be positive (got {self.n_modes})")
-        if self.lmax <= 0:
-            raise ValueError(f"lmax must be positive (got {self.lmax})")
-        if self.lswitch_high is not None and self.lswitch_high > self.lmax:
-            raise ValueError(f"lswitch_high={self.lswitch_high} exceeds lmax={self.lmax}")
+        if self.lmax_signal <= 0:
+            raise ValueError(f"lmax_signal must be positive (got {self.lmax_signal})")
+        if self.lmax is not None and self.lmax > self.lmax_signal:
+            raise ValueError(f"lmax={self.lmax} exceeds lmax_signal={self.lmax_signal}")
 
     @property
     def has_switch(self) -> bool:
-        return self.lswitch_high is not None and self.lswitch_high < self.lmax
+        return self.lmax is not None and self.lmax < self.lmax_signal
 
 
 @dataclass(frozen=True)
@@ -93,9 +95,10 @@ class PixelDirectBudgetConfig:
     """Inputs to the QUBE pixel-direct path budget.
 
     n_pix: total pixel count (same convention as BudgetConfig).
-    lmax: basis lmax. Used only for the auto-picker informational fields
-        and to decide whether the implicit-switch S_fixed transient is
-        allocated by Core (basis_lmax > params.lmax → switch implicit).
+    lmax_signal: signal-cov ceiling (Layer A). Used for the auto-picker
+        informational fields and to decide whether the implicit-switch
+        S_fixed transient is allocated by Core (lmax_signal > params.lmax
+        → switch implicit).
     n_bins: number of bandpower bins in the analysis. Drives the
         per-parameter ``cinv_times_dcb`` dict size during fisher_run.
     n_params: number of derivative parameters. ``n_bins × n_spectra`` in
@@ -103,14 +106,14 @@ class PixelDirectBudgetConfig:
         the empirical fisher_run derivative-product transient.
     has_switch: True if Core's ``setup_computation_basis`` enters the
         S_fixed branch before discovering the path is pixel-direct (i.e.
-        params.lmax < basis_lmax). At default benchmark configs
-        (basis_lmax=4·nside, params.lmax=2·nside) this is True. The
+        params.lmax < lmax_signal). At default benchmark configs
+        (lmax_signal=4·nside, params.lmax=2·nside) this is True. The
         S_fixed buffer is allocated, populated, then dereferenced — but
         the allocator pool keeps it resident through basis_setup exit.
     """
 
     n_pix: int
-    lmax: int
+    lmax_signal: int
     n_bins: int
     n_params: int
     has_switch: bool = True
@@ -118,8 +121,8 @@ class PixelDirectBudgetConfig:
     def __post_init__(self) -> None:
         if self.n_pix <= 0:
             raise ValueError(f"n_pix must be positive (got {self.n_pix})")
-        if self.lmax <= 0:
-            raise ValueError(f"lmax must be positive (got {self.lmax})")
+        if self.lmax_signal <= 0:
+            raise ValueError(f"lmax_signal must be positive (got {self.lmax_signal})")
         if self.n_bins <= 0:
             raise ValueError(f"n_bins must be positive (got {self.n_bins})")
         if self.n_params <= 0:
@@ -296,20 +299,16 @@ def _format_bytes(b: int) -> str:
 def _format_table(budget: QUBEBudget) -> str:
     cfg = budget.config
     if isinstance(cfg, BudgetConfig):
-        switch_str = (
-            f"lswitch_high={cfg.lswitch_high}"
-            if cfg.lswitch_high is not None
-            else "no switch"
-        )
+        switch_str = f"lmax={cfg.lmax}" if cfg.lmax is not None else "no switch"
         header = (
-            f"  n_pix={cfg.n_pix}  n_modes={cfg.n_modes}  lmax={cfg.lmax}"
+            f"  n_pix={cfg.n_pix}  n_modes={cfg.n_modes}  lmax_signal={cfg.lmax_signal}"
             f"  {switch_str}  release_V={cfg.release_pixel_projector}"
         )
     else:
         switch_str = "switch implicit" if cfg.has_switch else "no switch"
         header = (
-            f"  n_pix={cfg.n_pix}  lmax={cfg.lmax}  n_bins={cfg.n_bins}"
-            f"  n_params={cfg.n_params}  {switch_str}"
+            f"  n_pix={cfg.n_pix}  lmax_signal={cfg.lmax_signal}"
+            f"  n_bins={cfg.n_bins}  n_params={cfg.n_params}  {switch_str}"
         )
     lines = [
         f"QUBE memory budget [{budget.path}]",
@@ -357,16 +356,18 @@ def _main() -> None:
     parser.add_argument(
         "--n-pix", type=int, required=True, help="total pixel count (Q+U for spin-2)"
     )
-    parser.add_argument("--lmax", type=int, required=True, help="basis lmax")
+    parser.add_argument(
+        "--lmax-signal", type=int, required=True, help="signal-cov ceiling (Layer A)"
+    )
     # Harmonic-only
     parser.add_argument(
         "--n-modes", type=int, default=None, help="(harmonic) total mode count after V"
     )
     parser.add_argument(
-        "--lswitch-high",
+        "--lmax",
         type=int,
         default=None,
-        help="(harmonic) switch boundary; omit to disable",
+        help="(harmonic) inference window upper (Layer B); omit to disable switch",
     )
     parser.add_argument(
         "--keep-pixel-projector",
@@ -396,8 +397,8 @@ def _main() -> None:
         config = BudgetConfig(
             n_pix=args.n_pix,
             n_modes=args.n_modes,
+            lmax_signal=args.lmax_signal,
             lmax=args.lmax,
-            lswitch_high=args.lswitch_high,
             release_pixel_projector=not args.keep_pixel_projector,
         )
         print(predict_qube_budget(config).format_table())
@@ -406,7 +407,7 @@ def _main() -> None:
             parser.error("--n-bins and --n-params are required for --path pixel_direct")
         config = PixelDirectBudgetConfig(
             n_pix=args.n_pix,
-            lmax=args.lmax,
+            lmax_signal=args.lmax_signal,
             n_bins=args.n_bins,
             n_params=args.n_params,
             has_switch=not args.no_switch,

@@ -1,8 +1,8 @@
 """Tests for the QUBE memory budget calculator.
 
 Calibration target: eclipse-QU on commit d11ab0b, log
-mem_eclipse_qu_20114986.out. Inputs: n_pix=59136, n_modes=33274, basis_lmax
-=256, lswitch_high=128 (switch active). Measured at basis_setup exit:
+mem_eclipse_qu_20114986.out. Inputs: n_pix=59136, n_modes=33274,
+lmax_signal=256, lmax=128 (switch active). Measured at basis_setup exit:
 86,111 MiB total RSS minus 26,920 MiB baseline = 57.80 GiB of persistent
 state. Measured at basis_setup peak: 142,816 MiB minus baseline = 113.2
 GiB total transient + persistent.
@@ -21,7 +21,7 @@ from qube.memory_budget import (
 
 
 def test_persistent_state_uses_full_pixel_and_mode_squares():
-    cfg = BudgetConfig(n_pix=1000, n_modes=500, lmax=64)
+    cfg = BudgetConfig(n_pix=1000, n_modes=500, lmax_signal=64)
     budget = predict_qube_budget(cfg)
 
     pix_sq = 1000 * 1000 * 8
@@ -40,10 +40,10 @@ def test_persistent_state_uses_full_pixel_and_mode_squares():
 
 def test_release_pixel_projector_drops_v_from_persistent():
     cfg_release = BudgetConfig(
-        n_pix=1000, n_modes=500, lmax=64, release_pixel_projector=True
+        n_pix=1000, n_modes=500, lmax_signal=64, release_pixel_projector=True
     )
     cfg_keep = BudgetConfig(
-        n_pix=1000, n_modes=500, lmax=64, release_pixel_projector=False
+        n_pix=1000, n_modes=500, lmax_signal=64, release_pixel_projector=False
     )
 
     persistent_release = predict_qube_budget(cfg_release).stage("basis_setup").persistent
@@ -54,8 +54,8 @@ def test_release_pixel_projector_drops_v_from_persistent():
 
 
 def test_switch_adds_independent_noise_bias_kernel_t():
-    no_switch = BudgetConfig(n_pix=1000, n_modes=500, lmax=64, lswitch_high=64)
-    with_switch = BudgetConfig(n_pix=1000, n_modes=500, lmax=64, lswitch_high=32)
+    no_switch = BudgetConfig(n_pix=1000, n_modes=500, lmax_signal=64, lmax=64)
+    with_switch = BudgetConfig(n_pix=1000, n_modes=500, lmax_signal=64, lmax=32)
 
     no_t = predict_qube_budget(no_switch).stage("basis_setup").persistent
     with_t = predict_qube_budget(with_switch).stage("basis_setup").persistent
@@ -65,8 +65,8 @@ def test_switch_adds_independent_noise_bias_kernel_t():
 
 
 def test_switch_adds_s_fixed_and_corr_intermediate_to_basis_transient():
-    no_switch = BudgetConfig(n_pix=1000, n_modes=500, lmax=64, lswitch_high=64)
-    with_switch = BudgetConfig(n_pix=1000, n_modes=500, lmax=64, lswitch_high=32)
+    no_switch = BudgetConfig(n_pix=1000, n_modes=500, lmax_signal=64, lmax=64)
+    with_switch = BudgetConfig(n_pix=1000, n_modes=500, lmax_signal=64, lmax=32)
 
     no_t = predict_qube_budget(no_switch).stage("basis_setup").transient
     with_t = predict_qube_budget(with_switch).stage("basis_setup").transient
@@ -78,13 +78,13 @@ def test_switch_adds_s_fixed_and_corr_intermediate_to_basis_transient():
 
 
 def test_covariance_setup_transient_is_one_pix_square_for_post_revert():
-    cfg = BudgetConfig(n_pix=1000, n_modes=500, lmax=64)
+    cfg = BudgetConfig(n_pix=1000, n_modes=500, lmax_signal=64)
     cov = predict_qube_budget(cfg).stage("covariance_setup")
     assert cov.transient["Cov_T (asfortranarray copy on read)"] == 1000 * 1000 * 8
 
 
 def test_spectra_run_adds_noise_cov_t():
-    cfg = BudgetConfig(n_pix=1000, n_modes=500, lmax=64)
+    cfg = BudgetConfig(n_pix=1000, n_modes=500, lmax_signal=64)
     budget = predict_qube_budget(cfg)
 
     basis_persistent = budget.stage("basis_setup").persistent
@@ -96,7 +96,7 @@ def test_spectra_run_adds_noise_cov_t():
 
 
 def test_eclipse_qu_basis_persistent_within_2_percent_of_d11ab0b_log():
-    cfg = BudgetConfig(n_pix=59136, n_modes=33274, lmax=256, lswitch_high=128)
+    cfg = BudgetConfig(n_pix=59136, n_modes=33274, lmax_signal=256, lmax=128)
     budget = predict_qube_budget(cfg)
 
     measured_gib = (86_111 - 26_920) / 1024  # mem_eclipse_qu_20114986.out
@@ -109,7 +109,7 @@ def test_eclipse_qu_basis_persistent_within_2_percent_of_d11ab0b_log():
 
 
 def test_eclipse_qu_basis_peak_within_2_percent_of_d11ab0b_log():
-    cfg = BudgetConfig(n_pix=59136, n_modes=33274, lmax=256, lswitch_high=128)
+    cfg = BudgetConfig(n_pix=59136, n_modes=33274, lmax_signal=256, lmax=128)
     budget = predict_qube_budget(cfg)
 
     measured_gib = (142_816 - 26_920) / 1024  # peak above baseline
@@ -122,13 +122,13 @@ def test_eclipse_qu_basis_peak_within_2_percent_of_d11ab0b_log():
 
 
 def test_lifetime_peak_is_max_across_stages():
-    cfg = BudgetConfig(n_pix=1000, n_modes=500, lmax=64, lswitch_high=32)
+    cfg = BudgetConfig(n_pix=1000, n_modes=500, lmax_signal=64, lmax=32)
     budget = predict_qube_budget(cfg)
     assert budget.lifetime_peak_bytes == max(s.peak_bytes for s in budget.stages)
 
 
 def test_format_table_lists_every_stage_with_a_total():
-    cfg = BudgetConfig(n_pix=1000, n_modes=500, lmax=64, lswitch_high=32)
+    cfg = BudgetConfig(n_pix=1000, n_modes=500, lmax_signal=64, lmax=32)
     table = predict_qube_budget(cfg).format_table()
     for stage_name in ("covariance_setup", "basis_setup", "fisher_run", "spectra_run"):
         assert stage_name in table
@@ -137,13 +137,13 @@ def test_format_table_lists_every_stage_with_a_total():
 
 def test_invalid_config_rejected():
     with pytest.raises(ValueError):
-        BudgetConfig(n_pix=0, n_modes=500, lmax=64)
+        BudgetConfig(n_pix=0, n_modes=500, lmax_signal=64)
     with pytest.raises(ValueError):
-        BudgetConfig(n_pix=1000, n_modes=0, lmax=64)
+        BudgetConfig(n_pix=1000, n_modes=0, lmax_signal=64)
     with pytest.raises(ValueError):
-        BudgetConfig(n_pix=1000, n_modes=500, lmax=0)
+        BudgetConfig(n_pix=1000, n_modes=500, lmax_signal=0)
     with pytest.raises(ValueError):
-        BudgetConfig(n_pix=1000, n_modes=500, lmax=64, lswitch_high=128)
+        BudgetConfig(n_pix=1000, n_modes=500, lmax_signal=64, lmax=128)
 
 
 def test_stage_budget_peak_is_persistent_plus_sum_transient():
@@ -157,7 +157,7 @@ def test_stage_budget_peak_is_persistent_plus_sum_transient():
 
 
 def test_qube_budget_stage_lookup_raises_on_unknown():
-    cfg = BudgetConfig(n_pix=1000, n_modes=500, lmax=64)
+    cfg = BudgetConfig(n_pix=1000, n_modes=500, lmax_signal=64)
     budget = predict_qube_budget(cfg)
     with pytest.raises(KeyError):
         budget.stage("not_a_stage")
@@ -167,7 +167,7 @@ def test_qube_budget_stage_lookup_raises_on_unknown():
 
 
 def test_pixel_direct_basis_setup_carries_two_pix_squares_with_switch():
-    cfg = PixelDirectBudgetConfig(n_pix=1000, lmax=64, n_bins=6, n_params=18)
+    cfg = PixelDirectBudgetConfig(n_pix=1000, lmax_signal=64, n_bins=6, n_params=18)
     basis = predict_pixel_direct_budget(cfg).stage("basis_setup")
 
     pix_sq = 1000 * 1000 * 8
@@ -178,14 +178,14 @@ def test_pixel_direct_basis_setup_carries_two_pix_squares_with_switch():
 
 def test_pixel_direct_no_switch_drops_s_fixed_term():
     cfg = PixelDirectBudgetConfig(
-        n_pix=1000, lmax=64, n_bins=6, n_params=18, has_switch=False
+        n_pix=1000, lmax_signal=64, n_bins=6, n_params=18, has_switch=False
     )
     basis = predict_pixel_direct_budget(cfg).stage("basis_setup")
     assert "S_fixed (allocator pool retained)" not in basis.persistent
 
 
 def test_pixel_direct_fisher_run_scales_transient_with_n_params():
-    cfg = PixelDirectBudgetConfig(n_pix=1000, lmax=64, n_bins=6, n_params=18)
+    cfg = PixelDirectBudgetConfig(n_pix=1000, lmax_signal=64, n_bins=6, n_params=18)
     fisher = predict_pixel_direct_budget(cfg).stage("fisher_run")
     pix_sq = 1000 * 1000 * 8
     key = "cinv_times_dcb (n_params dense pixel matrices)"
@@ -198,7 +198,7 @@ def test_pixel_direct_qu_nside64_fsky010_basis_persistent_within_2_percent():
     Measured basis_setup persistent above covariance_setup exit:
     4241.1 - 2767.7 = 1473.4 MiB. Predicted: 2 × pix_sq = 1465.6 MiB.
     """
-    cfg = PixelDirectBudgetConfig(n_pix=9800, lmax=128, n_bins=6, n_params=18)
+    cfg = PixelDirectBudgetConfig(n_pix=9800, lmax_signal=128, n_bins=6, n_params=18)
     budget = predict_pixel_direct_budget(cfg)
     basis = budget.stage("basis_setup")
     cov = budget.stage("covariance_setup")
@@ -215,17 +215,17 @@ def test_pixel_direct_qu_nside64_fsky010_basis_persistent_within_2_percent():
 
 def test_pixel_direct_invalid_config_rejected():
     with pytest.raises(ValueError):
-        PixelDirectBudgetConfig(n_pix=0, lmax=64, n_bins=6, n_params=18)
+        PixelDirectBudgetConfig(n_pix=0, lmax_signal=64, n_bins=6, n_params=18)
     with pytest.raises(ValueError):
-        PixelDirectBudgetConfig(n_pix=1000, lmax=0, n_bins=6, n_params=18)
+        PixelDirectBudgetConfig(n_pix=1000, lmax_signal=0, n_bins=6, n_params=18)
     with pytest.raises(ValueError):
-        PixelDirectBudgetConfig(n_pix=1000, lmax=64, n_bins=0, n_params=18)
+        PixelDirectBudgetConfig(n_pix=1000, lmax_signal=64, n_bins=0, n_params=18)
     with pytest.raises(ValueError):
-        PixelDirectBudgetConfig(n_pix=1000, lmax=64, n_bins=6, n_params=0)
+        PixelDirectBudgetConfig(n_pix=1000, lmax_signal=64, n_bins=6, n_params=0)
 
 
 def test_pixel_direct_format_table_lists_all_stages():
-    cfg = PixelDirectBudgetConfig(n_pix=1000, lmax=64, n_bins=6, n_params=18)
+    cfg = PixelDirectBudgetConfig(n_pix=1000, lmax_signal=64, n_bins=6, n_params=18)
     table = predict_pixel_direct_budget(cfg).format_table()
     assert "[pixel_direct]" in table
     for stage in ("covariance_setup", "basis_setup", "fisher_run", "spectra_run"):
