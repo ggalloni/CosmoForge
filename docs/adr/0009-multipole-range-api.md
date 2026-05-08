@@ -72,3 +72,72 @@ Replaced everywhere — no deprecation shim.
 - Existing analyses are unchanged: defaults match the old behaviour
   (``lmin_signal=2``, ``lmin=2``, ``lmax_signal=4*nside``,
   ``lmax=lmax_signal``).
+
+## Noise-bias convention with ``S_fixed``
+
+The QML model in QUBE writes the data covariance as
+``C(Λ) = N_eff + V Λ V^T`` where ``N_eff = N + S_fixed``. The
+Sherman-Morrison-Woodbury inversion uses ``N_eff`` so that ``V`` only
+spans the inference window — purely a performance trick on the
+inversion, *not* a redefinition of what counts as "noise".
+
+The QML noise bias subtracted from ``q_b`` is therefore the **Tegmark
+form**, anchored to the actual instrumental noise N:
+
+```
+bias_b = ½ Tr[E_b · V C⁻¹ N C⁻¹ V^T]
+```
+
+`<q_b − bias_b>` then evaluates to:
+
+```
+F · Λ_truth   +   ½ Tr[E_b · V C⁻¹ S_fixed C⁻¹ V^T]
+                       ↑
+                  S_fixed residual
+```
+
+The second term is the contribution of the frozen ``S_fixed`` band to
+``Ĉ_b`` via mode coupling induced by the mask: out-of-window signal
+mask-couples into the inference window, exactly as it does for any
+pseudo-Cl analysis. It is **not** a bug — the data still contain
+``S_fixed``, the model still describes it, and the QML output reports
+``Ĉ_b`` *convolved* with the window matrix that encodes both
+in-window mode coupling and out-of-window leakage.
+
+For unbiased comparison against a theory model, convolve the model
+through the bandpower window function returned by
+``Fisher.get_bandpower_window_function()``:
+
+```
+<Ĉ_b>  =  Σ_ℓ  W_{b,ℓ}  C_ℓ_truth
+```
+
+The W matrix has support both *inside* the inference window
+(in-window mode coupling) and *outside* it (the ``S_fixed`` leakage),
+and reduces to the identity in the full-sky limit.
+
+### Why not subtract the residual at the estimator level?
+
+A consistent variant ("B1") replaces N by ``N_eff`` in the bias
+formula, giving ``<Ĉ_b> = Λ_truth`` directly. We do **not** adopt
+this:
+
+- It departs from the Tegmark literature convention.
+- It would have to be applied across all three QML paths together —
+  ``harmonic.py:_compute_smw_components``,
+  ``pixel.py:get_compressed_noise``, and
+  ``spectra.py:_compute_qml_spectra_traditional`` — otherwise the
+  cross-implementation tests
+  (``test_compressed_spectra_T``,
+  ``test_pixel_no_compression_matches_harmonic``) fail because the
+  paths disagree.
+- The bandpower window function machinery already exists for theory
+  comparison, so the practical benefit is small.
+
+The convention is locked by
+``test_harmonic_basis.py::test_nondiagonal_n_with_switch_optimization``,
+which compares the production ``A·_noise_cov_T·A^T`` against a direct
+evaluation of ``V C⁻¹ N_orig C⁻¹ V^T`` (with ``N_orig`` passed
+explicitly) and expects them to agree to machine precision. Removing
+the algebraic ``S_fixed`` correction in ``_compute_smw_components``
+breaks that test deliberately.
