@@ -98,7 +98,7 @@ def _setup_through_basis(params, *, basis_lmax, method, use_smw_optimization):
     core.setup_beams(lmax=basis_lmax)
     cm = core.setup_computation_basis(
         method=method,
-        lmax=basis_lmax,
+        lmax_signal=basis_lmax,
         use_smw_optimization=use_smw_optimization,
     )
     return core, cm
@@ -146,7 +146,7 @@ def test_compressed_pipeline_via_core(method, nside, basis_lmax):
         core.set_binning(Bins.fromdeltal(2, basis_lmax, 4))
 
         # Binned derivative through the basis-aware dispatch.
-        beam = np.ones(basis_lmax - 1, dtype=np.float64)
+        beam = np.ones(basis_lmax + 1, dtype=np.float64)
         dC_b = core.get_binned_derivative_matrix(
             bin_idx=1,
             beam_smoothing=beam,
@@ -161,7 +161,7 @@ def test_compressed_pipeline_via_core(method, nside, basis_lmax):
         # Build a Cls vector (ell=2..basis_lmax) and exercise the C-aware
         # wrappers. For T-only single-spectrum, compressed and uncompressed
         # paths both accept a 1-D array.
-        cls = np.ones(basis_lmax - 1, dtype=np.float64) * 1e-3
+        cls = np.ones(basis_lmax + 1, dtype=np.float64) * 1e-3
 
         cov = core.get_total_covariance(cls)
         assert cov is not None
@@ -181,21 +181,21 @@ def test_compressed_pipeline_via_core(method, nside, basis_lmax):
 
 
 # =========================================================================
-# 2. SMW lswitch + S_fixed setup branch
+# 2. SMW inference-window + S_fixed setup branch
 # =========================================================================
 
 
 def test_setup_computation_basis_smw_lswitch():
-    """Force the SMW lswitch branch: params.lmax < basis_lmax with a fiducial Cls.
+    """Force the SMW inference-window branch: params.lmax < basis_lmax + fiducial.
 
-    Covers the auto-QML lswitch path in setup_computation_basis: lswitch_low=2,
-    lswitch_high=params.lmax, and the S_fixed build that reads the inputclfile,
-    zeroes ℓ ≤ lswitch_high, applies the beam, builds S_fixed, and restores
-    the original spectra.
+    Covers the auto-QML path in setup_computation_basis where ``params.lmax``
+    narrows the inference window below ``basis_lmax``; the S_fixed build reads
+    the inputclfile, zeroes the inference range, applies the beam, builds
+    S_fixed, and restores the original spectra.
     """
     nside = 8
     basis_lmax = 16
-    params_lmax = 10  # < basis_lmax → triggers automatic lswitch in QML mode
+    params_lmax = 10  # < basis_lmax → triggers automatic inference-window narrowing
 
     with tempfile.TemporaryDirectory() as tmpdir:
         params = _make_params(
@@ -218,6 +218,6 @@ def test_setup_computation_basis_smw_lswitch():
         assert np.all(np.isfinite(cls_after))
         # And the basis must still produce a finite log-determinant (S_fixed
         # was correctly absorbed).
-        cls = np.ones(basis_lmax - 1, dtype=np.float64) * 1e-3
+        cls = np.ones(basis_lmax + 1, dtype=np.float64) * 1e-3
         logdet = core.get_covariance_logdet(cls)
         assert np.isfinite(logdet)

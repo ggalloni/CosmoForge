@@ -16,7 +16,11 @@ def legendre_00(scalar_prod, legendre):
     scalar_prod : float
         Argument x for the Legendre polynomials.
     legendre : numpy.ndarray
-        Pre-allocated array to fill with normalized P_l(x) values.
+        Pre-allocated buffer of length ``lmax + 1``. On output,
+        ``legendre[ell]`` contains the normalized P_ℓ(x) for
+        ℓ = 0..lmax. ``legendre[0] = 1/(4π)`` (the monopole base case)
+        is now populated so ``lmin_signal=0`` callers (e.g. foreground
+        templates) sum the P_0 contribution correctly.
 
     Notes
     -----
@@ -24,21 +28,23 @@ def legendre_00(scalar_prod, legendre):
     normalization factor, so callers receive the fully normalized basis
     functions ready for signal matrix construction.
     """
-    lmax = len(legendre)
-    # Base cases
-    legendre[0] = scalar_prod
-    legendre[1] = 1.5 * scalar_prod * scalar_prod - 0.5
+    lmax = len(legendre) - 1
+    legendre[0] = 1.0
+    if lmax >= 1:
+        legendre[1] = scalar_prod
+    if lmax >= 2:
+        legendre[2] = 1.5 * scalar_prod * scalar_prod - 0.5
 
     # Optimized recurrence
     for ell in range(3, lmax + 1):
-        legendre[ell - 1] = (
-            (2 * ell - 1) * scalar_prod * legendre[ell - 2]
-            - (ell - 1) * legendre[ell - 3]
+        legendre[ell] = (
+            (2 * ell - 1) * scalar_prod * legendre[ell - 1]
+            - (ell - 1) * legendre[ell - 2]
         ) / ell
 
     # Absorb (2ℓ+1)/(4π) normalization into the polynomials
-    for k in range(lmax):
-        legendre[k] *= (2 * (k + 1) + 1) / (4 * np.pi)
+    for ell in range(0, lmax + 1):
+        legendre[ell] *= (2 * ell + 1) / (4 * np.pi)
 
 
 @njit(cache=True)
@@ -62,41 +68,43 @@ def legendre_22(scalar_prod, legendre, f1, f2):
     -----
     Memory-efficient version for spin-2 computations. Fills the provided
     arrays in-place to avoid allocations in performance-critical loops.
-    Used for polarization auto-correlation calculations.
+    Used for polarization auto-correlation calculations. Buffers are
+    ℓ-indexed: ``legendre[ell]``, ``f1[ell]``, ``f2[ell]`` correspond to
+    multipole ℓ. Indices 0 and 1 are zero by spin-2 physics.
     """
-    lmax = len(legendre)
+    lmax = len(legendre) - 1
 
-    # Zero the array and set base case
+    # Zero the arrays and set base case at ℓ=2
     legendre[:] = 0.0
     f1[:] = 0.0
     f2[:] = 0.0
-    legendre[1] = 3.0
-    f1[1] = 6.0 * (1.0 + scalar_prod * scalar_prod)
-    f2[1] = -12.0 * scalar_prod
+    if lmax >= 2:
+        legendre[2] = 3.0
+        f1[2] = 6.0 * (1.0 + scalar_prod * scalar_prod)
+        f2[2] = -12.0 * scalar_prod
 
     # Optimized recurrence
     for ell in range(3, lmax + 1):
-        legendre[ell - 1] = (
-            scalar_prod * (2 * ell - 1) * legendre[ell - 2]
-            - (ell + 1) * legendre[ell - 3]
+        legendre[ell] = (
+            scalar_prod * (2 * ell - 1) * legendre[ell - 1]
+            - (ell + 1) * legendre[ell - 2]
         ) / (ell - 2)
-        f1[ell - 1] = (
+        f1[ell] = (
             -(2 * ell - 8 + ell * (ell - 1) * (1.0 - scalar_prod * scalar_prod))
-            * legendre[ell - 1]
-            + (2 * ell + 4) * scalar_prod * legendre[ell - 2]
+            * legendre[ell]
+            + (2 * ell + 4) * scalar_prod * legendre[ell - 1]
         )
-        f2[ell - 1] = 4.0 * (
-            -(ell - 1) * scalar_prod * legendre[ell - 1] + (ell + 2) * legendre[ell - 2]
+        f2[ell] = 4.0 * (
+            -(ell - 1) * scalar_prod * legendre[ell] + (ell + 2) * legendre[ell - 1]
         )
 
     # Absorb (2ℓ+1)/(4π) × factor2 normalization into the polynomials
-    for k in range(1, lmax):
-        ell = k + 1
+    for ell in range(2, lmax + 1):
         factor2 = 1.0 / ((ell + 2) * (ell + 1) * ell * (ell - 1))
         norm = (2 * ell + 1) / (4 * np.pi) * factor2
-        legendre[k] *= norm
-        f1[k] *= norm
-        f2[k] *= norm
+        legendre[ell] *= norm
+        f1[ell] *= norm
+        f2[ell] *= norm
 
 
 @njit(cache=True)
@@ -117,26 +125,28 @@ def legendre_02(scalar_prod, legendre):
     Notes
     -----
     Memory-efficient version that avoids allocations in hot loops.
-    Used for temperature-polarization cross-correlations.
+    Used for temperature-polarization cross-correlations. Buffer is
+    ℓ-indexed: ``legendre[ell]`` corresponds to multipole ℓ. Indices 0 and
+    1 are zero (spin-0×spin-2 requires ℓ ≥ 2).
     """
-    lmax = len(legendre)
+    lmax = len(legendre) - 1
 
-    # Zero the array and set base case
+    # Zero the array and set base case at ℓ=2
     legendre[:] = 0.0
-    legendre[1] = 3.0 * (1.0 - scalar_prod * scalar_prod)
+    if lmax >= 2:
+        legendre[2] = 3.0 * (1.0 - scalar_prod * scalar_prod)
 
     # Optimized recurrence
     for ell in range(3, lmax + 1):
-        legendre[ell - 1] = (
-            scalar_prod * (2 * ell - 1) * legendre[ell - 2]
-            - (ell + 1) * legendre[ell - 3]
+        legendre[ell] = (
+            scalar_prod * (2 * ell - 1) * legendre[ell - 1]
+            - (ell + 1) * legendre[ell - 2]
         ) / (ell - 2)
 
     # Absorb (2ℓ+1)/(4π) × factor normalization into the polynomials
-    for k in range(1, lmax):
-        ell = k + 1
+    for ell in range(2, lmax + 1):
         factor = np.sqrt(1.0 / ((ell + 2) * (ell + 1) * ell * (ell - 1)))
-        legendre[k] *= (2 * ell + 1) / (4 * np.pi) * factor
+        legendre[ell] *= (2 * ell + 1) / (4 * np.pi) * factor
 
 
 @njit(cache=True)

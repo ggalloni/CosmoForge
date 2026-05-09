@@ -112,8 +112,14 @@ class FieldConfig:
             raise ValueError(f"Invalid spin {self.spin}. Must be 0 or 2.")
         if self.mask.ndim != 1:
             raise ValueError("Mask must be a 1D array.")
-        if self.lmax < 2:
-            raise ValueError("lmax must be at least 2.")
+        # ADR 0009: spin-0 fields can carry monopole/dipole multipoles
+        # (lmax >= 0). Spin-2 still requires lmax >= 2 by representation
+        # theory.
+        spin_floor = 2 if self.spin == 2 else 0
+        if self.lmax < spin_floor:
+            raise ValueError(
+                f"lmax={self.lmax} below spin-{self.spin} floor {spin_floor}."
+            )
         if self.lmax > self.nside * 4:
             raise ValueError("lmax is too large for the given nside.")
 
@@ -291,8 +297,9 @@ class BaseField(ABC):
         Returns
         -------
         numpy.ndarray or None
-            Beam window function(s). For scalar fields: 1D array of length (lmax-1).
-            For polarization fields: 2D array of shape (lmax-1, 2) for E and B modes.
+            Beam window function(s). For scalar fields: 1D array of length
+            ``lmax + 1`` (ℓ-indexed: ``beam[ell]``). For polarization fields:
+            2D array of shape ``(lmax + 1, 2)`` for E and B modes.
             Returns None if beam has not been set.
         """
         return self._beam
@@ -340,8 +347,9 @@ class BaseField(ABC):
         ----------
         beam : numpy.ndarray
             Beam window function. Expected shape depends on field type:
-            - Scalar fields: 1D array of length (lmax-1)
-            - Polarization fields: 2D array of shape (lmax-1, 2) for E and B modes
+            - Scalar fields: 1D array of length ``lmax + 1`` (ℓ-indexed)
+            - Polarization fields: 2D array of shape ``(lmax + 1, 2)``
+              for E and B modes
 
         Raises
         ------
@@ -360,7 +368,7 @@ class BaseField(ABC):
         >>> beam_window = load_beam_function(lmax=field.lmax)
         >>> field.set_beam(beam_window)
         """
-        expected_rows = self.lmax - 1
+        expected_rows = self.lmax + 1
         if beam.shape[0] != expected_rows:
             raise ValueError(f"Beam must have {expected_rows} rows, got {beam.shape[0]}")
         self._beam = beam.copy()

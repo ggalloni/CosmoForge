@@ -195,9 +195,16 @@ class PICSLike(Core, MPISharedMemoryMixin):
 
     @property
     def lmax_signal(self) -> int:
-        """Maximum multipole for signal matrix computation (defaults to 4*nside)."""
+        """Signal-cov ceiling (ADR 0009).
+
+        Resolution order: explicit setter, then ``params.lmax_signal``,
+        then ``4 * nside``.
+        """
         if self._lmax_signal is not None:
             return self._lmax_signal
+        params_value = getattr(self.params, "lmax_signal", None)
+        if params_value is not None:
+            return params_value
         return 4 * self.params.nside
 
     @lmax_signal.setter

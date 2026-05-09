@@ -230,11 +230,13 @@ class InputParams:
         self.root_dir = "inputs"
         self.root_filename = "theory_spectra"
 
-        # Switch parameters for likelihood computation
-        # Only multipoles in [lswitch_low, lswitch_high] vary with parameters
-        # Outside this range, the fiducial spectrum is used
-        self.lswitch_low = None  # None means no switching (all multipoles vary)
-        self.lswitch_high = None
+        # Multipole-range API (see ADR 0009). Basis covers the signal-cov
+        # band [min(lmin_signal), lmax_signal]; C_ell vary inside the
+        # inference window [lmin, lmax]; outside this window but inside the
+        # signal-cov band, the fiducial spectrum is used.
+        self.lmin_signal = 2
+        self.lmax_signal = None  # None resolves to 4*nside at basis-setup time
+        self.lmin = 2
         self.fiducialfile = None
 
         self.compute_derived()

@@ -291,7 +291,7 @@ def test_spectra_manager_numpy_array_input():
     n_spectra = spectra_mgr.n_spectra
 
     # Test with numpy array input
-    cls_array = np.random.randn(lmax - 1, n_spectra)
+    cls_array = np.random.randn(lmax + 1, n_spectra)
 
     # Test successful array input
     spectra_mgr.set_cls(cls_array)
@@ -302,7 +302,7 @@ def test_spectra_manager_numpy_array_input():
     np.testing.assert_allclose(spectra_mgr._cls_matrix, cls_array)
 
     # Test error case - wrong number of columns (covers line 331-333)
-    wrong_array = np.random.randn(lmax - 1, n_spectra + 1)  # Wrong number of spectra
+    wrong_array = np.random.randn(lmax + 1, n_spectra + 1)  # Wrong number of spectra
 
     try:
         spectra_mgr.set_cls(wrong_array)
@@ -387,7 +387,7 @@ def test_beam_manager_shape_validation():
         assert isinstance(result, dict)
         for beam_array in result.values():
             # Should be 3D array with shape (3, lmax-1) which gets split
-            assert beam_array.shape[0] == lmax - 1
+            assert beam_array.shape[0] == lmax + 1
 
     except Exception:
         # If it fails, it might be due to shape validation (which we want to test)

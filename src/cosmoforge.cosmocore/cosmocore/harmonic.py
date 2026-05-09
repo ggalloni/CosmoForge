@@ -53,31 +53,29 @@ if TYPE_CHECKING:
 @njit(cache=True)
 def cl_to_vec(cl, vec):
     """
-    Convert power spectra matrix to vectorized form.
-
-    This function flattens a 2D power spectra matrix (multipoles × spectra)
-    into a 1D vector. The vectorization follows the order: all multipoles for
-    spectrum 0, then all multipoles for spectrum 1, etc. Only multipoles ℓ ≥ 2
-    are included.
+    Convert a per-bin (or inference-range per-multipole) spectra matrix into
+    a flat vector, ordered spectrum-major.
 
     Parameters
     ----------
-    cl : numpy.ndarray, shape (lmax-1, n_spec)
-        Input power spectra matrix. First dimension corresponds to multipoles
-        ℓ=2 to ℓ=lmax, second dimension corresponds to different power spectra.
-    vec : numpy.ndarray, shape ((lmax-1) * n_spec,)
-        Output vector to be filled. Must be pre-allocated with correct size.
+    cl : numpy.ndarray, shape (n_bins, n_spec)
+        Input matrix indexed by bin (or by inference multipole when
+        delta_ell=1, in which case row ``k`` corresponds to ℓ = k + lmin
+        where lmin is the inference floor — see ``params.lmin``).
+        This is a Fisher-row representation, NOT an ℓ-indexed cl array.
+    vec : numpy.ndarray, shape (n_bins * n_spec,)
+        Output vector to be filled. Must be pre-allocated.
 
     Notes
     -----
-    This function is JIT-compiled with Numba for performance. The input vector
-    `vec` is modified in-place.
+    JIT-compiled. Caller is responsible for the bin ↔ ℓ mapping; this
+    function just relayouts the matrix.
 
     Examples
     --------
     >>> import numpy as np
-    >>> cl = np.random.random((10, 3))  # lmax=12, 3 spectra
-    >>> vec = np.zeros(30)  # 10 * 3
+    >>> cl = np.random.random((10, 3))  # 10 bins, 3 spectra
+    >>> vec = np.zeros(30)
     >>> cl_to_vec(cl, vec)
     """
     lmax = cl.shape[0] + 1
@@ -92,31 +90,25 @@ def cl_to_vec(cl, vec):
 @njit(cache=True)
 def vec_to_cl(vec, cl):
     """
-    Convert vectorized power spectra back to matrix form.
-
-    This function is the inverse of cl_to_vec, converting a 1D vector of power
-    spectra back to a 2D matrix format. The devectorization follows the same
-    ordering convention: all multipoles for spectrum 0, then all multipoles
-    for spectrum 1, etc.
+    Inverse of :func:`cl_to_vec`: scatter a flat spectrum-major vector into
+    a per-bin (or inference-range per-multipole) matrix.
 
     Parameters
     ----------
-    vec : numpy.ndarray, shape ((lmax-1) * n_spec,)
-        Input vector containing flattened power spectra.
-    cl : numpy.ndarray, shape (lmax-1, n_spec)
-        Output power spectra matrix to be filled. Must be pre-allocated with
-        correct shape.
+    vec : numpy.ndarray, shape (n_bins * n_spec,)
+        Input flat vector (Fisher-row ordering, spectrum-major).
+    cl : numpy.ndarray, shape (n_bins, n_spec)
+        Output matrix to be filled. Must be pre-allocated.
 
     Notes
     -----
-    This function is JIT-compiled with Numba for performance. The input matrix
-    `cl` is modified in-place.
+    JIT-compiled. Bin ↔ ℓ mapping is the caller's responsibility.
 
     Examples
     --------
     >>> import numpy as np
-    >>> vec = np.random.random(30)  # 10 * 3 elements
-    >>> cl = np.zeros((10, 3))  # lmax=12, 3 spectra
+    >>> vec = np.random.random(30)
+    >>> cl = np.zeros((10, 3))
     >>> vec_to_cl(vec, cl)
     """
     lmax = cl.shape[0] + 1
@@ -322,10 +314,11 @@ class SpectraManager:
         Parameters
         ----------
         cls_data : dict[str, np.ndarray] or np.ndarray
-            Power spectra data. If dict, keys should be spectrum labels
-            (e.g., 'TT', 'EE', 'TE') and values should be 1D arrays of length
-            (lmax-1). If array, should have shape (lmax-1, n_spectra) with
-            columns corresponding to the spectrum labels in order.
+            Power spectra data. ℓ-indexed: ``cls_data[label][ell]`` is C_ℓ.
+            If dict, keys should be spectrum labels (e.g., 'TT', 'EE', 'TE')
+            and values should be 1D arrays of length ``lmax + 1``. If array,
+            should have shape ``(lmax + 1, n_spectra)`` with columns
+            corresponding to the spectrum labels in order.
         lmax : int, optional
             Maximum multipole to use. If None, uses the field's lmax.
             This allows setting Cls up to a different lmax than the field's lmax.
@@ -347,21 +340,22 @@ class SpectraManager:
         >>> spectra_mgr.set_cls(cls_matrix)
         """
         effective_lmax = lmax if lmax is not None else self.fields[0].lmax
+        n_ell = effective_lmax + 1
         if isinstance(cls_data, dict):
             self._cls_dict = cls_data.copy()
             # Build matrix from dictionary
-            self._cls_matrix = np.zeros((effective_lmax - 1, self.n_spectra))
+            self._cls_matrix = np.zeros((n_ell, self.n_spectra))
             for idx, label in enumerate(self._spectra_labels):
                 if label not in cls_data:
                     raise ValueError(f"Missing power spectrum for {label}")
-                self._cls_matrix[:, idx] = cls_data[label][: effective_lmax - 1]
+                self._cls_matrix[:, idx] = cls_data[label][:n_ell]
 
         elif isinstance(cls_data, np.ndarray):
             if cls_data.shape[1] != self.n_spectra:
                 raise ValueError(
                     f"Expected {self.n_spectra} spectra columns, got {cls_data.shape[1]}"
                 )
-            self._cls_matrix = cls_data[: effective_lmax - 1].copy()
+            self._cls_matrix = cls_data[:n_ell].copy()
             # Build dictionary from matrix
             self._cls_dict = {
                 label: self._cls_matrix[:, idx]
@@ -384,8 +378,9 @@ class SpectraManager:
         Returns
         -------
         np.ndarray
-            Power spectrum array of length (lmax-1) containing C_ℓ values
-            for multipoles ℓ = 2 to ℓ = lmax.
+            ℓ-indexed power-spectrum array of length ``lmax + 1``: index
+            ``ell`` holds C_ℓ. Indices below the spectrum's physical floor
+            (ℓ < 2 for spin-0, ℓ < |s| for spin-s) are zero.
 
         Raises
         ------
@@ -446,7 +441,7 @@ class SpectraManager:
             Dictionary mapping spectrum labels to smoothing factor arrays
         """
         effective_lmax = lmax if lmax is not None else self.fields[0].lmax
-        n_ell = effective_lmax - 1  # ell from 2 to lmax
+        n_ell = effective_lmax + 1  # ℓ-indexed: indices 0..lmax
 
         # Get beam dictionary
         beam_dict = beam_manager.get_beam_dict()
@@ -567,17 +562,19 @@ class BeamManager:
         import healpy as hp
 
         if smoothtype == "none":
-            beam = np.ones((3, lmax - 1), dtype=np.float64)
+            beam = np.ones((3, lmax + 1), dtype=np.float64)
         elif smoothtype == "gaussian":
-            # fwhmarcmin in arcminutes → fwhm_rad
+            # fwhmarcmin in arcminutes → fwhm_rad. healpy's gauss_beam returns
+            # an ℓ-indexed array of shape (lmax+1, 4) for (T, E, B, TE);
+            # drop the TE column and transpose to (3, lmax+1).
             beam = np.array(
-                hp.gauss_beam(np.deg2rad(fwhmarcmin / 60.0), lmax=lmax + 1, pol=True)[
-                    2 : lmax + 1, :-1
+                hp.gauss_beam(np.deg2rad(fwhmarcmin / 60.0), lmax=lmax, pol=True)[
+                    : lmax + 1, :-1
                 ],
                 dtype=np.float64,
             ).T
         elif smoothtype == "cosine":
-            b = coswinbeam(nside)[2 : lmax + 1]
+            b = coswinbeam(nside)[: lmax + 1]
             beam = np.column_stack([b] * 3).T
         elif smoothtype == "file":
             # Beam file must contain at least 3 columns: T, E, B window functions.
@@ -589,13 +586,13 @@ class BeamManager:
                     f"Beam file must have at least 3 columns (T, E, B), "
                     f"got {bls.shape[0]}"
                 )
-            beam = np.column_stack([bls[i][2 : lmax + 1] for i in range(3)]).T
+            beam = np.column_stack([bls[i][: lmax + 1] for i in range(3)]).T
         else:
             raise ValueError(f"Unknown smoothtype='{smoothtype}'")
 
-        if beam.shape[0] != 3 or beam.shape[1] != lmax - 1:
+        if beam.shape[0] != 3 or beam.shape[1] != lmax + 1:
             raise ValueError(
-                f"Beam shape mismatch: expected (3, {lmax - 1}), got {beam.shape}"
+                f"Beam shape mismatch: expected (3, {lmax + 1}), got {beam.shape}"
             )
 
         return {
@@ -693,8 +690,8 @@ class BeamManager:
         -------
         dict[str, np.ndarray]
             Dictionary with field labels as keys (e.g., 'T', 'E', 'B') and
-            corresponding beam window functions as values. Each beam is a
-            1D array of length (lmax-1) containing B(ℓ) for ℓ = 2 to ℓ = lmax.
+            corresponding beam window functions as values. Each beam is an
+            ℓ-indexed 1D array of length ``lmax + 1`` (``beam[ell]``).
 
         Raises
         ------

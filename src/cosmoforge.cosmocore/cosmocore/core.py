@@ -131,6 +131,57 @@ class Core(ABC):
                 "or a dictionary with parameters."
             )
 
+        self._normalize_lmin_signal()
+        self._validate_multipole_range()
+
+    def _normalize_lmin_signal(self) -> None:
+        """Broadcast scalar ``lmin_signal`` to a per-component list.
+
+        Spin-floor validation runs after broadcast so a scalar value below
+        ``|spin|`` for any component fails with an actionable message
+        rather than passing silently.
+        """
+        spins = self.params.spins
+        lmin_signal = self.params.lmin_signal
+        if isinstance(lmin_signal, int):
+            lmin_signal = [lmin_signal] * len(spins)
+        elif len(lmin_signal) != len(spins):
+            raise ValueError(
+                f"len(lmin_signal)={len(lmin_signal)} != len(spins)={len(spins)}"
+            )
+        for i, (lm, s) in enumerate(zip(lmin_signal, spins)):
+            if lm < abs(s):
+                raise ValueError(
+                    f"lmin_signal[{i}]={lm} invalid for spin-{s} component "
+                    f"at index {i}; minimum allowed is {abs(s)}"
+                )
+        self.params.lmin_signal = list(lmin_signal)
+
+    def _validate_multipole_range(self) -> None:
+        """Enforce ``max(lmin_signal) <= lmin <= lmax <= lmax_signal``.
+
+        ``lmax_signal`` resolves to ``4*nside`` when None (matches the
+        ``Fisher.lmax_signal`` / ``PICSLike.lmax_signal`` properties).
+        The ``InputParams`` default ``lmax=64`` predates this validator
+        and may exceed the signal-cov ceiling for small nside; in that
+        case we clamp to ``lmax_signal`` so existing analyses keep
+        working without an explicit YAML override. Explicit conflicts
+        between ``lmin`` and ``lmax`` still raise.
+        """
+        lmin_signal_max = max(self.params.lmin_signal)
+        lmin = self.params.lmin
+        lmax = self.params.lmax
+        lmax_signal = self.params.lmax_signal
+        if lmax_signal is None:
+            lmax_signal = 4 * self.params.nside
+        if lmin < lmin_signal_max:
+            raise ValueError(f"lmin={lmin} < max(lmin_signal)={lmin_signal_max}")
+        if lmax is not None and lmax > lmax_signal:
+            self.params.lmax = lmax_signal
+            lmax = lmax_signal
+        if lmax is not None and lmax < lmin:
+            raise ValueError(f"lmax={lmax} < lmin={lmin}")
+
     def setup_fields(self) -> FieldCollection:
         """
         Set up cosmological fields using the new clean architecture.
@@ -407,7 +458,7 @@ class Core(ABC):
         beam: np.ndarray | None = None,
         basis: str = "noise_weighted",
         C_ell: np.ndarray | None = None,
-        lmax: int | None = None,
+        lmax_signal: int | None = None,
         use_smw_optimization: bool = True,
         compress: bool = False,
         delta_m: int = 0,
@@ -416,15 +467,14 @@ class Core(ABC):
         """
         Create and configure a computation basis for SMW-based operations.
 
-        This method sets up the Sherman-Morrison-Woodbury framework for
-        efficient covariance matrix operations. It requires that geometry
-        and covariance matrices have already been set up.
-
-        For the harmonic basis, this method automatically enables SMW
-        optimization: signal from multipoles ℓ > params.lmax is absorbed into
-        an effective noise term, reducing the harmonic subspace dimension from
-        (4*nside+1)² - 4 modes to (params.lmax+1)² - 4 modes while preserving
-        numerical accuracy for the estimated multipoles.
+        Sets up the Sherman-Morrison-Woodbury framework for efficient
+        covariance operations. Geometry and covariance matrices must be
+        set up first. The harmonic path enables the SMW switch
+        optimisation when ``params.lmax < lmax_signal`` — signal from
+        multipoles outside the inference window ``[lmin, lmax]`` is
+        absorbed into an effective noise term, reducing the harmonic
+        subspace dimension while preserving accuracy on the inferred
+        multipoles (ADR 0009).
 
         Parameters
         ----------
@@ -435,24 +485,25 @@ class Core(ABC):
         epsilon : float or None, optional
             Eigenvalue threshold for pixel basis. Modes with eigenvalue
             < epsilon * max_eigenvalue are discarded. Default is 1e-6.
-        lmax : int or None, optional
-            Maximum multipole for harmonic expansion. If None, defaults to
-            4 * nside to match the traditional signal matrix computation.
+        lmax_signal : int or None, optional
+            Signal-cov ceiling. If None, defaults to ``params.lmax_signal``
+            or ``4 * nside``.
         mode_fraction : float or None, optional
             Fraction of modes to keep (between 0 and 1). Keeps the top modes
             ordered by eigenvalue. Mutually exclusive with epsilon.
         beam : numpy.ndarray or None, optional
-            Beam window function B_ℓ for ℓ=2 to lmax. Shape should be (lmax-1,).
-            If None and beams have been set up via setup_beams(), the first
-            field's beam is automatically extracted from the beam manager.
+            Beam window function B_ℓ for ℓ=0..lmax_signal. If None and
+            beams have been set up via setup_beams(), the first field's
+            beam is automatically extracted from the beam manager.
         basis : str, default "noise_weighted"
             Eigenvalue basis for pixel method. Options:
             "harmonic", "noise_weighted", "total_covariance", "snr".
         C_ell : numpy.ndarray or None, optional
             Power spectrum for bases that require it ("total_covariance", "snr").
         use_smw_optimization : bool, default True
-            For harmonic basis, whether to absorb high-ℓ signal (ℓ > params.lmax)
-            into effective noise. Reduces computation while preserving accuracy.
+            For harmonic basis, whether to absorb signal outside the
+            inference window into effective noise. Reduces computation
+            while preserving accuracy.
         use_direct : bool, default False
             For ``method="pixel"`` only: bypass the V-projection / eigenvalue
             truncation and run the direct pixel-space pipeline (no harmonic
@@ -499,7 +550,9 @@ class Core(ABC):
                 "Call setup_covariance_matrices() first."
             )
 
-        basis_lmax = lmax if lmax is not None else 4 * self.params.nside
+        if lmax_signal is None:
+            lmax_signal = getattr(self.params, "lmax_signal", None)
+        basis_lmax = lmax_signal if lmax_signal is not None else 4 * self.params.nside
 
         # Extract beam from field collection if not provided
         if beam is None and hasattr(self, "collection") and self.collection is not None:
@@ -507,8 +560,8 @@ class Core(ABC):
             first_label = self.collection.fields[0].labels[0]
             beam = beam_dict[first_label]
 
-        # Truncate beam to match basis_lmax (beam is for ell=2 to lmax)
-        expected_beam_len = basis_lmax - 1
+        # Truncate beam to match basis_lmax (beam is ℓ-indexed, length lmax+1)
+        expected_beam_len = basis_lmax + 1
         if beam is not None and len(beam) > expected_beam_len:
             beam = beam[:expected_beam_len]
 
@@ -521,35 +574,32 @@ class Core(ABC):
         if hasattr(self, "collection") and self.collection is not None:
             spins = [field.spin for field in self.collection.fields]
 
-        # SMW optimization: absorb high-ℓ signal into effective noise.
-        # Both harmonic (V-based) and pixel (V-based) benefit — V is built
-        # only at the effective lmax. Pixel-direct mode does not use lswitch
-        # since it operates on full pixel-space matrices anyway.
-        lswitch_low = None
-        lswitch_high = None
+        # SMW optimization: signal contributions outside the inference window
+        # [lmin, lmax] are absorbed into a fixed offset S_fixed (ADR 0009).
+        # Both harmonic and pixel-V paths benefit — V is built only over the
+        # active inference window. Pixel-direct mode operates on full
+        # pixel-space matrices and skips this optimisation entirely.
+        lmin_b = None
+        lmax_b = None
         S_fixed = None
 
         if use_smw_optimization:
-            config_lswitch_low = getattr(self.params, "lswitch_low", None)
-            config_lswitch_high = getattr(self.params, "lswitch_high", None)
+            params_lmin = getattr(self.params, "lmin", 2)
+            params_lmax = getattr(self.params, "lmax", None)
+            if params_lmax is None:
+                params_lmax = basis_lmax
+            fiducial_file = getattr(self.params, "fiducialfile", None) or getattr(
+                self.params, "inputclfile", None
+            )
 
-            if config_lswitch_low is not None and config_lswitch_high is not None:
-                # Explicit config (PICSLIKE): use fiducialfile
-                lswitch_low = config_lswitch_low
-                lswitch_high = config_lswitch_high
-                fiducial_file = getattr(self.params, "fiducialfile", None)
-            else:
-                # Automatic (QML): use params.lmax as subspace limit
-                params_lmax = getattr(self.params, "lmax", None)
-                if params_lmax is not None and params_lmax < basis_lmax:
-                    lswitch_low = 2
-                    lswitch_high = params_lmax
-                    fiducial_file = getattr(self.params, "inputclfile", None)
-                else:
-                    fiducial_file = None
+            lmin_signal_min = min(self.params.lmin_signal)
+            if params_lmin > lmin_signal_min or params_lmax < basis_lmax:
+                lmin_b = params_lmin
+                lmax_b = params_lmax
 
-            # Compute S_fixed for ℓ > lswitch_high
-            if lswitch_high is not None and lswitch_high < basis_lmax:
+            # Compute S_fixed when the inference window is strictly narrower
+            # than the signal-cov band on either side.
+            if lmin_b is not None and (lmin_b > lmin_signal_min or lmax_b < basis_lmax):
                 has_coll = hasattr(self, "collection") and self.collection is not None
                 if fiducial_file is not None and has_coll:
                     fiducial_spectrum = readcl(
@@ -558,37 +608,59 @@ class Core(ABC):
                         lmax=basis_lmax,
                     )
 
-                    # Zero for ℓ ≤ lswitch_high, fiducial for ℓ > lswitch_high
+                    # Populate fiducial outside [lmin, lmax]; zero inside.
+                    # ADR 0009 §"S_fixed accumulates both bands": for each
+                    # spectrum key the low band is [lmin_signal_min, lmin)
+                    # and the high band is (lmax, lmax_signal]. The user's
+                    # fiducial file is responsible for being zero where it
+                    # shouldn't carry power (e.g. cl_EE[0]=cl_EE[1]=0 by
+                    # representation theory) — the signal kernels in
+                    # cosmocore.pixel sum cl[ell]·legendre[ell] over all
+                    # ell without per-component-floor filtering, so a
+                    # non-zero unphysical entry in the fiducial would land
+                    # in S_fixed unchanged. Heterogeneous lmin_signal[i]
+                    # support is deferred to PR3.
                     fixed_spectra = {}
                     for key, cl_array in fiducial_spectrum.items():
                         cl_fixed = np.zeros_like(cl_array)
-                        for ell in range(lswitch_high + 1, basis_lmax + 1):
-                            if ell - 2 < len(cl_array):
-                                cl_fixed[ell - 2] = cl_array[ell - 2]
+                        n = len(cl_array)
+                        for ell in range(lmin_signal_min, lmin_b):
+                            if ell < n:
+                                cl_fixed[ell] = cl_array[ell]
+                        for ell in range(lmax_b + 1, basis_lmax + 1):
+                            if ell < n:
+                                cl_fixed[ell] = cl_array[ell]
                         fixed_spectra[key] = cl_fixed
 
-                    # Save original spectra (already beam-smoothed)
+                    # Save original (already beam-smoothed) spectra; restore
+                    # under finally so a raise during S_fixed assembly does
+                    # not leave the collection holding the zero-inside-window
+                    # spectra for the rest of the analysis.
                     original_spectra_smoothed = {
                         k: v.copy()
                         for k, v in self.collection.spectra_manager._cls_dict.items()
                     }
 
-                    self.collection.set_cls(fixed_spectra, lmax=basis_lmax)
-                    self.collection.beam_manager.apply_smoothing(
-                        self.collection.spectra_manager, lmax=basis_lmax
-                    )
+                    try:
+                        self.collection.set_cls(fixed_spectra, lmax=basis_lmax)
+                        self.collection.beam_manager.apply_smoothing(
+                            self.collection.spectra_manager, lmax=basis_lmax
+                        )
 
-                    from .pixel import compute_signal_matrix as _compute_signal_matrix
+                        from .pixel import compute_signal_matrix as _compute_signal_matrix
 
-                    S_fixed = np.zeros_like(self.noise_cov1, dtype=np.float64)
-                    _compute_signal_matrix(
-                        S=S_fixed,
-                        lmax=basis_lmax,
-                        fields=self.collection,
-                    )
-
-                    # Restore original spectra (already smoothed - don't re-apply beam)
-                    self.collection.spectra_manager._cls_dict = original_spectra_smoothed
+                        S_fixed = np.zeros_like(self.noise_cov1, dtype=np.float64)
+                        _compute_signal_matrix(
+                            S=S_fixed,
+                            lmax=basis_lmax,
+                            fields=self.collection,
+                        )
+                    finally:
+                        # Restore original (smoothed) spectra; do NOT re-apply
+                        # the beam — the saved copy was already smoothed.
+                        self.collection.spectra_manager._cls_dict = (
+                            original_spectra_smoothed
+                        )
 
         # Pre-resolve method="auto" with the *same* cost model the factory
         # uses (harmonic ~ n_modes^3 vs pixel-direct ~ (n_bins+1) * n_pix^3).
@@ -597,7 +669,7 @@ class Core(ABC):
         # the factory then picks harmonic — silently corrupting the SMW path.
         from .basis import _auto_pick_method, _problem_dimensions
 
-        n_pix, n_modes = _problem_dimensions(theta_arr, spins, basis_lmax, lswitch_high)
+        n_pix, n_modes = _problem_dimensions(theta_arr, spins, basis_lmax, lmax_b)
         n_bins = (
             self.bins.nbins
             if getattr(self, "bins", None) is not None
@@ -609,16 +681,21 @@ class Core(ABC):
             resolved_method = method
 
         # Pixel-direct mode operates on full pixel-space matrices and doesn't
-        # need lswitch / S_fixed (the high-ℓ signal is naturally included via
-        # the pixel-space S construction). Triggered when auto picks pixel-direct
-        # OR when the user explicitly requests method="pixel" with use_direct=True.
+        # need the inference-window narrowing / S_fixed (the high-ℓ signal is
+        # naturally included via the pixel-space S construction). Triggered
+        # when auto picks pixel-direct OR when the user explicitly requests
+        # method="pixel" with use_direct=True.
         is_pixel_direct = (method == "auto" and resolved_method == "pixel") or (
             method == "pixel" and use_direct
         )
         if is_pixel_direct:
-            lswitch_low = None
-            lswitch_high = None
+            lmin_b = None
+            lmax_b = None
             S_fixed = None
+
+        # lmin_signal is normalised to a per-component list by
+        # Core._normalize_lmin_signal during params loading.
+        lmin_signal = list(self.params.lmin_signal)
 
         # The basis takes ownership of the noise buffer end-to-end. After
         # setup, we drop our reference so any post-setup read of
@@ -629,15 +706,16 @@ class Core(ABC):
             N=self.noise_cov1,
             theta=theta_arr,
             phi=phi_arr,
-            lmax=basis_lmax,
+            lmax_signal=basis_lmax,
             beam=beam,
             spins=spins,
             basis=basis,
             C_ell=C_ell,
             epsilon=epsilon,
             mode_fraction=mode_fraction,
-            lswitch_low=lswitch_low,
-            lswitch_high=lswitch_high,
+            lmin_signal=lmin_signal,
+            lmin=lmin_b,
+            lmax=lmax_b,
             S_fixed=S_fixed,
             compress=compress,
             delta_m=delta_m,
@@ -776,7 +854,29 @@ class Core(ABC):
         ----------
         bins : Bins
             Binning specification defining multipole ranges and weights.
+            Must satisfy ``bins.lmin == params.lmin`` and
+            ``bins.lmax <= params.lmax``: the per-spectrum
+            ``beam_smoothing`` block built by ``Fisher.run`` is keyed by
+            ``params.lmin`` and has length ``params.lmax - params.lmin + 1``,
+            and the binned-derivative paths index it as
+            ``beam_smoothing[ell - bins.lmin]``. A binning that drifts
+            below the inference floor or above the ceiling silently
+            misaligns the beam weights.
         """
+        if hasattr(self, "params") and self.params is not None:
+            params_lmin = getattr(self.params, "lmin", None)
+            params_lmax = getattr(self.params, "lmax", None)
+            if params_lmin is not None and bins.lmin != params_lmin:
+                raise ValueError(
+                    f"bins.lmin={bins.lmin} != params.lmin={params_lmin}; "
+                    "binning floor must match the inference window floor "
+                    "(beam_smoothing is keyed by params.lmin)."
+                )
+            if params_lmax is not None and bins.lmax > params_lmax:
+                raise ValueError(
+                    f"bins.lmax={bins.lmax} > params.lmax={params_lmax}; "
+                    "binning cannot extend above the inference ceiling."
+                )
         self.bins = bins
 
     def get_binned_derivative_matrix(
@@ -842,7 +942,9 @@ class Core(ABC):
             )
             weight = 1.0
             if beam_smoothing is not None:
-                weight = beam_smoothing[ell - 2]
+                # beam_smoothing is the inference-range slice (ell=lmin..lmax,
+                # offset-from-lmin; ADR 0009).
+                weight = beam_smoothing[ell - self.params.lmin]
             if dC_b is None:
                 dC_b = weight * dC_ell
             else:

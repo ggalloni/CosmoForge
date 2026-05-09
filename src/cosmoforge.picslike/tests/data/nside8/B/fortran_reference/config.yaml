@@ -12,12 +12,9 @@ inputclfile: '../tests/data/nside8/B/fortran_reference/input_dls.txt'
 input_convention: Dl
 covmatfile1: '../tests/data/nside8/B/fortran_reference/ncov_B_only.bin'
 
-lmax: 32
-
-# Switch parameters - only multipoles in [lswitch_low, lswitch_high] vary with parameters
-# Outside this range, the fiducial spectrum is always used
-lswitch_low: 2
-lswitch_high: 16
+lmax_signal: 32
+lmin: 2
+lmax: 16
 fiducialfile: '../tests/data/nside8/B/fortran_reference/fiducial_dls.txt'
 
 load_inverted: false

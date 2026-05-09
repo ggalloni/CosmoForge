@@ -291,3 +291,51 @@ class TestParameterGrid:
         assert grid != "not a grid"
         assert grid != 42
         assert grid != None
+
+
+# =============================================================================
+# ADR 0009 — fiducial blend at lmin < 2 (dipole / monopole inference windows)
+# =============================================================================
+
+
+class TestBlendSpectraLmin:
+    """``_blend_spectra`` honours arbitrary ``[lmin, lmax]`` over ℓ-indexed cl."""
+
+    def _grid(self, minimal_params):
+        import numpy as np
+
+        return ParameterGrid(
+            core_params=minimal_params,
+            parameter_ranges={"x": np.array([0.0, 1.0])},
+            theoretical_spectra={
+                (0.0,): {"TT": np.zeros(8)},
+                (1.0,): {"TT": np.zeros(8)},
+            },
+        )
+
+    def test_blend_keeps_dipole_inside_window(self, minimal_params):
+        """``lmin=1`` keeps ℓ=1 from the parameter spectrum (dipole inference)."""
+        import numpy as np
+
+        grid = self._grid(minimal_params)
+
+        param = {"TT": np.arange(8, dtype=np.float64)}  # cl[ell] = ell
+        fid = {"TT": np.full(8, -1.0, dtype=np.float64)}
+
+        blended = grid._blend_spectra(param, fid, lmin=1, lmax=4)
+        np.testing.assert_array_equal(blended["TT"][1:5], param["TT"][1:5])
+        np.testing.assert_array_equal(blended["TT"][:1], fid["TT"][:1])
+        np.testing.assert_array_equal(blended["TT"][5:], fid["TT"][5:])
+
+    def test_blend_keeps_monopole_inside_window(self, minimal_params):
+        """``lmin=0`` keeps the monopole, enabling foreground-template flows."""
+        import numpy as np
+
+        grid = self._grid(minimal_params)
+
+        param = {"TT": np.arange(6, dtype=np.float64)}
+        fid = {"TT": np.full(6, -1.0, dtype=np.float64)}
+
+        blended = grid._blend_spectra(param, fid, lmin=0, lmax=2)
+        np.testing.assert_array_equal(blended["TT"][:3], param["TT"][:3])
+        np.testing.assert_array_equal(blended["TT"][3:], fid["TT"][3:])

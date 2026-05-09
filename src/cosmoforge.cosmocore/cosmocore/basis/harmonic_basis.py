@@ -141,8 +141,10 @@ class HarmonicBasisBuilder:
         self._spins = parent._spins
         self.n_components = parent.n_components
         self.lmax = parent.lmax
+        self.lmax_signal = parent.lmax_signal
         self._lmin_smw = parent._lmin_smw
         self._lmax_smw = parent._lmax_smw
+        self._lmin_signal = parent._lmin_signal
         self._n_modes_base = parent._n_modes_base
         self._n_modes_per_component = parent._n_modes_per_component
         self._n_modes_per_component_list = parent._n_modes_per_component_list
@@ -184,15 +186,22 @@ class HarmonicBasisBuilder:
         self._V_blocks = []
         for comp_idx in range(self.n_components):
             spin = self._spins[comp_idx]
+            # Per-component V floor (ADR 0009): when lmin_signal[i] exceeds the
+            # global SMW floor, this component skips its first few ell modes.
+            # _n_modes_per_component_list already accounts for this; the V-fill
+            # loops follow.
+            lmin_v_comp = max(self._lmin_smw, self._lmin_signal[comp_idx])
             if spin == 0:
                 V_comp = self._build_harmonic_operator_single(
                     self._theta_tuple[comp_idx],
                     self._phi_tuple[comp_idx],
+                    lmin_v=lmin_v_comp,
                 )
             else:  # spin == 2
                 V_comp = self._build_harmonic_operator_spin2(
                     self._theta_tuple[comp_idx],
                     self._phi_tuple[comp_idx],
+                    lmin_v=lmin_v_comp,
                 )
             self._V_blocks.append(V_comp)
 
@@ -209,13 +218,26 @@ class HarmonicBasisBuilder:
             self._V = np.asfortranarray(V_full)
 
     def _build_harmonic_operator_single(
-        self, theta: np.ndarray, phi: np.ndarray
+        self,
+        theta: np.ndarray,
+        phi: np.ndarray,
+        lmin_v: int | None = None,
     ) -> np.ndarray:
         """Build harmonic operator V for a single spin-0 component.
 
         Modes are grouped by azimuthal quantum number |m|:
-        - m=0 block: one row per ell (ell=lmin..lmax)
+        - m=0 block: one row per ell (ell=lmin_v..lmax)
         - |m|>0 blocks: cos rows for all ell, then sin rows for all ell
+
+        Parameters
+        ----------
+        theta, phi : np.ndarray
+            Pointing angles for this component's active pixels.
+        lmin_v : int or None
+            Per-component V floor. Defaults to ``self._lmin_smw`` for the
+            backward-compatible scalar path. Pass a higher value (typically
+            ``max(lmin_smw, lmin_signal[i])``) to start the V from a
+            component-specific floor (ADR 0009).
 
         Pixel loop is parallelized via Numba prange.
         """
@@ -223,9 +245,14 @@ class HarmonicBasisBuilder:
         cos_theta = np.cos(theta)
         sin_theta = np.sin(theta)
 
-        V = np.zeros((self._n_modes_per_component, n_pix_comp), dtype=np.float64)
+        n_modes = (
+            (self._lmax_smw + 1) ** 2 - max(self._lmin_smw, lmin_v) ** 2
+            if lmin_v is not None
+            else self._n_modes_per_component
+        )
+        V = np.zeros((n_modes, n_pix_comp), dtype=np.float64)
 
-        lmin_v = self._lmin_smw
+        lmin_v_local = self._lmin_smw if lmin_v is None else lmin_v
         lmax_v = self._lmax_smw
 
         cos_mphi = np.zeros((lmax_v + 1, n_pix_comp), dtype=np.float64)
@@ -234,12 +261,15 @@ class HarmonicBasisBuilder:
             cos_mphi[m, :] = np.cos(m * phi)
             sin_mphi[m, :] = np.sin(m * phi)
 
-        _fill_V_spin0(V, cos_theta, sin_theta, cos_mphi, sin_mphi, lmin_v, lmax_v)
+        _fill_V_spin0(V, cos_theta, sin_theta, cos_mphi, sin_mphi, lmin_v_local, lmax_v)
 
         return V
 
     def _build_harmonic_operator_spin2(
-        self, theta: np.ndarray, phi: np.ndarray
+        self,
+        theta: np.ndarray,
+        phi: np.ndarray,
+        lmin_v: int | None = None,
     ) -> np.ndarray:
         """Build harmonic operator V for a spin-2 (polarization) component.
 
@@ -254,17 +284,21 @@ class HarmonicBasisBuilder:
         - Rows 0:n_modes are E modes, rows n_modes:2*n_modes are B modes
         - Cols 0:n_pix are Q pixels, cols n_pix:2*n_pix are U pixels
 
+        ``lmin_v`` (per-component V floor; ADR 0009) defaults to
+        ``self._lmin_smw``. Spin-2 representation theory pins ell ≥ 2 so
+        callers should not pass anything below 2.
+
         Pixel loop is parallelized via Numba prange.
         """
         n_pix = len(theta)
-        n_modes = self._n_modes_base
+        lmin_v_local = self._lmin_smw if lmin_v is None else lmin_v
+        n_modes = (self._lmax_smw + 1) ** 2 - max(self._lmin_smw, lmin_v_local) ** 2
 
         V = np.zeros((2 * n_modes, 2 * n_pix), dtype=np.float64)
 
         cos_theta = np.cos(theta)
         sin_theta = np.sin(theta)
 
-        lmin_v = self._lmin_smw
         lmax_v = self._lmax_smw
 
         cos_mphi = np.zeros((lmax_v + 1, n_pix), dtype=np.float64)
@@ -274,7 +308,15 @@ class HarmonicBasisBuilder:
             sin_mphi[m, :] = np.sin(m * phi)
 
         _fill_V_spin2(
-            V, cos_theta, sin_theta, cos_mphi, sin_mphi, lmin_v, lmax_v, n_modes, n_pix
+            V,
+            cos_theta,
+            sin_theta,
+            cos_mphi,
+            sin_mphi,
+            lmin_v_local,
+            lmax_v,
+            n_modes,
+            n_pix,
         )
 
         return V
@@ -456,7 +498,7 @@ class HarmonicBasisBuilder:
             self._build_ell_mode_mapping()
         Lambda_diag = np.zeros(self.n_modes)
         for ell in range(self._lmin_smw, self._lmax_smw + 1):
-            c_ell_value = C_ell[ell - 2] if ell - 2 < len(C_ell) else 0.0
+            c_ell_value = C_ell[ell] if ell < len(C_ell) else 0.0
             for idx in self._ell_to_modes_local[ell]:
                 Lambda_diag[idx] = c_ell_value
         return Lambda_diag
@@ -517,11 +559,11 @@ class HarmonicBasisBuilder:
         Lambda = np.zeros((2 * n, 2 * n), dtype=np.float64)
 
         for ell in range(self._lmin_smw, self._lmax_smw + 1):
-            c_ee = C_ell_EE[ell - 2] if ell - 2 < len(C_ell_EE) else 0.0
-            c_bb = C_ell_BB[ell - 2] if ell - 2 < len(C_ell_BB) else 0.0
+            c_ee = C_ell_EE[ell] if ell < len(C_ell_EE) else 0.0
+            c_bb = C_ell_BB[ell] if ell < len(C_ell_BB) else 0.0
             c_eb = 0.0
-            if C_ell_EB is not None and ell - 2 < len(C_ell_EB):
-                c_eb = C_ell_EB[ell - 2]
+            if C_ell_EB is not None and ell < len(C_ell_EB):
+                c_eb = C_ell_EB[ell]
 
             for idx in self._ell_to_modes_local[ell]:
                 Lambda[idx, idx] = c_ee  # E-E block
@@ -565,8 +607,8 @@ class HarmonicBasisBuilder:
                         lambda_matrix[col_start + k, row_start + k] = val
 
             elif spin_i == 2 and spin_j == 2:
-                C_EE = mode_dict.get(0, np.zeros(self.lmax - 1))
-                C_BB = mode_dict.get(1, np.zeros(self.lmax - 1))
+                C_EE = mode_dict.get(0, np.zeros(self.lmax_signal + 1))
+                C_BB = mode_dict.get(1, np.zeros(self.lmax_signal + 1))
                 C_EB = mode_dict.get(2, None)
                 block = self._build_lambda_block_spin2(C_EE, C_BB, C_EB)
                 n_block = 2 * self._n_modes_base

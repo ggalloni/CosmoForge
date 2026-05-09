@@ -294,19 +294,22 @@ def three_scalar_field_realistic_setup():
 
     lmax = 10
 
-    # Realistic power spectra (physical C_ell values, no pre-normalization)
-    n_ell = lmax - 1  # ell = 2 to lmax
-    ells = np.arange(2, lmax + 1)
+    # n_ell counts inference multipoles ℓ=2..lmax — drives Fisher dimension.
+    n_ell = lmax - 1
+    # Realistic power spectra (physical C_ell values, ℓ-indexed length lmax+1).
+    ells_full = np.arange(lmax + 1, dtype=np.float64)
+    with np.errstate(divide="ignore"):
+        inv_ell2 = np.where(ells_full >= 2, 1.0 / ells_full**2, 0.0)
 
     # Auto-spectra: different amplitudes for different fields
-    C_ell_11 = 1e-4 / ells**2  # Field 1 auto
-    C_ell_22 = 0.8e-4 / ells**2  # Field 2 auto
-    C_ell_33 = 0.6e-4 / ells**2  # Field 3 auto
+    C_ell_11 = 1e-4 * inv_ell2  # Field 1 auto
+    C_ell_22 = 0.8e-4 * inv_ell2  # Field 2 auto
+    C_ell_33 = 0.6e-4 * inv_ell2  # Field 3 auto
 
     # Cross-spectra: correlated but not perfectly
-    C_ell_12 = 0.5e-4 / ells**2  # 1-2 cross
-    C_ell_13 = 0.3e-4 / ells**2  # 1-3 cross
-    C_ell_23 = 0.4e-4 / ells**2  # 2-3 cross
+    C_ell_12 = 0.5e-4 * inv_ell2  # 1-2 cross
+    C_ell_13 = 0.3e-4 * inv_ell2  # 1-3 cross
+    C_ell_23 = 0.4e-4 * inv_ell2  # 2-3 cross
 
     C_ell_dict = {
         (0, 0): C_ell_11,

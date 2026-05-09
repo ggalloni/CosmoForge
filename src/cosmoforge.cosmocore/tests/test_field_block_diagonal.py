@@ -16,8 +16,11 @@ from numpy.testing import assert_allclose
 # ---------------------------------------------------------------------------
 
 
-def _make_two_scalar_fields(n_pix_1=60, n_pix_2=40, lmax=8, seed=42, noise_cross=False):
+def _make_two_scalar_fields(
+    n_pix_1=60, n_pix_2=40, lmax_signal=8, seed=42, noise_cross=False
+):
     """Create a two-field setup with optional noise cross-block."""
+    lmax = lmax_signal
     np.random.seed(seed)
 
     n_pix_total = n_pix_1 + n_pix_2
@@ -96,7 +99,7 @@ class TestFieldBlockDetection:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         n_ell = setup["lmax"] - 1
@@ -118,7 +121,7 @@ class TestFieldBlockDetection:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         n_ell = setup["lmax"] - 1
@@ -141,7 +144,7 @@ class TestFieldBlockDetection:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         n_ell = setup["lmax"] - 1
@@ -163,7 +166,7 @@ class TestFieldBlockDetection:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
             spins=setup["spins"],
         )
 
@@ -187,7 +190,7 @@ class TestFieldBlockDetection:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
             spins=setup["spins"],
         )
 
@@ -214,7 +217,7 @@ class TestFieldBlockDetection:
         theta = np.random.uniform(0.1, np.pi - 0.1, n_pix)
         phi = np.random.uniform(0, 2 * np.pi, n_pix)
 
-        hc = HarmonicBasis(N, theta, phi, lmax=6)
+        hc = HarmonicBasis(N, theta, phi, lmax_signal=6)
 
         C_ell_dict = {(0, 0): np.ones(4) * 1e-6}
         groups = hc._detect_field_blocks(C_ell_dict)
@@ -233,7 +236,7 @@ class TestFieldBlockDetection:
         thetas = tuple(np.random.uniform(0.1, np.pi - 0.1, n) for n in n_pix)
         phis = tuple(np.random.uniform(0, 2 * np.pi, n) for n in n_pix)
 
-        hc = HarmonicBasis(N, thetas, phis, lmax=5)
+        hc = HarmonicBasis(N, thetas, phis, lmax_signal=5)
 
         n_ell = 5 - 1
         # 0-1 cross-spectrum, no 0-2 or 1-2
@@ -260,12 +263,12 @@ class TestFieldBlockFisherExact:
         """Two independent spin-0 fields: field-block Fisher == full Fisher."""
         from cosmocore.basis import HarmonicBasis
 
-        setup = _make_two_scalar_fields(lmax=6)
+        setup = _make_two_scalar_fields(lmax_signal=6)
         hc = HarmonicBasis(
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc.setup()
 
@@ -298,12 +301,12 @@ class TestFieldBlockFisherExact:
         from cosmocore.basics import matrix_inverse_symm, matrix_mult, matrix_trace
         from cosmocore.basis import HarmonicBasis
 
-        setup = _make_two_scalar_fields(lmax=6)
+        setup = _make_two_scalar_fields(lmax_signal=6)
         hc = HarmonicBasis(
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc.setup()
 
@@ -370,12 +373,12 @@ class TestFieldBlockFisherExact:
         """When fields are coupled (cross-spectrum), result is still exact."""
         from cosmocore.basis import HarmonicBasis
 
-        setup = _make_two_scalar_fields(lmax=6)
+        setup = _make_two_scalar_fields(lmax_signal=6)
         hc = HarmonicBasis(
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc.setup()
 
@@ -414,12 +417,12 @@ class TestFieldBlockSpeedup:
         from cosmocore.basis import HarmonicBasis
 
         # Use larger setup for meaningful timing
-        setup = _make_two_scalar_fields(n_pix_1=100, n_pix_2=80, lmax=10)
+        setup = _make_two_scalar_fields(n_pix_1=100, n_pix_2=80, lmax_signal=10)
         hc = HarmonicBasis(
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc.setup()
 

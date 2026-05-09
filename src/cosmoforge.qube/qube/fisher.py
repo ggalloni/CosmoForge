@@ -122,7 +122,8 @@ class Fisher(Core, MPISharedMemoryMixin):
     fisher : numpy.ndarray
         Computed Fisher information matrix.
     n_ell : int
-        Number of multipole moments in analysis (lmax - 1).
+        Number of multipole moments in the inference window
+        (``params.lmax - params.lmin + 1``).
     n_params : int
         Total number of Fisher matrix parameters (nspectra * n_ell).
 
@@ -194,9 +195,16 @@ class Fisher(Core, MPISharedMemoryMixin):
 
     @property
     def lmax_signal(self) -> int:
-        """Maximum multipole for signal matrix computation (defaults to 4*nside)."""
+        """Signal-cov ceiling (ADR 0009).
+
+        Resolution order: explicit setter, then ``params.lmax_signal``,
+        then ``4 * nside``.
+        """
         if self._lmax_signal is not None:
             return self._lmax_signal
+        params_value = getattr(self.params, "lmax_signal", None)
+        if params_value is not None:
+            return params_value
         return 4 * self.params.nside
 
     @lmax_signal.setter
@@ -385,7 +393,9 @@ class Fisher(Core, MPISharedMemoryMixin):
                         for ell in range(
                             self.bins.lmins[bin_idx], self.bins.lmaxs[bin_idx] + 1
                         ):
-                            weight = self.beam_smoothing[beam_offset + ell - 2]
+                            weight = self.beam_smoothing[
+                                beam_offset + ell - self.params.lmin
+                            ]
                             E_b_diag += weight * bm._get_derivative_diagonal(
                                 ell, comp_i, comp_j, spec_mode
                             )
@@ -399,7 +409,9 @@ class Fisher(Core, MPISharedMemoryMixin):
                         for ell in range(
                             self.bins.lmins[bin_idx], self.bins.lmaxs[bin_idx] + 1
                         ):
-                            weight = self.beam_smoothing[beam_offset + ell - 2]
+                            weight = self.beam_smoothing[
+                                beam_offset + ell - self.params.lmin
+                            ]
                             if abs(weight) < _WEIGHT_ZERO_THRESHOLD:
                                 continue
                             dC_ell = bm.get_derivative_matrix(
@@ -602,7 +614,7 @@ class Fisher(Core, MPISharedMemoryMixin):
             if self._basis_config is not None:
                 _basis_keys = (
                     "method",
-                    "lmax",
+                    "lmax_signal",
                     "epsilon",
                     "mode_fraction",
                     "basis",
@@ -713,7 +725,9 @@ class Fisher(Core, MPISharedMemoryMixin):
                     self.set_binning(Bins(bin_lmins, bin_lmaxs))
                 else:
                     delta_ell = getattr(self.params, "delta_ell", 1)
-                    self.set_binning(Bins.fromdeltal(2, self.params.lmax, delta_ell))
+                    self.set_binning(
+                        Bins.fromdeltal(self.params.lmin, self.params.lmax, delta_ell)
+                    )
 
             # Warn if bins don't cover the full ell range
             if self.bins.lmax < self.params.lmax:
@@ -725,10 +739,14 @@ class Fisher(Core, MPISharedMemoryMixin):
                     level=1,
                 )
 
-            # Beam smoothing factors b²_ell for each spectrum (product of beam
-            # and pixel window functions). Flat vector: [spec0_ell2, ..., spec0_ellmax,
-            # spec1_ell2, ..., spec1_ellmax, ...].
-            self.n_ell = self.params.lmax - 1
+            # Beam smoothing factors b²_ell for each Fisher row. Flat vector
+            # with each per-spectrum block holding the inference-range beams
+            # (ell = lmin..lmax): [spec0_ell_lmin, ..., spec0_ellmax,
+            # spec1_ell_lmin, ..., spec1_ellmax, ...]. For delta_ell=1 (unbinned)
+            # this matches Fisher's n_params layout 1:1.
+            lmin = self.params.lmin
+            lmax = self.params.lmax
+            self.n_ell = lmax - lmin + 1
             smoothing_dict = self.collection.spectra_manager.compute_smoothing_factors(
                 self.collection.beam_manager
             )
@@ -737,7 +755,11 @@ class Fisher(Core, MPISharedMemoryMixin):
             )
             idx = 0
             for label in self.collection.spectra_manager.labels:
-                self.beam_smoothing[idx : idx + self.n_ell] = smoothing_dict[label]
+                # smoothing_dict[label] is ℓ-indexed length lmax_signal+1;
+                # extract inference range ell=lmin..lmax (ADR 0009).
+                self.beam_smoothing[idx : idx + self.n_ell] = smoothing_dict[label][
+                    lmin : lmax + 1
+                ]
                 idx += self.n_ell
 
             # Setup Fisher matrices dimensions
@@ -915,10 +937,11 @@ class Fisher(Core, MPISharedMemoryMixin):
             return None
 
         # Build Q (sum-over-ℓ-in-bin operator)
-        n_ell = self.params.lmax - 1  # ell indices 2..lmax
+        lmin = self.params.lmin
+        n_ell = self.params.lmax - lmin + 1  # ell indices lmin..lmax
         Q = np.zeros((self.bins.nbins, n_ell), dtype=np.float64)
         for b, (lo, hi) in enumerate(zip(self.bins.lmins, self.bins.lmaxs)):
-            Q[b, lo - 2 : hi - 2 + 1] = 1.0
+            Q[b, lo - lmin : hi - lmin + 1] = 1.0
 
         # W = F_b^{-1} @ Q @ F_perell
         W = np.linalg.solve(self.fisher, Q @ per_ell_fisher)
@@ -945,7 +968,7 @@ class Fisher(Core, MPISharedMemoryMixin):
         saved_cached = getattr(self, "_cached_binned_derivatives", None)
         saved_coo = getattr(self, "_cached_sparse_coo_data", None)
         try:
-            self.bins = Bins.fromdeltal(2, self.params.lmax, 1)
+            self.bins = Bins.fromdeltal(self.params.lmin, self.params.lmax, 1)
             self.n_params = self.params.nspectra * self.bins.nbins
             self.fisher = np.zeros((self.n_params, self.n_params))
             # Drop binned-derivative cache so per-ℓ run rebuilds its own

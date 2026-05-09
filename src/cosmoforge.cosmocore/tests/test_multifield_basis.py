@@ -22,7 +22,7 @@ class TestMultiFieldCompressionInitialization:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         # Should detect 2 components
@@ -43,7 +43,7 @@ class TestMultiFieldCompressionInitialization:
             N=setup["N"],
             theta=setup["theta"],  # 1D array, not tuple
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
 
         # Should wrap as single-element tuple
@@ -64,7 +64,7 @@ class TestMultiFieldVBlockStructure:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc.setup()
 
@@ -74,7 +74,7 @@ class TestMultiFieldVBlockStructure:
         assert hc._V.shape[1] == setup["n_pix_total"]
 
         # Each component contributes (lmax+1)^2 - 4 modes
-        # For lmax=8: (8+1)^2 - 4 = 77 modes per component
+        # For lmax_signal=8: (8+1)^2 - 4 = 77 modes per component
         n_modes_per_component = (setup["lmax"] + 1) ** 2 - 4
         expected_n_modes = 2 * n_modes_per_component
         assert hc._V.shape[0] == expected_n_modes
@@ -89,7 +89,7 @@ class TestMultiFieldVBlockStructure:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc.setup()
 
@@ -127,7 +127,7 @@ class TestMultiFieldCompressedOperations:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc.setup()
 
@@ -156,7 +156,7 @@ class TestMultiFieldCompressedOperations:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc.setup()
 
@@ -184,7 +184,7 @@ class TestMultiFieldFisher:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc.setup()
 
@@ -212,7 +212,7 @@ class TestMultiFieldFisher:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc.setup()
 
@@ -237,7 +237,7 @@ class TestMultiFieldFisher:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc.setup()
 
@@ -268,7 +268,7 @@ class TestMultiFieldManager:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         cm.setup()
 
@@ -293,7 +293,7 @@ class TestMultiFieldManager:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         cm.setup()
 
@@ -323,7 +323,7 @@ class TestMultiFieldIntegration:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc.setup()
 
@@ -356,7 +356,7 @@ class TestMultiFieldIntegration:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc.setup()
 
@@ -392,7 +392,7 @@ class TestMultiFieldIntegration:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc_multi.setup()
 
@@ -407,7 +407,7 @@ class TestMultiFieldIntegration:
             N=N_single,
             theta=theta_single,
             phi=phi_single,
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc_single.setup()
 
@@ -443,7 +443,7 @@ class TestMultiFieldIntegration:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         hc.setup()
 
@@ -466,7 +466,7 @@ class TestMultiFieldIntegration:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=setup["lmax"],
+            lmax_signal=setup["lmax"],
         )
         cm.setup()
 
@@ -489,15 +489,18 @@ class TestMultiFieldIntegration:
 
         setup = two_scalar_field_setup
         lmax = setup["lmax"]
+        # Number of inference multipoles ℓ=2..lmax — drives Fisher dimensions.
         n_ell = lmax - 1
 
-        # Different spectra per field (physical C_ell values)
-        ells = np.arange(2, lmax + 1)
+        # Different spectra per field (physical C_ell values), ℓ-indexed.
+        ells = np.arange(lmax + 1, dtype=np.float64)
+        with np.errstate(divide="ignore"):
+            inv_ell2 = np.where(ells >= 2, 1.0 / ells**2, 0.0)
 
         C_ell_dict = {
-            (0, 0): 1e-5 / ells**2,
-            (1, 1): 0.8e-5 / ells**2,
-            (0, 1): 0.4e-5 / ells**2,
+            (0, 0): 1e-5 * inv_ell2,
+            (1, 1): 0.8e-5 * inv_ell2,
+            (0, 1): 0.4e-5 * inv_ell2,
         }
 
         # Setup compression
@@ -505,7 +508,7 @@ class TestMultiFieldIntegration:
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
-            lmax=lmax,
+            lmax_signal=lmax,
         )
         hc.setup()
 

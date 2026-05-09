@@ -125,7 +125,7 @@ class TestSpin2Lambda:
         hc = HarmonicBasis(N, theta, phi, lmax, spins=[2])
 
         n_modes_base = (lmax + 1) ** 2 - 4
-        C_ell = np.ones(lmax - 1) * 1e-3
+        C_ell = np.ones(lmax + 1) * 1e-3
 
         Lambda = hc._build_lambda_block_spin2(C_ell, C_ell * 0.5, C_ell * 0.1)
 
@@ -147,9 +147,9 @@ class TestSpin2Lambda:
         hc = HarmonicBasis(N, theta, phi, lmax, spins=[2])
 
         n = hc._n_modes_base
-        C_EE = np.ones(lmax - 1) * 2.0
-        C_BB = np.ones(lmax - 1) * 1.0
-        C_EB = np.ones(lmax - 1) * 0.5
+        C_EE = np.ones(lmax + 1) * 2.0
+        C_BB = np.ones(lmax + 1) * 1.0
+        C_EB = np.ones(lmax + 1) * 0.5
 
         Lambda = hc._build_lambda_block_spin2(C_EE, C_BB, C_EB)
 
@@ -189,12 +189,12 @@ class TestSpin2Lambda:
 
         # Build C_ell_dict with 3-tuple keys
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 1e-3,  # TT
-            (1, 1, 0): np.ones(lmax - 1) * 5e-4,  # EE
-            (1, 1, 1): np.ones(lmax - 1) * 1e-4,  # BB
-            (1, 1, 2): np.ones(lmax - 1) * 1e-5,  # EB
-            (0, 1, 0): np.ones(lmax - 1) * 2e-4,  # TE
-            (0, 1, 1): np.zeros(lmax - 1),  # TB
+            (0, 0, 0): np.ones(lmax + 1) * 1e-3,  # TT
+            (1, 1, 0): np.ones(lmax + 1) * 5e-4,  # EE
+            (1, 1, 1): np.ones(lmax + 1) * 1e-4,  # BB
+            (1, 1, 2): np.ones(lmax + 1) * 1e-5,  # EB
+            (0, 1, 0): np.ones(lmax + 1) * 2e-4,  # TE
+            (0, 1, 1): np.zeros(lmax + 1),  # TB
         }
 
         Lambda = hc._build_lambda_matrix_3tuple(C_ell_dict)
@@ -323,12 +323,12 @@ class TestSpin2Fisher:
         hc.setup()
 
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 1e-3,
-            (1, 1, 0): np.ones(lmax - 1) * 5e-4,
-            (1, 1, 1): np.ones(lmax - 1) * 1e-4,
-            (1, 1, 2): np.zeros(lmax - 1),
-            (0, 1, 0): np.ones(lmax - 1) * 2e-4,
-            (0, 1, 1): np.zeros(lmax - 1),
+            (0, 0, 0): np.ones(lmax + 1) * 1e-3,
+            (1, 1, 0): np.ones(lmax + 1) * 5e-4,
+            (1, 1, 1): np.ones(lmax + 1) * 1e-4,
+            (1, 1, 2): np.zeros(lmax + 1),
+            (0, 1, 0): np.ones(lmax + 1) * 2e-4,
+            (0, 1, 1): np.zeros(lmax + 1),
         }
 
         spectra_list = [
@@ -367,9 +367,9 @@ class TestSpin2Fisher:
         hc.setup()
 
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 1e-3,
-            (1, 1, 0): np.ones(lmax - 1) * 5e-4,
-            (1, 1, 1): np.ones(lmax - 1) * 1e-4,
+            (0, 0, 0): np.ones(lmax + 1) * 1e-3,
+            (1, 1, 0): np.ones(lmax + 1) * 5e-4,
+            (1, 1, 1): np.ones(lmax + 1) * 1e-4,
         }
 
         spectra_list = [(0, 0, 0), (1, 1, 0), (1, 1, 1)]
@@ -399,8 +399,8 @@ class TestSpin2Fisher:
         hc.setup()
 
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 5e-4,  # EE
-            (0, 0, 1): np.ones(lmax - 1) * 1e-4,  # BB
+            (0, 0, 0): np.ones(lmax + 1) * 5e-4,  # EE
+            (0, 0, 1): np.ones(lmax + 1) * 1e-4,  # BB
         }
 
         spectra_list = [(0, 0, 0), (0, 0, 1)]
@@ -470,7 +470,7 @@ class TestSpin2Benchmark:
         Single spin-2 field (Q, U) → (E, B) decomposition.
         Sizes chosen so n_pix_total >> n_modes for compression speedup:
         - n_pix=120 physical → 240 total (Q+U)
-        - lmax=6 → n_modes_base=45 → 90 total (E+B)
+        - lmax_signal=6 → n_modes_base=45 → 90 total (E+B)
         """
         import time
 
@@ -561,7 +561,7 @@ class TestSpin2Benchmark:
         Mixed spin-0 (T) + spin-2 (Q, U) fields → TT, EE, BB, TE spectra.
         Sizes chosen so n_pix_total >> n_modes for compression speedup:
         - n_pix_t=50, n_pix_p=45 → total_pix = 50 + 2*45 = 140
-        - lmax=6 → n_modes_base=45 → 45 (T) + 90 (E+B) = 135 modes
+        - lmax_signal=6 → n_modes_base=45 → 45 (T) + 90 (E+B) = 135 modes
         """
         import time
 
@@ -724,8 +724,8 @@ class TestPixelProjectedSpin2:
         ppc.setup()
 
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 5e-4,  # EE
-            (0, 0, 1): np.ones(lmax - 1) * 1e-4,  # BB
+            (0, 0, 0): np.ones(lmax + 1) * 5e-4,  # EE
+            (0, 0, 1): np.ones(lmax + 1) * 1e-4,  # BB
         }
 
         C_c = ppc.get_compressed_covariance(C_ell_dict)
@@ -757,8 +757,8 @@ class TestPixelProjectedSpin2:
         ppc.setup()
 
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 5e-4,  # EE
-            (0, 0, 1): np.ones(lmax - 1) * 1e-4,  # BB
+            (0, 0, 0): np.ones(lmax + 1) * 5e-4,  # EE
+            (0, 0, 1): np.ones(lmax + 1) * 1e-4,  # BB
         }
         spectra_list = [(0, 0, 0), (0, 0, 1)]
 
@@ -799,10 +799,10 @@ class TestPixelProjectedSpin2:
         ppc.setup()
 
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 1e-3,  # TT
-            (1, 1, 0): np.ones(lmax - 1) * 5e-4,  # EE
-            (1, 1, 1): np.ones(lmax - 1) * 1e-4,  # BB
-            (0, 1, 0): np.ones(lmax - 1) * 2e-4,  # TE
+            (0, 0, 0): np.ones(lmax + 1) * 1e-3,  # TT
+            (1, 1, 0): np.ones(lmax + 1) * 5e-4,  # EE
+            (1, 1, 1): np.ones(lmax + 1) * 1e-4,  # BB
+            (0, 1, 0): np.ones(lmax + 1) * 2e-4,  # TE
         }
         spectra_list = [
             (0, 0, 0),  # TT
@@ -844,8 +844,8 @@ class TestPixelProjectedSpin2:
         ppc.setup()
 
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 5e-4,
-            (0, 0, 1): np.ones(lmax - 1) * 1e-4,
+            (0, 0, 0): np.ones(lmax + 1) * 5e-4,
+            (0, 0, 1): np.ones(lmax + 1) * 1e-4,
         }
 
         data = np.random.randn(2 * n_pix)
@@ -870,15 +870,15 @@ class TestPixelProjectedSpin2:
             N=N,
             theta=theta,
             phi=phi,
-            lmax=lmax,
+            lmax_signal=lmax,
             spins=[2],
             epsilon=1e-6,
         )
         cm.setup()
 
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax - 1) * 5e-4,
-            (0, 0, 1): np.ones(lmax - 1) * 1e-4,
+            (0, 0, 0): np.ones(lmax + 1) * 5e-4,
+            (0, 0, 1): np.ones(lmax + 1) * 1e-4,
         }
         spectra_list = [(0, 0, 0), (0, 0, 1)]
 

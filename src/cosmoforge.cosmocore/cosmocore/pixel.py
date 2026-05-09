@@ -154,7 +154,7 @@ def compute_pointings(
 
 
 @njit
-def compute_00_contribution(cl, S_slice, vec1, vec2, legendre, mode, remove_dipole=False):
+def compute_00_contribution(cl, S_slice, vec1, vec2, legendre, mode):
     """
     Compute spin-0 x spin-0 field contribution to signal matrix.
 
@@ -170,38 +170,38 @@ def compute_00_contribution(cl, S_slice, vec1, vec2, legendre, mode, remove_dipo
         Temporary array for Legendre polynomial computation.
     mode : int
         Computation mode (0 for symmetric, 1 for general).
-    remove_dipole : bool, optional
-        Whether to suppress dipole contribution for temperature autocorrelation.
 
     Notes
     -----
     Implements the pixel-space covariance for scalar fields (e.g., temperature).
-    Uses Legendre polynomials to compute angular correlations. The dipole
-    removal is applied for temperature-temperature correlations to handle
-    coordinate system effects.
+    Uses Legendre polynomials to compute angular correlations.
 
     The outer pixel loop uses prange for thread-level parallelism.
     """
     npix = S_slice.shape[0]
     if mode == 0:
         legendre_00(1.0, legendre)
-        entry = np.sum(cl * legendre[1:])
-        if remove_dipole:
-            entry += 1000.0 * cl[0] * 2.0
+        # cl and legendre are ℓ-indexed (length lmax_signal+1). Loop from
+        # ℓ=0 so foreground/dipole components (lmin_signal=0/1) contribute;
+        # default CMB usage zero-pads cl below lmin_signal so this is a no-op.
+        entry = np.float64(0.0)
+        for ell in range(len(cl)):
+            entry += cl[ell] * legendre[ell]
         for i in range(npix):
             S_slice[i, i] = entry
 
-        _compute_00_symmetric(cl, S_slice, vec1, vec2, npix, remove_dipole)
+        _compute_00_symmetric(cl, S_slice, vec1, vec2, npix)
 
     elif mode == 1:
         _compute_00_general(cl, S_slice, vec1, vec2, npix)
 
 
 @njit(parallel=True)
-def _compute_00_symmetric(cl, S_slice, vec1, vec2, npix, remove_dipole):
+def _compute_00_symmetric(cl, S_slice, vec1, vec2, npix):
     """Parallel pixel-pair loop for symmetric spin-0 signal matrix."""
+    n_ell = len(cl)
     for i in prange(npix):
-        leg = np.empty(len(cl) + 1, dtype=np.float64)
+        leg = np.empty(n_ell, dtype=np.float64)
         for j in range(i + 1, npix):
             x = (
                 vec1[j, 0] * vec2[i, 0]
@@ -210,18 +210,17 @@ def _compute_00_symmetric(cl, S_slice, vec1, vec2, npix, remove_dipole):
             )
             legendre_00(x, leg)
             val = np.float64(0.0)
-            for k in range(len(cl)):
-                val += cl[k] * leg[k + 1]
-            if remove_dipole:
-                val += 1000.0 * cl[0] * (1.0 + x)
+            for ell in range(n_ell):
+                val += cl[ell] * leg[ell]
             S_slice[j, i] = val
 
 
 @njit(parallel=True)
 def _compute_00_general(cl, S_slice, vec1, vec2, npix):
     """Parallel pixel loop for general spin-0 signal matrix."""
+    n_ell = len(cl)
     for i in prange(npix):
-        leg = np.empty(len(cl) + 1, dtype=np.float64)
+        leg = np.empty(n_ell, dtype=np.float64)
         for j in range(npix):
             x = (
                 vec1[j, 0] * vec2[i, 0]
@@ -230,8 +229,8 @@ def _compute_00_general(cl, S_slice, vec1, vec2, npix):
             )
             legendre_00(x, leg)
             val = np.float64(0.0)
-            for k in range(len(cl)):
-                val += cl[k] * leg[k + 1]
+            for ell in range(n_ell):
+                val += cl[ell] * leg[ell]
             S_slice[j, i] = val
 
 
@@ -262,9 +261,15 @@ def compute_22_contribution(cl11, cl22, cl12, S_slice, vec1, vec2, legendre, f1,
 
     legendre_22(1.0, legendre, f1, f2)
 
-    qq = np.sum(cl11 * f1[1:]) - np.sum(cl22 * f2[1:])
-    uu = np.sum(cl22 * f1[1:]) - np.sum(cl11 * f2[1:])
-    qu = np.sum((f1[1:] + f2[1:]) * cl12)
+    # cl11/cl22/cl12 and f1/f2 are ℓ-indexed (length lmax+1); spin-2 entries at
+    # ℓ ∈ {0, 1} are zero by physics.
+    qq = np.float64(0.0)
+    uu = np.float64(0.0)
+    qu = np.float64(0.0)
+    for ell in range(2, len(cl11)):
+        qq += cl11[ell] * f1[ell] - cl22[ell] * f2[ell]
+        uu += cl22[ell] * f1[ell] - cl11[ell] * f2[ell]
+        qu += (f1[ell] + f2[ell]) * cl12[ell]
 
     for i in range(npix):
         S_slice[i, i] = qq
@@ -278,11 +283,11 @@ def compute_22_contribution(cl11, cl22, cl12, S_slice, vec1, vec2, legendre, f1,
 @njit(parallel=True)
 def _compute_22_symmetric(cl11, cl22, cl12, S_slice, vec1, vec2, npix):
     """Parallel pixel-pair loop for symmetric spin-2 signal matrix."""
-    n_cl = len(cl11)
+    n_ell = len(cl11)
     for i in prange(npix):
-        leg = np.empty(n_cl + 1, dtype=np.float64)
-        _f1 = np.empty(n_cl + 1, dtype=np.float64)
-        _f2 = np.empty(n_cl + 1, dtype=np.float64)
+        leg = np.empty(n_ell, dtype=np.float64)
+        _f1 = np.empty(n_ell, dtype=np.float64)
+        _f2 = np.empty(n_ell, dtype=np.float64)
         for j in range(i + 1, npix):
             x = (
                 vec1[j, 0] * vec2[i, 0]
@@ -294,10 +299,10 @@ def _compute_22_symmetric(cl11, cl22, cl12, S_slice, vec1, vec2, npix):
             qq = np.float64(0.0)
             uu = np.float64(0.0)
             qu = np.float64(0.0)
-            for k in range(n_cl):
-                qq += cl11[k] * _f1[k + 1] - cl22[k] * _f2[k + 1]
-                uu += cl22[k] * _f1[k + 1] - cl11[k] * _f2[k + 1]
-                qu += (_f1[k + 1] + _f2[k + 1]) * cl12[k]
+            for ell in range(2, n_ell):
+                qq += cl11[ell] * _f1[ell] - cl22[ell] * _f2[ell]
+                uu += cl22[ell] * _f1[ell] - cl11[ell] * _f2[ell]
+                qu += (_f1[ell] + _f2[ell]) * cl12[ell]
 
             ang1, ang2 = get_rotation_angle(vec1[j], vec2[i])
             cos1 = np.cos(ang1)
@@ -352,9 +357,9 @@ def compute_02_contribution(cl12, cl13, S_slice, vec0, vec2, legendre):
 @njit(parallel=True)
 def _compute_02_parallel(cl12, cl13, S_slice, vec0, vec2, npix_spin0, npix_spin2):
     """Parallel pixel loop for spin-0 x spin-2 signal matrix."""
-    n_cl = len(cl12)
+    n_ell = len(cl12)
     for i in prange(npix_spin0):
-        leg = np.empty(n_cl + 1, dtype=np.float64)
+        leg = np.empty(n_ell, dtype=np.float64)
         for j in range(npix_spin2):
             x = (
                 vec2[j, 0] * vec0[i, 0]
@@ -364,9 +369,9 @@ def _compute_02_parallel(cl12, cl13, S_slice, vec0, vec2, npix_spin0, npix_spin2
             legendre_02(x, leg)
             tq = np.float64(0.0)
             tu = np.float64(0.0)
-            for k in range(n_cl):
-                tq -= cl12[k] * leg[k + 1]
-                tu -= cl13[k] * leg[k + 1]
+            for ell in range(2, n_ell):
+                tq -= cl12[ell] * leg[ell]
+                tu -= cl13[ell] * leg[ell]
             ang1, _ = get_rotation_angle(vec2[j], vec0[i])
             cos1 = np.cos(ang1)
             sin1 = np.sin(ang1)
@@ -421,15 +426,8 @@ def compute_signal_matrix(
                 col_offset += ncol
                 continue
             lf_j = fields.fields[j]
-            legendre = np.empty(lmax, dtype=np.float64)
+            legendre = np.empty(lmax + 1, dtype=np.float64)
             if spin_i == 0 and spin_j == 0:
-                # FIXME: remove_dipole feature is broken - it uses cl[0] (ell=2)
-                # instead of the actual dipole (ell=1). Disabling for now.
-                # The original code was:
-                # remove_dipole = (
-                #     True if lf_i.maps_label + lf_j.maps_label == "TT" else False
-                # )
-                remove_dipole = False
                 if i == j:
                     compute_00_contribution(
                         fields.get_cls(i, j, 0),
@@ -438,7 +436,6 @@ def compute_signal_matrix(
                         lf_j.point_vectors[:, :],
                         legendre,
                         mode=0,
-                        remove_dipole=remove_dipole,
                     )
                 else:
                     compute_00_contribution(
@@ -458,8 +455,8 @@ def compute_signal_matrix(
                     raise NotImplementedError(
                         "Cross-correlation for spin-2 fields not implemented yet."
                     )
-                f1 = np.empty(lmax, dtype=np.float64)
-                f2 = np.empty(lmax, dtype=np.float64)
+                f1 = np.empty(lmax + 1, dtype=np.float64)
+                f2 = np.empty(lmax + 1, dtype=np.float64)
                 compute_22_contribution(
                     cl11,
                     cl22,
@@ -526,12 +523,12 @@ def derivative_step_00(S_slice, vec1, vec2, current_ell, legendre, mode):
     if mode == 0:
         legendre_00(1.0, legendre)
         for i in range(npix):
-            S_slice[i, i] = legendre[current_ell - 1]
+            S_slice[i, i] = legendre[current_ell]
 
         for i in range(npix):
             for j in range(i + 1, npix):
                 legendre_00(vec1[j] @ vec2[i].T, legendre)
-                S_slice[j, i] = legendre[current_ell - 1]
+                S_slice[j, i] = legendre[current_ell]
 
         for i in range(S_slice.shape[0]):
             for j in range(i + 1, S_slice.shape[0]):
@@ -541,7 +538,7 @@ def derivative_step_00(S_slice, vec1, vec2, current_ell, legendre, mode):
         for i in range(npix):
             for j in range(npix):
                 legendre_00(vec1[j] @ vec2[i].T, legendre)
-                S_slice[j, i] = legendre[current_ell - 1]
+                S_slice[j, i] = legendre[current_ell]
 
 
 @njit(cache=True)
@@ -582,11 +579,11 @@ def derivative_step_02(S_slice, vec0, vec2, current_ell, mode, legendre):
             sin1 = np.sin(ang1)
 
             if mode == 0:
-                S_slice[j, i] = -legendre[current_ell - 1] * cos1
-                S_slice[j + npix_spin2, i] = -legendre[current_ell - 1] * sin1
+                S_slice[j, i] = -legendre[current_ell] * cos1
+                S_slice[j + npix_spin2, i] = -legendre[current_ell] * sin1
             else:
-                S_slice[j, i] = legendre[current_ell - 1] * sin1
-                S_slice[j + npix_spin2, i] = -legendre[current_ell - 1] * cos1
+                S_slice[j, i] = legendre[current_ell] * sin1
+                S_slice[j + npix_spin2, i] = -legendre[current_ell] * cos1
 
 
 @njit(cache=True)
@@ -620,17 +617,17 @@ def derivative_step_22(S_slice, vec1, vec2, current_ell, mode, legendre, f1, f2)
     legendre_22(1.0, legendre, f1, f2)
 
     if mode == 0:  # such as EE
-        qq = f1[current_ell - 1]
-        uu = -f2[current_ell - 1]
+        qq = f1[current_ell]
+        uu = -f2[current_ell]
         qu = 0.0
     elif mode == 1:  # such as BB
-        qq = -f2[current_ell - 1]
-        uu = f1[current_ell - 1]
+        qq = -f2[current_ell]
+        uu = f1[current_ell]
         qu = 0.0
     elif mode == 2:  # such as EB
         qq = 0.0
         uu = 0.0
-        qu = f1[current_ell - 1] + f2[current_ell - 1]
+        qu = f1[current_ell] + f2[current_ell]
 
     for i in range(npix):
         S_slice[i, i] = qq
@@ -642,17 +639,17 @@ def derivative_step_22(S_slice, vec1, vec2, current_ell, mode, legendre, f1, f2)
         for j in range(i + 1, npix):
             legendre_22(vec1[j] @ vec2[i].T, legendre, f1, f2)
             if mode == 0:  # such as EE
-                qq = f1[current_ell - 1]
-                uu = -f2[current_ell - 1]
+                qq = f1[current_ell]
+                uu = -f2[current_ell]
                 qu = 0.0
             elif mode == 1:  # such as BB
-                qq = -f2[current_ell - 1]
-                uu = f1[current_ell - 1]
+                qq = -f2[current_ell]
+                uu = f1[current_ell]
                 qu = 0.0
             elif mode == 2:  # such as EB
                 qq = 0.0
                 uu = 0.0
-                qu = f1[current_ell - 1] + f2[current_ell - 1]
+                qu = f1[current_ell] + f2[current_ell]
 
             ang1, ang2 = get_rotation_angle(vec1[j], vec2[i])
             c1 = np.cos(ang1)
@@ -754,7 +751,7 @@ def do_derivative_step(
     ncol = 2 * npix_j if spin_j == 2 else npix_j
 
     block = S[col_offset : col_offset + ncol, row_offset : row_offset + nrow]
-    legendre = np.empty(current_ell)
+    legendre = np.empty(current_ell + 1)
 
     if spin_i == 0 and spin_j == 0:
         derivative_step_00(
@@ -782,8 +779,8 @@ def do_derivative_step(
             col_offset : col_offset + ncol, row_offset : row_offset + nrow
         ].T
     elif spin_i == 2 and spin_j == 2:
-        f1 = np.empty(current_ell)
-        f2 = np.empty(current_ell)
+        f1 = np.empty(current_ell + 1)
+        f2 = np.empty(current_ell + 1)
         derivative_step_22(
             block,
             point_vectors_i,
