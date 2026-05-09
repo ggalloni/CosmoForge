@@ -21,62 +21,65 @@ def create_test_fields():
 
 
 def test_cl_to_vec_and_vec_to_cl():
-    """Test power spectrum vectorization and devectorization."""
-    # NOTE: These functions work with lmax setup where the input matrix has
-    # shape (lmax-1, n_spec) but only processes elements for l=2 up to l=lmax-1
-    # So for a matrix of shape (n_rows, n_spec), it only processes
-    # (n_rows-1)*n_spec elements
+    """Round-trip ``cl_to_vec`` / ``vec_to_cl`` over a (n_bins, n_spec) matrix.
 
-    n_rows = 4  # This represents lmax-1=4, so lmax=5
+    The functions are pure reshape utilities (spectrum-major layout); they
+    must process *every* row, not silently drop the last one.
+    """
+    n_rows = 4
     n_spec = 3
 
-    # Create test power spectra matrix
     cl_matrix = np.random.randn(n_rows, n_spec)
 
-    # Based on observed behavior, it processes elements as if lmax = n_rows + 1
-    # and range(2, lmax) = range(2, n_rows+1) which gives us (n_rows-1) elements
-    # per spectrum
-    expected_elements = (n_rows - 1) * n_spec
+    expected_elements = n_rows * n_spec
     vec = np.zeros(expected_elements)
 
-    # Test cl_to_vec
     cl_to_vec(cl_matrix, vec)
 
-    # Verify vector has correct size and values
     assert len(vec) == expected_elements
-    assert not np.allclose(vec, 0)  # Should have non-zero values
+    assert not np.allclose(vec, 0)
 
-    # Test round-trip: vec_to_cl
     cl_reconstructed = np.zeros((n_rows, n_spec))
-    vec_partial = vec  # Only use the portion that was actually filled
-    vec_to_cl(vec_partial, cl_reconstructed)
+    vec_to_cl(vec, cl_reconstructed)
 
-    # Only compare the part that was actually processed (first n_rows-1 rows)
-    np.testing.assert_allclose(
-        cl_reconstructed[: n_rows - 1, :], cl_matrix[: n_rows - 1, :], rtol=1e-15
-    )
+    np.testing.assert_allclose(cl_reconstructed, cl_matrix, rtol=1e-15)
 
 
 def test_cl_vec_ordering():
-    """Test vectorization ordering (all l for spec 0, then spec 1, etc.)."""
-    # Create test matrix where we know the actual behavior
-    # Matrix shape (3, 2) -> lmax=4, processes l=2,3 (first 2 rows)
+    """Spectrum-major ordering: all bins for spec 0, then all bins for spec 1."""
     cl_matrix = np.array(
         [
-            [1.0, 10.0],  # Row 0 (l=2): spec0=1, spec1=10  <- will be processed
-            [2.0, 20.0],  # Row 1 (l=3): spec0=2, spec1=20  <- will be processed
-            [3.0, 30.0],  # Row 2 (l=4): spec0=3, spec1=30  <- will NOT be processed
+            [1.0, 10.0],
+            [2.0, 20.0],
+            [3.0, 30.0],
         ]
     )
 
-    # Only first 2 rows will be processed, so 2*2=4 elements
-    vec = np.zeros(4)
+    vec = np.zeros(6)
     cl_to_vec(cl_matrix, vec)
 
-    # Check ordering: all multipoles for spec 0, then all for spec 1
-    # Based on observed behavior: [1.0, 2.0, 10.0, 20.0]
-    expected_vec = np.array([1.0, 2.0, 10.0, 20.0])
+    expected_vec = np.array([1.0, 2.0, 3.0, 10.0, 20.0, 30.0])
     np.testing.assert_allclose(vec, expected_vec)
+
+
+def test_cl_to_vec_preserves_last_row():
+    """Regression for the silently-dropped last row.
+
+    Pre-fix code did ``lmax = cl.shape[0] + 1`` and ``range(2, lmax)``,
+    which iterated only ``n_rows - 1`` times per spectrum. The last row
+    of a (n_rows, n_spec) matrix was therefore never written to ``vec``,
+    and on the inverse path ``vec_to_cl`` left the last row of ``cl`` at
+    zero. This regression bit ``Spectra._write_*`` and ``Spectra.run``,
+    which output files missing the last bin of every spectrum.
+    """
+    cl_matrix = np.array([[1.0], [2.0], [3.0], [99.0]])  # last row is the bait
+    vec = np.zeros(4)
+    cl_to_vec(cl_matrix, vec)
+    assert vec[-1] == 99.0, "last bin of last spectrum must be written"
+
+    cl_reconstructed = np.zeros((4, 1))
+    vec_to_cl(vec, cl_reconstructed)
+    assert cl_reconstructed[-1, 0] == 99.0, "last bin must round-trip back"
 
 
 def test_spectra_manager_initialization():
@@ -386,7 +389,7 @@ def test_beam_manager_shape_validation():
         # Check that result has expected shape - this exercises the validation
         assert isinstance(result, dict)
         for beam_array in result.values():
-            # Should be 3D array with shape (3, lmax-1) which gets split
+            # ℓ-indexed beam: length lmax + 1 (entries for ℓ = 0..lmax).
             assert beam_array.shape[0] == lmax + 1
 
     except Exception:

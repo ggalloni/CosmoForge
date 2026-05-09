@@ -53,37 +53,30 @@ if TYPE_CHECKING:
 @njit(cache=True)
 def cl_to_vec(cl, vec):
     """
-    Convert a per-bin (or inference-range per-multipole) spectra matrix into
-    a flat vector, ordered spectrum-major.
+    Reshape a (n_bins, n_spec) matrix into a flat spectrum-major vector.
 
     Parameters
     ----------
     cl : numpy.ndarray, shape (n_bins, n_spec)
-        Input matrix indexed by bin (or by inference multipole when
-        delta_ell=1, in which case row ``k`` corresponds to ℓ = k + lmin
-        where lmin is the inference floor — see ``params.lmin``).
-        This is a Fisher-row representation, NOT an ℓ-indexed cl array.
+        Input matrix. Caller owns the bin-axis semantics; this function
+        does not interpret the rows as multipoles or impose a low-ℓ floor.
     vec : numpy.ndarray, shape (n_bins * n_spec,)
-        Output vector to be filled. Must be pre-allocated.
-
-    Notes
-    -----
-    JIT-compiled. Caller is responsible for the bin ↔ ℓ mapping; this
-    function just relayouts the matrix.
+        Output vector. Must be pre-allocated. Layout is spectrum-major:
+        ``vec[ispec * n_bins + k] = cl[k, ispec]``.
 
     Examples
     --------
     >>> import numpy as np
-    >>> cl = np.random.random((10, 3))  # 10 bins, 3 spectra
+    >>> cl = np.random.random((10, 3))
     >>> vec = np.zeros(30)
     >>> cl_to_vec(cl, vec)
     """
-    lmax = cl.shape[0] + 1
+    n_bins = cl.shape[0]
     n_spec = cl.shape[1]
     counter = 0
     for ispec in range(n_spec):
-        for il in range(2, lmax):
-            vec[counter] = cl[il - 2, ispec]
+        for k in range(n_bins):
+            vec[counter] = cl[k, ispec]
             counter += 1
 
 
@@ -91,18 +84,14 @@ def cl_to_vec(cl, vec):
 def vec_to_cl(vec, cl):
     """
     Inverse of :func:`cl_to_vec`: scatter a flat spectrum-major vector into
-    a per-bin (or inference-range per-multipole) matrix.
+    a (n_bins, n_spec) matrix.
 
     Parameters
     ----------
     vec : numpy.ndarray, shape (n_bins * n_spec,)
-        Input flat vector (Fisher-row ordering, spectrum-major).
+        Input vector with spectrum-major layout.
     cl : numpy.ndarray, shape (n_bins, n_spec)
-        Output matrix to be filled. Must be pre-allocated.
-
-    Notes
-    -----
-    JIT-compiled. Bin ↔ ℓ mapping is the caller's responsibility.
+        Output matrix. Must be pre-allocated.
 
     Examples
     --------
@@ -111,12 +100,12 @@ def vec_to_cl(vec, cl):
     >>> cl = np.zeros((10, 3))
     >>> vec_to_cl(vec, cl)
     """
-    lmax = cl.shape[0] + 1
+    n_bins = cl.shape[0]
     n_spec = cl.shape[1]
     counter = 0
     for ispec in range(n_spec):
-        for il in range(2, lmax):
-            cl[il - 2, ispec] = vec[counter]
+        for k in range(n_bins):
+            cl[k, ispec] = vec[counter]
             counter += 1
 
 

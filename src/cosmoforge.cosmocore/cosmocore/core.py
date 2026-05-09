@@ -45,6 +45,44 @@ from .pixel import compute_pointings
 from .settings import InputParams
 
 
+def _build_fixed_spectra(
+    fiducial_spectrum: dict[str, np.ndarray],
+    spectra_map: dict[tuple[int, int, int], str],
+    lmin_signal: list[int],
+    lmin_b: int,
+    lmax_b: int,
+    basis_lmax: int,
+) -> dict[str, np.ndarray]:
+    """Filter a fiducial spectrum into the ``S_fixed`` low + high bands.
+
+    For each spectrum label, the low band is
+    ``[max(lmin_signal[i], lmin_signal[j]), lmin_b)`` and the high band is
+    ``(lmax_b, basis_lmax]``. The per-pair floor guards against an
+    unphysical fiducial entry below a component's spin floor leaking into
+    ``S_fixed`` when ``lmin_signal`` is heterogeneous (ADR 0009).
+    """
+    label_to_pair = {label: (i, j) for (i, j, _), label in spectra_map.items()}
+    fallback_floor = min(lmin_signal) if lmin_signal else 0
+    fixed_spectra: dict[str, np.ndarray] = {}
+    for label, cl_array in fiducial_spectrum.items():
+        cl_fixed = np.zeros_like(cl_array)
+        n = len(cl_array)
+        pair = label_to_pair.get(label)
+        if pair is not None:
+            i, j = pair
+            low_floor = max(lmin_signal[i], lmin_signal[j])
+        else:
+            low_floor = fallback_floor
+        for ell in range(low_floor, lmin_b):
+            if ell < n:
+                cl_fixed[ell] = cl_array[ell]
+        for ell in range(lmax_b + 1, basis_lmax + 1):
+            if ell < n:
+                cl_fixed[ell] = cl_array[ell]
+        fixed_spectra[label] = cl_fixed
+    return fixed_spectra
+
+
 class Core(ABC):
     """
     Abstract base class for cosmological analysis tools.
@@ -608,29 +646,20 @@ class Core(ABC):
                         lmax=basis_lmax,
                     )
 
-                    # Populate fiducial outside [lmin, lmax]; zero inside.
-                    # ADR 0009 §"S_fixed accumulates both bands": for each
-                    # spectrum key the low band is [lmin_signal_min, lmin)
-                    # and the high band is (lmax, lmax_signal]. The user's
-                    # fiducial file is responsible for being zero where it
-                    # shouldn't carry power (e.g. cl_EE[0]=cl_EE[1]=0 by
-                    # representation theory) — the signal kernels in
-                    # cosmocore.pixel sum cl[ell]·legendre[ell] over all
-                    # ell without per-component-floor filtering, so a
-                    # non-zero unphysical entry in the fiducial would land
-                    # in S_fixed unchanged. Heterogeneous lmin_signal[i]
-                    # support is deferred to PR3.
-                    fixed_spectra = {}
-                    for key, cl_array in fiducial_spectrum.items():
-                        cl_fixed = np.zeros_like(cl_array)
-                        n = len(cl_array)
-                        for ell in range(lmin_signal_min, lmin_b):
-                            if ell < n:
-                                cl_fixed[ell] = cl_array[ell]
-                        for ell in range(lmax_b + 1, basis_lmax + 1):
-                            if ell < n:
-                                cl_fixed[ell] = cl_array[ell]
-                        fixed_spectra[key] = cl_fixed
+                    # ADR 0009 §"S_fixed accumulates both bands": the low
+                    # band is [max(lmin_signal[i], lmin_signal[j]), lmin)
+                    # per pair, the high band is (lmax, lmax_signal]. The
+                    # per-pair low-band floor protects against an
+                    # unphysical fiducial entry (e.g. cl_EE[1]) leaking into
+                    # S_fixed when lmin_signal is heterogeneous.
+                    fixed_spectra = _build_fixed_spectra(
+                        fiducial_spectrum,
+                        self.collection.spectra_manager._spectra_map,
+                        list(self.params.lmin_signal),
+                        lmin_b,
+                        lmax_b,
+                        basis_lmax,
+                    )
 
                     # Save original (already beam-smoothed) spectra; restore
                     # under finally so a raise during S_fixed assembly does
