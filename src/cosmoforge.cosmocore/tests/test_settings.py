@@ -233,8 +233,10 @@ class TestNormalizeSmoothingType:
             ("gaussian", "gaussian"),
             ("GAUSSIAN", "gaussian"),
             ("Gaussian", "gaussian"),
-            ("cosine", "cosine"),
-            ("COSINE", "cosine"),
+            ("cosine_legacy", "cosine_legacy"),
+            ("COSINE_LEGACY", "cosine_legacy"),
+            ("cosine_npipe", "cosine_npipe"),
+            ("COSINE_NPIPE", "cosine_npipe"),
             ("file", "file"),
             ("FILE", "file"),
         ],
@@ -243,15 +245,23 @@ class TestNormalizeSmoothingType:
         assert InputParams._normalize_smoothing_type(input_val) == expected
 
     def test_string_with_whitespace(self):
-        assert InputParams._normalize_smoothing_type(" cosine ") == "cosine"
+        assert InputParams._normalize_smoothing_type(" cosine_legacy ") == "cosine_legacy"
 
     def test_string_invalid_raises(self):
         with pytest.raises(ValueError, match="Unknown smoothing_type"):
             InputParams._normalize_smoothing_type("hamming")
 
+    def test_bare_cosine_deprecated_aliases_legacy(self):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            assert InputParams._normalize_smoothing_type("cosine") == "cosine_legacy"
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "deprecated" in str(w[0].message).lower()
+
     @pytest.mark.parametrize(
         "int_val,expected",
-        [(0, "none"), (1, "gaussian"), (2, "cosine"), (3, "file")],
+        [(0, "none"), (1, "gaussian"), (2, "cosine_legacy"), (3, "file")],
     )
     def test_legacy_int_codes(self, int_val, expected):
         with warnings.catch_warnings():

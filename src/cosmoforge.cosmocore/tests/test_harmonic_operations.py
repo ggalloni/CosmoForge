@@ -2,6 +2,7 @@
 
 import healpy as hp
 import numpy as np
+import pytest
 
 from cosmocore import BeamManager, SpectraManager, cl_to_vec, create_field, vec_to_cl
 
@@ -324,7 +325,11 @@ def test_beam_manager_coswin_beam():
     # Test cosine window beam
     try:
         beam_mgr.compute_beams(
-            lmax=lmax, nside=nside, smoothtype="cosine", fwhmarcmin=5.0, beam_file=""
+            lmax=lmax,
+            nside=nside,
+            smoothtype="cosine_legacy",
+            fwhmarcmin=5.0,
+            beam_file="",
         )
 
         # If successful, check that beams were computed
@@ -398,18 +403,72 @@ def test_beam_manager_shape_validation():
         pass
 
 
-def test_coswinbeam_function():
-    """Test the coswinbeam function directly (covers lines 577-578)."""
+@pytest.mark.parametrize(
+    "nside,ell1",
+    [(4, 4), (4, 1), (16, 16), (16, 1), (32, 32), (32, 1)],
+)
+def test_coswinbeam_kernel_properties(nside, ell1):
+    """Mathematical properties of the cosine kernel at both convention choices."""
     from cosmocore.harmonic import coswinbeam
 
-    nside = 4
-    beam = coswinbeam(nside)
+    ell2 = 3 * nside
+    beam = coswinbeam(nside, ell1=ell1, ell2=ell2)
 
-    # Check basic properties
-    assert len(beam) == 4 * nside + 1  # Expected length
-    assert np.all(beam >= 0)  # Should be non-negative
-    assert np.all(beam <= 1)  # Should be normalized
+    assert len(beam) == 4 * nside + 1
+    assert np.all(beam >= 0.0)
+    assert np.all(beam <= 1.0)
+    assert np.allclose(beam[: ell1 + 1], 1.0)
+    assert beam[ell2] == pytest.approx(0.0, abs=1e-12)
+    assert np.allclose(beam[ell2 + 1 :], 0.0)
+    diffs = np.diff(beam[ell1 : ell2 + 1])
+    assert np.all(diffs <= 1e-12)
+    ells = np.arange(ell1, ell2 + 1)
+    mirror = ell1 + ell2 - ells
+    assert np.allclose(beam[ells] + beam[mirror], 1.0, atol=1e-12)
 
-    # Check that it has the expected structure (flat + cosine rolloff)
-    assert beam[0] == 1.0  # Should start at 1 for l=0
-    assert beam[1] == 1.0  # Should be 1 for l=1
+
+def test_coswinbeam_default_matches_legacy():
+    from cosmocore.harmonic import coswinbeam
+
+    nside = 8
+    assert np.array_equal(
+        coswinbeam(nside),
+        coswinbeam(nside, ell1=nside, ell2=3 * nside),
+    )
+
+
+def test_coswinbeam_npipe_diverges_from_legacy_at_low_ell():
+    from cosmocore.harmonic import coswinbeam
+
+    nside = 16
+    legacy = coswinbeam(nside, ell1=nside, ell2=3 * nside)
+    npipe = coswinbeam(nside, ell1=1, ell2=3 * nside)
+    assert legacy[2] == 1.0
+    assert npipe[2] < 1.0
+    assert legacy[nside] == 1.0
+    assert npipe[nside] < 1.0
+
+
+@pytest.mark.parametrize(
+    "smoothtype,expected_ell1",
+    [("cosine_legacy", 16), ("cosine_npipe", 1)],
+)
+def test_compute_beams_dispatches_cosine_variants(smoothtype, expected_ell1):
+    """BeamManager dispatch picks the right ell1 for each named convention."""
+    from cosmocore.harmonic import coswinbeam
+
+    nside = 16
+    lmax = 4 * nside
+    fields = create_test_fields()
+    bm = BeamManager(fields)
+    out = bm.compute_beams(
+        lmax=lmax,
+        nside=nside,
+        smoothtype=smoothtype,
+        fwhmarcmin=0.0,
+        beam_file="",
+    )
+    expected = coswinbeam(nside, ell1=expected_ell1, ell2=3 * nside)[: lmax + 1]
+    assert np.array_equal(out["T"], expected)
+    assert np.array_equal(out["E"], expected)
+    assert np.array_equal(out["B"], expected)
