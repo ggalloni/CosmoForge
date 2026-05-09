@@ -109,49 +109,47 @@ def vec_to_cl(vec, cl):
             counter += 1
 
 
-def coswinbeam(nside):
+def coswinbeam(nside, ell1=None, ell2=None):
     """
-    Generate a cosine window beam function.
+    Generate a cosine apodizing window beam function.
 
-    This function creates a beam window function with a flat top up to nside
-    multipoles, followed by a cosine roll-off between nside and 3*nside, and
-    zero beyond 3*nside. This type of beam is commonly used to simulate
-    realistic instrumental response in cosmological surveys.
+    Implements the raised-cosine kernel of Akrami+ 2020 (NPIPE, Eq. 15) and
+    Aghanim+ 2019 / Benabed+ 2009 (Planck Legacy, Eq. 4):
+
+        b(ℓ) = 1                                           for ℓ ≤ ℓ₁
+        b(ℓ) = ½ [1 + cos(π (ℓ − ℓ₁) / (ℓ₂ − ℓ₁))]         for ℓ₁ < ℓ ≤ ℓ₂
+        b(ℓ) = 0                                           for ℓ > ℓ₂
+
+    Two named conventions are exposed via ``BeamManager``:
+    Legacy uses ``ell1 = nside`` (Benabed+ 2009; Aghanim+ 2019),
+    NPIPE uses ``ell1 = 1`` (Akrami+ 2020 §4.2; lower threshold reduced
+    from N_side to suppress ringing in the 857-GHz maps).
+    Both use ``ell2 = 3 * nside``.
 
     Parameters
     ----------
     nside : int
-        HEALPix nside parameter that determines the beam characteristics.
-        The flat-top region extends to ℓ = nside, and the cosine roll-off
-        extends from ℓ = nside to ℓ = 3*nside.
+        HEALPix nside parameter; sets the returned array length to ``4*nside+1``.
+    ell1 : int, optional
+        Lower transition multipole. Defaults to ``nside`` (Legacy convention).
+    ell2 : int, optional
+        Upper transition multipole. Defaults to ``3 * nside``.
 
     Returns
     -------
     numpy.ndarray, shape (4*nside + 1,)
-        Beam window function B(ℓ) for multipoles ℓ = 0 to ℓ = 4*nside.
-
-    Notes
-    -----
-    The beam function is defined as:
-        - B(ℓ) = 1.0 for ℓ ≤ nside
-        - B(ℓ) = 0.5 * (1 + cos((ℓ - nside) * π / (2*nside))) for nside < ℓ ≤ 3*nside
-        - B(ℓ) = 0.0 for ℓ > 3*nside
-
-    Examples
-    --------
-    >>> beam = coswinbeam(512)
-    >>> print(beam.shape)  # (2049,)
-    >>> print(beam[0:513].min(), beam[0:513].max())  # (1.0, 1.0)
+        Beam window function b(ℓ) for ℓ = 0 to ℓ = 4*nside.
     """
+    if ell1 is None:
+        ell1 = nside
+    if ell2 is None:
+        ell2 = 3 * nside
+
     L = 4 * nside + 1
     beam = np.zeros(L, dtype=np.float64)
-    # flat top
-    beam[: nside + 1] = 1.0
-    # cosine roll-off
-    ell = np.arange(nside + 1, 3 * nside + 1)
-    beam[nside + 1 : 3 * nside + 1] = 0.5 * (
-        1.0 + np.cos((ell - nside) * np.pi / (2.0 * nside))
-    )
+    beam[: ell1 + 1] = 1.0
+    ell = np.arange(ell1 + 1, ell2 + 1)
+    beam[ell1 + 1 : ell2 + 1] = 0.5 * (1.0 + np.cos((ell - ell1) * np.pi / (ell2 - ell1)))
     return beam
 
 
@@ -513,10 +511,13 @@ class BeamManager:
     Notes
     -----
     Supported beam types:
-        - smoothtype=0: No smoothing (beam = 1)
-        - smoothtype=1: Gaussian beam with specified FWHM
-        - smoothtype=2: Cosine window beam based on nside
-        - smoothtype=3: Custom beam from file
+        - "none": No smoothing (beam = 1)
+        - "gaussian": Gaussian beam with specified FWHM
+        - "cosine_legacy": Benabed+ 2009 / Aghanim+ 2019 cosine kernel
+          (flat to ℓ=nside, cosine roll-off to ℓ=3·nside)
+        - "cosine_npipe": Akrami+ 2020 NPIPE cosine kernel
+          (flat to ℓ=1, cosine roll-off to ℓ=3·nside)
+        - "file": Custom beam from file
     """
 
     def __init__(self, fields: list[BaseField]):
@@ -536,8 +537,8 @@ class BeamManager:
         nside : int
             HEALPix nside parameter
         smoothtype : str
-            Type of smoothing: ``"none"``, ``"gaussian"``, ``"cosine"``,
-            or ``"file"``.
+            Type of smoothing: ``"none"``, ``"gaussian"``, ``"cosine_legacy"``,
+            ``"cosine_npipe"``, or ``"file"``.
         fwhmarcmin : float
             FWHM in arcminutes for Gaussian beam
         beam_file : str
@@ -562,8 +563,11 @@ class BeamManager:
                 ],
                 dtype=np.float64,
             ).T
-        elif smoothtype == "cosine":
-            b = coswinbeam(nside)[: lmax + 1]
+        elif smoothtype == "cosine_legacy":
+            b = coswinbeam(nside, ell1=nside, ell2=3 * nside)[: lmax + 1]
+            beam = np.column_stack([b] * 3).T
+        elif smoothtype == "cosine_npipe":
+            b = coswinbeam(nside, ell1=1, ell2=3 * nside)[: lmax + 1]
             beam = np.column_stack([b] * 3).T
         elif smoothtype == "file":
             # Beam file must contain at least 3 columns: T, E, B window functions.
@@ -605,7 +609,8 @@ class BeamManager:
             Configuration object containing beam parameters including:
             - lmax: Maximum multipole
             - nside: HEALPix resolution parameter
-            - smoothing_type: Type of beam ("none", "gaussian", "cosine", "file")
+            - smoothing_type: Type of beam ("none", "gaussian",
+              "cosine_legacy", "cosine_npipe", "file")
             - fwhmarcmin: FWHM in arcminutes (for Gaussian beams)
             - beam_file: Path to beam file (for custom beams)
         lmax : int, optional

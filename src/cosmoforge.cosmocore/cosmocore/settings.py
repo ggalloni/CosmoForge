@@ -204,7 +204,7 @@ class InputParams:
         # the full-sky extraction step performed by read_covmat().
         self.load_reduced = False
         self.output_geometry_file = "outputs/geometry.dat"
-        self.smoothing_type = "cosine"
+        self.smoothing_type = "cosine_legacy"
         self.apply_pixwin = True
         self.smooth_pol = True
         self.fwhmarcmin = 440.0
@@ -307,31 +307,44 @@ class InputParams:
         """Normalize smoothing_type to a string.
 
         Accepts strings (case-insensitive) or legacy integer codes
-        (0=none, 1=gaussian, 2=cosine, 3=file).
+        (0=none, 1=gaussian, 2=cosine_legacy, 3=file). The bare string
+        ``"cosine"`` is a deprecated alias for ``"cosine_legacy"``.
         """
         if isinstance(value, str):
             canonical = {
                 "none": "none",
                 "gaussian": "gaussian",
-                "cosine": "cosine",
+                "cosine_legacy": "cosine_legacy",
+                "cosine_npipe": "cosine_npipe",
                 "file": "file",
             }
             key = value.strip().lower()
+            if key == "cosine":
+                import warnings
+
+                warnings.warn(
+                    "smoothing_type='cosine' is deprecated; "
+                    "use 'cosine_legacy' (Benabed+ 2009 / Aghanim+ 2019) "
+                    "or 'cosine_npipe' (Akrami+ 2020).",
+                    DeprecationWarning,
+                    stacklevel=4,
+                )
+                return "cosine_legacy"
             if key not in canonical:
                 raise ValueError(
-                    f"Unknown smoothing_type '{value}'. "
-                    "Must be 'none', 'gaussian', 'cosine', or 'file'."
+                    f"Unknown smoothing_type '{value}'. Must be one of "
+                    "'none', 'gaussian', 'cosine_legacy', 'cosine_npipe', 'file'."
                 )
             return canonical[key]
         if isinstance(value, (int, float)):
             import warnings
 
-            int_to_str = {0: "none", 1: "gaussian", 2: "cosine", 3: "file"}
+            int_to_str = {0: "none", 1: "gaussian", 2: "cosine_legacy", 3: "file"}
             iv = int(value)
             if iv not in int_to_str:
                 raise ValueError(
                     f"Unknown smoothing_type={iv}. Integer codes: "
-                    "0=none, 1=gaussian, 2=cosine, 3=file."
+                    "0=none, 1=gaussian, 2=cosine_legacy, 3=file."
                 )
             warnings.warn(
                 f"Integer smoothing_type={iv} is deprecated. "
