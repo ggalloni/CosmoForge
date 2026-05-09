@@ -416,3 +416,100 @@ def test_compute_00_contribution_default_skips_monopole():
         expected += cl[ell] * (2 * ell + 1) / (4 * np.pi) * P_curr
 
     np.testing.assert_allclose(S_full, expected, rtol=1e-12)
+
+
+# =============================================================================
+# ADR 0009 — S_fixed low-band per-pair floor
+# =============================================================================
+
+
+def test_build_fixed_spectra_low_band_uses_per_pair_floor():
+    """The low band is ``[max(lmin_signal[i], lmin_signal[j]), lmin)`` per pair.
+
+    With ``lmin_signal=[1, 2]`` (T at ℓ=1, QU at ℓ=2) and ``lmin=2``, the
+    low-band loop iterates ``range(1, 2) = [1]``. Without per-pair filtering
+    an unphysical ``cl_EE[1] != 0`` from a user-provided fiducial would land
+    in ``S_fixed`` via the (QU, QU) entry, even though representation theory
+    pins ``cl_EE[1] = 0``. The fix uses the per-pair floor:
+
+        TT pair = max(1, 1) = 1 → ell=1 absorbed (legitimate T dipole template).
+        EE pair = max(2, 2) = 2 → ell=1 dropped (below spin-2 floor).
+        TE pair = max(1, 2) = 2 → ell=1 dropped.
+    """
+    from cosmocore.core import _build_fixed_spectra
+
+    spectra_map = {(0, 0, 0): "TT", (1, 1, 0): "EE", (0, 1, 0): "TE"}
+    lmin_signal = [1, 2]
+    lmin_b, lmax_b, basis_lmax = 2, 4, 4
+
+    fiducial = {
+        "TT": np.array([0.0, 5.0, 10.0, 20.0, 30.0]),
+        "EE": np.array([0.0, 99.0, 7.0, 8.0, 9.0]),  # cl_EE[1]=99 — unphysical
+        "TE": np.array([0.0, 13.0, 1.0, 2.0, 3.0]),  # cl_TE[1]=13 — unphysical
+    }
+
+    fixed = _build_fixed_spectra(
+        fiducial, spectra_map, lmin_signal, lmin_b, lmax_b, basis_lmax
+    )
+
+    assert fixed["TT"][1] == 5.0, "T dipole template must be absorbed"
+    assert fixed["EE"][1] == 0.0, "unphysical cl_EE[1] must NOT be absorbed"
+    assert fixed["TE"][1] == 0.0, "cross-pair floor must dominate"
+    for label in ("TT", "EE", "TE"):
+        for ell in range(lmin_b, lmax_b + 1):
+            assert fixed[label][ell] == 0.0, f"{label}[{ell}] in inference window"
+
+
+def test_build_fixed_spectra_homogeneous_matches_legacy():
+    """When ``lmin_signal`` is uniform, per-pair filtering reduces to the
+    pre-fix scalar loop. This guards against a regression at the default
+    ``lmin_signal=2`` configuration that every existing analysis uses.
+    """
+    from cosmocore.core import _build_fixed_spectra
+
+    spectra_map = {(0, 0, 0): "TT", (1, 1, 0): "EE", (0, 1, 0): "TE"}
+    lmin_signal = [2, 2]
+    lmin_b, lmax_b, basis_lmax = 4, 6, 8
+
+    rng = np.random.default_rng(0)
+    fiducial = {
+        label: rng.uniform(0.1, 1.0, basis_lmax + 1) for label in spectra_map.values()
+    }
+    for arr in fiducial.values():
+        arr[:2] = 0.0
+
+    fixed = _build_fixed_spectra(
+        fiducial, spectra_map, lmin_signal, lmin_b, lmax_b, basis_lmax
+    )
+
+    for label in fiducial:
+        for ell in range(2, lmin_b):
+            assert fixed[label][ell] == fiducial[label][ell]
+        for ell in range(lmin_b, lmax_b + 1):
+            assert fixed[label][ell] == 0.0
+        for ell in range(lmax_b + 1, basis_lmax + 1):
+            assert fixed[label][ell] == fiducial[label][ell]
+
+
+def test_build_fixed_spectra_high_band_unchanged():
+    """High-band ``(lmax, lmax_signal]`` filtering is independent of
+    ``lmin_signal`` and must keep the full fiducial range.
+    """
+    from cosmocore.core import _build_fixed_spectra
+
+    spectra_map = {(0, 0, 0): "TT", (1, 1, 0): "EE"}
+    lmin_signal = [1, 2]
+    lmin_b, lmax_b, basis_lmax = 2, 3, 6
+
+    fiducial = {
+        "TT": np.arange(basis_lmax + 1, dtype=np.float64),
+        "EE": np.arange(basis_lmax + 1, dtype=np.float64) * 10,
+    }
+
+    fixed = _build_fixed_spectra(
+        fiducial, spectra_map, lmin_signal, lmin_b, lmax_b, basis_lmax
+    )
+
+    for ell in range(lmax_b + 1, basis_lmax + 1):
+        assert fixed["TT"][ell] == fiducial["TT"][ell]
+        assert fixed["EE"][ell] == fiducial["EE"][ell]
