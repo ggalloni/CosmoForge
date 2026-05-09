@@ -290,3 +290,11 @@ class TestNormalizeSmoothingType:
         params = InputParams()
         params.update({"smoothing_type": "GAUSSIAN"})
         assert params.smoothing_type == "gaussian"
+
+    def test_update_deprecates_bare_cosine_to_legacy(self):
+        params = InputParams()
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            params.update({"smoothing_type": "cosine"})
+            assert params.smoothing_type == "cosine_legacy"
+            assert any(issubclass(rec.category, DeprecationWarning) for rec in w)
