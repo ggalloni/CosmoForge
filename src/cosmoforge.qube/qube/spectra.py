@@ -61,7 +61,10 @@ from cosmocore import (
     Bins,
     Core,
     MPISharedMemoryMixin,
+    SpectrumKey,
+    SpectrumKind,
     do_derivative_step,
+    kind_to_legacy_mode,
     matrix_inverse_symm,
     matrix_mult,
     matrix_trace,
@@ -645,7 +648,15 @@ class Spectra(Core, MPISharedMemoryMixin):
         comp_i = comp_j = None
         mode = 0
         if spectra_list is not None:
-            comp_i, comp_j, mode = spectra_list[spectrum_idx]
+            entry = spectra_list[spectrum_idx]
+            if isinstance(entry, SpectrumKey):
+                comp_i, comp_j, mode = (
+                    entry.comp_i,
+                    entry.comp_j,
+                    kind_to_legacy_mode(entry.kind),
+                )
+            else:
+                comp_i, comp_j, mode = entry  # legacy 3-tuple, removed in later slices
 
         return self.get_binned_derivative_matrix(
             bin_idx,
@@ -761,7 +772,8 @@ class Spectra(Core, MPISharedMemoryMixin):
         else:
             C_ell = self.collection.spectra_manager.get_cls(0, 0, 0)
             C_ell_dict = None
-            spectra_list = [(0, 0)]
+            spins = tuple(f.spin for f in self.collection.fields)
+            spectra_list = [SpectrumKey(0, 0, SpectrumKind.SS, spins=spins)]
 
         # Compute weighted compressed data for all simulations
         # w = V @ C^{-1} @ d (using SMW formula internally)
