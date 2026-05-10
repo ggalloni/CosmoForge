@@ -145,6 +145,12 @@ def coswinbeam(nside, ell1=None, ell2=None):
     if ell2 is None:
         ell2 = 3 * nside
 
+    if not (0 <= ell1 < ell2 <= 4 * nside):
+        raise ValueError(
+            f"coswinbeam transition multipoles must satisfy "
+            f"0 <= ell1 < ell2 <= 4*nside; got ell1={ell1}, ell2={ell2}, nside={nside}."
+        )
+
     L = 4 * nside + 1
     beam = np.zeros(L, dtype=np.float64)
     beam[: ell1 + 1] = 1.0

@@ -450,6 +450,17 @@ def test_coswinbeam_npipe_diverges_from_legacy_at_low_ell():
 
 
 @pytest.mark.parametrize(
+    "ell1,ell2",
+    [(-1, 32), (16, 16), (32, 16), (0, 65)],
+)
+def test_coswinbeam_rejects_invalid_transitions(ell1, ell2):
+    from cosmocore.harmonic import coswinbeam
+
+    with pytest.raises(ValueError, match="transition multipoles"):
+        coswinbeam(16, ell1=ell1, ell2=ell2)
+
+
+@pytest.mark.parametrize(
     "smoothtype,expected_ell1",
     [("cosine_legacy", 16), ("cosine_npipe", 1)],
 )
