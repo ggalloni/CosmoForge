@@ -89,3 +89,28 @@ class SpectrumKey:
                 f"kind {self.kind.name} requires comp_j to have spin "
                 f"{required_j}; comp_{self.comp_j} has spin {actual_j}"
             )
+
+
+def kind_to_legacy_mode(kind: SpectrumKind) -> int:
+    """Bridge for migration: map SpectrumKind to the legacy int `mode`.
+
+    Removed once the derivative builder accepts SpectrumKey natively
+    (Slice 5). CG is intentionally unsupported until DIRECTIONAL mode lands —
+    today's symmetric code has no slot for it.
+    """
+    spin_i, spin_j = kind.required_spins
+    if (spin_i, spin_j) == (0, 0):
+        return 0
+    if (spin_i, spin_j) == (2, 2):
+        try:
+            return {SpectrumKind.GG: 0, SpectrumKind.CC: 1, SpectrumKind.GC: 2}[kind]
+        except KeyError:
+            raise NotImplementedError(
+                f"kind {kind.name} not supported in legacy int-mode encoding "
+                "(requires DIRECTIONAL mode; see Slice 5)"
+            )
+    if (spin_i, spin_j) == (0, 2):
+        return {SpectrumKind.SG: 0, SpectrumKind.SC: 1}[kind]
+    if (spin_i, spin_j) == (2, 0):
+        return {SpectrumKind.GS: 0, SpectrumKind.CS: 1}[kind]
+    raise ValueError(kind)

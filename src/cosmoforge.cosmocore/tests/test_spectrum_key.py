@@ -57,3 +57,29 @@ class TestSpectrumKey:
         b = SpectrumKey(0, 1, SpectrumKind.SG, spins=spins)
         assert a == b and hash(a) == hash(b)
         assert {a: "v"}[b] == "v"
+
+
+from cosmocore.spectrum_key import kind_to_legacy_mode
+
+
+@pytest.mark.parametrize(
+    "kind,expected_mode",
+    [
+        (SpectrumKind.SS, 0),
+        (SpectrumKind.GG, 0),
+        (SpectrumKind.CC, 1),
+        (SpectrumKind.GC, 2),
+        (SpectrumKind.SG, 0),
+        (SpectrumKind.SC, 1),
+        (SpectrumKind.GS, 0),
+        (SpectrumKind.CS, 1),
+    ],
+)
+def test_kind_to_legacy_mode(kind, expected_mode):
+    assert kind_to_legacy_mode(kind) == expected_mode
+
+
+def test_kind_to_legacy_mode_rejects_cg_until_directional_landed():
+    # CG has no slot in today's int-mode encoding; raise until Slice 5 lands.
+    with pytest.raises(NotImplementedError):
+        kind_to_legacy_mode(SpectrumKind.CG)
