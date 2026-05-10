@@ -759,6 +759,18 @@ class ComputationBasis(ABC):
             ell, comp_i, comp_j, mode
         )
 
+    def get_derivative_matrix_keyed(self, ell, key):
+        """Build the derivative matrix dC/dC_ell for a SpectrumKey at multipole ell.
+
+        The keyed API is the new public surface. The int-typed
+        _build_derivative_matrix_with_spins remains as the inner implementation.
+        """
+        from ..spectrum_key import kind_to_legacy_mode
+
+        return self._build_derivative_matrix_with_spins(
+            ell, key.comp_i, key.comp_j, kind_to_legacy_mode(key.kind)
+        )
+
     def _precompute_derivative_diagonals(self) -> None:
         """Precompute derivative diagonals. Delegates to HarmonicBasis."""
         self._harmonic_basis._precompute_derivative_diagonals()
