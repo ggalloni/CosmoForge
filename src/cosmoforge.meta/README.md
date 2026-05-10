@@ -5,7 +5,7 @@
 [![codecov](https://codecov.io/gh/ggalloni/CosmoForge/branch/master/graph/badge.svg?token=UOm3LdvL7J)](https://codecov.io/gh/ggalloni/CosmoForge)
 [![PyPI](https://img.shields.io/pypi/v/cosmoforge?include_prereleases)](https://pypi.org/project/cosmoforge/)
 [![Code style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/charliermarsh/ruff)
-[![Python](https://img.shields.io/badge/python-3.11%7C3.12%7C3.13-blue.svg)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/pypi/pyversions/cosmoforge)](https://pypi.org/project/cosmoforge/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 <p align="center">

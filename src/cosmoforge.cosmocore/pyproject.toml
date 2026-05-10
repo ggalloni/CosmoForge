@@ -1,12 +1,25 @@
 [project]
 name = "cosmocore"
-version = "1.0.0rc1"
+version = "1.0.0rc2"
 description = "CosmoCore: common algebra for harmonic-pixel handling."
 readme = "README.md"
 authors = [
     { name = "Giacomo Galloni", email = "giacomo.galloni@unife.it" }
 ]
 requires-python = ">=3.11,<3.14"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Topic :: Scientific/Engineering :: Physics",
+]
 dependencies = [
     "healpy>=1.18.1",
     "mpi4py>=4.1.0",

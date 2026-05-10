@@ -1,6 +1,7 @@
 # PICSLike
 
-[![Python](https://img.shields.io/badge/python-3.11%7C3.12%7C3.13-blue.svg)](https://www.python.org/downloads/)
+[![PyPI](https://img.shields.io/pypi/v/picslike?include_prereleases)](https://pypi.org/project/picslike/)
+[![Python](https://img.shields.io/pypi/pyversions/picslike)](https://pypi.org/project/picslike/)
 [![Documentation](https://img.shields.io/badge/docs-picslike-blue.svg)](https://ggalloni.github.io/CosmoForge/api/picslike.html)
 [![Parallelization](https://img.shields.io/badge/MPI-parallel-orange.svg)](https://www.mpi-forum.org/)
 [![Method](https://img.shields.io/badge/method-Pixel--based%20Likelihood-red.svg)](https://en.wikipedia.org/wiki/Likelihood_function)

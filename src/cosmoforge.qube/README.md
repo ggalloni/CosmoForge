@@ -1,6 +1,7 @@
 # QUBE
 
-[![Python](https://img.shields.io/badge/python-3.11%7C3.12%7C3.13-blue.svg)](https://www.python.org/downloads/)
+[![PyPI](https://img.shields.io/pypi/v/qube-qml?include_prereleases)](https://pypi.org/project/qube-qml/)
+[![Python](https://img.shields.io/pypi/pyversions/qube-qml)](https://pypi.org/project/qube-qml/)
 [![Documentation](https://img.shields.io/badge/docs-qube-blue.svg)](https://ggalloni.github.io/CosmoForge/api/qube.html)
 [![Parallelization](https://img.shields.io/badge/MPI-parallel-orange.svg)](https://www.mpi-forum.org/)
 [![QML Method](https://img.shields.io/badge/method-QML-red.svg)](https://en.wikipedia.org/wiki/Maximum_likelihood_estimation)
