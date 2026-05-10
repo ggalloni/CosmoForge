@@ -415,6 +415,40 @@ class SpectraManager:
             spectra_list.append((fi, fj, mode))
         return C_ell_dict, spectra_list
 
+    def build_keyed_inputs(self):
+        """Like build_inputs(), but keyed by SpectrumKey.
+
+        Returns ``(dict[SpectrumKey, ndarray], list[SpectrumKey])``.
+        Delegates to the existing build_inputs() and re-keys. Both methods
+        coexist during migration; build_inputs() is removed in Slice 4.
+        """
+        from cosmocore.spectrum_key import SpectrumKey
+
+        spins = tuple(f.spin for f in self.fields)
+        cl_dict_tuple, _ = self.build_inputs()
+        keyed: dict = {}
+        keys: list = []
+        for (i, j, mode), cls in cl_dict_tuple.items():
+            kind = self._tuple_mode_to_kind(spins[i], spins[j], mode)
+            key = SpectrumKey(i, j, kind, spins=spins)
+            keyed[key] = cls
+            keys.append(key)
+        return keyed, keys
+
+    @staticmethod
+    def _tuple_mode_to_kind(spin_i: int, spin_j: int, mode: int):
+        from cosmocore.spectrum_key import SpectrumKind
+
+        if (spin_i, spin_j) == (0, 0):
+            return SpectrumKind.SS
+        if (spin_i, spin_j) == (2, 2):
+            return [SpectrumKind.GG, SpectrumKind.CC, SpectrumKind.GC][mode]
+        if (spin_i, spin_j) == (0, 2):
+            return [SpectrumKind.SG, SpectrumKind.SC][mode]
+        if (spin_i, spin_j) == (2, 0):
+            return [SpectrumKind.GS, SpectrumKind.CS][mode]
+        raise ValueError(f"unsupported spin pair ({spin_i}, {spin_j})")
+
     def compute_smoothing_factors(
         self, beam_manager: BeamManager, lmax: int | None = None
     ) -> dict[str, np.ndarray]:
