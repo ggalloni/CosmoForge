@@ -107,6 +107,12 @@ from .pixel import (
     do_derivative_step,
 )
 from .settings import InputParams
+from .spectrum_key import (
+    Slot,
+    SpectrumKey,
+    SpectrumKind,
+    kind_to_legacy_mode,
+)
 
 __all__ = [
     # settings
@@ -174,4 +180,9 @@ __all__ = [
     "matrix_slogdet_symm",
     "matrix_trace",
     "spec2idx",
+    # spectrum_key
+    "Slot",
+    "SpectrumKey",
+    "SpectrumKind",
+    "kind_to_legacy_mode",
 ]
