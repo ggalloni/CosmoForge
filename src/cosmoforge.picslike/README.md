@@ -6,8 +6,8 @@
 [![Method](https://img.shields.io/badge/method-Pixel--based%20Likelihood-red.svg)](https://en.wikipedia.org/wiki/Likelihood_function)
 
 <p align="center">
-  <img src="logos/logo_picslike_light.png#gh-light-mode-only" alt="PICSLike logo (light)" style="max-width:40%; height:auto;"/>
-  <img src="logos/logo_picslike_dark.png#gh-dark-mode-only" alt="PICSLike logo (dark)" style="max-width:40%; height:auto;"/>
+  <img src="https://raw.githubusercontent.com/ggalloni/CosmoForge/master/src/cosmoforge.picslike/logos/logo_picslike_light.png#gh-light-mode-only" alt="PICSLike logo (light)" style="max-width:40%; height:auto;"/>
+  <img src="https://raw.githubusercontent.com/ggalloni/CosmoForge/master/src/cosmoforge.picslike/logos/logo_picslike_dark.png#gh-dark-mode-only" alt="PICSLike logo (dark)" style="max-width:40%; height:auto;"/>
 </p>
 
 > **[PICSLike Documentation](https://ggalloni.github.io/CosmoForge/api/picslike.html) | [Main Documentation](https://ggalloni.github.io/CosmoForge/)**

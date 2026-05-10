@@ -6,7 +6,7 @@
 [![QML Method](https://img.shields.io/badge/method-QML-red.svg)](https://en.wikipedia.org/wiki/Maximum_likelihood_estimation)
 
 <p align="center">
-  <img src="logos/QUBE_logo.png" alt="QUBE logo" style="max-width:25%; height:auto;"/>
+  <img src="https://raw.githubusercontent.com/ggalloni/CosmoForge/master/src/cosmoforge.qube/logos/QUBE_logo.png" alt="QUBE logo" style="max-width:25%; height:auto;"/>
 </p>
 
 > **📚 [QUBE Documentation](https://ggalloni.github.io/CosmoForge/api/qube.html) | [Fisher Analysis API](https://ggalloni.github.io/CosmoForge/api/qube/fisher.html) | [Spectra API](https://ggalloni.github.io/CosmoForge/api/qube/spectra.html) | [Main Documentation](https://ggalloni.github.io/CosmoForge/)**

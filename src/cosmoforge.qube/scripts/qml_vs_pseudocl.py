@@ -721,7 +721,7 @@ def make_dl_variance_figure(results, lmax_science, fname):
     family, high -> orange family); marker shape distinguishes QML (circle)
     vs PCL (square) where applicable.
     """
-    fig, (ax_dl, ax_ratio) = plt.subplots(1, 2, figsize=(13, 4.6))
+    fig, (ax_dl, ax_ratio) = plt.subplots(1, 2, figsize=(14.4, 3.6))
 
     case_colors = {
         "low_fsky": ("#1f5fae", "#5fa1d8"),  # QML, PCL shades for low fsky
@@ -855,9 +855,9 @@ def make_correlation_figure(results, fname):
         )
         ax.set_xlim(-0.5, nbin - 0.5)
         ax.set_ylim(-0.5, nbin - 0.5)
-        ax.set_xlabel("Bandpower")
-        ax.set_ylabel("Bandpower")
-        ax.set_title(r["label"], pad=10)
+        ax.set_xlabel("Bandpower", fontsize=22)
+        ax.set_ylabel("Bandpower", fontsize=22)
+        ax.tick_params(axis="both", which="major", labelsize=18)
 
         ax.text(
             0.97,
@@ -866,7 +866,7 @@ def make_correlation_figure(results, fname):
             transform=ax.transAxes,
             ha="right",
             va="bottom",
-            fontsize=13,
+            fontsize=18,
             fontweight="bold",
             color="black",
             bbox=dict(
@@ -883,7 +883,7 @@ def make_correlation_figure(results, fname):
             transform=ax.transAxes,
             ha="left",
             va="top",
-            fontsize=13,
+            fontsize=18,
             fontweight="bold",
             color="black",
             bbox=dict(
@@ -894,7 +894,9 @@ def make_correlation_figure(results, fname):
             ),
         )
 
-    fig.colorbar(im, ax=axes, fraction=0.025, pad=0.02, label="Correlation")
+    cbar = fig.colorbar(im, ax=axes, fraction=0.025, pad=0.02, label="Correlation")
+    cbar.ax.tick_params(labelsize=18)
+    cbar.set_label("Correlation", fontsize=22)
     fig.savefig(fname)
     print(f"  Wrote {fname}")
     plt.close(fig)

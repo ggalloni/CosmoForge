@@ -1,6 +1,6 @@
 [project]
 name = "picslike"
-version = "0.1.3"
+version = "0.1.4"
 description = "PICSLike: Pixel-based Inference with Correlated-Skies Likelihood"
 readme = "README.md"
 authors = [
