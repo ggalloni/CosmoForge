@@ -300,6 +300,9 @@ class Fisher(Core, MPISharedMemoryMixin):
         """Build C_ell_dict and spectra_list for multi-spectrum compressed Fisher."""
         return self.collection.spectra_manager.build_inputs()
 
+    def _build_keyed_multi_spectrum_inputs(self):
+        return self.collection.spectra_manager.build_keyed_inputs()
+
     # =========================================================================
     # Main Entry Points
     # =========================================================================
