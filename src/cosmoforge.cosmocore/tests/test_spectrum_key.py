@@ -1,3 +1,5 @@
+import pytest
+
 from cosmocore.spectrum_key import Slot, SpectrumKind
 
 
@@ -22,3 +24,36 @@ class TestSpectrumKind:
         assert SpectrumKind.SG.required_spins == (0, 2)
         assert SpectrumKind.GS.required_spins == (2, 0)
         assert SpectrumKind.GC.required_spins == (2, 2)
+
+
+from cosmocore.spectrum_key import SpectrumKey
+
+
+class TestSpectrumKey:
+    def test_constructs_with_valid_kind_for_spins(self):
+        spins = (0, 2)
+        key = SpectrumKey(comp_i=0, comp_j=1, kind=SpectrumKind.SG, spins=spins)
+        assert key.comp_i == 0 and key.comp_j == 1
+        assert key.kind is SpectrumKind.SG
+
+    def test_rejects_kind_inconsistent_with_comp_i_spin(self):
+        spins = (2, 0)
+        with pytest.raises(ValueError, match="kind SG.*comp_i.*spin 0"):
+            SpectrumKey(0, 1, SpectrumKind.SG, spins=spins)
+
+    def test_rejects_kind_inconsistent_with_comp_j_spin(self):
+        spins = (0, 0)
+        with pytest.raises(ValueError, match="kind SG.*comp_j.*spin 2"):
+            SpectrumKey(0, 1, SpectrumKind.SG, spins=spins)
+
+    def test_is_frozen(self):
+        key = SpectrumKey(0, 0, SpectrumKind.SS, spins=(0,))
+        with pytest.raises(Exception):
+            key.comp_i = 99
+
+    def test_is_hashable_and_equal_by_value(self):
+        spins = (0, 2)
+        a = SpectrumKey(0, 1, SpectrumKind.SG, spins=spins)
+        b = SpectrumKey(0, 1, SpectrumKind.SG, spins=spins)
+        assert a == b and hash(a) == hash(b)
+        assert {a: "v"}[b] == "v"

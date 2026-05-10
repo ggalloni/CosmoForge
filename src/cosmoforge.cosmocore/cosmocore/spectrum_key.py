@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import Enum
 
 
@@ -45,3 +46,46 @@ class SpectrumKind(Enum):
     @property
     def required_spins(self) -> tuple[int, int]:
         return (self.slots[0].spin, self.slots[1].spin)
+
+
+@dataclass(frozen=True, slots=True)
+class SpectrumKey:
+    """Identifier for one cross/auto power spectrum.
+
+    Passive identifier — does not symmetrise, canonicalise, or perform
+    algebra. Constructor validates that `kind`'s required spins match the
+    actual spins at `comp_i` and `comp_j`.
+    """
+
+    comp_i: int
+    comp_j: int
+    kind: SpectrumKind
+
+    def __init__(
+        self,
+        comp_i: int,
+        comp_j: int,
+        kind: SpectrumKind,
+        *,
+        spins: tuple[int, ...] | None = None,
+    ):
+        object.__setattr__(self, "comp_i", comp_i)
+        object.__setattr__(self, "comp_j", comp_j)
+        object.__setattr__(self, "kind", kind)
+        if spins is not None:
+            self._validate(spins)
+
+    def _validate(self, spins: tuple[int, ...]) -> None:
+        required_i, required_j = self.kind.required_spins
+        actual_i = spins[self.comp_i]
+        actual_j = spins[self.comp_j]
+        if actual_i != required_i:
+            raise ValueError(
+                f"kind {self.kind.name} requires comp_i to have spin "
+                f"{required_i}; comp_{self.comp_i} has spin {actual_i}"
+            )
+        if actual_j != required_j:
+            raise ValueError(
+                f"kind {self.kind.name} requires comp_j to have spin "
+                f"{required_j}; comp_{self.comp_j} has spin {actual_j}"
+            )
