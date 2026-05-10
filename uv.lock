@@ -219,7 +219,7 @@ wheels = [
 
 [[package]]
 name = "cosmocore"
-version = "0.1.3"
+version = "1.0.0rc2"
 source = { editable = "src/cosmoforge.cosmocore" }
 dependencies = [
     { name = "healpy" },
@@ -262,7 +262,7 @@ dev = [
 
 [[package]]
 name = "cosmoforge"
-version = "0.1.3"
+version = "1.0.0rc2"
 source = { editable = "src/cosmoforge.meta" }
 dependencies = [
     { name = "cosmocore" },
@@ -867,7 +867,7 @@ wheels = [
 
 [[package]]
 name = "picslike"
-version = "0.1.3"
+version = "1.0.0rc2"
 source = { editable = "src/cosmoforge.picslike" }
 dependencies = [
     { name = "cosmocore" },
@@ -1123,7 +1123,7 @@ wheels = [
 
 [[package]]
 name = "qube-qml"
-version = "0.1.3"
+version = "1.0.0rc2"
 source = { editable = "src/cosmoforge.qube" }
 dependencies = [
     { name = "cosmocore" },
