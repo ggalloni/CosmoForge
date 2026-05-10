@@ -1,7 +1,7 @@
 # CosmoForge
 
-[![Build Status](https://github.com/ggalloni/CosmoForge/workflows/Test%20CosmoForge%20Packages/badge.svg?branch=master)](https://github.com/ggalloni/CosmoForge/actions)
-[![Documentation](https://github.com/ggalloni/CosmoForge/workflows/Build%20and%20Deploy%20Documentation/badge.svg?branch=master)](https://ggalloni.github.io/CosmoForge/)
+[![Build Status](https://github.com/ggalloni/CosmoForge/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/ggalloni/CosmoForge/actions/workflows/test.yml)
+[![Documentation](https://github.com/ggalloni/CosmoForge/actions/workflows/docs.yml/badge.svg?branch=master)](https://ggalloni.github.io/CosmoForge/)
 [![codecov](https://codecov.io/gh/ggalloni/CosmoForge/branch/master/graph/badge.svg?token=UOm3LdvL7J)](https://codecov.io/gh/ggalloni/CosmoForge)
 [![PyPI](https://img.shields.io/pypi/v/cosmoforge.svg)](https://pypi.org/project/cosmoforge/)
 [![Code style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/charliermarsh/ruff)
