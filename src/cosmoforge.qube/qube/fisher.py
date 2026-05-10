@@ -60,8 +60,11 @@ from cosmocore import (
     Core,
     InputParams,
     MPISharedMemoryMixin,
+    SpectrumKey,
+    SpectrumKind,
     compute_signal_matrix,
     do_derivative_step,
+    kind_to_legacy_mode,
     matrix_inverse_symm,
     matrix_mult,
     matrix_trace,
@@ -340,19 +343,30 @@ class Fisher(Core, MPISharedMemoryMixin):
 
         with self._stage("fisher.compute.derivative_cache"):
             # --- Setup: get C_inv or V_Cinv_VT, spectra_list ---
-            spectra_list = None
+            spectra_list = None  # list[SpectrumKey]
             C_ell_dict = None
             if use_basis:
-                C_ell_dict, spectra_list = self._build_multi_spectrum_inputs()
+                C_ell_dict, spectra_list = self._build_keyed_multi_spectrum_inputs()
             elif self.params.do_cross:
                 C_inv1 = self.noise_cov1
                 C_inv2 = self.noise_cov2
             else:
                 C_inv = self.noise_cov1
 
-            # For pixel-space single-spectrum, build a dummy spectra_list
             if spectra_list is None:
-                spectra_list = [(0, 0, 0)] * nspectra
+                # Pixel-space generic path never reads the placeholder fields;
+                # skip spin validation so spin-2 single-field collections
+                # (e.g. QU) don't raise on the SS-kind sentinel.
+                placeholder = SpectrumKey(0, 0, SpectrumKind.SS)
+                spectra_list = [placeholder] * nspectra
+
+            # Basis-manager APIs still consume 3-tuple-keyed dicts; rewrap
+            # until those consumers migrate to SpectrumKey (later slices).
+            if C_ell_dict is not None:
+                C_ell_dict = {
+                    (k.comp_i, k.comp_j, kind_to_legacy_mode(k.kind)): v
+                    for k, v in C_ell_dict.items()
+                }
 
             # --- Precompute derivatives ---
             # Harmonic fast path: sparse COO triplets (rows, cols, vals)
@@ -374,13 +388,10 @@ class Fisher(Core, MPISharedMemoryMixin):
                 for param_idx in range(n_params):
                     spectrum_idx = param_idx // nbins
                     bin_idx = param_idx % nbins
-                    key = (spectrum_idx, bin_idx)
-                    comp_i, comp_j = spectra_list[spectrum_idx][0:2]
-                    spec_mode = (
-                        spectra_list[spectrum_idx][2]
-                        if len(spectra_list[spectrum_idx]) == 3
-                        else 0
-                    )
+                    cache_key = (spectrum_idx, bin_idx)
+                    spec_key = spectra_list[spectrum_idx]
+                    comp_i, comp_j = spec_key.comp_i, spec_key.comp_j
+                    spec_mode = kind_to_legacy_mode(spec_key.kind)
                     beam_offset = spectrum_idx * self.n_ell
 
                     spin_i = self.collection.fields[comp_i].spin
@@ -403,7 +414,7 @@ class Fisher(Core, MPISharedMemoryMixin):
                                 ell, comp_i, comp_j, spec_mode
                             )
                         nz = np.nonzero(E_b_diag)[0]
-                        sparse_coo_data[key] = (nz, nz, E_b_diag[nz])
+                        sparse_coo_data[cache_key] = (nz, nz, E_b_diag[nz])
                     else:
                         # Cross-spectrum (EB/TE/TB): sparse off-diagonal COO
                         all_rows = []
@@ -435,13 +446,13 @@ class Fisher(Core, MPISharedMemoryMixin):
                             )
                             combined_vals = np.zeros(len(unique_pairs))
                             np.add.at(combined_vals, inverse, vals)
-                            sparse_coo_data[key] = (
+                            sparse_coo_data[cache_key] = (
                                 unique_pairs // bm.n_kept,
                                 unique_pairs % bm.n_kept,
                                 combined_vals,
                             )
                         else:
-                            sparse_coo_data[key] = (
+                            sparse_coo_data[cache_key] = (
                                 np.array([], dtype=int),
                                 np.array([], dtype=int),
                                 np.array([], dtype=float),
@@ -454,32 +465,29 @@ class Fisher(Core, MPISharedMemoryMixin):
                 for param_idx in range(n_params):
                     spectrum_idx = param_idx // nbins
                     bin_idx = param_idx % nbins
-                    key = (spectrum_idx, bin_idx)
+                    cache_key = (spectrum_idx, bin_idx)
                     beam_offset = spectrum_idx * self.n_ell
                     beam = self.beam_smoothing[beam_offset : beam_offset + self.n_ell]
 
+                    spec_key = spectra_list[spectrum_idx]
                     dC_b = self.get_binned_derivative_matrix(
                         bin_idx,
                         beam_smoothing=beam,
                         spectrum_idx=spectrum_idx,
-                        comp_i=spectra_list[spectrum_idx][0] if use_basis else None,
-                        comp_j=spectra_list[spectrum_idx][1] if use_basis else None,
-                        mode=(
-                            spectra_list[spectrum_idx][2]
-                            if use_basis and len(spectra_list[spectrum_idx]) == 3
-                            else 0
-                        ),
+                        comp_i=spec_key.comp_i if use_basis else None,
+                        comp_j=spec_key.comp_j if use_basis else None,
+                        mode=kind_to_legacy_mode(spec_key.kind) if use_basis else 0,
                     )
                     # Retain dC when the trace consumes it OR when the user
                     # opted in to caching for Spectra to reuse.
                     trace_needs_dC = not use_basis and self.params.do_cross
                     if trace_needs_dC or self._cache_derivatives:
-                        binned_derivatives[key] = dC_b
+                        binned_derivatives[cache_key] = dC_b
 
                     if use_basis or not self.params.do_cross:
-                        cinv_times_dcb[key] = matrix_mult(C_inv, dC_b)
+                        cinv_times_dcb[cache_key] = matrix_mult(C_inv, dC_b)
                     else:
-                        cinv_times_dcb[key] = matrix_mult(
+                        cinv_times_dcb[cache_key] = matrix_mult(
                             C_inv2, matrix_mult(dC_b, C_inv1)
                         )
 
