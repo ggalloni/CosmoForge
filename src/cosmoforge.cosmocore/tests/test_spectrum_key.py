@@ -83,3 +83,9 @@ def test_kind_to_legacy_mode_rejects_cg_until_directional_landed():
     # CG has no slot in today's int-mode encoding; raise until Slice 5 lands.
     with pytest.raises(NotImplementedError):
         kind_to_legacy_mode(SpectrumKind.CG)
+
+
+def test_symmetry_mode_has_two_values():
+    from cosmocore.spectrum_key import SymmetryMode
+
+    assert {m.name for m in SymmetryMode} == {"SYMMETRIC", "DIRECTIONAL"}

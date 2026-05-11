@@ -4,6 +4,22 @@ from dataclasses import dataclass
 from enum import Enum
 
 
+class SymmetryMode(Enum):
+    """How cross-component spin-2 × spin-2 EB-like spectra are treated.
+
+    SYMMETRIC (default) — emits one combined GC spectrum per cross-pair; the
+    Lambda model uses a single C_EB in both off-diagonal blocks. Standard
+    cosmology (C_EB = 0) makes this numerically identical to DIRECTIONAL.
+
+    DIRECTIONAL — emits both GC (E_i × B_j) and CG (B_i × E_j) as separate
+    spectra. Lambda uses C_GC and C_CG independently. Opt-in for polarisation
+    angle calibration diagnostics and parity-violation searches. See ADR-0011.
+    """
+
+    SYMMETRIC = "symmetric"
+    DIRECTIONAL = "directional"
+
+
 class Slot(Enum):
     """Sub-mode within a spin-s component.
 

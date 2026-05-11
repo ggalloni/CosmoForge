@@ -111,6 +111,7 @@ from .spectrum_key import (
     Slot,
     SpectrumKey,
     SpectrumKind,
+    SymmetryMode,
     kind_to_legacy_mode,
 )
 
@@ -184,5 +185,6 @@ __all__ = [
     "Slot",
     "SpectrumKey",
     "SpectrumKind",
+    "SymmetryMode",
     "kind_to_legacy_mode",
 ]
