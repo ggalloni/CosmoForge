@@ -19,7 +19,7 @@ def spectra_instance_t_qu(config_resolver):
 
 
 def test_spectra_keyed_inputs_returns_spectrum_keys(spectra_instance_t_qu):
-    cl_dict, keys = spectra_instance_t_qu._build_keyed_multi_spectrum_inputs()
+    cl_dict, keys = spectra_instance_t_qu._build_multi_spectrum_inputs()
     from cosmocore.spectrum_key import SpectrumKey
 
     assert all(isinstance(k, SpectrumKey) for k in keys)

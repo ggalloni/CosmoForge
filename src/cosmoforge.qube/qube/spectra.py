@@ -609,11 +609,8 @@ class Spectra(Core, MPISharedMemoryMixin):
             self._compute_qml_spectra_traditional()
 
     def _build_multi_spectrum_inputs(self):
-        """Build C_ell_dict and spectra_list for multi-spectrum."""
+        """Build C_ell_dict and spectra_list keyed by SpectrumKey."""
         return self.collection.spectra_manager.build_inputs()
-
-    def _build_keyed_multi_spectrum_inputs(self):
-        return self.collection.spectra_manager.build_keyed_inputs()
 
     def _build_derivative_matrix(self, ell: int, spectrum_idx: int = 0) -> np.ndarray:
         """Build pixel-space derivative matrix dC/dC_ell (no-basis fallback)."""
@@ -767,7 +764,7 @@ class Spectra(Core, MPISharedMemoryMixin):
 
         # Build C_ell or C_ell_dict depending on multi-field
         if is_multi_field:
-            C_ell_dict, spectra_list = self._build_keyed_multi_spectrum_inputs()
+            C_ell_dict, spectra_list = self._build_multi_spectrum_inputs()
             C_ell = None  # Not used for multi-field
         else:
             C_ell = self.collection.spectra_manager.get_cls(0, 0, 0)

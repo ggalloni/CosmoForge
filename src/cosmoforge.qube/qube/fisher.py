@@ -300,11 +300,8 @@ class Fisher(Core, MPISharedMemoryMixin):
         return dC
 
     def _build_multi_spectrum_inputs(self):
-        """Build C_ell_dict and spectra_list for multi-spectrum compressed Fisher."""
+        """Build C_ell_dict and spectra_list keyed by SpectrumKey."""
         return self.collection.spectra_manager.build_inputs()
-
-    def _build_keyed_multi_spectrum_inputs(self):
-        return self.collection.spectra_manager.build_keyed_inputs()
 
     # =========================================================================
     # Main Entry Points
@@ -346,7 +343,7 @@ class Fisher(Core, MPISharedMemoryMixin):
             spectra_list = None  # list[SpectrumKey]
             C_ell_dict = None
             if use_basis:
-                C_ell_dict, spectra_list = self._build_keyed_multi_spectrum_inputs()
+                C_ell_dict, spectra_list = self._build_multi_spectrum_inputs()
             elif self.params.do_cross:
                 C_inv1 = self.noise_cov1
                 C_inv2 = self.noise_cov2

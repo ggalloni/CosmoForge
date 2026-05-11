@@ -1,4 +1,4 @@
-"""Tests for SpectraManager.build_keyed_inputs (Slice 1, Task 1.6)."""
+"""Tests for SpectraManager.build_inputs (Slice 1, Task 1.6)."""
 
 import healpy as hp
 import numpy as np
@@ -31,11 +31,11 @@ def _populate_fiducial_cls(sm: SpectraManager) -> None:
     sm.set_cls(cls)
 
 
-def test_build_keyed_inputs_emits_spectrum_keys(collection_T_QU):
+def test_build_inputs_emits_spectrum_keys(collection_T_QU):
     sm = SpectraManager(collection_T_QU)
     _populate_fiducial_cls(sm)
 
-    cl_dict, keys = sm.build_keyed_inputs()
+    cl_dict, keys = sm.build_inputs()
 
     assert all(isinstance(k, SpectrumKey) for k in keys)
 
@@ -50,11 +50,11 @@ def test_build_keyed_inputs_emits_spectrum_keys(collection_T_QU):
     assert (1, 1, SpectrumKind.CG) not in actual
 
 
-def test_build_keyed_inputs_dict_keyed_by_spectrum_key(collection_T_QU):
+def test_build_inputs_dict_keyed_by_spectrum_key(collection_T_QU):
     sm = SpectraManager(collection_T_QU)
     _populate_fiducial_cls(sm)
 
-    cl_dict, keys = sm.build_keyed_inputs()
+    cl_dict, keys = sm.build_inputs()
     for key in keys:
         assert key in cl_dict
         assert isinstance(cl_dict[key], np.ndarray)

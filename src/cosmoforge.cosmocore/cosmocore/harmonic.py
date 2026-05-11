@@ -159,6 +159,26 @@ def coswinbeam(nside, ell1=None, ell2=None):
     return beam
 
 
+def _spin_pair_mode_to_kind(spin_i: int, spin_j: int, mode: int):
+    """Translate a legacy (spin_i, spin_j, mode) triple to a SpectrumKind.
+
+    Used internally by SpectraManager.build_inputs to construct SpectrumKey
+    instances from the field collection's underlying spectra map. Kept module-
+    private; external code should produce SpectrumKey directly.
+    """
+    from cosmocore.spectrum_key import SpectrumKind
+
+    if (spin_i, spin_j) == (0, 0):
+        return SpectrumKind.SS
+    if (spin_i, spin_j) == (2, 2):
+        return [SpectrumKind.GG, SpectrumKind.CC, SpectrumKind.GC][mode]
+    if (spin_i, spin_j) == (0, 2):
+        return [SpectrumKind.SG, SpectrumKind.SC][mode]
+    if (spin_i, spin_j) == (2, 0):
+        return [SpectrumKind.GS, SpectrumKind.CS][mode]
+    raise ValueError(f"unsupported spin pair ({spin_i}, {spin_j})")
+
+
 class SpectraManager:
     """
     Manages power spectra for a collection of cosmological fields.
@@ -392,62 +412,28 @@ class SpectraManager:
             raise ValueError(f"No power spectrum found for {label}")
         return self._cls_dict[label]
 
-    def build_inputs(
-        self,
-    ) -> tuple[dict[tuple[int, int, int], np.ndarray], list[tuple[int, int, int]]]:
-        """
-        Build C_ell_dict and spectra_list for compressed multi-field operations.
-
-        Iterates over the spectra map to build a dictionary with 3-tuple keys
-        (comp_i, comp_j, mode) and an ordered list of spectra.
+    def build_inputs(self):
+        """Build C_ell_dict and spectra_list keyed by SpectrumKey.
 
         Returns
         -------
-        C_ell_dict : dict
-            Dictionary mapping (comp_i, comp_j, mode) to C_ell arrays.
-        spectra_list : list
-            Ordered list of (comp_i, comp_j, mode) tuples.
-        """
-        C_ell_dict = {}
-        spectra_list = []
-        for fi, fj, mode in self._spectra_map:
-            C_ell_dict[(fi, fj, mode)] = self.get_cls(fi, fj, mode)
-            spectra_list.append((fi, fj, mode))
-        return C_ell_dict, spectra_list
-
-    def build_keyed_inputs(self):
-        """Like build_inputs(), but keyed by SpectrumKey.
-
-        Returns ``(dict[SpectrumKey, ndarray], list[SpectrumKey])``.
-        Delegates to the existing build_inputs() and re-keys. Both methods
-        coexist during migration; build_inputs() is removed in Slice 4.
+        C_ell_dict : dict[SpectrumKey, ndarray]
+            Dictionary mapping each spectrum identifier to its C_ell array.
+        spectra_list : list[SpectrumKey]
+            Ordered list of spectrum identifiers, matching the enumeration of
+            cross/auto pairs in the underlying field collection.
         """
         from cosmocore.spectrum_key import SpectrumKey
 
         spins = tuple(f.spin for f in self.fields)
-        cl_dict_tuple, _ = self.build_inputs()
-        keyed: dict = {}
-        keys: list = []
-        for (i, j, mode), cls in cl_dict_tuple.items():
-            kind = self._tuple_mode_to_kind(spins[i], spins[j], mode)
-            key = SpectrumKey(i, j, kind, spins=spins)
-            keyed[key] = cls
-            keys.append(key)
-        return keyed, keys
-
-    @staticmethod
-    def _tuple_mode_to_kind(spin_i: int, spin_j: int, mode: int):
-        from cosmocore.spectrum_key import SpectrumKind
-
-        if (spin_i, spin_j) == (0, 0):
-            return SpectrumKind.SS
-        if (spin_i, spin_j) == (2, 2):
-            return [SpectrumKind.GG, SpectrumKind.CC, SpectrumKind.GC][mode]
-        if (spin_i, spin_j) == (0, 2):
-            return [SpectrumKind.SG, SpectrumKind.SC][mode]
-        if (spin_i, spin_j) == (2, 0):
-            return [SpectrumKind.GS, SpectrumKind.CS][mode]
-        raise ValueError(f"unsupported spin pair ({spin_i}, {spin_j})")
+        C_ell_dict: dict = {}
+        spectra_list: list = []
+        for fi, fj, mode in self._spectra_map:
+            kind = _spin_pair_mode_to_kind(spins[fi], spins[fj], mode)
+            key = SpectrumKey(fi, fj, kind, spins=spins)
+            C_ell_dict[key] = self.get_cls(fi, fj, mode)
+            spectra_list.append(key)
+        return C_ell_dict, spectra_list
 
     def compute_smoothing_factors(
         self, beam_manager: BeamManager, lmax: int | None = None

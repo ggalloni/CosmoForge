@@ -17,7 +17,7 @@ def fisher_instance_t_qu(config_resolver):
 
 
 def test_fisher_keyed_inputs_returns_spectrum_keys(fisher_instance_t_qu):
-    cl_dict, keys = fisher_instance_t_qu._build_keyed_multi_spectrum_inputs()
+    cl_dict, keys = fisher_instance_t_qu._build_multi_spectrum_inputs()
     from cosmocore.spectrum_key import SpectrumKey
 
     assert all(isinstance(k, SpectrumKey) for k in keys)

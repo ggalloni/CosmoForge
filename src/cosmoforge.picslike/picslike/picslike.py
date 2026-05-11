@@ -600,7 +600,7 @@ class PICSLike(Core, MPISharedMemoryMixin):
 
         return chi_squared, log_likelihood
 
-    def _build_c_ell_dict(self) -> dict[tuple, np.ndarray]:
+    def _build_c_ell_dict(self):
         """Build C_ell_dict from spectra_manager for compressed operations."""
         C_ell_dict, _ = self.collection.spectra_manager.build_inputs()
         return C_ell_dict
