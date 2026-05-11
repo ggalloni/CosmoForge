@@ -612,6 +612,9 @@ class Spectra(Core, MPISharedMemoryMixin):
         """Build C_ell_dict and spectra_list for multi-spectrum."""
         return self.collection.spectra_manager.build_inputs()
 
+    def _build_keyed_multi_spectrum_inputs(self):
+        return self.collection.spectra_manager.build_keyed_inputs()
+
     def _build_derivative_matrix(self, ell: int, spectrum_idx: int = 0) -> np.ndarray:
         """Build pixel-space derivative matrix dC/dC_ell (no-basis fallback)."""
         ntot = sum(self.collection.n_active)
@@ -649,14 +652,11 @@ class Spectra(Core, MPISharedMemoryMixin):
         mode = 0
         if spectra_list is not None:
             entry = spectra_list[spectrum_idx]
-            if isinstance(entry, SpectrumKey):
-                comp_i, comp_j, mode = (
-                    entry.comp_i,
-                    entry.comp_j,
-                    kind_to_legacy_mode(entry.kind),
-                )
-            else:
-                comp_i, comp_j, mode = entry  # legacy 3-tuple, removed in later slices
+            comp_i, comp_j, mode = (
+                entry.comp_i,
+                entry.comp_j,
+                kind_to_legacy_mode(entry.kind),
+            )
 
         return self.get_binned_derivative_matrix(
             bin_idx,
@@ -767,7 +767,13 @@ class Spectra(Core, MPISharedMemoryMixin):
 
         # Build C_ell or C_ell_dict depending on multi-field
         if is_multi_field:
-            C_ell_dict, spectra_list = self._build_multi_spectrum_inputs()
+            C_ell_dict, spectra_list = self._build_keyed_multi_spectrum_inputs()
+            # Basis-manager APIs still consume 3-tuple-keyed dicts; rewrap
+            # until those consumers migrate to SpectrumKey (removed in Slice 4).
+            C_ell_dict = {
+                (k.comp_i, k.comp_j, kind_to_legacy_mode(k.kind)): v
+                for k, v in C_ell_dict.items()
+            }
             C_ell = None  # Not used for multi-field
         else:
             C_ell = self.collection.spectra_manager.get_cls(0, 0, 0)
