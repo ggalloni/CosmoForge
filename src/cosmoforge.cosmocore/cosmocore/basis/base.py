@@ -603,9 +603,9 @@ class ComputationBasis(ABC):
         Parameters
         ----------
         C_ell_dict : dict
-            Power spectrum dictionary with 2-tuple ``(comp_i, comp_j)`` or
-            3-tuple ``(comp_i, comp_j, mode)`` keys.  Any cross-component
-            entry couples those components.
+            Power spectrum dictionary with 2-tuple ``(comp_i, comp_j)`` keys,
+            3-tuple ``(comp_i, comp_j, mode)`` keys, or :class:`SpectrumKey`
+            instances.  Any cross-component entry couples those components.
 
         Returns
         -------
@@ -614,12 +614,17 @@ class ComputationBasis(ABC):
             ``[[0], [1]]`` for two independent fields,
             ``[[0, 1]]`` for two coupled fields.
         """
+        from ..spectrum_key import SpectrumKey
+
         if self.n_components <= 1:
             return [[0]] if self.n_components == 1 else []
 
         adj: dict[int, set[int]] = {i: set() for i in range(self.n_components)}
         for key in C_ell_dict:
-            ci, cj = key[0], key[1]
+            if isinstance(key, SpectrumKey):
+                ci, cj = key.comp_i, key.comp_j
+            else:
+                ci, cj = key[0], key[1]
             if ci != cj:
                 adj[ci].add(cj)
                 adj[cj].add(ci)
@@ -718,14 +723,15 @@ class ComputationBasis(ABC):
         """Build Lambda diagonal from C_ell. Delegates to HarmonicBasis."""
         return self._harmonic_basis._build_lambda_diagonal(C_ell)
 
-    def _build_lambda_blocks(
-        self, C_ell_dict: dict[tuple[int, int], np.ndarray]
-    ) -> dict[tuple[int, int], np.ndarray]:
-        """Build Lambda blocks from 2-tuple dict. Delegates to HarmonicBasis."""
+    def _build_lambda_blocks(self, C_ell_dict: dict) -> dict[tuple[int, int], np.ndarray]:
+        """Build Lambda blocks. Accepts 2-tuple or :class:`SpectrumKey` keys."""
         return self._harmonic_basis._build_lambda_blocks(C_ell_dict)
 
     def _build_lambda_matrix(self, C_ell_dict: dict) -> np.ndarray:
-        """Build full Lambda matrix (auto-detects key format)."""
+        """Build full Lambda matrix.
+
+        Auto-detects key format: 2-tuple, 3-tuple, or :class:`SpectrumKey`.
+        """
         return self._harmonic_basis._build_lambda_matrix(C_ell_dict)
 
     def _build_lambda_matrix_2tuple(
@@ -739,6 +745,10 @@ class ComputationBasis(ABC):
     ) -> np.ndarray:
         """Build full Lambda from 3-tuple keys. Delegates to HarmonicBasis."""
         return self._harmonic_basis._build_lambda_matrix_3tuple(C_ell_dict)
+
+    def _build_lambda_matrix_keyed(self, C_ell_dict: dict) -> np.ndarray:
+        """Build full Lambda from SpectrumKey keys. Delegates to HarmonicBasis."""
+        return self._harmonic_basis._build_lambda_matrix_keyed(C_ell_dict)
 
     def _build_lambda_block_spin2(
         self,

@@ -13,6 +13,7 @@ import numpy as np
 from numba import njit, prange
 
 from ..basics import legendre_plm, wigner_d_small
+from ..spectrum_key import SpectrumKey, kind_to_legacy_mode
 
 
 @njit(parallel=True, cache=True)
@@ -503,12 +504,19 @@ class HarmonicBasisBuilder:
                 Lambda_diag[idx] = c_ell_value
         return Lambda_diag
 
-    def _build_lambda_blocks(
-        self, C_ell_dict: dict[tuple[int, int], np.ndarray]
-    ) -> dict[tuple[int, int], np.ndarray]:
-        """Build Lambda blocks from cross-power spectra dictionary (2-tuple keys)."""
+    def _build_lambda_blocks(self, C_ell_dict: dict) -> dict[tuple[int, int], np.ndarray]:
+        """Build Lambda blocks from cross-power spectra dictionary.
+
+        Accepts either 2-tuple ``(comp_i, comp_j)`` keys (legacy single-mode)
+        or :class:`SpectrumKey` instances (kind is read off the key without
+        materialising an intermediate tuple-keyed dict).
+        """
         Lambda_blocks = {}
-        for (comp_i, comp_j), C_ell in C_ell_dict.items():
+        for key, C_ell in C_ell_dict.items():
+            if isinstance(key, SpectrumKey):
+                comp_i, comp_j = key.comp_i, key.comp_j
+            else:
+                comp_i, comp_j = key
             Lambda_diag = self._build_lambda_diagonal(C_ell)
             Lambda_blocks[(comp_i, comp_j)] = Lambda_diag
             if comp_i != comp_j:
@@ -516,8 +524,17 @@ class HarmonicBasisBuilder:
         return Lambda_blocks
 
     def _build_lambda_matrix(self, C_ell_dict: dict) -> np.ndarray:
-        """Build full Lambda matrix, auto-detecting 2-tuple or 3-tuple keys."""
+        """Build full Lambda matrix, auto-detecting the key shape.
+
+        Accepts three key shapes (mid-migration):
+
+        - :class:`SpectrumKey` instances (post-Slice-4 canonical)
+        - 3-tuple ``(comp_i, comp_j, mode)`` — legacy
+        - 2-tuple ``(comp_i, comp_j)`` — legacy single-mode
+        """
         first_key = next(iter(C_ell_dict))
+        if isinstance(first_key, SpectrumKey):
+            return self._build_lambda_matrix_keyed(C_ell_dict)
         if len(first_key) == 3:
             return self._build_lambda_matrix_3tuple(C_ell_dict)
         return self._build_lambda_matrix_2tuple(C_ell_dict)
@@ -572,6 +589,69 @@ class HarmonicBasisBuilder:
                 Lambda[n + idx, idx] = c_eb  # B-E block
 
         return Lambda
+
+    def _build_lambda_matrix_keyed(
+        self, C_ell_dict: dict[SpectrumKey, np.ndarray]
+    ) -> np.ndarray:
+        """Build full Lambda matrix from a :class:`SpectrumKey`-keyed dict.
+
+        Mirrors :meth:`_build_lambda_matrix_3tuple` but reads
+        ``key.comp_i`` / ``key.comp_j`` and translates ``key.kind`` to the
+        int mode per-iteration via :func:`kind_to_legacy_mode`. No dict-level
+        rewrap is performed.
+        """
+        lambda_matrix = np.zeros(
+            (self.n_modes_total, self.n_modes_total), dtype=np.float64
+        )
+
+        pair_entries: dict[tuple[int, int], dict[int, np.ndarray]] = {}
+        for key, C_ell in C_ell_dict.items():
+            mode = kind_to_legacy_mode(key.kind)
+            pair_entries.setdefault((key.comp_i, key.comp_j), {})[mode] = C_ell
+
+        for (ci, cj), mode_dict in pair_entries.items():
+            spin_i = self._spins[ci]
+            spin_j = self._spins[cj]
+            row_start = self._mode_offsets[ci]
+            col_start = self._mode_offsets[cj]
+
+            if spin_i == 0 and spin_j == 0:
+                diag = self._build_lambda_diagonal(mode_dict[0])
+                for k, val in enumerate(diag):
+                    lambda_matrix[row_start + k, col_start + k] = val
+                    if ci != cj:
+                        lambda_matrix[col_start + k, row_start + k] = val
+
+            elif spin_i == 2 and spin_j == 2:
+                C_EE = mode_dict.get(0, np.zeros(self.lmax_signal + 1))
+                C_BB = mode_dict.get(1, np.zeros(self.lmax_signal + 1))
+                C_EB = mode_dict.get(2, None)
+                block = self._build_lambda_block_spin2(C_EE, C_BB, C_EB)
+                n_block = 2 * self._n_modes_base
+                lambda_matrix[
+                    row_start : row_start + n_block,
+                    col_start : col_start + n_block,
+                ] = block
+
+            elif spin_i == 0 and spin_j == 2:
+                n_base = self._n_modes_base
+                for mode, C_ell in mode_dict.items():
+                    diag = self._build_lambda_diagonal(C_ell)
+                    col_sub = col_start + mode * n_base
+                    for k, val in enumerate(diag):
+                        lambda_matrix[row_start + k, col_sub + k] = -val
+                        lambda_matrix[col_sub + k, row_start + k] = -val
+
+            elif spin_i == 2 and spin_j == 0:
+                n_base = self._n_modes_base
+                for mode, C_ell in mode_dict.items():
+                    diag = self._build_lambda_diagonal(C_ell)
+                    row_sub = row_start + mode * n_base
+                    for k, val in enumerate(diag):
+                        lambda_matrix[row_sub + k, col_start + k] = -val
+                        lambda_matrix[col_start + k, row_sub + k] = -val
+
+        return lambda_matrix
 
     def _build_lambda_matrix_3tuple(
         self, C_ell_dict: dict[tuple, np.ndarray]
