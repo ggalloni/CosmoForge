@@ -785,17 +785,21 @@ class ComputationBasis(ABC):
     def get_derivative_matrix_keyed(self, ell, key, *, symmetry_mode=None):
         """Build the derivative matrix dC/dC_ell for a SpectrumKey at multipole ell.
 
-        The keyed API is the new public surface. The int-typed
-        _build_derivative_matrix_with_spins remains as the inner implementation.
-        ``symmetry_mode`` is forwarded to the inner builder; ``None`` keeps the
-        SYMMETRIC default.
+        Canonical public surface for fetching a per-ℓ derivative matrix.
+        Delegates to the basis-specific :meth:`get_derivative_matrix` so
+        basis-level post-processing (e.g. PixelBasis' ``U^T E U``
+        projection) is preserved. The keyed → int-mode bridge happens
+        here once; callers should never assemble a legacy int mode
+        themselves.
+
+        ``symmetry_mode=None`` keeps the SYMMETRIC default.
         """
         from ..spectrum_key import SymmetryMode, kind_to_legacy_mode
 
         if symmetry_mode is None:
             symmetry_mode = SymmetryMode.SYMMETRIC
         is_cross = key.comp_i != key.comp_j
-        return self._build_derivative_matrix_with_spins(
+        return self.get_derivative_matrix(
             ell,
             key.comp_i,
             key.comp_j,

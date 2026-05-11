@@ -1022,6 +1022,30 @@ class HarmonicBasis(ComputationBasis):
         term2 = float(y.T @ kernel_inv_y)
         return term1 - term2
 
+    def _get_derivative_diagonal_keyed(self, ell: int, key) -> np.ndarray:
+        """Get derivative diagonal for an auto-pair diagonal SpectrumKey.
+
+        Valid only for ``key.comp_i == key.comp_j`` and diagonal kinds
+        (``SS``, ``GG``, ``CC``) — i.e. TT, EE, or BB. Cross-component
+        keys and ``GC/CG/SG/SC/GS/CS`` raise ``ValueError``. SpectrumKey
+        → int-mode bridge happens here once.
+        """
+        from ..spectrum_key import SpectrumKind, kind_to_legacy_mode
+
+        if key.comp_i != key.comp_j:
+            raise ValueError(
+                "_get_derivative_diagonal_keyed requires an auto-pair key; "
+                f"got comp_i={key.comp_i}, comp_j={key.comp_j}"
+            )
+        if key.kind not in (SpectrumKind.SS, SpectrumKind.GG, SpectrumKind.CC):
+            raise ValueError(
+                "_get_derivative_diagonal_keyed requires a diagonal kind "
+                f"(SS/GG/CC); got {key.kind.name}"
+            )
+        return self._get_derivative_diagonal(
+            ell, key.comp_i, key.comp_j, kind_to_legacy_mode(key.kind)
+        )
+
     def _get_derivative_diagonal(
         self, ell: int, comp_i: int = 0, comp_j: int = 0, mode: int = 0
     ) -> np.ndarray:
@@ -1079,6 +1103,8 @@ class HarmonicBasis(ComputationBasis):
         spectra_list=None,
         ell_min: int = 2,
         ell_max: int | None = None,
+        *,
+        symmetry_mode=None,
     ) -> np.ndarray:
         """Compute Fisher matrix.
 
@@ -1094,6 +1120,11 @@ class HarmonicBasis(ComputationBasis):
             Minimum multipole.
         ell_max : int or None
             Maximum multipole.
+        symmetry_mode : SymmetryMode or None
+            Forwarded to the per-ℓ derivative builder. ``None`` keeps the
+            SYMMETRIC default. Required as ``DIRECTIONAL`` when
+            ``spectra_list`` contains a ``CG`` cross-pair entry — the
+            builder otherwise rejects the ``mode=2`` slot used by CG.
 
         Returns
         -------
@@ -1150,14 +1181,12 @@ class HarmonicBasis(ComputationBasis):
         field_groups = self._detect_field_blocks(c_ell_dict)
         V_Cinv_VT = self.get_projected_inverse(c_ell_dict, field_groups=field_groups)
 
-        from ..spectrum_key import kind_to_legacy_mode
-
         VCinvVT_E = {}
         for spec_idx, spec_entry in enumerate(spectra_list):
-            comp_i, comp_j = spec_entry.comp_i, spec_entry.comp_j
-            mode = kind_to_legacy_mode(spec_entry.kind, is_cross=(comp_i != comp_j))
             for ell in range(ell_min, ell_max + 1):
-                E_matrix = self.get_derivative_matrix(ell, comp_i, comp_j, mode)
+                E_matrix = self.get_derivative_matrix_keyed(
+                    ell, spec_entry, symmetry_mode=symmetry_mode
+                )
                 VCinvVT_E[(spec_idx, ell)] = matrix_mult(V_Cinv_VT, E_matrix)
 
         for spec_a in range(n_spec):

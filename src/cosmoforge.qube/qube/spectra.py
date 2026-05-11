@@ -65,7 +65,6 @@ from cosmocore import (
     SpectrumKind,
     SymmetryMode,
     do_derivative_step,
-    kind_to_legacy_mode,
     matrix_inverse_symm,
     matrix_mult,
     matrix_trace,
@@ -654,24 +653,19 @@ class Spectra(Core, MPISharedMemoryMixin):
         beam_offset = spectrum_idx * n_ell
         beam = self.beam_smoothing[beam_offset : beam_offset + n_ell]
 
-        comp_i = comp_j = None
-        mode = 0
         if spectra_list is not None:
-            entry = spectra_list[spectrum_idx]
-            comp_i, comp_j, mode = (
-                entry.comp_i,
-                entry.comp_j,
-                kind_to_legacy_mode(entry.kind, is_cross=(entry.comp_i != entry.comp_j)),
+            return self.get_binned_derivative_matrix_keyed(
+                bin_idx,
+                spectra_list[spectrum_idx],
+                beam_smoothing=beam,
+                spectrum_idx=spectrum_idx,
+                symmetry_mode=self.symmetry_mode,
             )
-
+        # Single-spectrum / pixel-space path: no SpectrumKey available.
         return self.get_binned_derivative_matrix(
             bin_idx,
             beam_smoothing=beam,
             spectrum_idx=spectrum_idx,
-            comp_i=comp_i,
-            comp_j=comp_j,
-            mode=mode,
-            symmetry_mode=self.symmetry_mode,
         )
 
     def _compute_noise_cov_compressed(
@@ -1453,6 +1447,14 @@ class Spectra(Core, MPISharedMemoryMixin):
 
         Both forms return a flat numpy array of length ``n_params`` so the
         downstream comparison code does not have to branch on shape.
+
+        Convention
+        ----------
+        The input values must be in the configuration's active output
+        convention. If ``params.output_convention == "Dl"`` the window
+        matrix wraps ``W_dl = D · W_cl · D^{-1}`` and the user must
+        pass D_ℓ-binned theory; otherwise pass C_ℓ-binned theory.
+        Mixing conventions yields silently-wrong predictions.
         """
         from cosmocore.conventions.cmb import spectrum_key_to_label
 

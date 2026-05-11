@@ -220,6 +220,12 @@ avoids the ordering question entirely:
    mu = convolve({"TT": tt_binned, "EE": ee_binned, "BB": bb_binned,
                   "EB": eb_binned, "TE": te_binned, "TB": tb_binned})
 
+   # Important: the input values must be in the active output convention.
+   # If params.output_convention == "Dl", pass D_ell-binned theory;
+   # otherwise C_ell-binned. The window matrix is rotated to match the
+   # output convention internally — feeding the wrong convention yields
+   # silently-wrong predictions.
+
 The single-spectrum convenience ``Spectra.convolve_theory_for_inference``
 (which takes a per-ℓ theory and returns binned bandpowers) is
 single-spectrum-only today; for multi-spectrum likelihoods, use the

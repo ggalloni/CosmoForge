@@ -239,6 +239,42 @@ def test_directional_lambda_uses_separate_gc_cg(harmonic_basis_qu_qu):
     assert L_sym[row0 + n + sample_idx, col1 + sample_idx] == pytest.approx(2.0)
 
 
+def test_compute_fisher_matrix_accepts_directional_cg(harmonic_basis_qu_qu):
+    """B2 fix: compute_fisher_matrix accepts a DIRECTIONAL spectra_list that
+    contains a CG cross-pair entry. Previously raised ValueError deep in the
+    derivative builder because symmetry_mode was not threaded through."""
+    from cosmocore.spectrum_key import SpectrumKey, SpectrumKind, SymmetryMode
+
+    bm = harmonic_basis_qu_qu
+    lmax = bm.lmax_signal
+    spins = (2, 2)
+    ones = np.ones(lmax + 1)
+
+    cl_dict = {
+        SpectrumKey(0, 0, SpectrumKind.GG, spins=spins): 1.0 * ones,
+        SpectrumKey(0, 0, SpectrumKind.CC, spins=spins): 0.5 * ones,
+        SpectrumKey(1, 1, SpectrumKind.GG, spins=spins): 1.0 * ones,
+        SpectrumKey(1, 1, SpectrumKind.CC, spins=spins): 0.5 * ones,
+        SpectrumKey(0, 1, SpectrumKind.GG, spins=spins): 0.9 * ones,
+        SpectrumKey(0, 1, SpectrumKind.CC, spins=spins): 0.4 * ones,
+        SpectrumKey(0, 1, SpectrumKind.GC, spins=spins): 0.3 * ones,
+        SpectrumKey(0, 1, SpectrumKind.CG, spins=spins): -0.1 * ones,
+    }
+    spectra_list = list(cl_dict.keys())
+
+    F = bm.compute_fisher_matrix(
+        cl_dict,
+        spectra_list=spectra_list,
+        ell_min=2,
+        ell_max=lmax,
+        symmetry_mode=SymmetryMode.DIRECTIONAL,
+    )
+    n_spec = len(spectra_list)
+    n_ell = lmax - 1
+    assert F.shape == (n_spec * n_ell, n_spec * n_ell)
+    np.testing.assert_allclose(F, F.T, atol=1e-12)
+
+
 def test_directional_qml_recovers_injected_asymmetric_eb(harmonic_basis_qu_qu):
     """End-to-end algebraic check: inject C_GC != C_CG into the fiducial Lambda,
     take the QML expectation values Tr[A Lambda A E_b] for b in (GC, CG),

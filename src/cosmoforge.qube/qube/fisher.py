@@ -65,7 +65,6 @@ from cosmocore import (
     SymmetryMode,
     compute_signal_matrix,
     do_derivative_step,
-    kind_to_legacy_mode,
     matrix_inverse_symm,
     matrix_mult,
     matrix_trace,
@@ -410,17 +409,12 @@ class Fisher(Core, MPISharedMemoryMixin):
                     bin_idx = param_idx % nbins
                     cache_key = (spectrum_idx, bin_idx)
                     spec_key = spectra_list[spectrum_idx]
-                    comp_i, comp_j = spec_key.comp_i, spec_key.comp_j
-                    spec_mode = kind_to_legacy_mode(
-                        spec_key.kind, is_cross=(comp_i != comp_j)
-                    )
                     beam_offset = spectrum_idx * self.n_ell
 
-                    spin_i = self.collection.fields[comp_i].spin
-                    spin_j = self.collection.fields[comp_j].spin
-                    is_diagonal = comp_i == comp_j and (
-                        (spin_i == 0 and spin_j == 0)
-                        or (spin_i == 2 and spin_j == 2 and spec_mode in (0, 1))
+                    is_diagonal = (
+                        spec_key.comp_i == spec_key.comp_j
+                        and spec_key.kind
+                        in (SpectrumKind.SS, SpectrumKind.GG, SpectrumKind.CC)
                     )
 
                     if is_diagonal:
@@ -432,8 +426,8 @@ class Fisher(Core, MPISharedMemoryMixin):
                             weight = self.beam_smoothing[
                                 beam_offset + ell - self.params.lmin
                             ]
-                            E_b_diag += weight * bm._get_derivative_diagonal(
-                                ell, comp_i, comp_j, spec_mode
+                            E_b_diag += weight * bm._get_derivative_diagonal_keyed(
+                                ell, spec_key
                             )
                         nz = np.nonzero(E_b_diag)[0]
                         sparse_coo_data[cache_key] = (nz, nz, E_b_diag[nz])
@@ -450,12 +444,8 @@ class Fisher(Core, MPISharedMemoryMixin):
                             ]
                             if abs(weight) < _WEIGHT_ZERO_THRESHOLD:
                                 continue
-                            dC_ell = bm.get_derivative_matrix(
-                                ell,
-                                comp_i,
-                                comp_j,
-                                spec_mode,
-                                symmetry_mode=self.symmetry_mode,
+                            dC_ell = bm.get_derivative_matrix_keyed(
+                                ell, spec_key, symmetry_mode=self.symmetry_mode
                             )
                             r, c = np.nonzero(dC_ell)
                             all_rows.append(r)
@@ -496,22 +486,24 @@ class Fisher(Core, MPISharedMemoryMixin):
                     beam = self.beam_smoothing[beam_offset : beam_offset + self.n_ell]
 
                     spec_key = spectra_list[spectrum_idx]
-                    dC_b = self.get_binned_derivative_matrix(
-                        bin_idx,
-                        beam_smoothing=beam,
-                        spectrum_idx=spectrum_idx,
-                        comp_i=spec_key.comp_i if use_basis else None,
-                        comp_j=spec_key.comp_j if use_basis else None,
-                        mode=(
-                            kind_to_legacy_mode(
-                                spec_key.kind,
-                                is_cross=(spec_key.comp_i != spec_key.comp_j),
-                            )
-                            if use_basis
-                            else 0
-                        ),
-                        symmetry_mode=self.symmetry_mode,
-                    )
+                    if use_basis:
+                        dC_b = self.get_binned_derivative_matrix_keyed(
+                            bin_idx,
+                            spec_key,
+                            beam_smoothing=beam,
+                            spectrum_idx=spectrum_idx,
+                            symmetry_mode=self.symmetry_mode,
+                        )
+                    else:
+                        # Pixel-space generic path: ignores comp_i/comp_j and
+                        # uses spectrum_idx to select the precomputed
+                        # derivative slab.
+                        dC_b = self.get_binned_derivative_matrix(
+                            bin_idx,
+                            beam_smoothing=beam,
+                            spectrum_idx=spectrum_idx,
+                            mode=0,
+                        )
                     # Retain dC when the trace consumes it OR when the user
                     # opted in to caching for Spectra to reuse.
                     trace_needs_dC = not use_basis and self.params.do_cross

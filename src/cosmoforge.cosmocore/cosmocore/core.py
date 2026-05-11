@@ -954,7 +954,16 @@ class Core(ABC):
         comp_i, comp_j : int or None
             Component indices for compressed multi-field.
         mode : int
-            Spin mode (0=TT/EE/TE, 1=BB/TB, 2=EB).
+            Spin mode encoding. Auto-pair (``comp_i == comp_j``):
+            ``[EE=0, BB=1, EB=2]``. Cross-pair spin-2 × spin-2
+            (``comp_i != comp_j``): ``[GG=0, GC=1, CG=2, CC=3]``.
+            Cross-pair spin-0 × spin-2: ``[SG=0, SC=1]``. Direct callers
+            should prefer :meth:`get_binned_derivative_matrix_keyed`,
+            which takes a :class:`SpectrumKey` and handles the encoding
+            bridge.
+        symmetry_mode : SymmetryMode or None
+            Forwarded to the per-ℓ derivative builder. None keeps the
+            SYMMETRIC default.
         """
         # Fast path: pixel-direct mode has a batched binned derivative that
         # avoids the per-ℓ Legendre/Wigner pass when bin width is large.
@@ -966,9 +975,19 @@ class Core(ABC):
         ):
             ci = 0 if comp_i is None else comp_i
             cj = 0 if comp_j is None else comp_j
-            return bm.get_binned_derivative_direct(
-                bin_idx, self.bins, beam_smoothing, ci, cj, mode
+            # The pixel-direct kernel does not yet support spin-2 × spin-2
+            # cross-component pairs (would raise NotImplementedError in the
+            # Numba kernel). Fall back to the per-ℓ slow path below, which
+            # already forwards `symmetry_mode` correctly. Tracked as a
+            # follow-up (memory: project_pixel_direct_cross_qu_directional).
+            spins = getattr(bm, "_spins", None)
+            direct_unsupported = (
+                spins is not None and ci != cj and spins[ci] == 2 and spins[cj] == 2
             )
+            if not direct_unsupported:
+                return bm.get_binned_derivative_direct(
+                    bin_idx, self.bins, beam_smoothing, ci, cj, mode
+                )
 
         lmin_b = self.bins.lmins[bin_idx]
         lmax_b = self.bins.lmaxs[bin_idx]
@@ -992,6 +1011,37 @@ class Core(ABC):
             else:
                 dC_b += weight * dC_ell
         return dC_b
+
+    def get_binned_derivative_matrix_keyed(
+        self,
+        bin_idx: int,
+        key,
+        *,
+        beam_smoothing: np.ndarray | None = None,
+        spectrum_idx: int = 0,
+        symmetry_mode=None,
+    ) -> np.ndarray:
+        """Compute binned derivative dC^b for a :class:`SpectrumKey`.
+
+        Canonical keyed entry point — the SpectrumKey → int-mode bridge
+        happens here once. Callers should not assemble a legacy int mode
+        themselves. Forwards to :meth:`get_binned_derivative_matrix`
+        with ``comp_i``, ``comp_j`` from the key and ``mode`` resolved
+        via :func:`cosmocore.spectrum_key.kind_to_legacy_mode` under
+        the cross-pair-aware encoding.
+        """
+        from .spectrum_key import kind_to_legacy_mode
+
+        mode = kind_to_legacy_mode(key.kind, is_cross=(key.comp_i != key.comp_j))
+        return self.get_binned_derivative_matrix(
+            bin_idx,
+            beam_smoothing=beam_smoothing,
+            spectrum_idx=spectrum_idx,
+            comp_i=key.comp_i,
+            comp_j=key.comp_j,
+            mode=mode,
+            symmetry_mode=symmetry_mode,
+        )
 
     def compute_quadratic_form(self, data: np.ndarray, C_ell) -> float:
         """

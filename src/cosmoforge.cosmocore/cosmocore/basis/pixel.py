@@ -1745,6 +1745,8 @@ class PixelBasis(ComputationBasis):
         spectra_list=None,
         ell_min: int = 2,
         ell_max: int | None = None,
+        *,
+        symmetry_mode=None,
     ) -> np.ndarray:
         """Compute Fisher matrix.
 
@@ -1760,6 +1762,11 @@ class PixelBasis(ComputationBasis):
             Minimum multipole.
         ell_max : int or None
             Maximum multipole.
+        symmetry_mode : SymmetryMode or None
+            Forwarded to the per-ℓ derivative builder. ``None`` keeps the
+            SYMMETRIC default. Required as ``DIRECTIONAL`` when
+            ``spectra_list`` contains a ``CG`` cross-pair entry — the
+            builder otherwise rejects the ``mode=2`` slot used by CG.
 
         Returns
         -------
@@ -1810,14 +1817,12 @@ class PixelBasis(ComputationBasis):
 
         C_c_inv = self.get_compressed_inverse(C_ell)
 
-        from ..spectrum_key import kind_to_legacy_mode
-
         cinv_times_dc = {}
         for spec_idx, spec_entry in enumerate(spectra_list):
-            comp_i, comp_j = spec_entry.comp_i, spec_entry.comp_j
-            mode = kind_to_legacy_mode(spec_entry.kind, is_cross=(comp_i != comp_j))
             for ell in range(ell_min, ell_max + 1):
-                dC = self.get_derivative_matrix(ell, comp_i, comp_j, mode)
+                dC = self.get_derivative_matrix_keyed(
+                    ell, spec_entry, symmetry_mode=symmetry_mode
+                )
                 cinv_times_dc[(spec_idx, ell)] = matrix_mult(C_c_inv, dC)
 
         for spec_a in range(n_spec):
