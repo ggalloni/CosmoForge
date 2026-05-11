@@ -729,13 +729,23 @@ class HarmonicBasisBuilder:
     def _build_lambda_matrix_3tuple(
         self, C_ell_dict: dict[tuple, np.ndarray]
     ) -> np.ndarray:
-        """Build full Lambda matrix handling mixed spin-0/spin-2 components.
+        """Build full Lambda matrix from legacy 3-tuple-keyed dict.
+
+        Retained as a back-compat input shape for callers that have not
+        migrated to SpectrumKey-keyed dicts; new code should pass a
+        :class:`SpectrumKey`-keyed dict and let ``_build_lambda_matrix``
+        dispatch to :meth:`_build_lambda_matrix_keyed`.
 
         Accepts 3-tuple keys (comp_i, comp_j, mode) matching the
         get_cls(field_i, field_j, mode) API:
         - spin-0 x spin-0: mode 0 only
-        - spin-2 x spin-2: mode 0=EE, 1=BB, 2=EB
+        - spin-2 x spin-2: mode 0=EE, 1=BB, 2=EB (symmetric; no separate CG)
         - spin-0 x spin-2: mode 0=TE, 1=TB
+
+        Note: this shape predates the cross-pair encoding split introduced
+        in Slice 5 (``[GG=0, GC=1, CG=2, CC=3]`` for spin-2 x spin-2
+        cross-component). To express directional/CG cross-pair spectra,
+        use :class:`SpectrumKey` and ``SymmetryMode.DIRECTIONAL``.
         """
         lambda_matrix = np.zeros(
             (self.n_modes_total, self.n_modes_total), dtype=np.float64

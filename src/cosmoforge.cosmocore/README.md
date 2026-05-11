@@ -120,7 +120,9 @@ for entry in spectra:
 # Per-field thresholds (scalar for T, E/B tuple for polarization)
 ppc.apply_compression(epsilon=[1e-4, (1e-4, 1e-3)])
 
-# Multi-field Fisher matrix
+# Multi-field Fisher matrix. C_ell_dict is keyed by SpectrumKey and
+# spectra_list is a list of SpectrumKey instances enumerating which
+# spectra to include (e.g. TT, EE, BB, TE).
 fisher = ppc.compute_fisher_matrix(C_ell_dict, spectra_list)
 ```
 
