@@ -189,3 +189,51 @@ def test_kind_to_legacy_mode_supports_cg_for_cross():
     # CG has no slot in the auto-pair ordering.
     with pytest.raises((NotImplementedError, KeyError)):
         kind_to_legacy_mode(SpectrumKind.CG, is_cross=False)
+
+
+def test_directional_lambda_uses_separate_gc_cg(harmonic_basis_qu_qu):
+    """In DIRECTIONAL mode the (E_0, B_1) and (B_0, E_1) Lambda blocks
+    carry C_GC and C_CG respectively; in SYMMETRIC they both carry C_GC."""
+    from cosmocore.spectrum_key import SpectrumKey, SpectrumKind
+
+    spins = (2, 2)
+    bm = harmonic_basis_qu_qu
+    lmax = bm.lmax_signal
+    n = bm._n_modes_base
+
+    c_gc = np.ones(lmax + 1) * 2.0
+    c_cg = np.ones(lmax + 1) * 5.0
+    c_ee = np.ones(lmax + 1) * 10.0
+    c_bb = np.ones(lmax + 1) * 1.0
+
+    cl_dict = {
+        SpectrumKey(0, 0, SpectrumKind.GG, spins=spins): c_ee,
+        SpectrumKey(0, 0, SpectrumKind.CC, spins=spins): c_bb,
+        SpectrumKey(1, 1, SpectrumKind.GG, spins=spins): c_ee,
+        SpectrumKey(1, 1, SpectrumKind.CC, spins=spins): c_bb,
+        SpectrumKey(0, 1, SpectrumKind.GG, spins=spins): c_ee * 0.9,
+        SpectrumKey(0, 1, SpectrumKind.CC, spins=spins): c_bb * 0.9,
+        SpectrumKey(0, 1, SpectrumKind.GC, spins=spins): c_gc,
+        SpectrumKey(0, 1, SpectrumKind.CG, spins=spins): c_cg,
+    }
+    L = bm._build_lambda_matrix(cl_dict)
+
+    row0 = bm._mode_offsets[0]
+    col1 = bm._mode_offsets[1]
+
+    # Pick any mode index in the basis to probe the (ell, m) entries.
+    # The block layout is independent of which ell — we just need a non-trivial mode.
+    sample_ell = lmax // 2
+    sample_idx = bm._ell_to_modes_local[sample_ell][0]
+
+    # (E_0, B_1) block carries C_GC = 2.0
+    assert L[row0 + sample_idx, col1 + n + sample_idx] == pytest.approx(2.0)
+    # (B_0, E_1) block carries C_CG = 5.0, NOT 2.0
+    assert L[row0 + n + sample_idx, col1 + sample_idx] == pytest.approx(5.0)
+
+    # Sanity: SYMMETRIC (no CG key) reproduces the legacy behaviour where both
+    # off-diagonal sub-blocks carry C_GC.
+    sym_cl_dict = {k: v for k, v in cl_dict.items() if k.kind is not SpectrumKind.CG}
+    L_sym = bm._build_lambda_matrix(sym_cl_dict)
+    assert L_sym[row0 + sample_idx, col1 + n + sample_idx] == pytest.approx(2.0)
+    assert L_sym[row0 + n + sample_idx, col1 + sample_idx] == pytest.approx(2.0)

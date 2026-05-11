@@ -603,15 +603,20 @@ class HarmonicBasisBuilder:
         self,
         C_ell_EE: np.ndarray,
         C_ell_BB: np.ndarray,
-        C_ell_EB: np.ndarray | None = None,
+        C_ell_GC: np.ndarray | None = None,
+        C_ell_CG: np.ndarray | None = None,
     ) -> np.ndarray:
-        """Build Lambda block for a spin-2 auto-correlation (EE, BB, EB).
+        """Build Lambda block for a spin-2 pair.
 
-        For polarization, Lambda has 2x2 block structure at each (ell,m):
-            Lambda_{ell,m} = | C_ell^EE  C_ell^EB |
-                             | C_ell^EB  C_ell^BB |
+        Block structure at each (ell, m):
 
-        Uses _ell_to_modes_local for correct mode index placement.
+            Lambda_{ell, m} = | C_ell^EE  C_ell^GC |
+                              | C_ell^CG  C_ell^BB |
+
+        For auto-pair (or cross-pair under SYMMETRIC), pass only ``C_ell_GC``
+        and ``C_ell_CG`` is taken to equal it — recovering the symmetric
+        E-B / B-E block. For DIRECTIONAL cross-pair, pass both arrays
+        separately to populate the off-diagonal sub-blocks independently.
         """
         if self._ell_to_modes_local is None:
             self._build_ell_mode_mapping()
@@ -621,15 +626,18 @@ class HarmonicBasisBuilder:
         for ell in range(self._lmin_smw, self._lmax_smw + 1):
             c_ee = C_ell_EE[ell] if ell < len(C_ell_EE) else 0.0
             c_bb = C_ell_BB[ell] if ell < len(C_ell_BB) else 0.0
-            c_eb = 0.0
-            if C_ell_EB is not None and ell < len(C_ell_EB):
-                c_eb = C_ell_EB[ell]
+            c_gc = 0.0
+            if C_ell_GC is not None and ell < len(C_ell_GC):
+                c_gc = C_ell_GC[ell]
+            c_cg = c_gc
+            if C_ell_CG is not None and ell < len(C_ell_CG):
+                c_cg = C_ell_CG[ell]
 
             for idx in self._ell_to_modes_local[ell]:
                 Lambda[idx, idx] = c_ee  # E-E block
                 Lambda[n + idx, n + idx] = c_bb  # B-B block
-                Lambda[idx, n + idx] = c_eb  # E-B block
-                Lambda[n + idx, idx] = c_eb  # B-E block
+                Lambda[idx, n + idx] = c_gc  # (E, B) block
+                Lambda[n + idx, idx] = c_cg  # (B, E) block
 
         return Lambda
 
@@ -649,7 +657,8 @@ class HarmonicBasisBuilder:
 
         pair_entries: dict[tuple[int, int], dict[int, np.ndarray]] = {}
         for key, C_ell in C_ell_dict.items():
-            mode = kind_to_legacy_mode(key.kind)
+            is_cross = key.comp_i != key.comp_j
+            mode = kind_to_legacy_mode(key.kind, is_cross=is_cross)
             pair_entries.setdefault((key.comp_i, key.comp_j), {})[mode] = C_ell
 
         for (ci, cj), mode_dict in pair_entries.items():
@@ -666,10 +675,21 @@ class HarmonicBasisBuilder:
                         lambda_matrix[col_start + k, row_start + k] = val
 
             elif spin_i == 2 and spin_j == 2:
-                C_EE = mode_dict.get(0, np.zeros(self.lmax_signal + 1))
-                C_BB = mode_dict.get(1, np.zeros(self.lmax_signal + 1))
-                C_EB = mode_dict.get(2, None)
-                block = self._build_lambda_block_spin2(C_EE, C_BB, C_EB)
+                # Auto-pair mode encoding: [EE=0, BB=1, EB=2].
+                # Cross-pair mode encoding: [GG=0, GC=1, CG=2, CC=3]. CG is
+                # only present in DIRECTIONAL; under SYMMETRIC it is omitted
+                # and falls back to GC inside the block builder.
+                if ci == cj:
+                    C_EE = mode_dict.get(0, np.zeros(self.lmax_signal + 1))
+                    C_BB = mode_dict.get(1, np.zeros(self.lmax_signal + 1))
+                    C_GC = mode_dict.get(2, None)
+                    C_CG = None
+                else:
+                    C_EE = mode_dict.get(0, np.zeros(self.lmax_signal + 1))
+                    C_BB = mode_dict.get(3, np.zeros(self.lmax_signal + 1))
+                    C_GC = mode_dict.get(1, None)
+                    C_CG = mode_dict.get(2, None)
+                block = self._build_lambda_block_spin2(C_EE, C_BB, C_GC, C_CG)
                 n_block = 2 * self._n_modes_base
                 lambda_matrix[
                     row_start : row_start + n_block,
