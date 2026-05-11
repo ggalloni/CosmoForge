@@ -1222,8 +1222,8 @@ class Spectra(Core, MPISharedMemoryMixin):
         return spectra @ self.invfisher
 
     def get_power_spectra(
-        self, mode: str = "deconvolved"
-    ) -> np.ndarray | tuple[np.ndarray, np.ndarray, typing.Callable] | None:
+        self, mode: str = "deconvolved", *, as_dict: bool = False
+    ) -> np.ndarray | tuple[np.ndarray, np.ndarray, typing.Callable] | dict | None:
         """
         Retrieve power spectrum estimates in specified normalization mode.
 
@@ -1248,21 +1248,57 @@ class Spectra(Core, MPISharedMemoryMixin):
               comparison. Instead of deconvolving the window, compare with
               window-convolved theory: <y> = W @ C_true.
 
+        as_dict : bool, optional
+            If ``False`` (default, back-compat), return the flat numpy
+            array described below. If ``True``, return a dict keyed by
+            physical labels (``"TT"``, ``"EE"``, ``"TE"``, ...) whose
+            values have shape ``(n_simulations, n_bins)``. In
+            ``"convolved"`` mode, the dict applies to the raw estimates
+            ``y`` only; the window matrix ``W`` and ``convolve_theory``
+            callable are unchanged (use :meth:`Fisher.get_bandpower_slices`
+            on ``self.fisher_instance`` to navigate ``W``).
+
         Returns
         -------
-        numpy.ndarray or tuple or None
-            For "deconvolved" or "decorrelated" modes:
-                Array of shape (n_simulations, n_parameters) containing
-                normalized power spectrum estimates.
+        numpy.ndarray or tuple or dict or None
+            For "deconvolved" or "decorrelated" modes with
+            ``as_dict=False``:
+                Array of shape ``(n_simulations, n_parameters)`` where
+                ``n_parameters = n_spectra * n_bins``.
 
-            For "convolved" mode:
-                Tuple of (y, W, convolve_theory_func) where:
-                - y: Raw estimates array of shape (n_simulations, n_parameters)
-                - W: Window matrix of shape (n_parameters, n_parameters)
-                - convolve_theory_func: Callable that applies W @ theory
+            For "convolved" mode with ``as_dict=False``:
+                Tuple of ``(y, W, convolve_theory_func)`` where:
 
-            Returns None for worker processes (rank != 0) or if computation
-            has not completed.
+                - ``y``: Raw estimates of shape ``(n_simulations, n_parameters)``
+                - ``W``: Window matrix of shape ``(n_parameters, n_parameters)``
+                - ``convolve_theory_func``: Callable that applies ``W @ theory``
+
+            With ``as_dict=True``: a dict for the per-spectrum arrays
+            (and, in convolved mode, a 3-tuple ``(y_dict, W, convolve)``).
+
+            Returns ``None`` for worker processes (rank != 0) or if
+            computation has not completed.
+
+        **Layout (flat-array shape)**:
+        The columns of the returned array are organised as ``n_spectra``
+        contiguous blocks of ``n_bins`` columns each. Spectrum order
+        follows :attr:`Fisher.spectra_list` on
+        ``self.fisher_instance`` — auto-spectra first (per component,
+        in the order each component emits them), then cross-spectra in
+        ``(i, j)`` order with ``i < j``. For TQU (``spins=[0, 2]``,
+        ``labels=["T", "E", "B"]``) under ``SymmetryMode.SYMMETRIC``
+        with ``nbins=10``, ``n_parameters = 60`` and the columns are::
+
+            cols  0..9   : TT
+            cols 10..19  : EE
+            cols 20..29  : BB
+            cols 30..39  : EB
+            cols 40..49  : TE
+            cols 50..59  : TB
+
+        Use :meth:`Fisher.get_bandpower_slices` (on
+        ``self.fisher_instance``) or pass ``as_dict=True`` to look up
+        per-spectrum slices without computing these offsets by hand.
 
         Raises
         ------
@@ -1301,28 +1337,42 @@ class Spectra(Core, MPISharedMemoryMixin):
 
         Examples
         --------
-        Default (deconvolved) mode - backwards compatible:
+        Default (flat array) — back-compat::
 
-        >>> spectra = Spectra("config.yaml")
-        >>> spectra.run()
-        >>> cl_deconv = spectra.get_power_spectra()  # Default mode
+            >>> spectra = Spectra("config.yaml")
+            >>> spectra.run()
+            >>> cl_deconv = spectra.get_power_spectra()        # shape (n_sims, 60)
+            >>> ee_slice = cl_deconv[:, 10:20]                 # bins 0..9 of EE
 
-        Decorrelated bandpowers:
+        Label-keyed dict (recommended for human-readable code)::
 
-        >>> cl_decorr = spectra.get_power_spectra(mode="decorrelated")
-        >>> # Errors are all 1.0 by construction
+            >>> cl = spectra.get_power_spectra(as_dict=True)
+            >>> cl["EE"].shape                                 # (n_sims, n_bins)
+            >>> cl["TE"]                                       # cross-spectrum
 
-        Convolved mode for theory comparison:
+        Decorrelated bandpowers::
 
-        >>> y, W, convolve = spectra.get_power_spectra(mode="convolved")
-        >>> cl_theory_convolved = convolve(cl_theory)
-        >>> # Compare: y should match cl_theory_convolved
+            >>> cl_decorr = spectra.get_power_spectra(mode="decorrelated")
+            >>> # Errors are all 1.0 by construction
+
+        Convolved mode for theory comparison::
+
+            >>> y, W, convolve = spectra.get_power_spectra(mode="convolved")
+            >>> cl_theory_convolved = convolve(cl_theory)
+            >>> # Compare: y should match cl_theory_convolved
+
+            >>> # With as_dict=True, the y component becomes a dict; W and
+            >>> # the convolve callable are unchanged.
+            >>> y_dict, W, convolve = spectra.get_power_spectra(
+            ...     mode="convolved", as_dict=True
+            ... )
 
         See Also
         --------
         get_covariance : Get covariance matrix for specified mode
         get_error_bars : Get 1-sigma error bars for specified mode
         convolve_theory : Apply window matrix to theoretical spectrum
+        Fisher.get_bandpower_slices : Slice mapping for navigating the flat layout.
         """
         valid_modes = ("deconvolved", "decorrelated", "convolved")
         if mode not in valid_modes:
@@ -1340,6 +1390,32 @@ class Spectra(Core, MPISharedMemoryMixin):
 
         if self._output_is_dl() and result is not None:
             result = self._apply_output_convention(result, mode)
+
+        if as_dict and result is not None:
+            from cosmocore.conventions.cmb import to_label_dict
+
+            labels = list(self.params.labels)
+            spins = tuple(self.params.spins)
+            spectra_list = self.fisher_instance.spectra_list
+            n_bins = self.bins.nbins
+            if mode == "convolved":
+                y, W, convolve = result
+                y_dict = to_label_dict(
+                    y,
+                    labels=labels,
+                    spins=spins,
+                    spectra_list=spectra_list,
+                    n_bins=n_bins,
+                )
+                return y_dict, W, convolve
+            return to_label_dict(
+                result,
+                labels=labels,
+                spins=spins,
+                spectra_list=spectra_list,
+                n_bins=n_bins,
+            )
+
         return result
 
     def _output_is_dl(self) -> bool:
@@ -1367,11 +1443,55 @@ class Spectra(Core, MPISharedMemoryMixin):
             y, W, convolve_cl = result
             # W_Dl = D @ W_Cl @ D^{-1} so that <y_Dl> = W_Dl @ C_Dl
             W_dl = W * np.outer(d, 1.0 / d)
-
-            def convolve_theory_dl(cl_theory_dl: np.ndarray) -> np.ndarray:
-                return W_dl @ cl_theory_dl
-
+            convolve_theory_dl = self._make_convolve_theory(W_dl)
             return (y * d[np.newaxis, :], W_dl, convolve_theory_dl)
+
+    def _make_convolve_theory(self, W: np.ndarray):
+        """Build a ``convolve_theory`` callable that accepts either a flat
+        ``cl_theory`` of length ``n_params`` or a label-keyed dict mapping
+        physical labels (e.g. ``"TT"``, ``"EE"``) to per-bin arrays.
+
+        Both forms return a flat numpy array of length ``n_params`` so the
+        downstream comparison code does not have to branch on shape.
+        """
+        from cosmocore.conventions.cmb import spectrum_key_to_label
+
+        labels_per_slot = list(self.params.labels)
+        spins = tuple(self.params.spins)
+        spectra_list = self.fisher_instance.spectra_list
+
+        # Pre-compute the spectrum order in physical labels so dict inputs
+        # can be assembled into the flat vector without re-deriving labels
+        # on every call.
+        if spectra_list is not None:
+            spectrum_labels = [
+                spectrum_key_to_label(k, labels=labels_per_slot, spins=spins)
+                for k in spectra_list
+            ]
+        else:
+            spectrum_labels = None
+
+        def convolve_theory(cl_theory) -> np.ndarray:
+            if isinstance(cl_theory, dict):
+                if spectrum_labels is None:
+                    raise RuntimeError(
+                        "convolve_theory dict input requires spectra_list "
+                        "(call fisher.run() first)."
+                    )
+                missing = [lab for lab in spectrum_labels if lab not in cl_theory]
+                if missing:
+                    raise KeyError(
+                        f"convolve_theory dict missing entries for: {missing}. "
+                        f"Expected keys: {spectrum_labels}"
+                    )
+                cl_flat = np.concatenate(
+                    [np.asarray(cl_theory[lab]) for lab in spectrum_labels]
+                )
+            else:
+                cl_flat = np.asarray(cl_theory)
+            return W @ cl_flat
+
+        return convolve_theory
 
     def _get_deconvolved(self) -> np.ndarray:
         """
@@ -1416,16 +1536,24 @@ class Spectra(Core, MPISharedMemoryMixin):
         Returns
         -------
         tuple
-            (y, W, convolve_theory_func) where:
-            - y: Raw normalized estimates, shape (nsims, n_params)
-            - W: Window matrix, shape (n_params, n_params)
-            - convolve_theory_func: Callable to apply W @ theory
+            ``(y, W, convolve_theory_func)`` where:
+
+            - ``y``: Raw normalized estimates, shape ``(nsims, n_params)``
+            - ``W``: Window matrix, shape ``(n_params, n_params)``
+            - ``convolve_theory_func``: Callable accepting either a flat
+              ``cl_theory`` array of length ``n_params`` (ordered per
+              :meth:`Fisher.get_bandpower_slices`) or a label-keyed dict
+              like ``{"TT": [...], "EE": [...], ...}``. Returns a flat
+              array of length ``n_params``.
 
         Notes
         -----
-        With binning enabled, n_params = nspectra * nbins. The theory
-        input to convolve_theory must be binned (one value per bin),
-        e.g. via ``bins.bin_spectra(cl_theory)`` (cl_theory ℓ-indexed).
+        With binning enabled, ``n_params = nspectra * nbins``. The theory
+        input to ``convolve_theory`` must be binned (one value per bin),
+        e.g. via ``bins.bin_spectra(cl_theory)`` (``cl_theory``
+        ℓ-indexed). For the flat form, the entries must be ordered the
+        same way as the Fisher matrix columns; the dict form bypasses
+        the ordering question entirely.
         """
         y = self.qml_results
 
@@ -1433,11 +1561,7 @@ class Spectra(Core, MPISharedMemoryMixin):
         if W is None:
             raise ValueError("Window matrix not available from Fisher instance.")
 
-        def convolve_theory(cl_theory: np.ndarray) -> np.ndarray:
-            """Apply window matrix to theoretical power spectrum."""
-            return W @ cl_theory
-
-        return (y, W, convolve_theory)
+        return (y, W, self._make_convolve_theory(W))
 
     def get_effective_ells(self) -> np.ndarray | None:
         """
@@ -1511,8 +1635,13 @@ class Spectra(Core, MPISharedMemoryMixin):
         on the underlying Fisher instance. The first call triggers a
         per-ℓ Fisher computation (cached for subsequent calls).
 
+        **Scope**: single-spectrum only. For multi-spectrum likelihoods,
+        use :meth:`get_power_spectra` (``mode="convolved"``) — the
+        returned ``convolve_theory_func`` accepts a label-keyed dict
+        and handles the full ``n_spectra * n_bins`` window matrix.
+
         See :meth:`Fisher.get_bandpower_window_function` for details on
-        the buffer approach and multi-spectrum limitations.
+        the buffer approach and the multi-spectrum limitation.
 
         Examples
         --------

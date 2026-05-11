@@ -99,44 +99,62 @@ and a ``SpectrumKind`` enum value (the ordered slot pair, e.g.
 ``GG`` for E×E or ``GC`` for E×B). Once you know your component spins
 the same key works as both a list element and a dict key.
 
-Reading a results dict
-^^^^^^^^^^^^^^^^^^^^^^
+Reading bandpower estimates
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``Spectra.get_power_spectra()`` returns a flat numpy array by default
+(shape ``(n_sims, n_spectra * n_bins)``) for backward compatibility,
+with columns ordered as ``TT, EE, BB, EB, TE, TB`` for TQU under
+``SymmetryMode.SYMMETRIC``. Pass ``as_dict=True`` for label-keyed
+access — usually what you want:
 
 .. code-block:: python
 
-   from cosmocore.spectrum_key import SpectrumKey, SpectrumKind
+   # Label-keyed dict (recommended for human-readable code)
+   cl = spectra.get_power_spectra(mode="deconvolved", as_dict=True)
+   ee = cl["EE"]                  # shape (n_sims, n_bins)
+   te = cl["TE"]
 
-   spins = (0, 2)                      # T (spin-0), QU (spin-2)
-   spectra = fisher_spectra.get_power_spectra(mode="deconvolved")
+   # Flat numpy array (back-compat)
+   arr = spectra.get_power_spectra(mode="deconvolved")
+   ee_arr = arr[:, 10:20]         # bins 0..9 of EE, manual slicing
 
-   # Iterate
-   for key, c_ell in spectra.items():
-       print(key.comp_i, key.comp_j, key.kind.name, c_ell[:3])
+For Fisher-side outputs, ``Fisher.get_error_bars(as_dict=True)``
+returns the same label-keyed shape; ``Fisher.get_bandpower_slices()``
+returns ``{label: slice}`` for navigating the flat Fisher matrix; and
+``Fisher.get_fisher_block(label_i, label_j)`` extracts a single block::
 
-   # Look up a specific spectrum (e.g. TE between component 0 and 1)
-   te = spectra[SpectrumKey(0, 1, SpectrumKind.SG, spins=spins)]
+   slc = fisher.get_bandpower_slices()
+   F = fisher.get_fisher_matrix()
+   F_tt = F[slc["TT"], slc["TT"]]
+   F_tt = fisher.get_fisher_block("TT")          # same thing
+   F_te_ee = fisher.get_fisher_block("TE", "EE")
 
-CMB aliases such as ``TT, EE, BB, EB, BE, TE, ET, TB, BT`` live in
-``cosmocore.conventions.cmb`` and resolve to the underlying
-``SpectrumKind`` (``SS, GG, CC, GC, CG, SG, GS, SC, CS``):
+Internally, the canonical key type is :class:`SpectrumKey`, exposing
+``(comp_i, comp_j, kind)`` for code that needs to navigate by
+component pair. CMB aliases live in ``cosmocore.conventions.cmb``:
 
 .. code-block:: python
 
-   from cosmocore.conventions.cmb import TE, EE
+   from cosmocore.spectrum_key import SpectrumKey
+   from cosmocore.conventions.cmb import EE, TE
 
-   ee = spectra[SpectrumKey(1, 1, EE, spins=spins)]   # same as SpectrumKind.GG
+   spins = (0, 2)
+   key_ee = SpectrumKey(1, 1, EE, spins=spins)   # spin-2 EE
+   key_te = SpectrumKey(0, 1, TE, spins=spins)   # spin-0 x spin-2 cross
 
 If your component collection was declared with the spin-2 field first
 (e.g. ``spins = (2, 0)``), the raw cross-spectrum is keyed as ``ET`` /
 ``BT`` rather than ``TE`` / ``TB``. Use ``to_cmb_canonical`` to re-key
-the output dict to the conventional T-first ordering regardless of
-declaration order:
+a SpectrumKey-keyed dict to the conventional T-first ordering
+regardless of declaration order:
 
 .. code-block:: python
 
    from cosmocore.conventions.cmb import to_cmb_canonical
 
-   spectra_tfirst = to_cmb_canonical(spectra, spins=spins)
+   keyed_dict = ...   # SpectrumKey-keyed dict
+   tfirst = to_cmb_canonical(keyed_dict, spins=spins)
    # Now all mixed-spin keys are SG/SC (TE/TB), never GS/CS.
 
 Auto-pair vs cross-pair spin-2 ordering
@@ -183,6 +201,30 @@ The ``symmetry_mode`` flag lives on ``Fisher``; ``Spectra`` inherits it
 from its Fisher instance so the two cannot drift apart. See ADR-0011
 (``docs/adr/0011-symmetry-mode-cross-eb.md``) for the full design
 rationale.
+
+Convolving theory for inference
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+For multi-spectrum likelihoods the ``"convolved"`` mode of
+``get_power_spectra`` returns ``(y, W, convolve_theory_func)`` where
+``convolve_theory_func`` accepts either a flat ``cl_theory`` vector
+ordered like ``get_fisher_matrix`` or a label-keyed dict — the latter
+avoids the ordering question entirely:
+
+.. code-block:: python
+
+   y, W, convolve = spectra.get_power_spectra(mode="convolved")
+   # Flat form (requires you to know the column order):
+   mu = convolve(cl_theory_flat)
+   # Dict form (label-keyed, recommended):
+   mu = convolve({"TT": tt_binned, "EE": ee_binned, "BB": bb_binned,
+                  "EB": eb_binned, "TE": te_binned, "TB": tb_binned})
+
+The single-spectrum convenience ``Spectra.convolve_theory_for_inference``
+(which takes a per-ℓ theory and returns binned bandpowers) is
+single-spectrum-only today; for multi-spectrum likelihoods, use the
+convolved-mode callable above. Multi-spectrum extension of
+``convolve_theory_for_inference`` is tracked as a follow-up.
 
 Configuration Files
 -------------------
