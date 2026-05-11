@@ -90,6 +90,100 @@ CosmoCore provides optimized mathematical functions:
    dot_prod = scalar_prod(v1, v2)    # Dot product
    cross_prod = ext_prod(v1, v2)     # Cross product
 
+Spectrum Results and Conventions
+--------------------------------
+
+Output power spectra and Fisher inputs are addressed by ``SpectrumKey`` —
+a small dataclass that carries the component pair ``(comp_i, comp_j)``
+and a ``SpectrumKind`` enum value (the ordered slot pair, e.g.
+``GG`` for E×E or ``GC`` for E×B). Once you know your component spins
+the same key works as both a list element and a dict key.
+
+Reading a results dict
+^^^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: python
+
+   from cosmocore.spectrum_key import SpectrumKey, SpectrumKind
+
+   spins = (0, 2)                      # T (spin-0), QU (spin-2)
+   spectra = fisher_spectra.get_power_spectra(mode="deconvolved")
+
+   # Iterate
+   for key, c_ell in spectra.items():
+       print(key.comp_i, key.comp_j, key.kind.name, c_ell[:3])
+
+   # Look up a specific spectrum (e.g. TE between component 0 and 1)
+   te = spectra[SpectrumKey(0, 1, SpectrumKind.SG, spins=spins)]
+
+CMB aliases such as ``TT, EE, BB, EB, BE, TE, ET, TB, BT`` live in
+``cosmocore.conventions.cmb`` and resolve to the underlying
+``SpectrumKind`` (``SS, GG, CC, GC, CG, SG, GS, SC, CS``):
+
+.. code-block:: python
+
+   from cosmocore.conventions.cmb import TE, EE
+
+   ee = spectra[SpectrumKey(1, 1, EE, spins=spins)]   # same as SpectrumKind.GG
+
+If your component collection was declared with the spin-2 field first
+(e.g. ``spins = (2, 0)``), the raw cross-spectrum is keyed as ``ET`` /
+``BT`` rather than ``TE`` / ``TB``. Use ``to_cmb_canonical`` to re-key
+the output dict to the conventional T-first ordering regardless of
+declaration order:
+
+.. code-block:: python
+
+   from cosmocore.conventions.cmb import to_cmb_canonical
+
+   spectra_tfirst = to_cmb_canonical(spectra, spins=spins)
+   # Now all mixed-spin keys are SG/SC (TE/TB), never GS/CS.
+
+Auto-pair vs cross-pair spin-2 ordering
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+For two QU components (``spins = (2, 2)``) there is a deliberate
+ordering split:
+
+* Same component (``comp_i == comp_j``): the kinds emitted are
+  ``GG`` (EE), ``CC`` (BB), and ``GC`` (EB).
+* Different components (``comp_i != comp_j``): the kinds are
+  ``GG, GC, CG, CC`` — i.e. ``E_i × B_j`` and ``B_i × E_j`` are
+  treated as distinct cross-pair entries. Whether both are emitted
+  is controlled by ``SymmetryMode`` (next section).
+
+Symmetric vs directional EB handling
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``Fisher`` (and ``Spectra``, which inherits the flag) accept a
+``symmetry_mode`` argument:
+
+.. code-block:: python
+
+   from cosmocore.spectrum_key import SymmetryMode
+   from qube import Fisher, Spectra
+
+   fisher = Fisher("config.yaml", symmetry_mode=SymmetryMode.DIRECTIONAL)
+   spectra = Spectra("config.yaml", fisher=fisher)
+   assert spectra.symmetry_mode is SymmetryMode.DIRECTIONAL
+
+* ``SYMMETRIC`` (default) emits a single ``GC`` cross-pair entry per
+  spin-2 × spin-2 component pair and uses a single ``C_EB`` in both
+  off-diagonal Lambda blocks. For standard cosmology (parity-conserving,
+  ``C_EB = 0``) this is numerically identical to ``DIRECTIONAL`` while
+  saving one Fisher row/column per cross-pair.
+* ``DIRECTIONAL`` emits both ``GC`` (``E_i × B_j``) and ``CG``
+  (``B_i × E_j``) as separate spectra and lets Lambda carry independent
+  values in each off-diagonal block. Opt-in for polarisation-angle
+  calibration diagnostics across frequency pairs, parity-violation
+  studies, and any analysis where the asymmetry between EB and BE is a
+  signal of interest.
+
+The ``symmetry_mode`` flag lives on ``Fisher``; ``Spectra`` inherits it
+from its Fisher instance so the two cannot drift apart. See ADR-0011
+(``docs/adr/0011-symmetry-mode-cross-eb.md``) for the full design
+rationale.
+
 Configuration Files
 -------------------
 
