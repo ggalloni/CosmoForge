@@ -768,12 +768,6 @@ class Spectra(Core, MPISharedMemoryMixin):
         # Build C_ell or C_ell_dict depending on multi-field
         if is_multi_field:
             C_ell_dict, spectra_list = self._build_keyed_multi_spectrum_inputs()
-            # Basis-manager APIs still consume 3-tuple-keyed dicts; rewrap
-            # until those consumers migrate to SpectrumKey (removed in Slice 4).
-            C_ell_dict = {
-                (k.comp_i, k.comp_j, kind_to_legacy_mode(k.kind)): v
-                for k, v in C_ell_dict.items()
-            }
             C_ell = None  # Not used for multi-field
         else:
             C_ell = self.collection.spectra_manager.get_cls(0, 0, 0)

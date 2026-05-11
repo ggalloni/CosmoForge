@@ -360,14 +360,6 @@ class Fisher(Core, MPISharedMemoryMixin):
                 placeholder = SpectrumKey(0, 0, SpectrumKind.SS)
                 spectra_list = [placeholder] * nspectra
 
-            # Basis-manager APIs still consume 3-tuple-keyed dicts; rewrap
-            # until those consumers migrate to SpectrumKey (later slices).
-            if C_ell_dict is not None:
-                C_ell_dict = {
-                    (k.comp_i, k.comp_j, kind_to_legacy_mode(k.kind)): v
-                    for k, v in C_ell_dict.items()
-                }
-
             # --- Precompute derivatives ---
             # Harmonic fast path: sparse COO triplets (rows, cols, vals)
             # Generic path: dense C⁻¹ dC^b products
