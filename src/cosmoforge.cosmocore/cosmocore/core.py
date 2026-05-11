@@ -849,6 +849,8 @@ class Core(ABC):
         comp_i: int | None = None,
         comp_j: int | None = None,
         mode: int = 0,
+        *,
+        symmetry_mode=None,
     ) -> np.ndarray:
         """
         Get derivative matrix dC/dC_ell.
@@ -867,11 +869,19 @@ class Core(ABC):
             Component indices for compressed multi-field. None uses
             single-field path.
         mode : int
-            Spin mode (0=TT/EE/TE, 1=BB/TB, 2=EB).
+            Spin mode encoding (auto-pair ``[EE=0, BB=1, EB=2]``; cross-pair
+            spin-2 × spin-2 ``[GG=0, GC=1, CG=2, CC=3]``).
+        symmetry_mode : SymmetryMode or None
+            Forwarded to the basis-layer derivative builder; ``None`` keeps
+            the SYMMETRIC default.
         """
         if hasattr(self, "basis_manager") and self.basis_manager is not None:
             return self.basis_manager.get_derivative_matrix(
-                ell, comp_i=comp_i, comp_j=comp_j, mode=mode
+                ell,
+                comp_i=comp_i,
+                comp_j=comp_j,
+                mode=mode,
+                symmetry_mode=symmetry_mode,
             )
         return self._build_derivative_matrix(ell, spectrum_idx=spectrum_idx)
 
@@ -916,6 +926,8 @@ class Core(ABC):
         comp_i: int | None = None,
         comp_j: int | None = None,
         mode: int = 0,
+        *,
+        symmetry_mode=None,
     ) -> np.ndarray:
         """
         Compute binned derivative dC^b = Sum_{ell in bin} b²_ell dC^ell,
@@ -968,6 +980,7 @@ class Core(ABC):
                 comp_i=comp_i,
                 comp_j=comp_j,
                 mode=mode,
+                symmetry_mode=symmetry_mode,
             )
             weight = 1.0
             if beam_smoothing is not None:

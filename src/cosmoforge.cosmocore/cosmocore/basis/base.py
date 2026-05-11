@@ -522,6 +522,8 @@ class ComputationBasis(ABC):
         comp_i: int | None = None,
         comp_j: int | None = None,
         mode: int = 0,
+        *,
+        symmetry_mode=None,
     ) -> np.ndarray:
         """
         Get the derivative matrix ∂C/∂C_ℓ in the compressed basis.
@@ -533,7 +535,12 @@ class ComputationBasis(ABC):
         comp_i, comp_j : int or None
             Component indices for multi-field. None for single-field.
         mode : int
-            Spin mode (0=EE/TE, 1=BB/TB, 2=EB). Only used with comp_i/comp_j.
+            Spin mode encoding. For auto-pair (comp_i == comp_j) spin-2 ×
+            spin-2: ``[EE=0, BB=1, EB=2]``. For cross-pair (comp_i !=
+            comp_j) spin-2 × spin-2: ``[GG=0, GC=1, CG=2, CC=3]``.
+        symmetry_mode : SymmetryMode or None
+            Forwarded to ``_build_derivative_matrix_with_spins``. ``None``
+            keeps the SYMMETRIC default.
 
         Returns
         -------

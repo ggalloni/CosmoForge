@@ -836,6 +836,8 @@ class HarmonicBasis(ComputationBasis):
         comp_i: int | None = None,
         comp_j: int | None = None,
         mode: int = 0,
+        *,
+        symmetry_mode=None,
     ) -> np.ndarray:
         """
         Get the derivative matrix ∂S/∂C_ℓ in compressed form.
@@ -847,7 +849,9 @@ class HarmonicBasis(ComputationBasis):
         comp_i, comp_j : int or None
             Component indices for multi-field. None for single-field.
         mode : int
-            Spin mode (0=EE/TE, 1=BB/TB, 2=EB). Only used with comp_i/comp_j.
+            Spin mode encoding (see :meth:`ComputationBasis.get_derivative_matrix`).
+        symmetry_mode : SymmetryMode or None
+            Forwarded to ``_build_derivative_matrix_with_spins``.
 
         Returns
         -------
@@ -858,7 +862,9 @@ class HarmonicBasis(ComputationBasis):
             return np.diag(self._derivative_diagonals[ell])
         if self.n_components == 1 and self._spins[0] == 0:
             return np.diag(self._derivative_diagonals[ell])
-        return self._build_derivative_matrix_with_spins(ell, comp_i, comp_j, mode)
+        return self._build_derivative_matrix_with_spins(
+            ell, comp_i, comp_j, mode, symmetry_mode=symmetry_mode
+        )
 
     def get_compressed_covariance(self, C_ell):
         """

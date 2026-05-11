@@ -62,6 +62,7 @@ from cosmocore import (
     MPISharedMemoryMixin,
     SpectrumKey,
     SpectrumKind,
+    SymmetryMode,
     compute_signal_matrix,
     do_derivative_step,
     kind_to_legacy_mode,
@@ -150,6 +151,7 @@ class Fisher(Core, MPISharedMemoryMixin):
         params_file: str | None = None,
         compression: dict | None = None,
         cache_derivatives: bool = False,
+        symmetry_mode=None,
         **kwargs,
     ):
         """
@@ -191,6 +193,13 @@ class Fisher(Core, MPISharedMemoryMixin):
 
         # Derivative caching
         self._cache_derivatives = cache_derivatives
+
+        # SymmetryMode (ADR-0011): controls cross-component spin-2 EB
+        # handling. SYMMETRIC default reproduces pre-Slice-5 behaviour
+        # bit-for-bit; DIRECTIONAL opt-in adds separate CG cross spectra.
+        self.symmetry_mode = (
+            symmetry_mode if symmetry_mode is not None else SymmetryMode.SYMMETRIC
+        )
 
         # Initialize attributes
         self.signal_matrix = None
@@ -301,7 +310,9 @@ class Fisher(Core, MPISharedMemoryMixin):
 
     def _build_multi_spectrum_inputs(self):
         """Build C_ell_dict and spectra_list keyed by SpectrumKey."""
-        return self.collection.spectra_manager.build_inputs()
+        return self.collection.spectra_manager.build_inputs(
+            symmetry_mode=self.symmetry_mode
+        )
 
     # =========================================================================
     # Main Entry Points
@@ -380,7 +391,9 @@ class Fisher(Core, MPISharedMemoryMixin):
                     cache_key = (spectrum_idx, bin_idx)
                     spec_key = spectra_list[spectrum_idx]
                     comp_i, comp_j = spec_key.comp_i, spec_key.comp_j
-                    spec_mode = kind_to_legacy_mode(spec_key.kind)
+                    spec_mode = kind_to_legacy_mode(
+                        spec_key.kind, is_cross=(comp_i != comp_j)
+                    )
                     beam_offset = spectrum_idx * self.n_ell
 
                     spin_i = self.collection.fields[comp_i].spin
@@ -418,7 +431,11 @@ class Fisher(Core, MPISharedMemoryMixin):
                             if abs(weight) < _WEIGHT_ZERO_THRESHOLD:
                                 continue
                             dC_ell = bm.get_derivative_matrix(
-                                ell, comp_i, comp_j, spec_mode
+                                ell,
+                                comp_i,
+                                comp_j,
+                                spec_mode,
+                                symmetry_mode=self.symmetry_mode,
                             )
                             r, c = np.nonzero(dC_ell)
                             all_rows.append(r)
@@ -465,7 +482,15 @@ class Fisher(Core, MPISharedMemoryMixin):
                         spectrum_idx=spectrum_idx,
                         comp_i=spec_key.comp_i if use_basis else None,
                         comp_j=spec_key.comp_j if use_basis else None,
-                        mode=kind_to_legacy_mode(spec_key.kind) if use_basis else 0,
+                        mode=(
+                            kind_to_legacy_mode(
+                                spec_key.kind,
+                                is_cross=(spec_key.comp_i != spec_key.comp_j),
+                            )
+                            if use_basis
+                            else 0
+                        ),
+                        symmetry_mode=self.symmetry_mode,
                     )
                     # Retain dC when the trace consumes it OR when the user
                     # opted in to caching for Spectra to reuse.

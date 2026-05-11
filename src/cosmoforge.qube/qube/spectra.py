@@ -63,6 +63,7 @@ from cosmocore import (
     MPISharedMemoryMixin,
     SpectrumKey,
     SpectrumKind,
+    SymmetryMode,
     do_derivative_step,
     kind_to_legacy_mode,
     matrix_inverse_symm,
@@ -230,6 +231,11 @@ class Spectra(Core, MPISharedMemoryMixin):
             self.fisher_instance = self._get_fisher()
             # Also reuse components from the internally created Fisher
             self._reuse_fisher_components()
+
+        # SymmetryMode is owned by Fisher (ADR-0011); Spectra inherits it
+        # so the two cannot drift apart and produce dimension-mismatched
+        # spectra lists.
+        self.symmetry_mode = self.fisher_instance.symmetry_mode
 
         # Initialize QML-specific variables
         self.maps1 = None
@@ -610,7 +616,10 @@ class Spectra(Core, MPISharedMemoryMixin):
 
     def _build_multi_spectrum_inputs(self):
         """Build C_ell_dict and spectra_list keyed by SpectrumKey."""
-        return self.collection.spectra_manager.build_inputs()
+        # Fall back to SYMMETRIC for callers that constructed Spectra via
+        # __new__ (test fixtures bypass __init__).
+        symmetry_mode = getattr(self, "symmetry_mode", SymmetryMode.SYMMETRIC)
+        return self.collection.spectra_manager.build_inputs(symmetry_mode=symmetry_mode)
 
     def _build_derivative_matrix(self, ell: int, spectrum_idx: int = 0) -> np.ndarray:
         """Build pixel-space derivative matrix dC/dC_ell (no-basis fallback)."""
@@ -652,7 +661,7 @@ class Spectra(Core, MPISharedMemoryMixin):
             comp_i, comp_j, mode = (
                 entry.comp_i,
                 entry.comp_j,
-                kind_to_legacy_mode(entry.kind),
+                kind_to_legacy_mode(entry.kind, is_cross=(entry.comp_i != entry.comp_j)),
             )
 
         return self.get_binned_derivative_matrix(
@@ -662,6 +671,7 @@ class Spectra(Core, MPISharedMemoryMixin):
             comp_i=comp_i,
             comp_j=comp_j,
             mode=mode,
+            symmetry_mode=self.symmetry_mode,
         )
 
     def _compute_noise_cov_compressed(

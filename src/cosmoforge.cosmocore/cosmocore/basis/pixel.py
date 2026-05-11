@@ -1601,6 +1601,8 @@ class PixelBasis(ComputationBasis):
         comp_i: int | None = None,
         comp_j: int | None = None,
         mode: int = 0,
+        *,
+        symmetry_mode=None,
     ) -> np.ndarray:
         """
         Get derivative matrix ∂C/∂C_ℓ in the compressed basis.
@@ -1612,7 +1614,9 @@ class PixelBasis(ComputationBasis):
         comp_i, comp_j : int or None
             Component indices for multi-field. None for single-field.
         mode : int
-            Spin mode (0=EE/TE, 1=BB/TB, 2=EB). Only used with comp_i/comp_j.
+            Spin mode encoding (see :meth:`ComputationBasis.get_derivative_matrix`).
+        symmetry_mode : SymmetryMode or None
+            Forwarded to ``_build_derivative_matrix_with_spins``.
 
         Returns
         -------
@@ -1637,7 +1641,9 @@ class PixelBasis(ComputationBasis):
             np.multiply(self._VU, E_diag[:, np.newaxis], out=self._VU_scaled_buffer)
             return matrix_mult(self._VU_scaled_buffer.T, self._VU)
 
-        E = self._build_derivative_matrix_with_spins(ell, comp_i, comp_j, mode)
+        E = self._build_derivative_matrix_with_spins(
+            ell, comp_i, comp_j, mode, symmetry_mode=symmetry_mode
+        )
         E_VU = matrix_mult(E, self._VU)
         return matrix_mult(self._VU.T, E_VU)
 
