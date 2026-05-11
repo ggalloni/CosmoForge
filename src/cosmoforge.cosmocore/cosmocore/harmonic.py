@@ -159,18 +159,35 @@ def coswinbeam(nside, ell1=None, ell2=None):
     return beam
 
 
-def _spin_pair_mode_to_kind(spin_i: int, spin_j: int, mode: int):
+def _spin_pair_mode_to_kind(
+    spin_i: int, spin_j: int, mode: int, *, is_cross: bool = False
+):
     """Translate a legacy (spin_i, spin_j, mode) triple to a SpectrumKind.
 
-    Used internally by SpectraManager.build_inputs to construct SpectrumKey
-    instances from the field collection's underlying spectra map. Kept module-
-    private; external code should produce SpectrumKey directly.
+    The mode→kind mapping for spin-2 × spin-2 depends on whether the
+    pair is an auto-pair or a cross-component pair, because the underlying
+    label enumeration differs:
+
+    - Auto (i == j): PolarizationField.get_spectrum_labels returns
+      ``[EE, BB, EB]`` → 3 modes, mapped to ``[GG, CC, GC]``.
+    - Cross (i != j): PolarizationField.get_cross_spectrum_labels returns
+      ``[E_iE_j, E_iB_j, B_iE_j, B_iB_j]`` → 4 modes, mapped to
+      ``[GG, GC, CG, CC]``.
+
+    All other spin pairs have a single mode count and ordering.
     """
     from cosmocore.spectrum_key import SpectrumKind
 
     if (spin_i, spin_j) == (0, 0):
         return SpectrumKind.SS
     if (spin_i, spin_j) == (2, 2):
+        if is_cross:
+            return [
+                SpectrumKind.GG,
+                SpectrumKind.GC,
+                SpectrumKind.CG,
+                SpectrumKind.CC,
+            ][mode]
         return [SpectrumKind.GG, SpectrumKind.CC, SpectrumKind.GC][mode]
     if (spin_i, spin_j) == (0, 2):
         return [SpectrumKind.SG, SpectrumKind.SC][mode]
@@ -412,27 +429,45 @@ class SpectraManager:
             raise ValueError(f"No power spectrum found for {label}")
         return self._cls_dict[label]
 
-    def build_inputs(self):
+    def build_inputs(self, *, symmetry_mode=None):
         """Build C_ell_dict and spectra_list keyed by SpectrumKey.
+
+        Parameters
+        ----------
+        symmetry_mode : SymmetryMode, optional
+            How cross-component spin-2 × spin-2 EB-like spectra are emitted.
+            SYMMETRIC (default) emits one combined GC per cross-pair; the
+            companion CG entry from the underlying spectra map is filtered
+            out. DIRECTIONAL emits both GC and CG (B_i × E_j) as separate
+            spectra. See ADR-0011.
 
         Returns
         -------
         C_ell_dict : dict[SpectrumKey, ndarray]
             Dictionary mapping each spectrum identifier to its C_ell array.
         spectra_list : list[SpectrumKey]
-            Ordered list of spectrum identifiers, matching the enumeration of
-            cross/auto pairs in the underlying field collection.
+            Ordered list of spectrum identifiers. DIRECTIONAL keeps the
+            extra CG entries in their original positions; SYMMETRIC skips
+            them so the spectrum count stays at the legacy 3-per-cross-pair.
         """
-        from cosmocore.spectrum_key import SpectrumKey
+        from cosmocore.spectrum_key import SpectrumKey, SpectrumKind, SymmetryMode
+
+        if symmetry_mode is None:
+            symmetry_mode = SymmetryMode.SYMMETRIC
 
         spins = tuple(f.spin for f in self.fields)
         C_ell_dict: dict = {}
         spectra_list: list = []
         for fi, fj, mode in self._spectra_map:
-            kind = _spin_pair_mode_to_kind(spins[fi], spins[fj], mode)
+            kind = _spin_pair_mode_to_kind(
+                spins[fi], spins[fj], mode, is_cross=(fi != fj)
+            )
+            if symmetry_mode is SymmetryMode.SYMMETRIC and kind is SpectrumKind.CG:
+                continue
             key = SpectrumKey(fi, fj, kind, spins=spins)
             C_ell_dict[key] = self.get_cls(fi, fj, mode)
             spectra_list.append(key)
+
         return C_ell_dict, spectra_list
 
     def compute_smoothing_factors(
