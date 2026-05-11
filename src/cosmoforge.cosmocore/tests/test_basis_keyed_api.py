@@ -237,3 +237,72 @@ def test_directional_lambda_uses_separate_gc_cg(harmonic_basis_qu_qu):
     L_sym = bm._build_lambda_matrix(sym_cl_dict)
     assert L_sym[row0 + sample_idx, col1 + n + sample_idx] == pytest.approx(2.0)
     assert L_sym[row0 + n + sample_idx, col1 + sample_idx] == pytest.approx(2.0)
+
+
+def test_directional_qml_recovers_injected_asymmetric_eb(harmonic_basis_qu_qu):
+    """End-to-end algebraic check: inject C_GC != C_CG into the fiducial Lambda,
+    take the QML expectation values Tr[A Lambda A E_b] for b in (GC, CG),
+    deconvolve via the per-ell Fisher 2x2 over (GC, CG), and assert the
+    recovered values match the injected ones at machine precision.
+
+    Catches algebraic misalignment between Lambda and the E matrices that the
+    unit-position tests miss — e.g. if E_GC and Lambda's GC block disagreed
+    on which off-diagonal sub-block they populate, the recovery would fail
+    even though each piece looks individually correct.
+    """
+    from cosmocore.spectrum_key import SpectrumKey, SpectrumKind, SymmetryMode
+
+    bm = harmonic_basis_qu_qu
+    lmax = bm.lmax_signal
+    spins = (2, 2)
+    zeros = np.zeros(lmax + 1)
+
+    # Localize the signal to the chosen ell so the 2x2 Fisher on (GC, CG)
+    # at that ell is a complete basis for what Lambda carries. All auto kinds
+    # and the GG/CC cross are zero — Lambda then has signal *only* in the
+    # (E_0, B_1) and (B_0, E_1) blocks at the chosen ell, and the recovery
+    # is an exact algebraic identity (no leakage from other Fisher entries).
+    ell = lmax // 2
+    c_gc = zeros.copy()
+    c_cg = zeros.copy()
+    c_gc[ell] = 0.3
+    c_cg[ell] = -0.1
+
+    cl_dict = {
+        SpectrumKey(0, 0, SpectrumKind.GG, spins=spins): zeros.copy(),
+        SpectrumKey(0, 0, SpectrumKind.CC, spins=spins): zeros.copy(),
+        SpectrumKey(1, 1, SpectrumKind.GG, spins=spins): zeros.copy(),
+        SpectrumKey(1, 1, SpectrumKind.CC, spins=spins): zeros.copy(),
+        SpectrumKey(0, 1, SpectrumKind.GG, spins=spins): zeros.copy(),
+        SpectrumKey(0, 1, SpectrumKind.CC, spins=spins): zeros.copy(),
+        SpectrumKey(0, 1, SpectrumKind.GC, spins=spins): c_gc,
+        SpectrumKey(0, 1, SpectrumKind.CG, spins=spins): c_cg,
+    }
+
+    Lambda_fid = bm._build_lambda_matrix(cl_dict)
+    A = bm.get_projected_inverse(cl_dict)
+
+    key_gc = SpectrumKey(0, 1, SpectrumKind.GC, spins=spins)
+    key_cg = SpectrumKey(0, 1, SpectrumKind.CG, spins=spins)
+    E_gc = bm.get_derivative_matrix_keyed(
+        ell, key_gc, symmetry_mode=SymmetryMode.DIRECTIONAL
+    )
+    E_cg = bm.get_derivative_matrix_keyed(
+        ell, key_cg, symmetry_mode=SymmetryMode.DIRECTIONAL
+    )
+
+    q_gc = 0.5 * np.trace(A @ Lambda_fid @ A @ E_gc)
+    q_cg = 0.5 * np.trace(A @ Lambda_fid @ A @ E_cg)
+
+    F = np.array(
+        [
+            [0.5 * np.trace(A @ E_gc @ A @ E_gc), 0.5 * np.trace(A @ E_gc @ A @ E_cg)],
+            [0.5 * np.trace(A @ E_cg @ A @ E_gc), 0.5 * np.trace(A @ E_cg @ A @ E_cg)],
+        ]
+    )
+
+    recovered = np.linalg.solve(F, np.array([q_gc, q_cg]))
+
+    np.testing.assert_allclose(recovered[0], c_gc[ell], rtol=1e-10)
+    np.testing.assert_allclose(recovered[1], c_cg[ell], rtol=1e-10)
+    assert not np.isclose(recovered[0], recovered[1])

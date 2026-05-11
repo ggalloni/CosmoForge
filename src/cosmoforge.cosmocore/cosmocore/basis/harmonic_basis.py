@@ -695,6 +695,16 @@ class HarmonicBasisBuilder:
                     row_start : row_start + n_block,
                     col_start : col_start + n_block,
                 ] = block
+                if ci != cj:
+                    # Mirror the transpose into the (cj, ci) block so the full
+                    # Lambda is symmetric. _smw_projected_inverse assumes this
+                    # symmetry; the spin-0 cross and 0x2 paths above already do
+                    # the same. (Pre-5.4 cross spin-2 silently omitted this and
+                    # got away with it because no QU+QU test exercised it.)
+                    lambda_matrix[
+                        col_start : col_start + n_block,
+                        row_start : row_start + n_block,
+                    ] = block.T
 
             elif spin_i == 0 and spin_j == 2:
                 n_base = self._n_modes_base
