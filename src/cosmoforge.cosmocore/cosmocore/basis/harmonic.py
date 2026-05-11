@@ -1076,7 +1076,7 @@ class HarmonicBasis(ComputationBasis):
     def compute_fisher_matrix(
         self,
         C_ell,
-        spectra_list: list[tuple] | None = None,
+        spectra_list=None,
         ell_min: int = 2,
         ell_max: int | None = None,
     ) -> np.ndarray:
@@ -1085,12 +1085,11 @@ class HarmonicBasis(ComputationBasis):
         Parameters
         ----------
         C_ell : numpy.ndarray or dict
-            Power spectrum. Can be:
-            - numpy.ndarray: for single-field (spectra_list should be None)
-            - dict: for multi-field (spectra_list required)
-        spectra_list : list of tuple or None
-            For multi-field: list of 2-tuple or 3-tuple specifying spectra.
-            For single-field: should be None (auto-detected from C_ell type).
+            Power spectrum. Single-field: numpy.ndarray (spectra_list=None).
+            Multi-field: dict keyed by SpectrumKey (spectra_list required).
+        spectra_list : list[SpectrumKey] or None
+            For multi-field, the list of SpectrumKey instances enumerating
+            the spectra to include. None for single-field.
         ell_min : int
             Minimum multipole.
         ell_max : int or None
@@ -1151,10 +1150,12 @@ class HarmonicBasis(ComputationBasis):
         field_groups = self._detect_field_blocks(c_ell_dict)
         V_Cinv_VT = self.get_projected_inverse(c_ell_dict, field_groups=field_groups)
 
+        from ..spectrum_key import kind_to_legacy_mode
+
         VCinvVT_E = {}
         for spec_idx, spec_entry in enumerate(spectra_list):
-            comp_i, comp_j = spec_entry[0], spec_entry[1]
-            mode = spec_entry[2] if len(spec_entry) == 3 else 0
+            comp_i, comp_j = spec_entry.comp_i, spec_entry.comp_j
+            mode = kind_to_legacy_mode(spec_entry.kind, is_cross=(comp_i != comp_j))
             for ell in range(ell_min, ell_max + 1):
                 E_matrix = self.get_derivative_matrix(ell, comp_i, comp_j, mode)
                 VCinvVT_E[(spec_idx, ell)] = matrix_mult(V_Cinv_VT, E_matrix)

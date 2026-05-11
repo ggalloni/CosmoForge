@@ -10,6 +10,14 @@ import time
 import numpy as np
 from numpy.testing import assert_allclose
 
+from cosmocore.spectrum_key import SpectrumKey, SpectrumKind
+
+
+def _to_key(entry, *, spins):
+    """Test-only adapter: legacy 2-tuple -> SpectrumKey (scalar only)."""
+    return SpectrumKey(entry[0], entry[1], SpectrumKind.SS, spins=spins)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -85,7 +93,8 @@ def _make_two_field_independent(lmax_signal=6, n_pix_1=40, n_pix_2=30, seed=42):
         (0, 0): np.ones(lmax + 1) * 1e-3,
         (1, 1): np.ones(lmax + 1) * 2e-3,
     }
-    spectra_list = [(0, 0), (1, 1)]
+    spins = (0, 0)
+    spectra_list = [_to_key(t, spins=spins) for t in [(0, 0), (1, 1)]]
 
     return {
         "N": N,
@@ -420,8 +429,9 @@ class TestScalingBenchmarks:
             N = np.eye(n_pix_total) * 0.01
             np.eye(n_pix_total) * 100.0
 
+            spins_n = tuple([0] * n_fields)
             C_ell_dict = {(i, i): np.ones(lmax + 1) * 1e-3 for i in range(n_fields)}
-            spectra_list = [(i, i) for i in range(n_fields)]
+            spectra_list = [_to_key((i, i), spins=spins_n) for i in range(n_fields)]
 
             hb = HarmonicBasis(
                 N=N,
@@ -443,7 +453,7 @@ class TestScalingBenchmarks:
             # Time with cross-spectra (forces coupled)
             C_ell_coupled = dict(C_ell_dict)
             C_ell_coupled[(0, 1)] = np.ones(lmax + 1) * 1e-4
-            spectra_coupled = spectra_list + [(0, 1)]
+            spectra_coupled = spectra_list + [_to_key((0, 1), spins=spins_n)]
 
             t0 = time.perf_counter()
             for _ in range(3):

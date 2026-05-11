@@ -1097,12 +1097,20 @@ class TestPPCOperationChain:
         ppc.setup()
         ppc.apply_compression(epsilon=1e-6)
 
+        from cosmocore.spectrum_key import SpectrumKey, SpectrumKind
+
+        spins = (0, 0)
+        keys = [
+            SpectrumKey(0, 0, SpectrumKind.SS, spins=spins),
+            SpectrumKey(1, 1, SpectrumKind.SS, spins=spins),
+            SpectrumKey(0, 1, SpectrumKind.SS, spins=spins),
+        ]
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax + 1) * 1e-5,
-            (1, 1, 0): np.ones(lmax + 1) * 1e-5,
-            (0, 1, 0): np.ones(lmax + 1) * 5e-6,
+            keys[0]: np.ones(lmax + 1) * 1e-5,
+            keys[1]: np.ones(lmax + 1) * 1e-5,
+            keys[2]: np.ones(lmax + 1) * 5e-6,
         }
-        spectra_list = [(0, 0, 0), (1, 1, 0), (0, 1, 0)]
+        spectra_list = keys
 
         # Compressed covariance with dict
         C_c = ppc.get_compressed_covariance(C_ell_dict)

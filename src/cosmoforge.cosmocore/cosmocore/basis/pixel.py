@@ -1742,7 +1742,7 @@ class PixelBasis(ComputationBasis):
     def compute_fisher_matrix(
         self,
         C_ell,
-        spectra_list: list[tuple] | None = None,
+        spectra_list=None,
         ell_min: int = 2,
         ell_max: int | None = None,
     ) -> np.ndarray:
@@ -1751,10 +1751,11 @@ class PixelBasis(ComputationBasis):
         Parameters
         ----------
         C_ell : numpy.ndarray or dict
-            Power spectrum. Can be array (single-field) or dict (multi-field).
-        spectra_list : list of tuple or None
-            For multi-field: required list of spectra.
-            For single-field: should be None.
+            Power spectrum. Single-field: numpy.ndarray. Multi-field: dict
+            keyed by SpectrumKey.
+        spectra_list : list[SpectrumKey] or None
+            For multi-field, the list of SpectrumKey instances enumerating
+            the spectra to include. None for single-field.
         ell_min : int
             Minimum multipole.
         ell_max : int or None
@@ -1809,10 +1810,12 @@ class PixelBasis(ComputationBasis):
 
         C_c_inv = self.get_compressed_inverse(C_ell)
 
+        from ..spectrum_key import kind_to_legacy_mode
+
         cinv_times_dc = {}
         for spec_idx, spec_entry in enumerate(spectra_list):
-            comp_i, comp_j = spec_entry[0], spec_entry[1]
-            mode = spec_entry[2] if len(spec_entry) == 3 else 0
+            comp_i, comp_j = spec_entry.comp_i, spec_entry.comp_j
+            mode = kind_to_legacy_mode(spec_entry.kind, is_cross=(comp_i != comp_j))
             for ell in range(ell_min, ell_max + 1):
                 dC = self.get_derivative_matrix(ell, comp_i, comp_j, mode)
                 cinv_times_dc[(spec_idx, ell)] = matrix_mult(C_c_inv, dC)

@@ -7,6 +7,37 @@ import numpy as np
 import pytest
 from numpy.testing import assert_allclose
 
+from cosmocore.spectrum_key import SpectrumKey, SpectrumKind
+
+
+def _to_key(entry, *, spins):
+    """Test-only adapter: legacy (comp_i, comp_j[, mode]) tuple -> SpectrumKey."""
+    if len(entry) == 2:
+        comp_i, comp_j = entry
+        mode = 0
+    else:
+        comp_i, comp_j, mode = entry
+    spin_i, spin_j = spins[comp_i], spins[comp_j]
+    if (spin_i, spin_j) == (0, 0):
+        kind = SpectrumKind.SS
+    elif (spin_i, spin_j) == (2, 2):
+        if comp_i != comp_j:
+            kind = {
+                0: SpectrumKind.GG,
+                1: SpectrumKind.GC,
+                2: SpectrumKind.CG,
+                3: SpectrumKind.CC,
+            }[mode]
+        else:
+            kind = {0: SpectrumKind.GG, 1: SpectrumKind.CC, 2: SpectrumKind.GC}[mode]
+    elif (spin_i, spin_j) == (0, 2):
+        kind = {0: SpectrumKind.SG, 1: SpectrumKind.SC}[mode]
+    elif (spin_i, spin_j) == (2, 0):
+        kind = {0: SpectrumKind.GS, 1: SpectrumKind.CS}[mode]
+    else:
+        raise ValueError(f"unsupported spin pair ({spin_i}, {spin_j})")
+    return SpectrumKey(comp_i, comp_j, kind, spins=spins)
+
 
 class TestCreateCompression:
     """Tests for the create_computation_basis factory function."""
@@ -413,7 +444,8 @@ class TestPerFieldThreshold:
             (0, 0, 0): np.ones(lmax + 1) * 5e-4,
             (0, 0, 1): np.ones(lmax + 1) * 1e-4,
         }
-        spectra_list = [(0, 0, 0), (0, 0, 1)]
+        spins = (2,)
+        spectra_list = [_to_key(t, spins=spins) for t in [(0, 0, 0), (0, 0, 1)]]
         fisher = ppc_split.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
         )
@@ -462,7 +494,8 @@ class TestPerFieldThreshold:
             (0, 0, 0): np.ones(lmax + 1) * 5e-4,
             (0, 0, 1): np.ones(lmax + 1) * 1e-4,
         }
-        spectra_list = [(0, 0, 0), (0, 0, 1)]
+        spins = (2,)
+        spectra_list = [_to_key(t, spins=spins) for t in [(0, 0, 0), (0, 0, 1)]]
 
         f_scalar = ppc_scalar.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
@@ -517,7 +550,10 @@ class TestPerFieldThreshold:
             (1, 1, 1): np.ones(lmax + 1) * 1e-4,
             (0, 1, 0): np.ones(lmax + 1) * 2e-4,
         }
-        spectra_list = [(0, 0, 0), (1, 1, 0), (1, 1, 1), (0, 1, 0)]
+        spins = (0, 2)
+        spectra_list = [
+            _to_key(t, spins=spins) for t in [(0, 0, 0), (1, 1, 0), (1, 1, 1), (0, 1, 0)]
+        ]
         fisher = ppc.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
         )
@@ -721,7 +757,8 @@ class TestPixelProjectedPICSLikeMethods:
             (0, 0, 0): np.ones(lmax + 1) * 5e-4,  # EE
             (0, 0, 1): np.ones(lmax + 1) * 1e-4,  # BB
         }
-        spectra_list = [(0, 0, 0), (0, 0, 1)]  # EE, BB
+        spins = (2,)
+        spectra_list = [_to_key(t, spins=spins) for t in [(0, 0, 0), (0, 0, 1)]]  # EE, BB
 
         fisher_agg = ppc_aggressive.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax

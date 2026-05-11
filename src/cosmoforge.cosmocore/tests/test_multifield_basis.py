@@ -9,6 +9,37 @@ against traditional pixel-space computation.
 import numpy as np
 from numpy.testing import assert_allclose
 
+from cosmocore.spectrum_key import SpectrumKey, SpectrumKind
+
+
+def _to_key(entry, *, spins):
+    """Test-only adapter: legacy (comp_i, comp_j[, mode]) tuple -> SpectrumKey."""
+    if len(entry) == 2:
+        comp_i, comp_j = entry
+        mode = 0
+    else:
+        comp_i, comp_j, mode = entry
+    spin_i, spin_j = spins[comp_i], spins[comp_j]
+    if (spin_i, spin_j) == (0, 0):
+        kind = SpectrumKind.SS
+    elif (spin_i, spin_j) == (2, 2):
+        if comp_i != comp_j:
+            kind = {
+                0: SpectrumKind.GG,
+                1: SpectrumKind.GC,
+                2: SpectrumKind.CG,
+                3: SpectrumKind.CC,
+            }[mode]
+        else:
+            kind = {0: SpectrumKind.GG, 1: SpectrumKind.CC, 2: SpectrumKind.GC}[mode]
+    elif (spin_i, spin_j) == (0, 2):
+        kind = {0: SpectrumKind.SG, 1: SpectrumKind.SC}[mode]
+    elif (spin_i, spin_j) == (2, 0):
+        kind = {0: SpectrumKind.GS, 1: SpectrumKind.CS}[mode]
+    else:
+        raise ValueError(f"unsupported spin pair ({spin_i}, {spin_j})")
+    return SpectrumKey(comp_i, comp_j, kind, spins=spins)
+
 
 class TestMultiFieldCompressionInitialization:
     """Tests for multi-field compression initialization."""
@@ -195,7 +226,10 @@ class TestMultiFieldFisher:
             (1, 1): np.ones(n_ell) * 0.8e-6,
             (0, 1): np.ones(n_ell) * 0.5e-6,
         }
-        spectra_list = [(0, 0), (1, 1), (0, 1)]  # 3 spectra
+        spins = (0, 0)
+        spectra_list = [
+            _to_key(t, spins=spins) for t in [(0, 0), (1, 1), (0, 1)]
+        ]  # 3 spectra
 
         # Multi-field Fisher: shape is (n_spectra * n_ell, n_spectra * n_ell)
         fisher = hc.compute_fisher_matrix(C_ell_dict, spectra_list)
@@ -222,7 +256,8 @@ class TestMultiFieldFisher:
             (1, 1): np.ones(n_ell) * 0.8e-6,
             (0, 1): np.ones(n_ell) * 0.5e-6,
         }
-        spectra_list = [(0, 0), (1, 1), (0, 1)]
+        spins = (0, 0)
+        spectra_list = [_to_key(t, spins=spins) for t in [(0, 0), (1, 1), (0, 1)]]
 
         fisher = hc.compute_fisher_matrix(C_ell_dict, spectra_list)
 
@@ -247,7 +282,8 @@ class TestMultiFieldFisher:
             (1, 1): np.ones(n_ell) * 0.8e-6,
             (0, 1): np.ones(n_ell) * 0.5e-6,
         }
-        spectra_list = [(0, 0), (1, 1), (0, 1)]
+        spins = (0, 0)
+        spectra_list = [_to_key(t, spins=spins) for t in [(0, 0), (1, 1), (0, 1)]]
 
         fisher = hc.compute_fisher_matrix(C_ell_dict, spectra_list)
 
@@ -286,7 +322,8 @@ class TestMultiFieldManager:
             (1, 1): np.ones(n_ell) * 0.8e-6,
             (0, 1): np.ones(n_ell) * 0.5e-6,
         }
-        spectra_list = [(0, 0), (1, 1), (0, 1)]
+        spins = (0, 0)
+        spectra_list = [_to_key(t, spins=spins) for t in [(0, 0), (1, 1), (0, 1)]]
 
         cm = create_computation_basis(
             method="harmonic",
@@ -328,7 +365,11 @@ class TestMultiFieldIntegration:
         hc.setup()
 
         # All 6 spectra: 3 auto + 3 cross
-        spectra_list = [(0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2)]
+        spins = (0, 0, 0)
+        spectra_list = [
+            _to_key(t, spins=spins)
+            for t in [(0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2)]
+        ]
 
         fisher = hc.compute_fisher_matrix(
             setup["C_ell_dict"], spectra_list, ell_min=2, ell_max=setup["lmax"]
@@ -361,7 +402,8 @@ class TestMultiFieldIntegration:
         hc.setup()
 
         # Only auto-spectra
-        spectra_list = [(0, 0), (1, 1), (2, 2)]
+        spins = (0, 0, 0)
+        spectra_list = [_to_key(t, spins=spins) for t in [(0, 0), (1, 1), (2, 2)]]
 
         fisher = hc.compute_fisher_matrix(
             setup["C_ell_dict"], spectra_list, ell_min=2, ell_max=setup["lmax"]
@@ -417,7 +459,10 @@ class TestMultiFieldIntegration:
 
         # Multi-field Fisher for just field 1 auto-spectrum
         fisher_multi = hc_multi.compute_fisher_matrix(
-            setup["C_ell_dict"], [(0, 0)], ell_min=2, ell_max=setup["lmax"]
+            setup["C_ell_dict"],
+            [_to_key((0, 0), spins=(0, 0, 0))],
+            ell_min=2,
+            ell_max=setup["lmax"],
         )
 
         # They should match within numerical precision
@@ -513,7 +558,7 @@ class TestMultiFieldIntegration:
         hc.setup()
 
         # Compute compressed Fisher for single auto-spectrum (simpler case)
-        spectra_list = [(0, 0)]
+        spectra_list = [_to_key((0, 0), spins=(0, 0))]
         fisher_compressed = hc.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
         )
