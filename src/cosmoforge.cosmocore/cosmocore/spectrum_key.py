@@ -107,23 +107,43 @@ class SpectrumKey:
             )
 
 
-def kind_to_legacy_mode(kind: SpectrumKind) -> int:
+def kind_to_legacy_mode(kind: SpectrumKind, *, is_cross: bool = False) -> int:
     """Bridge for migration: map SpectrumKind to the legacy int `mode`.
 
-    Removed once the derivative builder accepts SpectrumKey natively
-    (Slice 5). CG is intentionally unsupported until DIRECTIONAL mode lands —
-    today's symmetric code has no slot for it.
+    For spin-2 × spin-2 the mode→kind mapping is context-dependent and must
+    match ``_spin_pair_mode_to_kind`` in ``cosmocore.harmonic``:
+
+    - Auto-pair (``is_cross=False``, default): ``[GG=0, CC=1, GC=2]``. CG has
+      no slot here — auto-pair derivative builders emit the symmetrised GC
+      matrix and never distinguish E_i B_j from B_i E_j.
+    - Cross-pair (``is_cross=True``): ``[GG=0, GC=1, CG=2, CC=3]`` — the
+      4-entry ordering used by ``PolarizationField.get_cross_spectrum_labels``
+      and DIRECTIONAL-mode derivative construction.
+
+    All other spin pairs have a single ordering independent of ``is_cross``.
     """
     spin_i, spin_j = kind.required_spins
     if (spin_i, spin_j) == (0, 0):
         return 0
     if (spin_i, spin_j) == (2, 2):
+        if is_cross:
+            try:
+                return {
+                    SpectrumKind.GG: 0,
+                    SpectrumKind.GC: 1,
+                    SpectrumKind.CG: 2,
+                    SpectrumKind.CC: 3,
+                }[kind]
+            except KeyError:
+                raise ValueError(
+                    f"kind {kind.name} not valid for spin-2 × spin-2 cross-pair"
+                )
         try:
             return {SpectrumKind.GG: 0, SpectrumKind.CC: 1, SpectrumKind.GC: 2}[kind]
         except KeyError:
             raise NotImplementedError(
-                f"kind {kind.name} not supported in legacy int-mode encoding "
-                "(requires DIRECTIONAL mode; see Slice 5)"
+                f"kind {kind.name} not supported in auto-pair int-mode encoding "
+                "(CG is cross-pair only; pass is_cross=True)"
             )
     if (spin_i, spin_j) == (0, 2):
         return {SpectrumKind.SG: 0, SpectrumKind.SC: 1}[kind]

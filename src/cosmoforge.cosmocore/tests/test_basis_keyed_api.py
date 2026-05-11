@@ -27,6 +27,26 @@ def harmonic_basis_t_qu():
     return hc
 
 
+@pytest.fixture
+def harmonic_basis_qu_qu():
+    """HarmonicBasis with two spin-2 components — cross-pair spin-2×spin-2."""
+    np.random.seed(43)
+    n_pix_a = 8
+    n_pix_b = 8
+    theta_a = np.random.uniform(0.1, np.pi - 0.1, n_pix_a)
+    phi_a = np.random.uniform(0, 2 * np.pi, n_pix_a)
+    theta_b = np.random.uniform(0.1, np.pi - 0.1, n_pix_b)
+    phi_b = np.random.uniform(0, 2 * np.pi, n_pix_b)
+    lmax = 6
+
+    total_pix = 2 * n_pix_a + 2 * n_pix_b
+    N = np.eye(total_pix) * 0.01
+
+    hc = HarmonicBasis(N, (theta_a, theta_b), (phi_a, phi_b), lmax, spins=[2, 2])
+    hc.setup()
+    return hc
+
+
 def test_keyed_derivative_matches_legacy(harmonic_basis_t_qu):
     """get_derivative_matrix_keyed produces the same matrix as the int API."""
     spins = (0, 2)
@@ -109,3 +129,63 @@ def test_detect_field_blocks_accepts_spectrumkey_keyed_dict(harmonic_basis_t_qu)
     g_keyed = harmonic_basis_t_qu._detect_field_blocks(keyed)
     g_tupled = harmonic_basis_t_qu._detect_field_blocks(tupled)
     assert g_keyed == g_tupled
+
+
+def test_directional_gc_and_cg_e_matrices_distinct(harmonic_basis_qu_qu):
+    """In DIRECTIONAL mode, E_GC and E_CG are distinct matrices.
+    SYMMETRIC E_GC equals the legacy symmetrised matrix bit-for-bit."""
+    from cosmocore.spectrum_key import (
+        SpectrumKey,
+        SpectrumKind,
+        SymmetryMode,
+    )
+
+    spins = (2, 2)
+    ell = 5  # any ell within the basis's lmax_signal
+
+    key_gc = SpectrumKey(0, 1, SpectrumKind.GC, spins=spins)
+    key_cg = SpectrumKey(0, 1, SpectrumKind.CG, spins=spins)
+
+    e_gc_dir = harmonic_basis_qu_qu.get_derivative_matrix_keyed(
+        ell, key_gc, symmetry_mode=SymmetryMode.DIRECTIONAL
+    )
+    e_cg_dir = harmonic_basis_qu_qu.get_derivative_matrix_keyed(
+        ell, key_cg, symmetry_mode=SymmetryMode.DIRECTIONAL
+    )
+    assert not np.array_equal(e_gc_dir, e_cg_dir)
+    np.testing.assert_array_equal(
+        e_gc_dir + e_cg_dir,
+        harmonic_basis_qu_qu.get_derivative_matrix_keyed(
+            ell, key_gc, symmetry_mode=SymmetryMode.SYMMETRIC
+        ),
+    )
+
+    e_sym = harmonic_basis_qu_qu.get_derivative_matrix_keyed(
+        ell, key_gc, symmetry_mode=SymmetryMode.SYMMETRIC
+    )
+    legacy = harmonic_basis_qu_qu._build_derivative_matrix_with_spins(ell, 0, 1, mode=1)
+    np.testing.assert_array_equal(e_sym, legacy)
+
+    # Default (no symmetry_mode kwarg) MUST also equal legacy bit-for-bit.
+    e_default = harmonic_basis_qu_qu.get_derivative_matrix_keyed(ell, key_gc)
+    np.testing.assert_array_equal(e_default, legacy)
+
+
+def test_kind_to_legacy_mode_supports_cg_for_cross():
+    """CG is valid in cross-component context; raises for auto-pair."""
+    from cosmocore.spectrum_key import SpectrumKind, kind_to_legacy_mode
+
+    # Cross-component spin-2 × spin-2 ordering: [GG=0, GC=1, CG=2, CC=3]
+    assert kind_to_legacy_mode(SpectrumKind.CG, is_cross=True) == 2
+    assert kind_to_legacy_mode(SpectrumKind.GC, is_cross=True) == 1
+    assert kind_to_legacy_mode(SpectrumKind.GG, is_cross=True) == 0
+    assert kind_to_legacy_mode(SpectrumKind.CC, is_cross=True) == 3
+
+    # Auto-pair (is_cross=False) preserves legacy [GG=0, CC=1, GC=2] mapping.
+    assert kind_to_legacy_mode(SpectrumKind.GG, is_cross=False) == 0
+    assert kind_to_legacy_mode(SpectrumKind.CC, is_cross=False) == 1
+    assert kind_to_legacy_mode(SpectrumKind.GC, is_cross=False) == 2
+
+    # CG has no slot in the auto-pair ordering.
+    with pytest.raises((NotImplementedError, KeyError)):
+        kind_to_legacy_mode(SpectrumKind.CG, is_cross=False)

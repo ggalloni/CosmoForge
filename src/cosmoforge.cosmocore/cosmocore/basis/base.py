@@ -762,23 +762,38 @@ class ComputationBasis(ABC):
         )
 
     def _build_derivative_matrix_with_spins(
-        self, ell: int, comp_i: int, comp_j: int, mode: int = 0
+        self,
+        ell: int,
+        comp_i: int,
+        comp_j: int,
+        mode: int = 0,
+        *,
+        symmetry_mode=None,
     ) -> np.ndarray:
         """Build derivative matrix for (comp_i, comp_j, mode)."""
         return self._harmonic_basis._build_derivative_matrix_with_spins(
-            ell, comp_i, comp_j, mode
+            ell, comp_i, comp_j, mode, symmetry_mode=symmetry_mode
         )
 
-    def get_derivative_matrix_keyed(self, ell, key):
+    def get_derivative_matrix_keyed(self, ell, key, *, symmetry_mode=None):
         """Build the derivative matrix dC/dC_ell for a SpectrumKey at multipole ell.
 
         The keyed API is the new public surface. The int-typed
         _build_derivative_matrix_with_spins remains as the inner implementation.
+        ``symmetry_mode`` is forwarded to the inner builder; ``None`` keeps the
+        SYMMETRIC default.
         """
-        from ..spectrum_key import kind_to_legacy_mode
+        from ..spectrum_key import SymmetryMode, kind_to_legacy_mode
 
+        if symmetry_mode is None:
+            symmetry_mode = SymmetryMode.SYMMETRIC
+        is_cross = key.comp_i != key.comp_j
         return self._build_derivative_matrix_with_spins(
-            ell, key.comp_i, key.comp_j, kind_to_legacy_mode(key.kind)
+            ell,
+            key.comp_i,
+            key.comp_j,
+            kind_to_legacy_mode(key.kind, is_cross=is_cross),
+            symmetry_mode=symmetry_mode,
         )
 
     def _precompute_derivative_diagonals(self) -> None:

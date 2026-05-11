@@ -413,13 +413,35 @@ class HarmonicBasisBuilder:
     # =========================================================================
 
     def _build_derivative_matrix_with_spins(
-        self, ell: int, comp_i: int, comp_j: int, mode: int = 0
+        self,
+        ell: int,
+        comp_i: int,
+        comp_j: int,
+        mode: int = 0,
+        *,
+        symmetry_mode=None,
     ) -> np.ndarray:
         """Build full harmonic-space derivative matrix for (comp_i, comp_j, mode).
 
-        Handles all spin combinations: 0x0, 2x2, 0x2, 2x0.
-        Returns the E matrix in n_modes_total x n_modes_total space.
+        Handles all spin combinations: 0x0, 2x2, 0x2, 2x0. The integer ``mode``
+        is interpreted differently for auto-pair vs cross-pair spin-2 × spin-2:
+
+        - Auto (``comp_i == comp_j``): ``[EE=0, BB=1, EB=2]`` — matches
+          PolarizationField.get_spectrum_labels.
+        - Cross (``comp_i != comp_j``): ``[GG=0, GC=1, CG=2, CC=3]`` — matches
+          PolarizationField.get_cross_spectrum_labels.
+
+        ``symmetry_mode`` controls cross-pair EB-like behaviour. SYMMETRIC
+        (default) symmetrises GC across both off-diagonal blocks (today's
+        behaviour). DIRECTIONAL writes a single block per kind: GC populates
+        only ``[E_i, B_j]``; CG populates only ``[B_i, E_j]``. SYMMETRIC + CG
+        and any auto-pair are unaffected by this flag.
         """
+        from ..spectrum_key import SymmetryMode
+
+        if symmetry_mode is None:
+            symmetry_mode = SymmetryMode.SYMMETRIC
+
         E = np.zeros((self.n_modes_total, self.n_modes_total), dtype=np.float64)
         local_mode_indices = self._ell_to_modes_local[ell]
         n_base = self._n_modes_base
@@ -441,28 +463,49 @@ class HarmonicBasisBuilder:
             row_start = self._mode_offsets[comp_i]
             col_start = self._mode_offsets[comp_j]
 
-            if mode == 0:  # EE
-                for idx in local_mode_indices:
-                    E[row_start + idx, col_start + idx] = deriv_val
-            elif mode == 1:  # BB
-                for idx in local_mode_indices:
-                    E[row_start + n_base + idx, col_start + n_base + idx] = deriv_val
-            elif mode == 2:  # EB
-                for idx in local_mode_indices:
-                    E[row_start + idx, col_start + n_base + idx] = deriv_val
-                    E[col_start + n_base + idx, row_start + idx] = deriv_val
-
-            if comp_i != comp_j:
+            if comp_i == comp_j:
+                # Auto-pair ordering: 0=EE, 1=BB, 2=EB (symmetric).
                 if mode == 0:
                     for idx in local_mode_indices:
-                        E[col_start + idx, row_start + idx] = deriv_val
+                        E[row_start + idx, col_start + idx] = deriv_val
                 elif mode == 1:
                     for idx in local_mode_indices:
-                        E[col_start + n_base + idx, row_start + n_base + idx] = deriv_val
+                        E[row_start + n_base + idx, col_start + n_base + idx] = deriv_val
                 elif mode == 2:
                     for idx in local_mode_indices:
-                        E[col_start + idx, row_start + n_base + idx] = deriv_val
+                        E[row_start + idx, col_start + n_base + idx] = deriv_val
+                        E[col_start + n_base + idx, row_start + idx] = deriv_val
+            else:
+                # Cross-pair ordering: 0=GG, 1=GC, 2=CG, 3=CC.
+                # GG / CC are diagonal kinds: write [G_i, G_j] (or [C_i, C_j])
+                # and its transpose.
+                if mode == 0:  # GG = E_i E_j
+                    for idx in local_mode_indices:
+                        E[row_start + idx, col_start + idx] = deriv_val
+                        E[col_start + idx, row_start + idx] = deriv_val
+                elif mode == 3:  # CC = B_i B_j
+                    for idx in local_mode_indices:
+                        E[row_start + n_base + idx, col_start + n_base + idx] = deriv_val
+                        E[col_start + n_base + idx, row_start + n_base + idx] = deriv_val
+                elif mode == 1:  # GC = E_i B_j
+                    # Always populate the (E_i, B_j) block + its transpose.
+                    for idx in local_mode_indices:
+                        E[row_start + idx, col_start + n_base + idx] = deriv_val
+                        E[col_start + n_base + idx, row_start + idx] = deriv_val
+                    if symmetry_mode is SymmetryMode.SYMMETRIC:
+                        # Symmetrise: also populate the (B_i, E_j) block.
+                        for idx in local_mode_indices:
+                            E[row_start + n_base + idx, col_start + idx] = deriv_val
+                            E[col_start + idx, row_start + n_base + idx] = deriv_val
+                elif mode == 2:  # CG = B_i E_j
+                    if symmetry_mode is not SymmetryMode.DIRECTIONAL:
+                        raise ValueError(
+                            "CG (cross-pair mode=2) requires DIRECTIONAL symmetry_mode; "
+                            "SYMMETRIC folds CG into GC."
+                        )
+                    for idx in local_mode_indices:
                         E[row_start + n_base + idx, col_start + idx] = deriv_val
+                        E[col_start + idx, row_start + n_base + idx] = deriv_val
 
         elif spin_i == 0 and spin_j == 2:
             deriv_val = -1.0
