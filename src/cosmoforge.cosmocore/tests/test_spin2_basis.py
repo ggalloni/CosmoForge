@@ -10,6 +10,37 @@ import numpy as np
 import pytest
 from numpy.testing import assert_allclose
 
+from cosmocore.spectrum_key import SpectrumKey, SpectrumKind
+
+
+def legacy_tuple_to_spectrum_key(entry, *, spins):
+    """Test-only adapter: build a SpectrumKey from a legacy 2-/3-tuple."""
+    if len(entry) == 2:
+        comp_i, comp_j = entry
+        mode = 0
+    else:
+        comp_i, comp_j, mode = entry
+    spin_i, spin_j = spins[comp_i], spins[comp_j]
+    if (spin_i, spin_j) == (0, 0):
+        kind = SpectrumKind.SS
+    elif (spin_i, spin_j) == (2, 2):
+        if comp_i != comp_j:
+            kind = {
+                0: SpectrumKind.GG,
+                1: SpectrumKind.GC,
+                2: SpectrumKind.CG,
+                3: SpectrumKind.CC,
+            }[mode]
+        else:
+            kind = {0: SpectrumKind.GG, 1: SpectrumKind.CC, 2: SpectrumKind.GC}[mode]
+    elif (spin_i, spin_j) == (0, 2):
+        kind = {0: SpectrumKind.SG, 1: SpectrumKind.SC}[mode]
+    elif (spin_i, spin_j) == (2, 0):
+        kind = {0: SpectrumKind.GS, 1: SpectrumKind.CS}[mode]
+    else:
+        raise ValueError(f"unsupported spin pair ({spin_i}, {spin_j})")
+    return SpectrumKey(comp_i, comp_j, kind, spins=spins)
+
 
 class TestSpin2HarmonicOperator:
     """Tests for spin-2 harmonic operator V construction."""
@@ -240,13 +271,17 @@ class TestSpin2Derivatives:
 
         n_base = hc._n_modes_base
         ell = 3
+        spins = (0, 2)
 
-        # EE derivative
-        E_ee = hc.get_derivative_matrix(ell, 1, 1, mode=0)
-        # BB derivative
-        E_bb = hc.get_derivative_matrix(ell, 1, 1, mode=1)
-        # EB derivative
-        E_eb = hc.get_derivative_matrix(ell, 1, 1, mode=2)
+        E_ee = hc.get_derivative_matrix(
+            ell, SpectrumKey(1, 1, SpectrumKind.GG, spins=spins)
+        )
+        E_bb = hc.get_derivative_matrix(
+            ell, SpectrumKey(1, 1, SpectrumKind.CC, spins=spins)
+        )
+        E_eb = hc.get_derivative_matrix(
+            ell, SpectrumKey(1, 1, SpectrumKind.GC, spins=spins)
+        )
 
         # EE should only have entries in [n_base:2*n_base, n_base:2*n_base]
         assert np.all(E_ee[:n_base, :] == 0), "EE should not touch T block"
@@ -287,9 +322,11 @@ class TestSpin2Derivatives:
 
         n_base = hc._n_modes_base
         ell = 3
+        spins = (0, 2)
 
-        # TE derivative
-        E_te = hc.get_derivative_matrix(ell, 0, 1, mode=0)
+        E_te = hc.get_derivative_matrix(
+            ell, SpectrumKey(0, 1, SpectrumKind.SG, spins=spins)
+        )
 
         # Should have entries in T×E block and E×T block (symmetric)
         assert np.any(E_te[:n_base, n_base : 2 * n_base] != 0)
@@ -322,20 +359,22 @@ class TestSpin2Fisher:
         hc = HarmonicBasis(N, (theta_t, theta_p), (phi_t, phi_p), lmax, spins=[0, 2])
         hc.setup()
 
+        spins = (0, 2)
+        _k = lambda t: legacy_tuple_to_spectrum_key(t, spins=spins)
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax + 1) * 1e-3,
-            (1, 1, 0): np.ones(lmax + 1) * 5e-4,
-            (1, 1, 1): np.ones(lmax + 1) * 1e-4,
-            (1, 1, 2): np.zeros(lmax + 1),
-            (0, 1, 0): np.ones(lmax + 1) * 2e-4,
-            (0, 1, 1): np.zeros(lmax + 1),
+            _k((0, 0, 0)): np.ones(lmax + 1) * 1e-3,
+            _k((1, 1, 0)): np.ones(lmax + 1) * 5e-4,
+            _k((1, 1, 1)): np.ones(lmax + 1) * 1e-4,
+            _k((1, 1, 2)): np.zeros(lmax + 1),
+            _k((0, 1, 0)): np.ones(lmax + 1) * 2e-4,
+            _k((0, 1, 1)): np.zeros(lmax + 1),
         }
 
         spectra_list = [
-            (0, 0, 0),  # TT
-            (1, 1, 0),  # EE
-            (1, 1, 1),  # BB
-            (0, 1, 0),  # TE
+            _k((0, 0, 0)),  # TT
+            _k((1, 1, 0)),  # EE
+            _k((1, 1, 1)),  # BB
+            _k((0, 1, 0)),  # TE
         ]
 
         fisher = hc.compute_fisher_matrix(
@@ -366,13 +405,15 @@ class TestSpin2Fisher:
         hc = HarmonicBasis(N, (theta_t, theta_p), (phi_t, phi_p), lmax, spins=[0, 2])
         hc.setup()
 
+        spins = (0, 2)
+        _k = lambda t: legacy_tuple_to_spectrum_key(t, spins=spins)
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax + 1) * 1e-3,
-            (1, 1, 0): np.ones(lmax + 1) * 5e-4,
-            (1, 1, 1): np.ones(lmax + 1) * 1e-4,
+            _k((0, 0, 0)): np.ones(lmax + 1) * 1e-3,
+            _k((1, 1, 0)): np.ones(lmax + 1) * 5e-4,
+            _k((1, 1, 1)): np.ones(lmax + 1) * 1e-4,
         }
 
-        spectra_list = [(0, 0, 0), (1, 1, 0), (1, 1, 1)]
+        spectra_list = [_k((0, 0, 0)), _k((1, 1, 0)), _k((1, 1, 1))]
 
         fisher = hc.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
@@ -398,12 +439,14 @@ class TestSpin2Fisher:
         hc = HarmonicBasis(N, theta, phi, lmax, spins=[2])
         hc.setup()
 
+        spins = (2,)
+        _k = lambda t: legacy_tuple_to_spectrum_key(t, spins=spins)
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax + 1) * 5e-4,  # EE
-            (0, 0, 1): np.ones(lmax + 1) * 1e-4,  # BB
+            _k((0, 0, 0)): np.ones(lmax + 1) * 5e-4,  # EE
+            _k((0, 0, 1)): np.ones(lmax + 1) * 1e-4,  # BB
         }
 
-        spectra_list = [(0, 0, 0), (0, 0, 1)]
+        spectra_list = [_k((0, 0, 0)), _k((0, 0, 1))]
 
         fisher = hc.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
@@ -434,14 +477,14 @@ def _pixel_space_fisher_with_spins(C_inv, V, hc, lmax, spectra_list):
     n_spectra = len(spectra_list)
     fisher = np.zeros((n_spectra * n_ell, n_spectra * n_ell))
 
-    for si, (ci, cj, mode_i) in enumerate(spectra_list):
+    for si, entry_i in enumerate(spectra_list):
         for ell_i in range(2, lmax + 1):
-            E_i = hc.get_derivative_matrix(ell_i, ci, cj, mode_i)
+            E_i = hc.get_derivative_matrix(ell_i, entry_i)
             dS_i = V.T @ E_i @ V
 
-            for sj, (ck, cl, mode_j) in enumerate(spectra_list):
+            for sj, entry_j in enumerate(spectra_list):
                 for ell_j in range(2, lmax + 1):
-                    E_j = hc.get_derivative_matrix(ell_j, ck, cl, mode_j)
+                    E_j = hc.get_derivative_matrix(ell_j, entry_j)
                     dS_j = V.T @ E_j @ V
 
                     temp1 = matrix_mult(C_inv, dS_i)
@@ -503,11 +546,13 @@ class TestSpin2Benchmark:
         C_EE = norm * 1e-4 / ells**2
         C_BB = norm * 1e-5 / ells**2
 
+        spins = (2,)
+        _k = lambda t: legacy_tuple_to_spectrum_key(t, spins=spins)
         C_ell_dict = {
-            (0, 0, 0): C_EE,
-            (0, 0, 1): C_BB,
+            _k((0, 0, 0)): C_EE,
+            _k((0, 0, 1)): C_BB,
         }
-        spectra_list = [(0, 0, 0), (0, 0, 1)]  # EE, BB
+        spectra_list = [_k((0, 0, 0)), _k((0, 0, 1))]  # EE, BB
 
         # --- Compressed Fisher ---
         t0 = time.perf_counter()
@@ -518,7 +563,7 @@ class TestSpin2Benchmark:
 
         # --- Pixel-space Fisher ---
         V = hc._V
-        lambda_matrix = hc._build_lambda_matrix_3tuple(C_ell_dict)
+        lambda_matrix = hc._build_lambda_matrix(C_ell_dict)
         S = V.T @ lambda_matrix @ V
         C = N + S
         C_inv = matrix_inverse_symm(C.copy())
@@ -605,17 +650,19 @@ class TestSpin2Benchmark:
         C_BB = norm * 1e-6 / ells**2
         C_TE = norm * 3e-5 / ells**2
 
+        spins = (0, 2)
+        _k = lambda t: legacy_tuple_to_spectrum_key(t, spins=spins)
         C_ell_dict = {
-            (0, 0, 0): C_TT,
-            (1, 1, 0): C_EE,
-            (1, 1, 1): C_BB,
-            (0, 1, 0): C_TE,
+            _k((0, 0, 0)): C_TT,
+            _k((1, 1, 0)): C_EE,
+            _k((1, 1, 1)): C_BB,
+            _k((0, 1, 0)): C_TE,
         }
         spectra_list = [
-            (0, 0, 0),  # TT
-            (1, 1, 0),  # EE
-            (1, 1, 1),  # BB
-            (0, 1, 0),  # TE
+            _k((0, 0, 0)),  # TT
+            _k((1, 1, 0)),  # EE
+            _k((1, 1, 1)),  # BB
+            _k((0, 1, 0)),  # TE
         ]
 
         # --- Compressed Fisher ---
@@ -627,7 +674,7 @@ class TestSpin2Benchmark:
 
         # --- Pixel-space Fisher ---
         V = hc._V
-        lambda_matrix = hc._build_lambda_matrix_3tuple(C_ell_dict)
+        lambda_matrix = hc._build_lambda_matrix(C_ell_dict)
         S = V.T @ lambda_matrix @ V
         C = N + S
         C_inv = matrix_inverse_symm(C.copy())
@@ -756,11 +803,13 @@ class TestPixelProjectedSpin2:
         )
         ppc.setup()
 
+        spins = (2,)
+        _k = lambda t: legacy_tuple_to_spectrum_key(t, spins=spins)
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax + 1) * 5e-4,  # EE
-            (0, 0, 1): np.ones(lmax + 1) * 1e-4,  # BB
+            _k((0, 0, 0)): np.ones(lmax + 1) * 5e-4,  # EE
+            _k((0, 0, 1)): np.ones(lmax + 1) * 1e-4,  # BB
         }
-        spectra_list = [(0, 0, 0), (0, 0, 1)]
+        spectra_list = [_k((0, 0, 0)), _k((0, 0, 1))]
 
         fisher = ppc.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
@@ -798,17 +847,19 @@ class TestPixelProjectedSpin2:
         )
         ppc.setup()
 
+        spins = (0, 2)
+        _k = lambda t: legacy_tuple_to_spectrum_key(t, spins=spins)
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax + 1) * 1e-3,  # TT
-            (1, 1, 0): np.ones(lmax + 1) * 5e-4,  # EE
-            (1, 1, 1): np.ones(lmax + 1) * 1e-4,  # BB
-            (0, 1, 0): np.ones(lmax + 1) * 2e-4,  # TE
+            _k((0, 0, 0)): np.ones(lmax + 1) * 1e-3,  # TT
+            _k((1, 1, 0)): np.ones(lmax + 1) * 5e-4,  # EE
+            _k((1, 1, 1)): np.ones(lmax + 1) * 1e-4,  # BB
+            _k((0, 1, 0)): np.ones(lmax + 1) * 2e-4,  # TE
         }
         spectra_list = [
-            (0, 0, 0),  # TT
-            (1, 1, 0),  # EE
-            (1, 1, 1),  # BB
-            (0, 1, 0),  # TE
+            _k((0, 0, 0)),  # TT
+            _k((1, 1, 0)),  # EE
+            _k((1, 1, 1)),  # BB
+            _k((0, 1, 0)),  # TE
         ]
 
         fisher = ppc.compute_fisher_matrix(
@@ -876,11 +927,13 @@ class TestPixelProjectedSpin2:
         )
         cm.setup()
 
+        spins = (2,)
+        _k = lambda t: legacy_tuple_to_spectrum_key(t, spins=spins)
         C_ell_dict = {
-            (0, 0, 0): np.ones(lmax + 1) * 5e-4,
-            (0, 0, 1): np.ones(lmax + 1) * 1e-4,
+            _k((0, 0, 0)): np.ones(lmax + 1) * 5e-4,
+            _k((0, 0, 1)): np.ones(lmax + 1) * 1e-4,
         }
-        spectra_list = [(0, 0, 0), (0, 0, 1)]
+        spectra_list = [_k((0, 0, 0)), _k((0, 0, 1))]
 
         fisher = cm.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
@@ -975,12 +1028,20 @@ def _pixel_space_fisher_with_spins_raw(
                 E[col_start + idx, row_sub + idx] = deriv_val
         return E
 
-    for si, (ci, cj, mode_i) in enumerate(spectra_list):
+    from cosmocore.spectrum_key import kind_to_legacy_mode
+
+    def _entry_to_legacy(entry):
+        ci, cj = entry.comp_i, entry.comp_j
+        return ci, cj, kind_to_legacy_mode(entry.kind, is_cross=(ci != cj))
+
+    for si, entry_i in enumerate(spectra_list):
+        ci, cj, mode_i = _entry_to_legacy(entry_i)
         for ell_i in range(2, lmax + 1):
             E_i = _build_E(ell_i, ci, cj, mode_i)
             dS_i = V.T @ E_i @ V
 
-            for sj, (ck, cl, mode_j) in enumerate(spectra_list):
+            for sj, entry_j in enumerate(spectra_list):
+                ck, cl, mode_j = _entry_to_legacy(entry_j)
                 for ell_j in range(2, lmax + 1):
                     E_j = _build_E(ell_j, ck, cl, mode_j)
                     dS_j = V.T @ E_j @ V
@@ -1041,11 +1102,13 @@ class TestPixelProjectedSpin2Benchmark:
         C_EE = norm * 1e-4 / ells**2
         C_BB = norm * 1e-5 / ells**2
 
+        spins = (2,)
+        _k = lambda t: legacy_tuple_to_spectrum_key(t, spins=spins)
         C_ell_dict = {
-            (0, 0, 0): C_EE,
-            (0, 0, 1): C_BB,
+            _k((0, 0, 0)): C_EE,
+            _k((0, 0, 1)): C_BB,
         }
-        spectra_list = [(0, 0, 0), (0, 0, 1)]
+        spectra_list = [_k((0, 0, 0)), _k((0, 0, 1))]
 
         fisher_compressed = ppc.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=lmax
@@ -1053,7 +1116,7 @@ class TestPixelProjectedSpin2Benchmark:
 
         # Pixel-space Fisher
         V = ppc._V
-        lambda_matrix = ppc._build_lambda_matrix_3tuple(C_ell_dict)
+        lambda_matrix = ppc._build_lambda_matrix(C_ell_dict)
         S = V.T @ lambda_matrix @ V
         C = N + S
         C_inv = matrix_inverse_symm(C.copy())
@@ -1133,17 +1196,19 @@ class TestPixelProjectedSpin2Benchmark:
         C_BB = norm * 1e-6 / ells**2
         C_TE = norm * 3e-5 / ells**2
 
+        spins = (0, 2)
+        _k = lambda t: legacy_tuple_to_spectrum_key(t, spins=spins)
         C_ell_dict = {
-            (0, 0, 0): C_TT,
-            (1, 1, 0): C_EE,
-            (1, 1, 1): C_BB,
-            (0, 1, 0): C_TE,
+            _k((0, 0, 0)): C_TT,
+            _k((1, 1, 0)): C_EE,
+            _k((1, 1, 1)): C_BB,
+            _k((0, 1, 0)): C_TE,
         }
         spectra_list = [
-            (0, 0, 0),  # TT
-            (1, 1, 0),  # EE
-            (1, 1, 1),  # BB
-            (0, 1, 0),  # TE
+            _k((0, 0, 0)),  # TT
+            _k((1, 1, 0)),  # EE
+            _k((1, 1, 1)),  # BB
+            _k((0, 1, 0)),  # TE
         ]
 
         fisher_compressed = ppc.compute_fisher_matrix(
@@ -1152,7 +1217,7 @@ class TestPixelProjectedSpin2Benchmark:
 
         # Pixel-space Fisher
         V = ppc._V
-        lambda_matrix = ppc._build_lambda_matrix_3tuple(C_ell_dict)
+        lambda_matrix = ppc._build_lambda_matrix(C_ell_dict)
         S = V.T @ lambda_matrix @ V
         C = N + S
         C_inv = matrix_inverse_symm(C.copy())

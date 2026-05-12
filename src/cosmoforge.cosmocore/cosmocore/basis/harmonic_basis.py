@@ -13,6 +13,7 @@ import numpy as np
 from numba import njit, prange
 
 from ..basics import legendre_plm, wigner_d_small
+from ..spectrum_key import SpectrumKey, SpectrumKind, kind_to_legacy_mode
 
 
 @njit(parallel=True, cache=True)
@@ -412,13 +413,35 @@ class HarmonicBasisBuilder:
     # =========================================================================
 
     def _build_derivative_matrix_with_spins(
-        self, ell: int, comp_i: int, comp_j: int, mode: int = 0
+        self,
+        ell: int,
+        comp_i: int,
+        comp_j: int,
+        mode: int = 0,
+        *,
+        symmetry_mode=None,
     ) -> np.ndarray:
         """Build full harmonic-space derivative matrix for (comp_i, comp_j, mode).
 
-        Handles all spin combinations: 0x0, 2x2, 0x2, 2x0.
-        Returns the E matrix in n_modes_total x n_modes_total space.
+        Handles all spin combinations: 0x0, 2x2, 0x2, 2x0. The integer ``mode``
+        is interpreted differently for auto-pair vs cross-pair spin-2 × spin-2:
+
+        - Auto (``comp_i == comp_j``): ``[EE=0, BB=1, EB=2]`` — matches
+          PolarizationField.get_spectrum_labels.
+        - Cross (``comp_i != comp_j``): ``[GG=0, GC=1, CG=2, CC=3]`` — matches
+          PolarizationField.get_cross_spectrum_labels.
+
+        ``symmetry_mode`` controls cross-pair EB-like behaviour. SYMMETRIC
+        (default) symmetrises GC across both off-diagonal blocks (today's
+        behaviour). DIRECTIONAL writes a single block per kind: GC populates
+        only ``[E_i, B_j]``; CG populates only ``[B_i, E_j]``. SYMMETRIC + CG
+        and any auto-pair are unaffected by this flag.
         """
+        from ..spectrum_key import SymmetryMode
+
+        if symmetry_mode is None:
+            symmetry_mode = SymmetryMode.SYMMETRIC
+
         E = np.zeros((self.n_modes_total, self.n_modes_total), dtype=np.float64)
         local_mode_indices = self._ell_to_modes_local[ell]
         n_base = self._n_modes_base
@@ -440,28 +463,49 @@ class HarmonicBasisBuilder:
             row_start = self._mode_offsets[comp_i]
             col_start = self._mode_offsets[comp_j]
 
-            if mode == 0:  # EE
-                for idx in local_mode_indices:
-                    E[row_start + idx, col_start + idx] = deriv_val
-            elif mode == 1:  # BB
-                for idx in local_mode_indices:
-                    E[row_start + n_base + idx, col_start + n_base + idx] = deriv_val
-            elif mode == 2:  # EB
-                for idx in local_mode_indices:
-                    E[row_start + idx, col_start + n_base + idx] = deriv_val
-                    E[col_start + n_base + idx, row_start + idx] = deriv_val
-
-            if comp_i != comp_j:
+            if comp_i == comp_j:
+                # Auto-pair ordering: 0=EE, 1=BB, 2=EB (symmetric).
                 if mode == 0:
                     for idx in local_mode_indices:
-                        E[col_start + idx, row_start + idx] = deriv_val
+                        E[row_start + idx, col_start + idx] = deriv_val
                 elif mode == 1:
                     for idx in local_mode_indices:
-                        E[col_start + n_base + idx, row_start + n_base + idx] = deriv_val
+                        E[row_start + n_base + idx, col_start + n_base + idx] = deriv_val
                 elif mode == 2:
                     for idx in local_mode_indices:
-                        E[col_start + idx, row_start + n_base + idx] = deriv_val
+                        E[row_start + idx, col_start + n_base + idx] = deriv_val
+                        E[col_start + n_base + idx, row_start + idx] = deriv_val
+            else:
+                # Cross-pair ordering: 0=GG, 1=GC, 2=CG, 3=CC.
+                # GG / CC are diagonal kinds: write [G_i, G_j] (or [C_i, C_j])
+                # and its transpose.
+                if mode == 0:  # GG = E_i E_j
+                    for idx in local_mode_indices:
+                        E[row_start + idx, col_start + idx] = deriv_val
+                        E[col_start + idx, row_start + idx] = deriv_val
+                elif mode == 3:  # CC = B_i B_j
+                    for idx in local_mode_indices:
+                        E[row_start + n_base + idx, col_start + n_base + idx] = deriv_val
+                        E[col_start + n_base + idx, row_start + n_base + idx] = deriv_val
+                elif mode == 1:  # GC = E_i B_j
+                    # Always populate the (E_i, B_j) block + its transpose.
+                    for idx in local_mode_indices:
+                        E[row_start + idx, col_start + n_base + idx] = deriv_val
+                        E[col_start + n_base + idx, row_start + idx] = deriv_val
+                    if symmetry_mode is SymmetryMode.SYMMETRIC:
+                        # Symmetrise: also populate the (B_i, E_j) block.
+                        for idx in local_mode_indices:
+                            E[row_start + n_base + idx, col_start + idx] = deriv_val
+                            E[col_start + idx, row_start + n_base + idx] = deriv_val
+                elif mode == 2:  # CG = B_i E_j
+                    if symmetry_mode is not SymmetryMode.DIRECTIONAL:
+                        raise ValueError(
+                            "CG (cross-pair mode=2) requires DIRECTIONAL symmetry_mode; "
+                            "SYMMETRIC folds CG into GC."
+                        )
+                    for idx in local_mode_indices:
                         E[row_start + n_base + idx, col_start + idx] = deriv_val
+                        E[col_start + idx, row_start + n_base + idx] = deriv_val
 
         elif spin_i == 0 and spin_j == 2:
             deriv_val = -1.0
@@ -503,12 +547,27 @@ class HarmonicBasisBuilder:
                 Lambda_diag[idx] = c_ell_value
         return Lambda_diag
 
-    def _build_lambda_blocks(
-        self, C_ell_dict: dict[tuple[int, int], np.ndarray]
-    ) -> dict[tuple[int, int], np.ndarray]:
-        """Build Lambda blocks from cross-power spectra dictionary (2-tuple keys)."""
+    def _build_lambda_blocks(self, C_ell_dict: dict) -> dict[tuple[int, int], np.ndarray]:
+        """Build Lambda blocks from cross-power spectra dictionary.
+
+        Single-mode path for spin-0 × spin-0 components only. Accepts either
+        2-tuple ``(comp_i, comp_j)`` keys (legacy) or :class:`SpectrumKey`
+        instances. For SpectrumKey inputs, only ``comp_i``/``comp_j`` are
+        consumed — ``kind`` must be ``SpectrumKind.SS`` (spin-2 multi-kind
+        dicts must go through :meth:`_build_lambda_matrix`).
+        """
         Lambda_blocks = {}
-        for (comp_i, comp_j), C_ell in C_ell_dict.items():
+        for key, C_ell in C_ell_dict.items():
+            if isinstance(key, SpectrumKey):
+                if key.kind is not SpectrumKind.SS:
+                    raise ValueError(
+                        "_build_lambda_blocks only accepts SS keys; "
+                        f"got {key.kind.name}. Use _build_lambda_matrix for "
+                        "multi-kind dicts."
+                    )
+                comp_i, comp_j = key.comp_i, key.comp_j
+            else:
+                comp_i, comp_j = key
             Lambda_diag = self._build_lambda_diagonal(C_ell)
             Lambda_blocks[(comp_i, comp_j)] = Lambda_diag
             if comp_i != comp_j:
@@ -516,8 +575,17 @@ class HarmonicBasisBuilder:
         return Lambda_blocks
 
     def _build_lambda_matrix(self, C_ell_dict: dict) -> np.ndarray:
-        """Build full Lambda matrix, auto-detecting 2-tuple or 3-tuple keys."""
+        """Build full Lambda matrix, auto-detecting the key shape.
+
+        Accepts three key shapes (mid-migration):
+
+        - :class:`SpectrumKey` instances (post-Slice-4 canonical)
+        - 3-tuple ``(comp_i, comp_j, mode)`` — legacy
+        - 2-tuple ``(comp_i, comp_j)`` — legacy single-mode
+        """
         first_key = next(iter(C_ell_dict))
+        if isinstance(first_key, SpectrumKey):
+            return self._build_lambda_matrix_keyed(C_ell_dict)
         if len(first_key) == 3:
             return self._build_lambda_matrix_3tuple(C_ell_dict)
         return self._build_lambda_matrix_2tuple(C_ell_dict)
@@ -543,15 +611,20 @@ class HarmonicBasisBuilder:
         self,
         C_ell_EE: np.ndarray,
         C_ell_BB: np.ndarray,
-        C_ell_EB: np.ndarray | None = None,
+        C_ell_GC: np.ndarray | None = None,
+        C_ell_CG: np.ndarray | None = None,
     ) -> np.ndarray:
-        """Build Lambda block for a spin-2 auto-correlation (EE, BB, EB).
+        """Build Lambda block for a spin-2 pair.
 
-        For polarization, Lambda has 2x2 block structure at each (ell,m):
-            Lambda_{ell,m} = | C_ell^EE  C_ell^EB |
-                             | C_ell^EB  C_ell^BB |
+        Block structure at each (ell, m):
 
-        Uses _ell_to_modes_local for correct mode index placement.
+            Lambda_{ell, m} = | C_ell^EE  C_ell^GC |
+                              | C_ell^CG  C_ell^BB |
+
+        For auto-pair (or cross-pair under SYMMETRIC), pass only ``C_ell_GC``
+        and ``C_ell_CG`` is taken to equal it — recovering the symmetric
+        E-B / B-E block. For DIRECTIONAL cross-pair, pass both arrays
+        separately to populate the off-diagonal sub-blocks independently.
         """
         if self._ell_to_modes_local is None:
             self._build_ell_mode_mapping()
@@ -561,28 +634,126 @@ class HarmonicBasisBuilder:
         for ell in range(self._lmin_smw, self._lmax_smw + 1):
             c_ee = C_ell_EE[ell] if ell < len(C_ell_EE) else 0.0
             c_bb = C_ell_BB[ell] if ell < len(C_ell_BB) else 0.0
-            c_eb = 0.0
-            if C_ell_EB is not None and ell < len(C_ell_EB):
-                c_eb = C_ell_EB[ell]
+            c_gc = 0.0
+            if C_ell_GC is not None and ell < len(C_ell_GC):
+                c_gc = C_ell_GC[ell]
+            c_cg = c_gc
+            if C_ell_CG is not None and ell < len(C_ell_CG):
+                c_cg = C_ell_CG[ell]
 
             for idx in self._ell_to_modes_local[ell]:
                 Lambda[idx, idx] = c_ee  # E-E block
                 Lambda[n + idx, n + idx] = c_bb  # B-B block
-                Lambda[idx, n + idx] = c_eb  # E-B block
-                Lambda[n + idx, idx] = c_eb  # B-E block
+                Lambda[idx, n + idx] = c_gc  # (E, B) block
+                Lambda[n + idx, idx] = c_cg  # (B, E) block
 
         return Lambda
+
+    def _build_lambda_matrix_keyed(
+        self, C_ell_dict: dict[SpectrumKey, np.ndarray]
+    ) -> np.ndarray:
+        """Build full Lambda matrix from a :class:`SpectrumKey`-keyed dict.
+
+        Mirrors :meth:`_build_lambda_matrix_3tuple` but reads
+        ``key.comp_i`` / ``key.comp_j`` and translates ``key.kind`` to the
+        int mode per-iteration via :func:`kind_to_legacy_mode`. No dict-level
+        rewrap is performed.
+        """
+        lambda_matrix = np.zeros(
+            (self.n_modes_total, self.n_modes_total), dtype=np.float64
+        )
+
+        pair_entries: dict[tuple[int, int], dict[int, np.ndarray]] = {}
+        for key, C_ell in C_ell_dict.items():
+            is_cross = key.comp_i != key.comp_j
+            mode = kind_to_legacy_mode(key.kind, is_cross=is_cross)
+            pair_entries.setdefault((key.comp_i, key.comp_j), {})[mode] = C_ell
+
+        for (ci, cj), mode_dict in pair_entries.items():
+            spin_i = self._spins[ci]
+            spin_j = self._spins[cj]
+            row_start = self._mode_offsets[ci]
+            col_start = self._mode_offsets[cj]
+
+            if spin_i == 0 and spin_j == 0:
+                diag = self._build_lambda_diagonal(mode_dict[0])
+                for k, val in enumerate(diag):
+                    lambda_matrix[row_start + k, col_start + k] = val
+                    if ci != cj:
+                        lambda_matrix[col_start + k, row_start + k] = val
+
+            elif spin_i == 2 and spin_j == 2:
+                # Auto-pair mode encoding: [EE=0, BB=1, EB=2].
+                # Cross-pair mode encoding: [GG=0, GC=1, CG=2, CC=3]. CG is
+                # only present in DIRECTIONAL; under SYMMETRIC it is omitted
+                # and falls back to GC inside the block builder.
+                if ci == cj:
+                    C_EE = mode_dict.get(0, np.zeros(self.lmax_signal + 1))
+                    C_BB = mode_dict.get(1, np.zeros(self.lmax_signal + 1))
+                    C_GC = mode_dict.get(2, None)
+                    C_CG = None
+                else:
+                    C_EE = mode_dict.get(0, np.zeros(self.lmax_signal + 1))
+                    C_BB = mode_dict.get(3, np.zeros(self.lmax_signal + 1))
+                    C_GC = mode_dict.get(1, None)
+                    C_CG = mode_dict.get(2, None)
+                block = self._build_lambda_block_spin2(C_EE, C_BB, C_GC, C_CG)
+                n_block = 2 * self._n_modes_base
+                lambda_matrix[
+                    row_start : row_start + n_block,
+                    col_start : col_start + n_block,
+                ] = block
+                if ci != cj:
+                    # Mirror the transpose into the (cj, ci) block so the full
+                    # Lambda is symmetric. _smw_projected_inverse assumes this
+                    # symmetry; the spin-0 cross and 0x2 paths above already do
+                    # the same. (Pre-5.4 cross spin-2 silently omitted this and
+                    # got away with it because no QU+QU test exercised it.)
+                    lambda_matrix[
+                        col_start : col_start + n_block,
+                        row_start : row_start + n_block,
+                    ] = block.T
+
+            elif spin_i == 0 and spin_j == 2:
+                n_base = self._n_modes_base
+                for mode, C_ell in mode_dict.items():
+                    diag = self._build_lambda_diagonal(C_ell)
+                    col_sub = col_start + mode * n_base
+                    for k, val in enumerate(diag):
+                        lambda_matrix[row_start + k, col_sub + k] = -val
+                        lambda_matrix[col_sub + k, row_start + k] = -val
+
+            elif spin_i == 2 and spin_j == 0:
+                n_base = self._n_modes_base
+                for mode, C_ell in mode_dict.items():
+                    diag = self._build_lambda_diagonal(C_ell)
+                    row_sub = row_start + mode * n_base
+                    for k, val in enumerate(diag):
+                        lambda_matrix[row_sub + k, col_start + k] = -val
+                        lambda_matrix[col_start + k, row_sub + k] = -val
+
+        return lambda_matrix
 
     def _build_lambda_matrix_3tuple(
         self, C_ell_dict: dict[tuple, np.ndarray]
     ) -> np.ndarray:
-        """Build full Lambda matrix handling mixed spin-0/spin-2 components.
+        """Build full Lambda matrix from legacy 3-tuple-keyed dict.
+
+        Retained as a back-compat input shape for callers that have not
+        migrated to SpectrumKey-keyed dicts; new code should pass a
+        :class:`SpectrumKey`-keyed dict and let ``_build_lambda_matrix``
+        dispatch to :meth:`_build_lambda_matrix_keyed`.
 
         Accepts 3-tuple keys (comp_i, comp_j, mode) matching the
         get_cls(field_i, field_j, mode) API:
         - spin-0 x spin-0: mode 0 only
-        - spin-2 x spin-2: mode 0=EE, 1=BB, 2=EB
+        - spin-2 x spin-2: mode 0=EE, 1=BB, 2=EB (symmetric; no separate CG)
         - spin-0 x spin-2: mode 0=TE, 1=TB
+
+        Note: this shape predates the cross-pair encoding split introduced
+        in Slice 5 (``[GG=0, GC=1, CG=2, CC=3]`` for spin-2 x spin-2
+        cross-component). To express directional/CG cross-pair spectra,
+        use :class:`SpectrumKey` and ``SymmetryMode.DIRECTIONAL``.
         """
         lambda_matrix = np.zeros(
             (self.n_modes_total, self.n_modes_total), dtype=np.float64

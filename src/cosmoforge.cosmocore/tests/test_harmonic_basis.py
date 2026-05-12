@@ -8,6 +8,8 @@ import numpy as np
 import pytest
 from numpy.testing import assert_allclose
 
+from cosmocore.spectrum_key import SpectrumKey, SpectrumKind
+
 
 class TestHarmonicBasisInitialization:
     """Tests for HarmonicBasis initialization."""
@@ -614,11 +616,9 @@ class TestHarmonicDictOperations:
         qf = hc.compute_quadratic_form(data, C_ell)
         assert qf > 0
 
-        # Direct derivative matrix call (comp_i=None and single-comp shortcut)
-        dC = hc.get_derivative_matrix(5)
+        ss_key = SpectrumKey(0, 0, SpectrumKind.SS, spins=(0,))
+        dC = hc.get_derivative_matrix(5, ss_key)
         assert dC.shape == (hc.n_modes, hc.n_modes)
-        dC2 = hc.get_derivative_matrix(5, comp_i=0, comp_j=0)
-        assert_allclose(dC, dC2)
 
     def test_multi_field_weighted_data_qf_logdet(self, two_scalar_field_setup):
         """Cover dict paths: weighted data, quadratic form, logdet, prepare_smw."""

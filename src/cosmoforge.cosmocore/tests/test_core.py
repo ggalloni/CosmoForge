@@ -10,6 +10,7 @@ import pytest
 
 from cosmocore.core import Core
 from cosmocore.settings import InputParams
+from cosmocore.spectrum_key import SpectrumKey, SpectrumKind
 
 
 class ConcreteCore(Core):
@@ -673,7 +674,8 @@ def test_uncompressed_covariance_api():
     np.testing.assert_allclose(C @ C_inv, np.eye(n), atol=1e-12)
 
     # get_derivative_matrix
-    dC = core.get_derivative_matrix(5)
+    ss_key = SpectrumKey(0, 0, SpectrumKind.SS, spins=(0,))
+    dC = core.get_derivative_matrix(5, ss_key)
     assert dC.shape == (n, n)
 
     # get_covariance_logdet - array and dict paths

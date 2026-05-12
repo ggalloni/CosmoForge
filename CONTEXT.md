@@ -28,7 +28,7 @@ in issue titles, plans, hypotheses, and test names. Do not paraphrase.
 - **PixelBasis** — Direct pixel-space algebra. `method="pixel"` (replaces `method="pixel_projected"`).
 - **V operator** — Maps pixels → modes. Spin-0 uses normalised `legendre_plm`; spin-2 uses `scale_ell = sqrt((2ℓ+1)/(4π))`.
   Spin-2 layout: rows `[E modes | B modes]`, cols `[Q pixels | U pixels]`.
-- **Λ (Lambda)** — Block-diagonal signal covariance in the harmonic basis. Spin-0 diagonal; spin-2 has 2×2 blocks (EE, BB, EB) at each (ℓ, m).
+- **Λ (Lambda)** — Block-diagonal signal covariance in the harmonic basis. Spin-0 diagonal; spin-2 has 2×2 blocks (EE, BB, EB) at each (ℓ, m). For cross-component spin-2×spin-2 pairs in DIRECTIONAL mode the two off-diagonal blocks carry separate GC and CG values (`_build_lambda_block_spin2` accepts `C_GC` and `C_CG` independently); in SYMMETRIC mode a single `C_EB` fills both.
 - **SMW** — Sherman-Morrison-Woodbury. Used to invert (S+N) without forming the full pixel-space matrix. Stable form: `M(I + ΛM)⁻¹` (not `M − M K⁻¹ M`).
 - **m-block compression** — Approximation: `compress=True, delta_m=0` treats K as block-diagonal in m. ~lmax² speedup. Currently single-field spin-0 only.
 - **Field block-diagonal K** — Auto-detected when no cross-spectra and noise is independent per field. Exact, no flag.
@@ -49,7 +49,11 @@ in issue titles, plans, hypotheses, and test names. Do not paraphrase.
 ## Spin and polarisation
 
 - **Spin-0 / spin-2** — Spin-0 covers temperature T; spin-2 covers polarisation Q/U → E/B.
-- **3-tuple spectrum key** — `(comp_i, comp_j, mode)`. Modes: spin-0×0 → 0 (TT); spin-2×2 → 0=EE, 1=BB, 2=EB; spin-0×2 → 0=TE, 1=TB.
+- **Slot** — within a spin-`s` component, an index `0..n_slots(s)-1`. Spin-0 has one slot named **S** (CMB alias: T). Spin-2 has two slots, **G** (parity-even, CMB alias: E) and **C** (parity-odd, CMB alias: B). Current scope: spin-0 and spin-2 only; spin-1 etc. would extend the slot vocabulary.
+- **SpectrumKind** — directional ordered slot pair `(slot_i, slot_j)`. Nine values: `SS, GG, CC, GC, CG, SG, GS, SC, CS`. CMB aliases (`TT, EE, BB, EB, BE, TE, ET, TB, BT`) live in `cosmocore.conventions.cmb`, alongside the `to_cmb_canonical(result_dict, *, spins)` helper that re-keys an output dict to T-first ordering regardless of declaration order.
+- **SpectrumKey** — `SpectrumKey(comp_i, comp_j, kind, spins=...)`. Passive identifier whose constructor validates kind-vs-spins consistency. Used as both list element (in `spectra_list`) and dict key (in `C_ell_dict`, output spectra dicts). Replaces the pre-Slice-5 `(comp_i, comp_j, mode)` 3-tuple.
+- **Canonical direction (symmetric mode)** — declaration order picks the component direction: canonical pair is `(i, j)` with `i ≤ j`. For cross-component spin-2 × spin-2 where `GC` (EB) and `CG` (BE) are physically distinct, alphabetical slot ordering breaks the tie (canonical = `GC`).
+- **SymmetryMode** — `SYMMETRIC` (default; collapses `GC` and `CG` to their symmetrised form for cross-component spin-2 pairs, reproducing pre-Slice-5 behaviour) or `DIRECTIONAL` (emits both `GC` and `CG` as separate spectra and uses independent covariance entries). Lives on `Fisher` / `Spectra` (Spectra inherits from its Fisher — ADR-0011), never on `SpectrumKey`.
 - **Sign convention** — Spin-0×spin-2 Λ and derivatives carry a minus sign because E = −(₂Y + ₋₂Y)/2.
 
 ## Likelihood (PICSLike)

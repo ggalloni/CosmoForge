@@ -40,14 +40,15 @@ from mpi4py import MPI
 
 try:
     from threadpoolctl import threadpool_limits as _threadpool_limits
-except ImportError:  # graceful degradation; setup just runs at OMP_NUM_THREADS
+except ImportError:  # pragma: no cover
+    # Graceful degradation: setup just runs at OMP_NUM_THREADS.
     _threadpool_limits = None
 
 
 @contextmanager
 def _wide_threadpool():
     """Widen BLAS threads to the visible CPU set for rank-0 setup work."""
-    if _threadpool_limits is None:
+    if _threadpool_limits is None:  # pragma: no cover
         yield
         return
     n_visible = len(os.sched_getaffinity(0))
@@ -60,6 +61,9 @@ from cosmocore import (
     Core,
     InputParams,
     MPISharedMemoryMixin,
+    SpectrumKey,
+    SpectrumKind,
+    SymmetryMode,
     compute_signal_matrix,
     do_derivative_step,
     matrix_inverse_symm,
@@ -147,6 +151,7 @@ class Fisher(Core, MPISharedMemoryMixin):
         params_file: str | None = None,
         compression: dict | None = None,
         cache_derivatives: bool = False,
+        symmetry_mode: SymmetryMode | str | None = None,
         **kwargs,
     ):
         """
@@ -189,9 +194,39 @@ class Fisher(Core, MPISharedMemoryMixin):
         # Derivative caching
         self._cache_derivatives = cache_derivatives
 
+        # SymmetryMode (ADR-0011): controls cross-component spin-2 EB
+        # handling. SYMMETRIC default reproduces pre-Slice-5 behaviour
+        # bit-for-bit; DIRECTIONAL opt-in adds separate CG cross spectra.
+        # Coerce strings ("SYMMETRIC" from YAML) so downstream identity
+        # checks (`is SymmetryMode.SYMMETRIC`) don't silently misroute.
+        if symmetry_mode is None:
+            self.symmetry_mode = SymmetryMode.SYMMETRIC
+        elif isinstance(symmetry_mode, SymmetryMode):
+            self.symmetry_mode = symmetry_mode
+        elif isinstance(symmetry_mode, str):
+            try:
+                self.symmetry_mode = SymmetryMode[symmetry_mode.upper()]
+            except KeyError as exc:
+                raise ValueError(
+                    f"unknown symmetry_mode {symmetry_mode!r}; expected one of "
+                    f"{[m.name for m in SymmetryMode]}"
+                ) from exc
+        else:
+            raise TypeError(
+                f"symmetry_mode must be SymmetryMode | str | None; "
+                f"got {type(symmetry_mode).__name__}"
+            )
+
         # Initialize attributes
         self.signal_matrix = None
         self._lmax_signal = None
+
+        # Ordered list of SpectrumKey instances enumerating the spectra
+        # along the Fisher matrix's parameter axis. Populated by
+        # ``_build_multi_spectrum_inputs`` once ``compute()`` runs; used
+        # by user-facing label-keyed accessors to navigate the flat
+        # output arrays.
+        self.spectra_list: list | None = None
 
     @property
     def lmax_signal(self) -> int:
@@ -297,8 +332,16 @@ class Fisher(Core, MPISharedMemoryMixin):
         return dC
 
     def _build_multi_spectrum_inputs(self):
-        """Build C_ell_dict and spectra_list for multi-spectrum compressed Fisher."""
-        return self.collection.spectra_manager.build_inputs()
+        """Build C_ell_dict and spectra_list keyed by SpectrumKey.
+
+        Also stores the result on ``self.spectra_list`` so user-facing
+        label-keyed accessors can navigate flat output arrays.
+        """
+        C_ell_dict, spectra_list = self.collection.spectra_manager.build_inputs(
+            symmetry_mode=self.symmetry_mode
+        )
+        self.spectra_list = spectra_list
+        return C_ell_dict, spectra_list
 
     # =========================================================================
     # Main Entry Points
@@ -337,7 +380,7 @@ class Fisher(Core, MPISharedMemoryMixin):
 
         with self._stage("fisher.compute.derivative_cache"):
             # --- Setup: get C_inv or V_Cinv_VT, spectra_list ---
-            spectra_list = None
+            spectra_list = None  # list[SpectrumKey]
             C_ell_dict = None
             if use_basis:
                 C_ell_dict, spectra_list = self._build_multi_spectrum_inputs()
@@ -347,9 +390,23 @@ class Fisher(Core, MPISharedMemoryMixin):
             else:
                 C_inv = self.noise_cov1
 
-            # For pixel-space single-spectrum, build a dummy spectra_list
+            # Populate spectra_list for the non-basis path as well: user-facing
+            # label accessors (get_bandpower_slices, get_fisher_block,
+            # get_error_bars(as_dict=True)) need it to label the flat Fisher
+            # axis. The pixel-space derivative path itself doesn't consume it.
+            if not use_basis:
+                _, spectra_list = self._build_multi_spectrum_inputs()
+
             if spectra_list is None:
-                spectra_list = [(0, 0, 0)] * nspectra
+                # Pixel-space generic path: build per-slot sentinel keys so
+                # Core._resolve_spectrum_idx's reverse lookup routes each
+                # spectrum_idx to its own slab. Identical keys would collide
+                # in the dict cache and silently collapse every slot to 0.
+                # spins=None bypasses SS-kind spin validation so spin-2
+                # single-field collections (e.g. QU) don't raise.
+                spectra_list = [
+                    SpectrumKey(i, i, SpectrumKind.SS) for i in range(nspectra)
+                ]
 
             # --- Precompute derivatives ---
             # Harmonic fast path: sparse COO triplets (rows, cols, vals)
@@ -371,20 +428,14 @@ class Fisher(Core, MPISharedMemoryMixin):
                 for param_idx in range(n_params):
                     spectrum_idx = param_idx // nbins
                     bin_idx = param_idx % nbins
-                    key = (spectrum_idx, bin_idx)
-                    comp_i, comp_j = spectra_list[spectrum_idx][0:2]
-                    spec_mode = (
-                        spectra_list[spectrum_idx][2]
-                        if len(spectra_list[spectrum_idx]) == 3
-                        else 0
-                    )
+                    cache_key = (spectrum_idx, bin_idx)
+                    spec_key = spectra_list[spectrum_idx]
                     beam_offset = spectrum_idx * self.n_ell
 
-                    spin_i = self.collection.fields[comp_i].spin
-                    spin_j = self.collection.fields[comp_j].spin
-                    is_diagonal = comp_i == comp_j and (
-                        (spin_i == 0 and spin_j == 0)
-                        or (spin_i == 2 and spin_j == 2 and spec_mode in (0, 1))
+                    is_diagonal = (
+                        spec_key.comp_i == spec_key.comp_j
+                        and spec_key.kind
+                        in (SpectrumKind.SS, SpectrumKind.GG, SpectrumKind.CC)
                     )
 
                     if is_diagonal:
@@ -396,11 +447,9 @@ class Fisher(Core, MPISharedMemoryMixin):
                             weight = self.beam_smoothing[
                                 beam_offset + ell - self.params.lmin
                             ]
-                            E_b_diag += weight * bm._get_derivative_diagonal(
-                                ell, comp_i, comp_j, spec_mode
-                            )
+                            E_b_diag += weight * bm.get_derivative_diagonal(ell, spec_key)
                         nz = np.nonzero(E_b_diag)[0]
-                        sparse_coo_data[key] = (nz, nz, E_b_diag[nz])
+                        sparse_coo_data[cache_key] = (nz, nz, E_b_diag[nz])
                     else:
                         # Cross-spectrum (EB/TE/TB): sparse off-diagonal COO
                         all_rows = []
@@ -415,7 +464,7 @@ class Fisher(Core, MPISharedMemoryMixin):
                             if abs(weight) < _WEIGHT_ZERO_THRESHOLD:
                                 continue
                             dC_ell = bm.get_derivative_matrix(
-                                ell, comp_i, comp_j, spec_mode
+                                ell, spec_key, symmetry_mode=self.symmetry_mode
                             )
                             r, c = np.nonzero(dC_ell)
                             all_rows.append(r)
@@ -432,13 +481,13 @@ class Fisher(Core, MPISharedMemoryMixin):
                             )
                             combined_vals = np.zeros(len(unique_pairs))
                             np.add.at(combined_vals, inverse, vals)
-                            sparse_coo_data[key] = (
+                            sparse_coo_data[cache_key] = (
                                 unique_pairs // bm.n_kept,
                                 unique_pairs % bm.n_kept,
                                 combined_vals,
                             )
                         else:
-                            sparse_coo_data[key] = (
+                            sparse_coo_data[cache_key] = (
                                 np.array([], dtype=int),
                                 np.array([], dtype=int),
                                 np.array([], dtype=float),
@@ -451,32 +500,27 @@ class Fisher(Core, MPISharedMemoryMixin):
                 for param_idx in range(n_params):
                     spectrum_idx = param_idx // nbins
                     bin_idx = param_idx % nbins
-                    key = (spectrum_idx, bin_idx)
+                    cache_key = (spectrum_idx, bin_idx)
                     beam_offset = spectrum_idx * self.n_ell
                     beam = self.beam_smoothing[beam_offset : beam_offset + self.n_ell]
 
+                    spec_key = spectra_list[spectrum_idx]
                     dC_b = self.get_binned_derivative_matrix(
                         bin_idx,
+                        spec_key,
                         beam_smoothing=beam,
-                        spectrum_idx=spectrum_idx,
-                        comp_i=spectra_list[spectrum_idx][0] if use_basis else None,
-                        comp_j=spectra_list[spectrum_idx][1] if use_basis else None,
-                        mode=(
-                            spectra_list[spectrum_idx][2]
-                            if use_basis and len(spectra_list[spectrum_idx]) == 3
-                            else 0
-                        ),
+                        symmetry_mode=self.symmetry_mode,
                     )
                     # Retain dC when the trace consumes it OR when the user
                     # opted in to caching for Spectra to reuse.
                     trace_needs_dC = not use_basis and self.params.do_cross
                     if trace_needs_dC or self._cache_derivatives:
-                        binned_derivatives[key] = dC_b
+                        binned_derivatives[cache_key] = dC_b
 
                     if use_basis or not self.params.do_cross:
-                        cinv_times_dcb[key] = matrix_mult(C_inv, dC_b)
+                        cinv_times_dcb[cache_key] = matrix_mult(C_inv, dC_b)
                     else:
-                        cinv_times_dcb[key] = matrix_mult(
+                        cinv_times_dcb[cache_key] = matrix_mult(
                             C_inv2, matrix_mult(dC_b, C_inv1)
                         )
 
@@ -776,42 +820,223 @@ class Fisher(Core, MPISharedMemoryMixin):
     # =========================================================================
 
     def get_fisher_matrix(self) -> np.ndarray | None:
-        """Retrieve the beam-smoothed Fisher information matrix."""
+        """Retrieve the beam-smoothed Fisher information matrix.
+
+        Layout
+        ------
+        Shape ``(nspectra * nbins, nspectra * nbins)``. Rows and columns
+        run identically: each spectrum occupies a contiguous block of
+        ``nbins`` columns; within a block, columns are ordered by bin
+        index (``bin 0`` first, then ``bin 1``, ...). Spectrum order
+        follows :attr:`spectra_list`, which is filled by the harmonic
+        layer as:
+
+        1. All auto-spectra in component order (component ``i`` first,
+           then the kinds emitted by that component — e.g. for a spin-2
+           component: ``GG`` (EE), ``CC`` (BB), ``GC`` (EB)).
+        2. All cross-spectra in lexicographic ``(i, j)`` order with
+           ``i < j``, each pair contributing the kinds emitted by the
+           spin pair (e.g. spin-0 × spin-2 emits ``SG`` (TE), ``SC`` (TB)).
+
+        Example: for TQU (``spins=[0, 2]``, ``labels=["T", "E", "B"]``)
+        under ``SymmetryMode.SYMMETRIC`` and ``nbins=10``, the matrix is
+        ``(60, 60)`` and the column blocks are::
+
+            cols  0..9   : TT
+            cols 10..19  : EE
+            cols 20..29  : BB
+            cols 30..39  : EB
+            cols 40..49  : TE
+            cols 50..59  : TB
+
+        Use :meth:`get_bandpower_slices` to look up the slice for a
+        given physical-label spectrum without having to compute these
+        offsets by hand::
+
+            slices = fisher.get_bandpower_slices()
+            tt_block = fisher.get_fisher_matrix()[slices["TT"], slices["TT"]]
+            te_x_ee = fisher.get_fisher_matrix()[slices["TE"], slices["EE"]]
+        """
         if self.rank == 0:
             return self.fisher
         return None
 
-    def get_error_bars(self) -> np.ndarray | None:
-        """Compute parameter forecast errors from the Fisher matrix."""
-        if self.rank == 0 and self.fisher is not None:
-            cov_matrix = np.linalg.inv(self.fisher)
-            errors = np.sqrt(np.diag(cov_matrix))
+    def get_error_bars(
+        self, *, as_dict: bool = False
+    ) -> np.ndarray | dict[str, np.ndarray] | None:
+        """Compute parameter forecast errors from the Fisher matrix.
+
+        Parameters
+        ----------
+        as_dict : bool, optional
+            If ``False`` (default, back-compat), return a flat numpy
+            array of shape ``(nspectra * nbins,)`` ordered as described
+            in :meth:`get_fisher_matrix`. If ``True``, return a dict
+            keyed by physical labels (``"TT"``, ``"EE"``, ``"TE"``, ...)
+            with per-spectrum error arrays of shape ``(nbins,)``.
+
+        Examples
+        --------
+        Flat shape (default) — same as before::
+
+            err = fisher.get_error_bars()              # shape (60,) for TQU
+            ee_errors = err[10:20]                     # bins 0..9 of EE
+
+        Dict shape — label-keyed, no manual offsets::
+
+            err = fisher.get_error_bars(as_dict=True)
+            ee_errors = err["EE"]                      # shape (nbins,)
+            te_errors = err["TE"]
+        """
+        if self.rank != 0 or self.fisher is None:
+            return None
+        cov_matrix = np.linalg.inv(self.fisher)
+        errors = np.sqrt(np.diag(cov_matrix))
+        if not as_dict:
             return errors
-        return None
+        from cosmocore.conventions.cmb import to_label_dict
+
+        return to_label_dict(
+            errors,
+            labels=list(self.params.labels),
+            spins=tuple(self.params.spins),
+            spectra_list=self.spectra_list,
+            n_bins=self.bins.nbins,
+        )
+
+    def get_bandpower_slices(self) -> dict[str, slice] | None:
+        """Return a mapping ``{label: slice}`` for the flat Fisher axis.
+
+        Each value is a ``slice`` selecting that spectrum's bin block in
+        ``get_fisher_matrix()`` (along either axis) or in
+        ``get_error_bars()`` (the single axis). Labels are concatenated
+        from ``params.labels`` per slot (e.g. ``"TT"``, ``"EE"``,
+        ``"TE"``); for multi-frequency setups the user's per-slot labels
+        make the keys unambiguous (``"T100T143"`` etc.).
+
+        Returns ``None`` until ``compute()`` has run (``spectra_list``
+        is populated as a side effect of the Fisher pipeline).
+
+        Examples
+        --------
+        For TQU under SYMMETRIC mode with ``nbins=10`` the returned
+        mapping is::
+
+            {"TT": slice(0, 10),
+             "EE": slice(10, 20),
+             "BB": slice(20, 30),
+             "EB": slice(30, 40),
+             "TE": slice(40, 50),
+             "TB": slice(50, 60)}
+
+        Typical usage::
+
+            F = fisher.get_fisher_matrix()
+            slices = fisher.get_bandpower_slices()
+            tt_diag = np.diag(F[slices["TT"], slices["TT"]])
+            te_x_ee = F[slices["TE"], slices["EE"]]  # cross-spectrum block
+
+        See Also
+        --------
+        get_fisher_block : Convenience wrapper that returns a single
+            ``(label_i, label_j)`` block directly.
+        """
+        if self.spectra_list is None:
+            return None
+        from cosmocore.conventions.cmb import spectrum_key_to_label
+
+        nbins = self.bins.nbins
+        labels = list(self.params.labels)
+        spins = tuple(self.params.spins)
+        slices: dict[str, slice] = {}
+        for spec_idx, key in enumerate(self.spectra_list):
+            label = spectrum_key_to_label(key, labels=labels, spins=spins)
+            slices[label] = slice(spec_idx * nbins, (spec_idx + 1) * nbins)
+        return slices
+
+    def get_fisher_block(
+        self, label_i: str, label_j: str | None = None
+    ) -> np.ndarray | None:
+        """Extract one ``(label_i, label_j)`` block of the Fisher matrix.
+
+        Convenience wrapper over :meth:`get_fisher_matrix` and
+        :meth:`get_bandpower_slices`.
+
+        Parameters
+        ----------
+        label_i : str
+            Physical label for the row block (e.g. ``"TT"``, ``"EE"``).
+        label_j : str or None, optional
+            Physical label for the column block. If ``None`` (default),
+            returns the auto block ``(label_i, label_i)``.
+
+        Returns
+        -------
+        numpy.ndarray or None
+            Block of shape ``(nbins, nbins)``. Returns ``None`` on
+            worker ranks or before ``compute()`` has run.
+
+        Raises
+        ------
+        KeyError
+            If either label is not in the current
+            :meth:`get_bandpower_slices` mapping. The error message lists
+            the legal labels.
+
+        Examples
+        --------
+        >>> tt_block = fisher.get_fisher_block("TT")
+        >>> te_x_ee = fisher.get_fisher_block("TE", "EE")
+        >>> bb_eb = fisher.get_fisher_block("BB", "EB")  # likely zero for std cosmo
+        """
+        F = self.get_fisher_matrix()
+        slices = self.get_bandpower_slices()
+        if F is None or slices is None:
+            return None
+        if label_j is None:
+            label_j = label_i
+        for label in (label_i, label_j):
+            if label not in slices:
+                raise KeyError(
+                    f"Unknown spectrum label {label!r}. "
+                    f"Legal labels: {list(slices.keys())}"
+                )
+        return F[slices[label_i], slices[label_j]]
 
     def get_window_matrix(self) -> np.ndarray | None:
         """
         Retrieve the window matrix for QML power spectrum estimation.
 
         The window matrix W relates the expected QML estimates to the
-        beam-smoothed theory spectrum: <q> = W @ C_theory. It encodes
+        beam-smoothed theory spectrum: ``<q> = W @ C_theory``. It encodes
         the mode coupling induced by partial sky coverage, beam, and
         pixel window effects.
+
+        Layout
+        ------
+        Shape ``(n_params, n_params)`` with the same flat layout as
+        :meth:`get_fisher_matrix` — each spectrum occupies a contiguous
+        block of ``nbins`` rows/columns, in :attr:`spectra_list` order.
+        When using this matrix in an inference loop, the theory vector
+        ``C_theory`` must follow the same flat ordering; see
+        :meth:`get_bandpower_slices` or pass a label-keyed dict to the
+        ``convolve_theory_func`` returned by
+        :meth:`Spectra.get_power_spectra` (``mode="convolved"``).
 
         Returns
         -------
         numpy.ndarray or None
-            Window matrix of shape (n_params, n_params) where
-            n_params = n_spectra * n_bins. Returns None for worker
-            processes or if computation hasn't completed.
+            Window matrix of shape ``(n_params, n_params)`` where
+            ``n_params = n_spectra * n_bins``. Returns ``None`` for
+            worker processes or if computation hasn't completed.
 
         Notes
         -----
-        The window matrix is the beam-smoothed Fisher matrix:
+        The window matrix is the beam-smoothed Fisher matrix::
 
             W_{bb'} = (1/2) Tr[C⁻¹ dC^b C⁻¹ dC^{b'}]
 
-        where dC^b = Sum_ell w_{b,ell} b²_ell dC^ell includes the
+        where ``dC^b = Sum_ell w_{b,ell} b²_ell dC^ell`` includes the
         binning weights and beam smoothing factors.
 
         Used by the "convolved" normalization mode, where instead of
@@ -881,8 +1106,15 @@ class Fisher(Core, MPISharedMemoryMixin):
         absorbs mode coupling from ℓ > lmax_science into discarded
         buffer bins.
 
-        Currently supports single-spectrum analysis only. Multi-spectrum
-        extension is planned.
+        **Scope**: currently supports single-spectrum analysis only —
+        calling it on a multi-spectrum Fisher (``nspectra > 1``) raises
+        ``NotImplementedError``. For multi-spectrum likelihoods today,
+        use :meth:`get_window_matrix` together with the
+        ``convolve_theory_func`` returned by
+        :meth:`Spectra.get_power_spectra` (``mode="convolved"``); that
+        path accepts label-keyed dict input and applies the multi-
+        spectrum window matrix. Multi-spectrum extension of this
+        per-ℓ window function is planned.
 
         Examples
         --------

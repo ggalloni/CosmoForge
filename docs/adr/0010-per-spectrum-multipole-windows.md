@@ -3,6 +3,11 @@
 ## Status
 
 Proposed (deferred). Captures the design agreed during the PR3 brainstorming
+session. Drafted before Slice 5 introduced `SpectrumKey`; when this ADR is
+implemented, the canonical key type is `SpectrumKey(comp_i, comp_j, kind,
+spins=...)`, not the 3-tuple `(comp_i, comp_j, mode)` referenced below. The
+design intent (per-spectrum windows) is unchanged — only the key type is.
+
 session on 2026-05-09; implementation deferred until after the cosmoforge
 v0.1 / Paper I release.
 

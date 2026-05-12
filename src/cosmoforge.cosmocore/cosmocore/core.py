@@ -842,37 +842,81 @@ class Core(ABC):
             _, logdet = matrix_slogdet_symm(self.get_total_covariance(C_ell_arr))
             return logdet
 
+    def _resolve_spectrum_idx(self, key) -> int:
+        """Resolve a ``SpectrumKey`` to its position in ``self.spectra_list``.
+
+        Used by the no-basis (pixel-space generic) path to route the
+        precomputed derivative slab. Builds the reverse-lookup cache
+        ``_spec_idx_by_key`` lazily on first use. When ``spectra_list``
+        is unpopulated, falls back to ``0`` only in the single-spectrum
+        case — multi-spectrum callers without a populated list are a
+        programming error.
+        """
+        spectra_list = getattr(self, "spectra_list", None)
+        if spectra_list is None:
+            nspectra = getattr(getattr(self, "params", None), "nspectra", 1)
+            if nspectra != 1:
+                raise RuntimeError(
+                    "spectra_list is not populated but nspectra="
+                    f"{nspectra}; cannot route the no-basis slab path "
+                    "without a SpectrumKey → spectrum_idx mapping."
+                )
+            return 0
+        cache = getattr(self, "_spec_idx_by_key", None)
+        # Invalidate the cache if spectra_list was reassigned (rebuilt with a
+        # different symmetry_mode, replaced by a downstream caller, etc.).
+        # Mismatched length is the cheap proxy for "the list changed."
+        if cache is None or len(cache) != len(spectra_list):
+            cache = {k: i for i, k in enumerate(spectra_list)}
+            if len(cache) != len(spectra_list):
+                raise ValueError(
+                    "spectra_list contains duplicate SpectrumKey entries; "
+                    "the reverse lookup cannot disambiguate slabs."
+                )
+            self._spec_idx_by_key = cache
+        if key not in cache:
+            raise KeyError(
+                f"SpectrumKey {key} not in spectra_list ({len(spectra_list)} entries)"
+            )
+        return cache[key]
+
     def get_derivative_matrix(
         self,
         ell: int,
-        spectrum_idx: int = 0,
-        comp_i: int | None = None,
-        comp_j: int | None = None,
-        mode: int = 0,
+        key,
+        *,
+        symmetry_mode=None,
     ) -> np.ndarray:
         """
-        Get derivative matrix dC/dC_ell.
+        Get derivative matrix dC/dC_ell for a :class:`SpectrumKey`.
 
         If a computation basis is enabled, returns the projected derivative.
-        Otherwise, returns full pixel-space derivative.
+        Otherwise, returns full pixel-space derivative for the slab that
+        ``key`` resolves to in ``self.spectra_list``.
 
         Parameters
         ----------
         ell : int
             Multipole for derivative.
-        spectrum_idx : int
-            Spectrum index for pixel-space multi-spectrum. Ignored when
-            a computation basis is enabled (use comp_i/comp_j/mode instead).
-        comp_i, comp_j : int or None
-            Component indices for compressed multi-field. None uses
-            single-field path.
-        mode : int
-            Spin mode (0=TT/EE/TE, 1=BB/TB, 2=EB).
+        key : SpectrumKey
+            Identifies the spectrum (component pair + spin kind).
+        symmetry_mode : SymmetryMode or None
+            Forwarded to the basis-layer derivative builder; ``None`` keeps
+            the SYMMETRIC default.
+
+        Raises
+        ------
+        RuntimeError
+            On the no-basis path when ``self.spectra_list`` is unpopulated
+            and ``params.nspectra > 1``. Callers in multi-spectrum contexts
+            must populate ``spectra_list`` (Fisher/Spectra do this in
+            ``compute``); single-spectrum callers can leave it unset.
         """
         if hasattr(self, "basis_manager") and self.basis_manager is not None:
             return self.basis_manager.get_derivative_matrix(
-                ell, comp_i=comp_i, comp_j=comp_j, mode=mode
+                ell, key, symmetry_mode=symmetry_mode
             )
+        spectrum_idx = self._resolve_spectrum_idx(key)
         return self._build_derivative_matrix(ell, spectrum_idx=spectrum_idx)
 
     def set_binning(self, bins) -> None:
@@ -911,11 +955,10 @@ class Core(ABC):
     def get_binned_derivative_matrix(
         self,
         bin_idx: int,
+        key,
+        *,
         beam_smoothing: np.ndarray | None = None,
-        spectrum_idx: int = 0,
-        comp_i: int | None = None,
-        comp_j: int | None = None,
-        mode: int = 0,
+        symmetry_mode=None,
     ) -> np.ndarray:
         """
         Compute binned derivative dC^b = Sum_{ell in bin} b²_ell dC^ell,
@@ -933,16 +976,14 @@ class Core(ABC):
         ----------
         bin_idx : int
             Index of the bin.
+        key : SpectrumKey
+            Identifies the spectrum (component pair + spin kind).
         beam_smoothing : np.ndarray or None
             Per-ell beam smoothing factors b²_ell (length n_ell, starting
-            at ell=2). Product of beam and (optionally) pixel window
-            functions for the two fields in the spectrum.
-        spectrum_idx : int
-            Spectrum index for pixel-space multi-spectrum.
-        comp_i, comp_j : int or None
-            Component indices for compressed multi-field.
-        mode : int
-            Spin mode (0=TT/EE/TE, 1=BB/TB, 2=EB).
+            at ell=params.lmin; ADR 0009).
+        symmetry_mode : SymmetryMode or None
+            Forwarded to the per-ℓ derivative builder. None keeps the
+            SYMMETRIC default.
         """
         # Fast path: pixel-direct mode has a batched binned derivative that
         # avoids the per-ℓ Legendre/Wigner pass when bin width is large.
@@ -952,23 +993,28 @@ class Core(ABC):
             and getattr(bm, "_use_direct", False)
             and hasattr(bm, "get_binned_derivative_direct")
         ):
-            ci = 0 if comp_i is None else comp_i
-            cj = 0 if comp_j is None else comp_j
-            return bm.get_binned_derivative_direct(
-                bin_idx, self.bins, beam_smoothing, ci, cj, mode
+            # The pixel-direct kernel does not yet support spin-2 × spin-2
+            # cross-component pairs (would raise NotImplementedError in the
+            # Numba kernel). Fall back to the per-ℓ slow path below, which
+            # already forwards `symmetry_mode` correctly. Tracked as a
+            # follow-up (memory: project_pixel_direct_cross_qu_directional).
+            spins = getattr(bm, "_spins", None)
+            direct_unsupported = (
+                spins is not None
+                and key.comp_i != key.comp_j
+                and spins[key.comp_i] == 2
+                and spins[key.comp_j] == 2
             )
+            if not direct_unsupported:
+                return bm.get_binned_derivative_direct(
+                    bin_idx, self.bins, beam_smoothing, key
+                )
 
         lmin_b = self.bins.lmins[bin_idx]
         lmax_b = self.bins.lmaxs[bin_idx]
         dC_b = None
         for ell in range(lmin_b, lmax_b + 1):
-            dC_ell = self.get_derivative_matrix(
-                ell,
-                spectrum_idx=spectrum_idx,
-                comp_i=comp_i,
-                comp_j=comp_j,
-                mode=mode,
-            )
+            dC_ell = self.get_derivative_matrix(ell, key, symmetry_mode=symmetry_mode)
             weight = 1.0
             if beam_smoothing is not None:
                 # beam_smoothing is the inference-range slice (ell=lmin..lmax,

@@ -11,6 +11,14 @@ import time
 import numpy as np
 from numpy.testing import assert_allclose
 
+from cosmocore.spectrum_key import SpectrumKey, SpectrumKind
+
+
+def _to_key(entry, *, spins):
+    """Test-only adapter: legacy 2-tuple -> SpectrumKey (scalar)."""
+    return SpectrumKey(entry[0], entry[1], SpectrumKind.SS, spins=spins)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -317,7 +325,8 @@ class TestFieldBlockFisherExact:
             (1, 1): 0.8e-5 / ells**2,
         }
 
-        spectra_list = [(0, 0), (1, 1)]
+        spins = (0, 0)
+        spectra_list = [_to_key(t, spins=spins) for t in [(0, 0), (1, 1)]]
 
         # Fisher via the automatic path (which should detect field blocks)
         fisher_auto = hc.compute_fisher_matrix(
@@ -335,21 +344,16 @@ class TestFieldBlockFisherExact:
         fisher_pixel = np.zeros((n_spec * n_ell, n_spec * n_ell))
 
         for spec_a, entry_a in enumerate(spectra_list):
-            ci_a, cj_a = entry_a[0], entry_a[1]
-            mode_a = entry_a[2] if len(entry_a) == 3 else 0
             for ell_a in range(2, setup["lmax"] + 1):
-                E_a = hc.get_derivative_matrix(ell_a, ci_a, cj_a, mode_a)
+                E_a = hc.get_derivative_matrix(ell_a, entry_a)
                 dS_a = V.T @ E_a @ V
                 idx_a = spec_a * n_ell + (ell_a - 2)
 
                 for spec_b in range(spec_a, n_spec):
-                    ci_b, cj_b = spectra_list[spec_b][0], spectra_list[spec_b][1]
-                    mode_b = (
-                        spectra_list[spec_b][2] if len(spectra_list[spec_b]) == 3 else 0
-                    )
+                    entry_b = spectra_list[spec_b]
                     ell_b_start = ell_a if spec_a == spec_b else 2
                     for ell_b in range(ell_b_start, setup["lmax"] + 1):
-                        E_b = hc.get_derivative_matrix(ell_b, ci_b, cj_b, mode_b)
+                        E_b = hc.get_derivative_matrix(ell_b, entry_b)
                         dS_b = V.T @ E_b @ V
                         idx_b = spec_b * n_ell + (ell_b - 2)
 
@@ -394,7 +398,8 @@ class TestFieldBlockFisherExact:
         field_groups = hc._detect_field_blocks(C_ell_dict)
         assert field_groups == [[0, 1]]
 
-        spectra_list = [(0, 0), (1, 1), (0, 1)]
+        spins = (0, 0)
+        spectra_list = [_to_key(t, spins=spins) for t in [(0, 0), (1, 1), (0, 1)]]
         # Should still produce correct result (falls through to full K path)
         fisher = hc.compute_fisher_matrix(
             C_ell_dict, spectra_list, ell_min=2, ell_max=setup["lmax"]

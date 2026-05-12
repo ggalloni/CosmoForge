@@ -18,6 +18,13 @@ from numpy.testing import assert_allclose
 
 from cosmocore.basics import matrix_inverse_symm, matrix_mult, matrix_trace
 from cosmocore.basis import HarmonicBasis
+from cosmocore.spectrum_key import SpectrumKey, SpectrumKind
+
+
+def _to_key(entry, *, spins):
+    """Test-only adapter: legacy 2-tuple -> SpectrumKey (scalar-only paths)."""
+    comp_i, comp_j = entry[0], entry[1]
+    return SpectrumKey(comp_i, comp_j, SpectrumKind.SS, spins=spins)
 
 
 def build_pixel_space_signal_matrix(V, lambda_matrix):
@@ -37,15 +44,14 @@ def compute_pixel_space_fisher(C_inv, V, lambda_matrix, lmax, spectra_list, hc):
     n_spectra = len(spectra_list)
     fisher = np.zeros((n_spectra * n_ell, n_spectra * n_ell))
 
-    for spec_idx_i, (comp_i, comp_j) in enumerate(spectra_list):
+    for spec_idx_i, entry_i in enumerate(spectra_list):
         for ell_i in range(2, lmax + 1):
-            # Build dS/dC_ell for spectrum (comp_i, comp_j)
-            E_i = hc.get_derivative_matrix(ell_i, comp_i, comp_j)
+            E_i = hc.get_derivative_matrix(ell_i, entry_i)
             dS_i = V.T @ E_i @ V
 
-            for spec_idx_j, (comp_k, comp_l) in enumerate(spectra_list):
+            for spec_idx_j, entry_j in enumerate(spectra_list):
                 for ell_j in range(2, lmax + 1):
-                    E_j = hc.get_derivative_matrix(ell_j, comp_k, comp_l)
+                    E_j = hc.get_derivative_matrix(ell_j, entry_j)
                     dS_j = V.T @ E_j @ V
 
                     # F_ij = 0.5 * Tr[C^{-1} dS_i C^{-1} dS_j]
@@ -174,7 +180,10 @@ class TestTEBScalarBenchmark:
         hc.setup()
 
         # Test with auto-spectra only first (simpler case)
-        spectra_list = [(0, 0), (1, 1), (2, 2)]  # TT, EE, BB
+        spins = (0, 0, 0)
+        spectra_list = [
+            _to_key(t, spins=spins) for t in [(0, 0), (1, 1), (2, 2)]
+        ]  # TT, EE, BB
 
         # Compressed Fisher
         fisher_compressed = hc.compute_fisher_matrix(
@@ -231,7 +240,11 @@ class TestTEBScalarBenchmark:
         hc.setup()
 
         # All 6 spectra
-        spectra_list = [(0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2)]
+        spins = (0, 0, 0)
+        spectra_list = [
+            _to_key(t, spins=spins)
+            for t in [(0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2)]
+        ]
 
         # Compressed Fisher
         fisher_compressed = hc.compute_fisher_matrix(
@@ -304,7 +317,10 @@ class TestTEBScalarBenchmark:
         hc.setup()
         setup_time = time.perf_counter() - t0
 
-        spectra_list = [(0, 0), (1, 1), (2, 2)]  # Auto-spectra only for speed
+        spins = (0, 0, 0)
+        spectra_list = [
+            _to_key(t, spins=spins) for t in [(0, 0), (1, 1), (2, 2)]
+        ]  # Auto-spectra only for speed
 
         # Time compressed Fisher computation
         t0 = time.perf_counter()
@@ -363,7 +379,10 @@ class TestTEBScalarBenchmark:
         )
         hc.setup()
 
-        spectra_list = [(0, 0), (1, 1), (2, 2)]  # TT, EE, BB
+        spins = (0, 0, 0)
+        spectra_list = [
+            _to_key(t, spins=spins) for t in [(0, 0), (1, 1), (2, 2)]
+        ]  # TT, EE, BB
         n_spectra = len(spectra_list)
         n_ell = setup["n_ell"]
 
