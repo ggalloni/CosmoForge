@@ -343,23 +343,17 @@ class TestFieldBlockFisherExact:
         n_spec = len(spectra_list)
         fisher_pixel = np.zeros((n_spec * n_ell, n_spec * n_ell))
 
-        from cosmocore.spectrum_key import kind_to_legacy_mode
-
         for spec_a, entry_a in enumerate(spectra_list):
-            ci_a, cj_a = entry_a.comp_i, entry_a.comp_j
-            mode_a = kind_to_legacy_mode(entry_a.kind, is_cross=(ci_a != cj_a))
             for ell_a in range(2, setup["lmax"] + 1):
-                E_a = hc.get_derivative_matrix(ell_a, ci_a, cj_a, mode_a)
+                E_a = hc.get_derivative_matrix(ell_a, entry_a)
                 dS_a = V.T @ E_a @ V
                 idx_a = spec_a * n_ell + (ell_a - 2)
 
                 for spec_b in range(spec_a, n_spec):
                     entry_b = spectra_list[spec_b]
-                    ci_b, cj_b = entry_b.comp_i, entry_b.comp_j
-                    mode_b = kind_to_legacy_mode(entry_b.kind, is_cross=(ci_b != cj_b))
                     ell_b_start = ell_a if spec_a == spec_b else 2
                     for ell_b in range(ell_b_start, setup["lmax"] + 1):
-                        E_b = hc.get_derivative_matrix(ell_b, ci_b, cj_b, mode_b)
+                        E_b = hc.get_derivative_matrix(ell_b, entry_b)
                         dS_b = V.T @ E_b @ V
                         idx_b = spec_b * n_ell + (ell_b - 2)
 

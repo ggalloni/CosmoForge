@@ -22,6 +22,7 @@ import pytest
 from cosmocore.bins import Bins
 from cosmocore.core import Core
 from cosmocore.settings import InputParams
+from cosmocore.spectrum_key import SpectrumKey, SpectrumKind
 
 
 class _PipelineCore(Core):
@@ -146,14 +147,12 @@ def test_compressed_pipeline_via_core(method, nside, basis_lmax):
         core.set_binning(Bins.fromdeltal(2, basis_lmax, 4))
 
         # Binned derivative through the basis-aware dispatch.
+        ss_key = SpectrumKey(0, 0, SpectrumKind.SS, spins=(0,))
         beam = np.ones(basis_lmax + 1, dtype=np.float64)
         dC_b = core.get_binned_derivative_matrix(
             bin_idx=1,
+            key=ss_key,
             beam_smoothing=beam,
-            spectrum_idx=0,
-            comp_i=0,
-            comp_j=0,
-            mode=0,
         )
         assert dC_b is not None
         assert np.all(np.isfinite(dC_b))

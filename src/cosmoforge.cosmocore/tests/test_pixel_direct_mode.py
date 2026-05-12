@@ -21,6 +21,7 @@ from cosmocore.basis import PixelBasis
 from cosmocore.bins import Bins
 from cosmocore.core import Core
 from cosmocore.settings import InputParams
+from cosmocore.spectrum_key import SpectrumKey, SpectrumKind
 
 
 class _ConcreteCore(Core):
@@ -137,6 +138,7 @@ def test_setup_direct_requires_fields():
 
 def test_binned_derivative_direct_spin0():
     """Spin-0 binned direct derivative matches per-ℓ direct sum."""
+
     core, mask_file = _make_core(spins=[0], labels=["T"], nfields=1)
     try:
         bm = _build_direct_basis(core, lmax_signal=core.params.lmax)
@@ -145,9 +147,7 @@ def test_binned_derivative_direct_spin0():
             bin_idx=1,
             bins=bins,
             beam_smoothing=None,
-            comp_i=0,
-            comp_j=0,
-            mode=0,
+            key=SpectrumKey(0, 0, SpectrumKind.SS, spins=(0,)),
         )
         ref = _per_ell_reference(bm, bins, 1, 0, 0, 0)
         np.testing.assert_allclose(dC_b, ref, rtol=1e-10, atol=1e-12)
@@ -162,9 +162,13 @@ def test_binned_derivative_direct_spin0():
 # =========================================================================
 
 
-@pytest.mark.parametrize("mode,name", [(0, "EE"), (1, "BB"), (2, "EB")])
-def test_binned_derivative_direct_spin2(mode, name):
+@pytest.mark.parametrize(
+    "mode,name,kind_attr",
+    [(0, "EE", "GG"), (1, "BB", "CC"), (2, "EB", "GC")],
+)
+def test_binned_derivative_direct_spin2(mode, name, kind_attr):
     """Spin-2 EE/BB/EB binned direct derivative matches per-ℓ direct sum."""
+
     core, mask_file = _make_core(spins=[2], labels=["E", "B"], nfields=2)
     try:
         bm = _build_direct_basis(core, lmax_signal=core.params.lmax)
@@ -173,9 +177,7 @@ def test_binned_derivative_direct_spin2(mode, name):
             bin_idx=1,
             bins=bins,
             beam_smoothing=None,
-            comp_i=0,
-            comp_j=0,
-            mode=mode,
+            key=SpectrumKey(0, 0, getattr(SpectrumKind, kind_attr), spins=(2,)),
         )
         ref = _per_ell_reference(bm, bins, 1, 0, 0, mode)
         np.testing.assert_allclose(
@@ -194,8 +196,11 @@ def test_binned_derivative_direct_spin2(mode, name):
 # =========================================================================
 
 
-@pytest.mark.parametrize("mode,name", [(0, "TE"), (1, "TB")])
-def test_binned_derivative_direct_cross_spin(mode, name):
+@pytest.mark.parametrize(
+    "mode,name,kind_attr",
+    [(0, "TE", "SG"), (1, "TB", "SC")],
+)
+def test_binned_derivative_direct_cross_spin(mode, name, kind_attr):
     """Cross-spin (T×P) binned direct derivative matches per-ℓ direct sum.
 
     Spectrum labels follow the spin-0-first convention (TE/TB), so the
@@ -211,13 +216,12 @@ def test_binned_derivative_direct_cross_spin(mode, name):
     try:
         bm = _build_direct_basis(core, lmax_signal=core.params.lmax)
         bins = Bins.fromdeltal(2, core.params.lmax, 3)
+
         dC_te = bm.get_binned_derivative_direct(
             bin_idx=1,
             bins=bins,
             beam_smoothing=None,
-            comp_i=0,
-            comp_j=1,
-            mode=mode,
+            key=SpectrumKey(0, 1, getattr(SpectrumKind, kind_attr), spins=(0, 2)),
         )
         ref_te = _per_ell_reference(bm, bins, 1, 0, 1, mode)
         np.testing.assert_allclose(
@@ -251,13 +255,12 @@ def test_binned_derivative_direct_with_beam_smoothing():
         # this matches Fisher's per-spectrum beam_smoothing layout.
         n_ell = core.params.lmax - 1
         beam = np.linspace(1.0, 0.5, n_ell) ** 2
+
         dC_b = bm.get_binned_derivative_direct(
             bin_idx=1,
             bins=bins,
             beam_smoothing=beam,
-            comp_i=0,
-            comp_j=0,
-            mode=0,
+            key=SpectrumKey(0, 0, SpectrumKind.SS, spins=(0,)),
         )
 
         # Reference: same bin, weighted per-ℓ sum.

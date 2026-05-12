@@ -578,13 +578,16 @@ class TestMultiFieldIntegration:
         # Compute pixel-space Fisher for field 0 auto-spectrum
         fisher_pixel = np.zeros((n_ell, n_ell))
 
+        n_components = len(hc._spins)
+        spins = tuple(hc._spins[:n_components])
+        ss_key = SpectrumKey(0, 0, SpectrumKind.SS, spins=spins)
+
         for ell_i in range(2, lmax + 1):
-            # Build dS/dC_ell for field 0 using V^T E_ell V
-            E_i = hc.get_derivative_matrix(ell_i, 0, 0)
+            E_i = hc.get_derivative_matrix(ell_i, ss_key)
             dS_i = V.T @ E_i @ V
 
             for ell_j in range(ell_i, lmax + 1):
-                E_j = hc.get_derivative_matrix(ell_j, 0, 0)
+                E_j = hc.get_derivative_matrix(ell_j, ss_key)
                 dS_j = V.T @ E_j @ V
 
                 # F_ij = 0.5 * Tr[C^{-1} dS_i C^{-1} dS_j]

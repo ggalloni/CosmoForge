@@ -271,13 +271,17 @@ class TestSpin2Derivatives:
 
         n_base = hc._n_modes_base
         ell = 3
+        spins = (0, 2)
 
-        # EE derivative
-        E_ee = hc.get_derivative_matrix(ell, 1, 1, mode=0)
-        # BB derivative
-        E_bb = hc.get_derivative_matrix(ell, 1, 1, mode=1)
-        # EB derivative
-        E_eb = hc.get_derivative_matrix(ell, 1, 1, mode=2)
+        E_ee = hc.get_derivative_matrix(
+            ell, SpectrumKey(1, 1, SpectrumKind.GG, spins=spins)
+        )
+        E_bb = hc.get_derivative_matrix(
+            ell, SpectrumKey(1, 1, SpectrumKind.CC, spins=spins)
+        )
+        E_eb = hc.get_derivative_matrix(
+            ell, SpectrumKey(1, 1, SpectrumKind.GC, spins=spins)
+        )
 
         # EE should only have entries in [n_base:2*n_base, n_base:2*n_base]
         assert np.all(E_ee[:n_base, :] == 0), "EE should not touch T block"
@@ -318,9 +322,11 @@ class TestSpin2Derivatives:
 
         n_base = hc._n_modes_base
         ell = 3
+        spins = (0, 2)
 
-        # TE derivative
-        E_te = hc.get_derivative_matrix(ell, 0, 1, mode=0)
+        E_te = hc.get_derivative_matrix(
+            ell, SpectrumKey(0, 1, SpectrumKind.SG, spins=spins)
+        )
 
         # Should have entries in T×E block and E×T block (symmetric)
         assert np.any(E_te[:n_base, n_base : 2 * n_base] != 0)
@@ -471,22 +477,14 @@ def _pixel_space_fisher_with_spins(C_inv, V, hc, lmax, spectra_list):
     n_spectra = len(spectra_list)
     fisher = np.zeros((n_spectra * n_ell, n_spectra * n_ell))
 
-    from cosmocore.spectrum_key import kind_to_legacy_mode
-
-    def _entry_to_legacy(entry):
-        ci, cj = entry.comp_i, entry.comp_j
-        return ci, cj, kind_to_legacy_mode(entry.kind, is_cross=(ci != cj))
-
     for si, entry_i in enumerate(spectra_list):
-        ci, cj, mode_i = _entry_to_legacy(entry_i)
         for ell_i in range(2, lmax + 1):
-            E_i = hc.get_derivative_matrix(ell_i, ci, cj, mode_i)
+            E_i = hc.get_derivative_matrix(ell_i, entry_i)
             dS_i = V.T @ E_i @ V
 
             for sj, entry_j in enumerate(spectra_list):
-                ck, cl, mode_j = _entry_to_legacy(entry_j)
                 for ell_j in range(2, lmax + 1):
-                    E_j = hc.get_derivative_matrix(ell_j, ck, cl, mode_j)
+                    E_j = hc.get_derivative_matrix(ell_j, entry_j)
                     dS_j = V.T @ E_j @ V
 
                     temp1 = matrix_mult(C_inv, dS_i)

@@ -45,16 +45,13 @@ def compute_pixel_space_fisher(C_inv, V, lambda_matrix, lmax, spectra_list, hc):
     fisher = np.zeros((n_spectra * n_ell, n_spectra * n_ell))
 
     for spec_idx_i, entry_i in enumerate(spectra_list):
-        comp_i, comp_j = entry_i.comp_i, entry_i.comp_j
         for ell_i in range(2, lmax + 1):
-            # Build dS/dC_ell for spectrum (comp_i, comp_j)
-            E_i = hc.get_derivative_matrix(ell_i, comp_i, comp_j)
+            E_i = hc.get_derivative_matrix(ell_i, entry_i)
             dS_i = V.T @ E_i @ V
 
             for spec_idx_j, entry_j in enumerate(spectra_list):
-                comp_k, comp_l = entry_j.comp_i, entry_j.comp_j
                 for ell_j in range(2, lmax + 1):
-                    E_j = hc.get_derivative_matrix(ell_j, comp_k, comp_l)
+                    E_j = hc.get_derivative_matrix(ell_j, entry_j)
                     dS_j = V.T @ E_j @ V
 
                     # F_ij = 0.5 * Tr[C^{-1} dS_i C^{-1} dS_j]

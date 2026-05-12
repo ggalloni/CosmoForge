@@ -757,9 +757,7 @@ class PixelBasis(ComputationBasis):
         bin_idx: int,
         bins,
         beam_smoothing: np.ndarray | None,
-        comp_i: int = 0,
-        comp_j: int = 0,
-        mode: int = 0,
+        key,
     ) -> np.ndarray:
         """Build the binned derivative dC^b in a single Legendre/Wigner pass.
 
@@ -770,12 +768,25 @@ class PixelBasis(ComputationBasis):
         accumulate ``Σ_ℓ cl[ell] × kernel[ell]`` per pixel pair on
         ℓ-indexed arrays, so populating ``cl[ell] = beam²(ell)`` inside the
         bin (zero elsewhere) yields the exact binned derivative.
+
+        Parameters
+        ----------
+        key : SpectrumKey
+            Identifies the spectrum (component pair + spin kind). Decomposed
+            into ``(comp_i, comp_j, mode)`` once at entry for the Numba
+            kernels below.
         """
         from ..pixel import (
             compute_00_contribution,
             compute_02_contribution,
             compute_22_contribution,
         )
+        from ..spectrum_key import kind_to_legacy_mode
+
+        is_cross = key.comp_i != key.comp_j
+        comp_i = key.comp_i
+        comp_j = key.comp_j
+        mode = kind_to_legacy_mode(key.kind, is_cross=is_cross)
 
         lmin_b = bins.lmins[bin_idx]
         lmax_b = bins.lmaxs[bin_idx]
@@ -1598,9 +1609,7 @@ class PixelBasis(ComputationBasis):
     def get_derivative_matrix(
         self,
         ell: int,
-        comp_i: int | None = None,
-        comp_j: int | None = None,
-        mode: int = 0,
+        key,
         *,
         symmetry_mode=None,
     ) -> np.ndarray:
@@ -1610,39 +1619,39 @@ class PixelBasis(ComputationBasis):
         Parameters
         ----------
         ell : int
-            Multipole for which to compute the derivative.
-        comp_i, comp_j : int or None
-            Component indices for multi-field. None for single-field.
-        mode : int
-            Spin mode encoding (see :meth:`ComputationBasis.get_derivative_matrix`).
+            Multipole.
+        key : SpectrumKey
+            Identifies the spectrum (component pair + spin kind).
         symmetry_mode : SymmetryMode or None
-            Forwarded to ``_build_derivative_matrix_with_spins``.
+            ``None`` keeps the SYMMETRIC default.
 
         Returns
         -------
         numpy.ndarray
             Derivative matrix of shape (n_compressed, n_compressed).
         """
+        from ..spectrum_key import SymmetryMode, kind_to_legacy_mode
+
+        if symmetry_mode is None:
+            symmetry_mode = SymmetryMode.SYMMETRIC
+
+        is_cross = key.comp_i != key.comp_j
+        mode = kind_to_legacy_mode(key.kind, is_cross=is_cross)
+
         if self._use_direct:
-            return self._get_derivative_direct(ell, comp_i, comp_j, mode)
+            return self._get_derivative_direct(ell, key.comp_i, key.comp_j, mode)
 
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
-        if comp_i is None:
-            # Single-field: use precomputed diagonal
-            E_diag = self._derivative_diagonals[ell]
-            np.multiply(self._VU, E_diag[:, np.newaxis], out=self._VU_scaled_buffer)
-            return matrix_mult(self._VU_scaled_buffer.T, self._VU)
-
-        # Multi-field
+        # Single spin-0 field: use precomputed diagonal.
         if self.n_components == 1 and self._spins[0] == 0:
             E_diag = self._derivative_diagonals[ell]
             np.multiply(self._VU, E_diag[:, np.newaxis], out=self._VU_scaled_buffer)
             return matrix_mult(self._VU_scaled_buffer.T, self._VU)
 
         E = self._build_derivative_matrix_with_spins(
-            ell, comp_i, comp_j, mode, symmetry_mode=symmetry_mode
+            ell, key.comp_i, key.comp_j, mode, symmetry_mode=symmetry_mode
         )
         E_VU = matrix_mult(E, self._VU)
         return matrix_mult(self._VU.T, E_VU)
@@ -1788,9 +1797,20 @@ class PixelBasis(ComputationBasis):
 
             C_c_inv = self.get_compressed_inverse(C_ell)
 
+            from ..spectrum_key import SpectrumKey, SpectrumKind
+
+            # Array C_ell input is the spin-0 single-field signature; spin-2
+            # single fields carry multiple spectra (EE/BB/EB) and must enter
+            # through the dict path below.
+            if self._spins[0] != 0:
+                raise ValueError(
+                    f"Array C_ell requires spin-0; got spin={self._spins[0]}. "
+                    "Pass a dict for spin-2 single-field cases."
+                )
+            single_field_key = SpectrumKey(0, 0, SpectrumKind.SS, spins=(0,))
             cinv_times_dc = {}
             for ell in range(ell_min, ell_max + 1):
-                dC = self.get_derivative_matrix(ell)
+                dC = self.get_derivative_matrix(ell, single_field_key)
                 cinv_times_dc[ell] = matrix_mult(C_c_inv, dC)
 
             for ell_i in range(ell_min, ell_max + 1):
@@ -1820,7 +1840,7 @@ class PixelBasis(ComputationBasis):
         cinv_times_dc = {}
         for spec_idx, spec_entry in enumerate(spectra_list):
             for ell in range(ell_min, ell_max + 1):
-                dC = self.get_derivative_matrix_keyed(
+                dC = self.get_derivative_matrix(
                     ell, spec_entry, symmetry_mode=symmetry_mode
                 )
                 cinv_times_dc[(spec_idx, ell)] = matrix_mult(C_c_inv, dC)

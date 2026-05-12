@@ -242,6 +242,10 @@ class Spectra(Core, MPISharedMemoryMixin):
         self.qml_results = None
         self.qml_noise_bias = None
         self.invfisher = None
+        # Populated lazily in compute_qml_spectra so _get_binned_derivative
+        # (Core's keyed API consumer) can resolve spectrum_idx → SpectrumKey
+        # without threading lists through method signatures.
+        self.spectra_list: list | None = None
 
         # Normalization mode support
         self.inv_fisher_sqrt: np.ndarray | None = None  # F^(-1/2) for decorrelated mode
@@ -605,6 +609,19 @@ class Spectra(Core, MPISharedMemoryMixin):
         quadratic estimates for all simulations. Selects compressed or
         traditional method based on basis_manager availability.
         """
+        # Resolve spectra_list once so the per-bin SpectrumKey lookup inside
+        # _get_binned_derivative works for both compressed and traditional
+        # paths. Mirrors Fisher.compute() which populates
+        # ``self.fisher_instance.spectra_list`` for both paths too. Fall
+        # back to building locally if Fisher hasn't populated it yet
+        # (test fixtures that bypass Fisher.compute()).
+        if self.spectra_list is None:
+            fisher_list = getattr(self.fisher_instance, "spectra_list", None)
+            if fisher_list is not None:
+                self.spectra_list = list(fisher_list)
+            else:
+                _, self.spectra_list = self._build_multi_spectrum_inputs()
+
         # Check if we should use compressed computation
         use_basis = hasattr(self, "basis_manager") and self.basis_manager is not None
 
@@ -629,23 +646,20 @@ class Spectra(Core, MPISharedMemoryMixin):
         )
         return dC
 
-    def _get_binned_derivative(
-        self, bin_idx: int, spectrum_idx: int = 0, spectra_list=None
-    ) -> np.ndarray:
+    def _get_binned_derivative(self, bin_idx: int, spectrum_idx: int = 0) -> np.ndarray:
         """
         Compute binned derivative dC^b = Sum_{ell in bin} b²_ell dC^ell.
 
         Uses Fisher's cache when available, otherwise delegates to
-        :meth:`Core.get_binned_derivative_matrix`, which dispatches to the
-        pixel-direct fast path (single Legendre/Wigner pass per bin) when
-        applicable.
+        :meth:`Core.get_binned_derivative_matrix` with the SpectrumKey
+        resolved from ``self.spectra_list[spectrum_idx]``.
         """
         if hasattr(self, "fisher_instance") and self.fisher_instance is not None:
             cache = getattr(self.fisher_instance, "_cached_binned_derivatives", None)
             if cache is not None:
-                key = (spectrum_idx, bin_idx)
-                if key in cache:
-                    return cache[key]
+                cache_key = (spectrum_idx, bin_idx)
+                if cache_key in cache:
+                    return cache[cache_key]
 
         # beam_smoothing per-spectrum blocks hold the inference-range beams
         # (ell=lmin..lmax, offset-from-lmin; ADR 0009).
@@ -653,19 +667,12 @@ class Spectra(Core, MPISharedMemoryMixin):
         beam_offset = spectrum_idx * n_ell
         beam = self.beam_smoothing[beam_offset : beam_offset + n_ell]
 
-        if spectra_list is not None:
-            return self.get_binned_derivative_matrix_keyed(
-                bin_idx,
-                spectra_list[spectrum_idx],
-                beam_smoothing=beam,
-                spectrum_idx=spectrum_idx,
-                symmetry_mode=self.symmetry_mode,
-            )
-        # Single-spectrum / pixel-space path: no SpectrumKey available.
+        key = self.spectra_list[spectrum_idx]
         return self.get_binned_derivative_matrix(
             bin_idx,
+            key,
             beam_smoothing=beam,
-            spectrum_idx=spectrum_idx,
+            symmetry_mode=self.symmetry_mode,
         )
 
     def _compute_noise_cov_compressed(
@@ -775,6 +782,7 @@ class Spectra(Core, MPISharedMemoryMixin):
             C_ell_dict = None
             spins = tuple(f.spin for f in self.collection.fields)
             spectra_list = [SpectrumKey(0, 0, SpectrumKind.SS, spins=spins)]
+        self.spectra_list = spectra_list
 
         # Compute weighted compressed data for all simulations
         # w = V @ C^{-1} @ d (using SMW formula internally)
@@ -928,11 +936,7 @@ class Spectra(Core, MPISharedMemoryMixin):
 
                 # Get binned derivative: 1D diagonal vector (harmonic auto-
                 # spectra) or 2D dense matrix (cross-spectra / pixel-space).
-                E_b = self._get_binned_derivative(
-                    bin_idx,
-                    spectrum_idx,
-                    spectra_list if is_multi_field else None,
-                )
+                E_b = self._get_binned_derivative(bin_idx, spectrum_idx)
 
                 # Exploit diagonal structure when available:
                 # diag * maps is O(n × n_sims) vs dense @ maps O(n² × n_sims)

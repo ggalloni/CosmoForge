@@ -9,6 +9,8 @@ import numpy as np
 import pytest
 from numpy.testing import assert_allclose
 
+from cosmocore.spectrum_key import SpectrumKey, SpectrumKind
+
 
 class TestPixelBasisInitialization:
     """Tests for PixelBasis initialization."""
@@ -1057,7 +1059,8 @@ class TestPPCOperationChain:
         assert 0 < ppc.compression_ratio <= 1.0
 
         # Derivative matrix
-        dC = ppc.get_derivative_matrix(5)
+        ss_key = SpectrumKey(0, 0, SpectrumKind.SS, spins=(0,))
+        dC = ppc.get_derivative_matrix(5, ss_key)
         assert dC.shape == (ppc.n_kept, ppc.n_kept)
 
         # Weighted compressed data
@@ -1097,8 +1100,6 @@ class TestPPCOperationChain:
         ppc.setup()
         ppc.apply_compression(epsilon=1e-6)
 
-        from cosmocore.spectrum_key import SpectrumKey, SpectrumKind
-
         spins = (0, 0)
         keys = [
             SpectrumKey(0, 0, SpectrumKind.SS, spins=spins),
@@ -1117,7 +1118,7 @@ class TestPPCOperationChain:
         assert C_c.shape == (ppc.n_kept, ppc.n_kept)
 
         # Cross-component derivative
-        dC = ppc.get_derivative_matrix(5, comp_i=0, comp_j=1, mode=0)
+        dC = ppc.get_derivative_matrix(5, SpectrumKey(0, 1, SpectrumKind.SS, spins=spins))
         assert dC.shape == (ppc.n_kept, ppc.n_kept)
 
         # Multi-field Fisher
@@ -1174,7 +1175,7 @@ class TestPPCOperationChain:
         with pytest.raises(RuntimeError):
             ppc.get_projected_inverse(C_ell)
         with pytest.raises(RuntimeError):
-            ppc.get_derivative_matrix(5)
+            ppc.get_derivative_matrix(5, SpectrumKey(0, 0, SpectrumKind.SS, spins=(0,)))
         with pytest.raises(RuntimeError):
             ppc.get_compressed_covariance(C_ell)
         with pytest.raises(RuntimeError):

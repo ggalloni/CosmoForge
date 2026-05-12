@@ -519,9 +519,7 @@ class ComputationBasis(ABC):
     def get_derivative_matrix(
         self,
         ell: int,
-        comp_i: int | None = None,
-        comp_j: int | None = None,
-        mode: int = 0,
+        key,
         *,
         symmetry_mode=None,
     ) -> np.ndarray:
@@ -532,15 +530,10 @@ class ComputationBasis(ABC):
         ----------
         ell : int
             Multipole for which to compute the derivative.
-        comp_i, comp_j : int or None
-            Component indices for multi-field. None for single-field.
-        mode : int
-            Spin mode encoding. For auto-pair (comp_i == comp_j) spin-2 ×
-            spin-2: ``[EE=0, BB=1, EB=2]``. For cross-pair (comp_i !=
-            comp_j) spin-2 × spin-2: ``[GG=0, GC=1, CG=2, CC=3]``.
+        key : SpectrumKey
+            Identifies the spectrum (component pair + spin kind).
         symmetry_mode : SymmetryMode or None
-            Forwarded to ``_build_derivative_matrix_with_spins``. ``None``
-            keeps the SYMMETRIC default.
+            ``None`` keeps the SYMMETRIC default.
 
         Returns
         -------
@@ -780,31 +773,6 @@ class ComputationBasis(ABC):
         """Build derivative matrix for (comp_i, comp_j, mode)."""
         return self._harmonic_basis._build_derivative_matrix_with_spins(
             ell, comp_i, comp_j, mode, symmetry_mode=symmetry_mode
-        )
-
-    def get_derivative_matrix_keyed(self, ell, key, *, symmetry_mode=None):
-        """Build the derivative matrix dC/dC_ell for a SpectrumKey at multipole ell.
-
-        Canonical public surface for fetching a per-ℓ derivative matrix.
-        Delegates to the basis-specific :meth:`get_derivative_matrix` so
-        basis-level post-processing (e.g. PixelBasis' ``U^T E U``
-        projection) is preserved. The keyed → int-mode bridge happens
-        here once; callers should never assemble a legacy int mode
-        themselves.
-
-        ``symmetry_mode=None`` keeps the SYMMETRIC default.
-        """
-        from ..spectrum_key import SymmetryMode, kind_to_legacy_mode
-
-        if symmetry_mode is None:
-            symmetry_mode = SymmetryMode.SYMMETRIC
-        is_cross = key.comp_i != key.comp_j
-        return self.get_derivative_matrix(
-            ell,
-            key.comp_i,
-            key.comp_j,
-            kind_to_legacy_mode(key.kind, is_cross=is_cross),
-            symmetry_mode=symmetry_mode,
         )
 
     def _precompute_derivative_diagonals(self) -> None:

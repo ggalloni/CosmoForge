@@ -47,16 +47,6 @@ def harmonic_basis_qu_qu():
     return hc
 
 
-def test_keyed_derivative_matches_legacy(harmonic_basis_t_qu):
-    """get_derivative_matrix_keyed produces the same matrix as the int API."""
-    spins = (0, 2)
-    key = SpectrumKey(0, 1, SpectrumKind.SG, spins=spins)
-    ell = 5
-    legacy = harmonic_basis_t_qu._build_derivative_matrix_with_spins(ell, 0, 1, 0)
-    keyed = harmonic_basis_t_qu.get_derivative_matrix_keyed(ell, key)
-    np.testing.assert_array_equal(legacy, keyed)
-
-
 def test_lambda_matrix_accepts_spectrumkey_keyed_dict(harmonic_basis_t_qu):
     """SpectrumKey-keyed C_ell_dict yields the same Lambda as the 3-tuple form."""
     from cosmocore.spectrum_key import kind_to_legacy_mode
@@ -146,29 +136,26 @@ def test_directional_gc_and_cg_e_matrices_distinct(harmonic_basis_qu_qu):
     key_gc = SpectrumKey(0, 1, SpectrumKind.GC, spins=spins)
     key_cg = SpectrumKey(0, 1, SpectrumKind.CG, spins=spins)
 
-    e_gc_dir = harmonic_basis_qu_qu.get_derivative_matrix_keyed(
+    e_gc_dir = harmonic_basis_qu_qu.get_derivative_matrix(
         ell, key_gc, symmetry_mode=SymmetryMode.DIRECTIONAL
     )
-    e_cg_dir = harmonic_basis_qu_qu.get_derivative_matrix_keyed(
+    e_cg_dir = harmonic_basis_qu_qu.get_derivative_matrix(
         ell, key_cg, symmetry_mode=SymmetryMode.DIRECTIONAL
     )
     assert not np.array_equal(e_gc_dir, e_cg_dir)
     np.testing.assert_array_equal(
         e_gc_dir + e_cg_dir,
-        harmonic_basis_qu_qu.get_derivative_matrix_keyed(
+        harmonic_basis_qu_qu.get_derivative_matrix(
             ell, key_gc, symmetry_mode=SymmetryMode.SYMMETRIC
         ),
     )
 
-    e_sym = harmonic_basis_qu_qu.get_derivative_matrix_keyed(
+    # Default (no symmetry_mode kwarg) MUST equal SYMMETRIC bit-for-bit.
+    e_sym = harmonic_basis_qu_qu.get_derivative_matrix(
         ell, key_gc, symmetry_mode=SymmetryMode.SYMMETRIC
     )
-    legacy = harmonic_basis_qu_qu._build_derivative_matrix_with_spins(ell, 0, 1, mode=1)
-    np.testing.assert_array_equal(e_sym, legacy)
-
-    # Default (no symmetry_mode kwarg) MUST also equal legacy bit-for-bit.
-    e_default = harmonic_basis_qu_qu.get_derivative_matrix_keyed(ell, key_gc)
-    np.testing.assert_array_equal(e_default, legacy)
+    e_default = harmonic_basis_qu_qu.get_derivative_matrix(ell, key_gc)
+    np.testing.assert_array_equal(e_default, e_sym)
 
 
 def test_kind_to_legacy_mode_supports_cg_for_cross():
@@ -320,12 +307,8 @@ def test_directional_qml_recovers_injected_asymmetric_eb(harmonic_basis_qu_qu):
 
     key_gc = SpectrumKey(0, 1, SpectrumKind.GC, spins=spins)
     key_cg = SpectrumKey(0, 1, SpectrumKind.CG, spins=spins)
-    E_gc = bm.get_derivative_matrix_keyed(
-        ell, key_gc, symmetry_mode=SymmetryMode.DIRECTIONAL
-    )
-    E_cg = bm.get_derivative_matrix_keyed(
-        ell, key_cg, symmetry_mode=SymmetryMode.DIRECTIONAL
-    )
+    E_gc = bm.get_derivative_matrix(ell, key_gc, symmetry_mode=SymmetryMode.DIRECTIONAL)
+    E_cg = bm.get_derivative_matrix(ell, key_cg, symmetry_mode=SymmetryMode.DIRECTIONAL)
 
     q_gc = 0.5 * np.trace(A @ Lambda_fid @ A @ E_gc)
     q_cg = 0.5 * np.trace(A @ Lambda_fid @ A @ E_cg)

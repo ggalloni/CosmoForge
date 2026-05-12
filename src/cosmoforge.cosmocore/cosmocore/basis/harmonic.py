@@ -833,9 +833,7 @@ class HarmonicBasis(ComputationBasis):
     def get_derivative_matrix(
         self,
         ell: int,
-        comp_i: int | None = None,
-        comp_j: int | None = None,
-        mode: int = 0,
+        key,
         *,
         symmetry_mode=None,
     ) -> np.ndarray:
@@ -845,25 +843,27 @@ class HarmonicBasis(ComputationBasis):
         Parameters
         ----------
         ell : int
-            Multipole for which to compute the derivative.
-        comp_i, comp_j : int or None
-            Component indices for multi-field. None for single-field.
-        mode : int
-            Spin mode encoding (see :meth:`ComputationBasis.get_derivative_matrix`).
+            Multipole.
+        key : SpectrumKey
+            Identifies the spectrum (component pair + spin kind).
         symmetry_mode : SymmetryMode or None
-            Forwarded to ``_build_derivative_matrix_with_spins``.
+            ``None`` keeps the SYMMETRIC default.
 
         Returns
         -------
         numpy.ndarray
             Derivative matrix of shape (n_modes, n_modes).
         """
-        if comp_i is None:
-            return np.diag(self._derivative_diagonals[ell])
+        from ..spectrum_key import SymmetryMode, kind_to_legacy_mode
+
+        if symmetry_mode is None:
+            symmetry_mode = SymmetryMode.SYMMETRIC
         if self.n_components == 1 and self._spins[0] == 0:
             return np.diag(self._derivative_diagonals[ell])
+        is_cross = key.comp_i != key.comp_j
+        mode = kind_to_legacy_mode(key.kind, is_cross=is_cross)
         return self._build_derivative_matrix_with_spins(
-            ell, comp_i, comp_j, mode, symmetry_mode=symmetry_mode
+            ell, key.comp_i, key.comp_j, mode, symmetry_mode=symmetry_mode
         )
 
     def get_compressed_covariance(self, C_ell):
@@ -1022,24 +1022,24 @@ class HarmonicBasis(ComputationBasis):
         term2 = float(y.T @ kernel_inv_y)
         return term1 - term2
 
-    def _get_derivative_diagonal_keyed(self, ell: int, key) -> np.ndarray:
+    def get_derivative_diagonal(self, ell: int, key) -> np.ndarray:
         """Get derivative diagonal for an auto-pair diagonal SpectrumKey.
 
-        Valid only for ``key.comp_i == key.comp_j`` and diagonal kinds
-        (``SS``, ``GG``, ``CC``) — i.e. TT, EE, or BB. Cross-component
-        keys and ``GC/CG/SG/SC/GS/CS`` raise ``ValueError``. SpectrumKey
-        → int-mode bridge happens here once.
+        Returns a 1D vector — the diagonal of ∂S/∂C_ℓ — for use in the
+        sparse-trace fast path. Valid only for ``key.comp_i == key.comp_j``
+        and diagonal kinds (``SS``, ``GG``, ``CC``) — i.e. TT, EE, or BB.
+        Cross-component keys and ``GC/CG/SG/SC/GS/CS`` raise ``ValueError``.
         """
         from ..spectrum_key import SpectrumKind, kind_to_legacy_mode
 
         if key.comp_i != key.comp_j:
             raise ValueError(
-                "_get_derivative_diagonal_keyed requires an auto-pair key; "
+                "get_derivative_diagonal requires an auto-pair key; "
                 f"got comp_i={key.comp_i}, comp_j={key.comp_j}"
             )
         if key.kind not in (SpectrumKind.SS, SpectrumKind.GG, SpectrumKind.CC):
             raise ValueError(
-                "_get_derivative_diagonal_keyed requires a diagonal kind "
+                "get_derivative_diagonal requires a diagonal kind "
                 f"(SS/GG/CC); got {key.kind.name}"
             )
         return self._get_derivative_diagonal(
@@ -1184,7 +1184,7 @@ class HarmonicBasis(ComputationBasis):
         VCinvVT_E = {}
         for spec_idx, spec_entry in enumerate(spectra_list):
             for ell in range(ell_min, ell_max + 1):
-                E_matrix = self.get_derivative_matrix_keyed(
+                E_matrix = self.get_derivative_matrix(
                     ell, spec_entry, symmetry_mode=symmetry_mode
                 )
                 VCinvVT_E[(spec_idx, ell)] = matrix_mult(V_Cinv_VT, E_matrix)

@@ -381,11 +381,15 @@ class Fisher(Core, MPISharedMemoryMixin):
                 _, spectra_list = self._build_multi_spectrum_inputs()
 
             if spectra_list is None:
-                # Pixel-space generic path never reads the placeholder fields;
-                # skip spin validation so spin-2 single-field collections
-                # (e.g. QU) don't raise on the SS-kind sentinel.
-                placeholder = SpectrumKey(0, 0, SpectrumKind.SS)
-                spectra_list = [placeholder] * nspectra
+                # Pixel-space generic path: build per-slot sentinel keys so
+                # Core._resolve_spectrum_idx's reverse lookup routes each
+                # spectrum_idx to its own slab. Identical keys would collide
+                # in the dict cache and silently collapse every slot to 0.
+                # spins=None bypasses SS-kind spin validation so spin-2
+                # single-field collections (e.g. QU) don't raise.
+                spectra_list = [
+                    SpectrumKey(i, i, SpectrumKind.SS) for i in range(nspectra)
+                ]
 
             # --- Precompute derivatives ---
             # Harmonic fast path: sparse COO triplets (rows, cols, vals)
@@ -426,9 +430,7 @@ class Fisher(Core, MPISharedMemoryMixin):
                             weight = self.beam_smoothing[
                                 beam_offset + ell - self.params.lmin
                             ]
-                            E_b_diag += weight * bm._get_derivative_diagonal_keyed(
-                                ell, spec_key
-                            )
+                            E_b_diag += weight * bm.get_derivative_diagonal(ell, spec_key)
                         nz = np.nonzero(E_b_diag)[0]
                         sparse_coo_data[cache_key] = (nz, nz, E_b_diag[nz])
                     else:
@@ -444,7 +446,7 @@ class Fisher(Core, MPISharedMemoryMixin):
                             ]
                             if abs(weight) < _WEIGHT_ZERO_THRESHOLD:
                                 continue
-                            dC_ell = bm.get_derivative_matrix_keyed(
+                            dC_ell = bm.get_derivative_matrix(
                                 ell, spec_key, symmetry_mode=self.symmetry_mode
                             )
                             r, c = np.nonzero(dC_ell)
@@ -486,24 +488,12 @@ class Fisher(Core, MPISharedMemoryMixin):
                     beam = self.beam_smoothing[beam_offset : beam_offset + self.n_ell]
 
                     spec_key = spectra_list[spectrum_idx]
-                    if use_basis:
-                        dC_b = self.get_binned_derivative_matrix_keyed(
-                            bin_idx,
-                            spec_key,
-                            beam_smoothing=beam,
-                            spectrum_idx=spectrum_idx,
-                            symmetry_mode=self.symmetry_mode,
-                        )
-                    else:
-                        # Pixel-space generic path: ignores comp_i/comp_j and
-                        # uses spectrum_idx to select the precomputed
-                        # derivative slab.
-                        dC_b = self.get_binned_derivative_matrix(
-                            bin_idx,
-                            beam_smoothing=beam,
-                            spectrum_idx=spectrum_idx,
-                            mode=0,
-                        )
+                    dC_b = self.get_binned_derivative_matrix(
+                        bin_idx,
+                        spec_key,
+                        beam_smoothing=beam,
+                        symmetry_mode=self.symmetry_mode,
+                    )
                     # Retain dC when the trace consumes it OR when the user
                     # opted in to caching for Spectra to reuse.
                     trace_needs_dC = not use_basis and self.params.do_cross
