@@ -79,3 +79,40 @@ def test_spectra_inherits_symmetry_mode_from_fisher(config_resolver):
     os.unlink(config_file)
     os.unlink(config_file2)
     assert spectra.symmetry_mode is SymmetryMode.DIRECTIONAL
+
+
+# === symmetry_mode coercion (Fisher.__init__) ===========================
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("SYMMETRIC", SymmetryMode.SYMMETRIC),
+        ("symmetric", SymmetryMode.SYMMETRIC),
+        ("Directional", SymmetryMode.DIRECTIONAL),
+        ("DIRECTIONAL", SymmetryMode.DIRECTIONAL),
+    ],
+)
+def test_fisher_coerces_symmetry_mode_string(config_resolver, value, expected):
+    """String symmetry_mode (e.g. from YAML) is coerced to the enum so
+    downstream `is SymmetryMode.*` identity checks don't silently misroute."""
+    config_file = config_resolver("tests/data/nside4/TQU/config.yaml")
+    fisher = Fisher(config_file, symmetry_mode=value)
+    os.unlink(config_file)
+    assert fisher.symmetry_mode is expected
+
+
+def test_fisher_rejects_unknown_symmetry_mode_string(config_resolver):
+    """Unknown symmetry_mode strings raise ValueError listing valid names."""
+    config_file = config_resolver("tests/data/nside4/TQU/config.yaml")
+    with pytest.raises(ValueError, match="unknown symmetry_mode"):
+        Fisher(config_file, symmetry_mode="bogus")
+    os.unlink(config_file)
+
+
+def test_fisher_rejects_non_string_non_enum_symmetry_mode(config_resolver):
+    """Non-string, non-enum symmetry_mode raises TypeError."""
+    config_file = config_resolver("tests/data/nside4/TQU/config.yaml")
+    with pytest.raises(TypeError, match="symmetry_mode must be"):
+        Fisher(config_file, symmetry_mode=42)
+    os.unlink(config_file)

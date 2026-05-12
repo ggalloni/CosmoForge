@@ -40,14 +40,15 @@ from mpi4py import MPI
 
 try:
     from threadpoolctl import threadpool_limits as _threadpool_limits
-except ImportError:  # graceful degradation; setup just runs at OMP_NUM_THREADS
+except ImportError:  # pragma: no cover
+    # Graceful degradation: setup just runs at OMP_NUM_THREADS.
     _threadpool_limits = None
 
 
 @contextmanager
 def _wide_threadpool():
     """Widen BLAS threads to the visible CPU set for rank-0 setup work."""
-    if _threadpool_limits is None:
+    if _threadpool_limits is None:  # pragma: no cover
         yield
         return
     n_visible = len(os.sched_getaffinity(0))

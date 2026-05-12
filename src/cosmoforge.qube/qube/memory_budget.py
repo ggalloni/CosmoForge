@@ -341,7 +341,7 @@ def _format_table(budget: QUBEBudget) -> str:
     return "\n".join(lines)
 
 
-def _main() -> None:
+def _main() -> None:  # pragma: no cover - CLI entry point
     import argparse
 
     parser = argparse.ArgumentParser(
