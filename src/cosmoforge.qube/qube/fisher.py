@@ -150,7 +150,7 @@ class Fisher(Core, MPISharedMemoryMixin):
         params_file: str | None = None,
         compression: dict | None = None,
         cache_derivatives: bool = False,
-        symmetry_mode=None,
+        symmetry_mode: SymmetryMode | str | None = None,
         **kwargs,
     ):
         """
@@ -196,9 +196,25 @@ class Fisher(Core, MPISharedMemoryMixin):
         # SymmetryMode (ADR-0011): controls cross-component spin-2 EB
         # handling. SYMMETRIC default reproduces pre-Slice-5 behaviour
         # bit-for-bit; DIRECTIONAL opt-in adds separate CG cross spectra.
-        self.symmetry_mode = (
-            symmetry_mode if symmetry_mode is not None else SymmetryMode.SYMMETRIC
-        )
+        # Coerce strings ("SYMMETRIC" from YAML) so downstream identity
+        # checks (`is SymmetryMode.SYMMETRIC`) don't silently misroute.
+        if symmetry_mode is None:
+            self.symmetry_mode = SymmetryMode.SYMMETRIC
+        elif isinstance(symmetry_mode, SymmetryMode):
+            self.symmetry_mode = symmetry_mode
+        elif isinstance(symmetry_mode, str):
+            try:
+                self.symmetry_mode = SymmetryMode[symmetry_mode.upper()]
+            except KeyError as exc:
+                raise ValueError(
+                    f"unknown symmetry_mode {symmetry_mode!r}; expected one of "
+                    f"{[m.name for m in SymmetryMode]}"
+                ) from exc
+        else:
+            raise TypeError(
+                f"symmetry_mode must be SymmetryMode | str | None; "
+                f"got {type(symmetry_mode).__name__}"
+            )
 
         # Initialize attributes
         self.signal_matrix = None

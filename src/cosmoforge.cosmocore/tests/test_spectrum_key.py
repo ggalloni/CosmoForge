@@ -1,6 +1,12 @@
 import pytest
 
-from cosmocore.spectrum_key import Slot, SpectrumKind
+from cosmocore.spectrum_key import (
+    Slot,
+    SpectrumKey,
+    SpectrumKind,
+    SymmetryMode,
+    kind_to_legacy_mode,
+)
 
 
 class TestSpectrumKind:
@@ -24,9 +30,6 @@ class TestSpectrumKind:
         assert SpectrumKind.SG.required_spins == (0, 2)
         assert SpectrumKind.GS.required_spins == (2, 0)
         assert SpectrumKind.GC.required_spins == (2, 2)
-
-
-from cosmocore.spectrum_key import SpectrumKey
 
 
 class TestSpectrumKey:
@@ -59,9 +62,6 @@ class TestSpectrumKey:
         assert {a: "v"}[b] == "v"
 
 
-from cosmocore.spectrum_key import kind_to_legacy_mode
-
-
 @pytest.mark.parametrize(
     "kind,expected_mode",
     [
@@ -79,13 +79,12 @@ def test_kind_to_legacy_mode(kind, expected_mode):
     assert kind_to_legacy_mode(kind) == expected_mode
 
 
-def test_kind_to_legacy_mode_rejects_cg_until_directional_landed():
-    # CG has no slot in today's int-mode encoding; raise until Slice 5 lands.
+def test_kind_to_legacy_mode_rejects_cg_for_auto_pair():
+    # CG has no slot in the auto-pair ordering [GG=0, CC=1, GC=2]; only the
+    # cross-pair ordering reaches it (where it lives at mode=2).
     with pytest.raises(NotImplementedError):
         kind_to_legacy_mode(SpectrumKind.CG)
 
 
 def test_symmetry_mode_has_two_values():
-    from cosmocore.spectrum_key import SymmetryMode
-
     assert {m.name for m in SymmetryMode} == {"SYMMETRIC", "DIRECTIONAL"}

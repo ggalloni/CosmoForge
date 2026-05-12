@@ -434,12 +434,13 @@ class SpectraManager:
 
         Parameters
         ----------
-        symmetry_mode : SymmetryMode, optional
+        symmetry_mode : SymmetryMode | str | None, optional
             How cross-component spin-2 × spin-2 EB-like spectra are emitted.
             SYMMETRIC (default) emits one combined GC per cross-pair; the
             companion CG entry from the underlying spectra map is filtered
             out. DIRECTIONAL emits both GC and CG (B_i × E_j) as separate
-            spectra. See ADR-0011.
+            spectra. See ADR-0011. Strings are coerced via
+            ``SymmetryMode[name.upper()]``.
 
         Returns
         -------
@@ -452,8 +453,23 @@ class SpectraManager:
         """
         from cosmocore.spectrum_key import SpectrumKey, SpectrumKind, SymmetryMode
 
+        # Coerce so downstream `is SymmetryMode.SYMMETRIC` checks behave
+        # correctly when a caller passes the string form (e.g. from YAML).
         if symmetry_mode is None:
             symmetry_mode = SymmetryMode.SYMMETRIC
+        elif isinstance(symmetry_mode, str):
+            try:
+                symmetry_mode = SymmetryMode[symmetry_mode.upper()]
+            except KeyError as exc:
+                raise ValueError(
+                    f"unknown symmetry_mode {symmetry_mode!r}; expected one of "
+                    f"{[m.name for m in SymmetryMode]}"
+                ) from exc
+        elif not isinstance(symmetry_mode, SymmetryMode):
+            raise TypeError(
+                f"symmetry_mode must be SymmetryMode | str | None; "
+                f"got {type(symmetry_mode).__name__}"
+            )
 
         spins = tuple(f.spin for f in self.fields)
         C_ell_dict: dict = {}

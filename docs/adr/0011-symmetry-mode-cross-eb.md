@@ -63,6 +63,20 @@ covariance and biased estimates.
 With C_EB = 0, the SYMMETRIC covariance is exact. "Misspecification" only arises when the true
 universe has GC ≠ CG (birefringence, systematics), which is the opt-in case.
 
+**Literature precedent:**  
+The directional treatment is standard in CMB cosmic-birefringence analyses, where per-band
+miscalibration angles α_i make C_ℓ^{E_i B_j} ≠ C_ℓ^{E_j B_i}. The framework was introduced by
+Minami et al. 2019 (PTEP 2019, 083E02; arXiv:1904.12440) and Minami & Komatsu 2020
+(PRL 125, 221301; arXiv:2011.11254), which states explicitly: *"We have 32 independent equations
+from 16 combinations of maps, as we have two different equations for C_ℓ^{E_i B_j,o} and
+C_ℓ^{E_j B_i,o}."* The asymmetric rotation matrix D(α_i, α_j) couples {EE, BB} into {EB, BE}
+differently under (i ↔ j) swap. The same machinery is inherited by Diego-Palazuelos et al. 2022
+(arXiv:2201.07682) — "28 unique pairs for EE and BB, 56 unique pairs for EB" reflects the ordered-
+vs-unordered distinction — and Eskilt 2022 (arXiv:2201.13347), Eskilt & Komatsu 2022
+(arXiv:2205.13962). These papers operate on Gaussian-on-bandpower cross-spectrum likelihoods at
+ℓ ≥ 51; DIRECTIONAL mode here exposes the same physics in the pixel-level QML / exact-likelihood
+regime where the bandpower approximation fails.
+
 ## Scope
 
 DIRECTIONAL adds N(N-1)/2 extra spectra for N spin-2 components (one CG per cross-pair). For the
@@ -73,7 +87,9 @@ single-field spin-2 auto-spectra are identical in both modes.
 
 - `SpectrumKind.CG` becomes reachable in `SpectraManager.build_inputs` only when
   `symmetry_mode=SymmetryMode.DIRECTIONAL` and `comp_i != comp_j`.
-- `kind_to_legacy_mode(SpectrumKind.CG)` returns 3 (previously raised `NotImplementedError`).
+- `kind_to_legacy_mode(SpectrumKind.CG, is_cross=True)` returns 2 (cross-pair ordering
+  `[GG=0, GC=1, CG=2, CC=3]`); the auto-pair encoding still has no slot for CG, so the
+  default call `kind_to_legacy_mode(SpectrumKind.CG)` continues to raise `NotImplementedError`.
 - `_build_lambda_block_spin2` gains an optional `C_CG` parameter; callers passing a single
   positional `C_EB` continue to work unchanged (SYMMETRIC behaviour: C_CG defaults to C_GC).
 - Setting `symmetry_mode` on `Spectra` independently of its `Fisher` is an error; the flag must

@@ -13,7 +13,7 @@ import numpy as np
 from numba import njit, prange
 
 from ..basics import legendre_plm, wigner_d_small
-from ..spectrum_key import SpectrumKey, kind_to_legacy_mode
+from ..spectrum_key import SpectrumKey, SpectrumKind, kind_to_legacy_mode
 
 
 @njit(parallel=True, cache=True)
@@ -550,13 +550,21 @@ class HarmonicBasisBuilder:
     def _build_lambda_blocks(self, C_ell_dict: dict) -> dict[tuple[int, int], np.ndarray]:
         """Build Lambda blocks from cross-power spectra dictionary.
 
-        Accepts either 2-tuple ``(comp_i, comp_j)`` keys (legacy single-mode)
-        or :class:`SpectrumKey` instances (kind is read off the key without
-        materialising an intermediate tuple-keyed dict).
+        Single-mode path for spin-0 × spin-0 components only. Accepts either
+        2-tuple ``(comp_i, comp_j)`` keys (legacy) or :class:`SpectrumKey`
+        instances. For SpectrumKey inputs, only ``comp_i``/``comp_j`` are
+        consumed — ``kind`` must be ``SpectrumKind.SS`` (spin-2 multi-kind
+        dicts must go through :meth:`_build_lambda_matrix`).
         """
         Lambda_blocks = {}
         for key, C_ell in C_ell_dict.items():
             if isinstance(key, SpectrumKey):
+                if key.kind is not SpectrumKind.SS:
+                    raise ValueError(
+                        "_build_lambda_blocks only accepts SS keys; "
+                        f"got {key.kind.name}. Use _build_lambda_matrix for "
+                        "multi-kind dicts."
+                    )
                 comp_i, comp_j = key.comp_i, key.comp_j
             else:
                 comp_i, comp_j = key
