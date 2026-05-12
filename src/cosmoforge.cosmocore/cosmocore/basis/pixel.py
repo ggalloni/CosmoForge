@@ -1630,7 +1630,7 @@ class PixelBasis(ComputationBasis):
         numpy.ndarray
             Derivative matrix of shape (n_compressed, n_compressed).
         """
-        from ..spectrum_key import SymmetryMode, kind_to_legacy_mode
+        from ..spectrum_key import SpectrumKind, SymmetryMode, kind_to_legacy_mode
 
         if symmetry_mode is None:
             symmetry_mode = SymmetryMode.SYMMETRIC
@@ -1644,8 +1644,14 @@ class PixelBasis(ComputationBasis):
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
-        # Single spin-0 field: use precomputed diagonal.
+        # Single spin-0 field: use precomputed diagonal. The precomputed
+        # diagonal is the SS derivative; reject other kinds so a bogus key
+        # doesn't silently return wrong-kind data.
         if self.n_components == 1 and self._spins[0] == 0:
+            if key.kind is not SpectrumKind.SS or key.comp_i != 0 or key.comp_j != 0:
+                raise ValueError(
+                    f"single spin-0 basis only supports SpectrumKey(0, 0, SS); got {key}"
+                )
             E_diag = self._derivative_diagonals[ell]
             np.multiply(self._VU, E_diag[:, np.newaxis], out=self._VU_scaled_buffer)
             return matrix_mult(self._VU_scaled_buffer.T, self._VU)

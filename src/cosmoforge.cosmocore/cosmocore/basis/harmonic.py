@@ -854,12 +854,16 @@ class HarmonicBasis(ComputationBasis):
         numpy.ndarray
             Derivative matrix of shape (n_modes, n_modes).
         """
-        from ..spectrum_key import SymmetryMode, kind_to_legacy_mode
+        from ..spectrum_key import SpectrumKind, SymmetryMode, kind_to_legacy_mode
 
+        if self.n_components == 1 and self._spins[0] == 0:
+            if key.kind is not SpectrumKind.SS or key.comp_i != 0 or key.comp_j != 0:
+                raise ValueError(
+                    f"single spin-0 basis only supports SpectrumKey(0, 0, SS); got {key}"
+                )
+            return np.diag(self._derivative_diagonals[ell])
         if symmetry_mode is None:
             symmetry_mode = SymmetryMode.SYMMETRIC
-        if self.n_components == 1 and self._spins[0] == 0:
-            return np.diag(self._derivative_diagonals[ell])
         is_cross = key.comp_i != key.comp_j
         mode = kind_to_legacy_mode(key.kind, is_cross=is_cross)
         return self._build_derivative_matrix_with_spins(

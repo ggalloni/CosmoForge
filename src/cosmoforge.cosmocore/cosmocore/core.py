@@ -863,7 +863,10 @@ class Core(ABC):
                 )
             return 0
         cache = getattr(self, "_spec_idx_by_key", None)
-        if cache is None:
+        # Invalidate the cache if spectra_list was reassigned (rebuilt with a
+        # different symmetry_mode, replaced by a downstream caller, etc.).
+        # Mismatched length is the cheap proxy for "the list changed."
+        if cache is None or len(cache) != len(spectra_list):
             cache = {k: i for i, k in enumerate(spectra_list)}
             if len(cache) != len(spectra_list):
                 raise ValueError(
@@ -900,6 +903,14 @@ class Core(ABC):
         symmetry_mode : SymmetryMode or None
             Forwarded to the basis-layer derivative builder; ``None`` keeps
             the SYMMETRIC default.
+
+        Raises
+        ------
+        RuntimeError
+            On the no-basis path when ``self.spectra_list`` is unpopulated
+            and ``params.nspectra > 1``. Callers in multi-spectrum contexts
+            must populate ``spectra_list`` (Fisher/Spectra do this in
+            ``compute``); single-spectrum callers can leave it unset.
         """
         if hasattr(self, "basis_manager") and self.basis_manager is not None:
             return self.basis_manager.get_derivative_matrix(
