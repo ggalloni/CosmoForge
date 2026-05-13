@@ -67,6 +67,7 @@ from cosmocore import (
     cholesky_solve,
     compute_signal_matrix,
     matrix_inverse_symm,
+    matrix_slogdet_symm,
     read_maps,
 )
 from cosmocore._mpi import MPI
@@ -593,7 +594,7 @@ class PICSLike(Core, MPISharedMemoryMixin):
                     "in,ij,jn->n", self.maps1, self.inv_cov, self.maps1
                 )
 
-            logdet = np.linalg.slogdet(self.total_cov)[1]
+            logdet = matrix_slogdet_symm(self.total_cov)[1]
             self.log(f"Log-determinant: {logdet:.2f}", level=3)
 
         # ln L = -0.5 * (χ² + ln|C|)

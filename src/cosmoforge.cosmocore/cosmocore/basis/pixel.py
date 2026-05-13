@@ -16,13 +16,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-from scipy.linalg import eigh
 
 from ..basics import (
     cholesky_solve,
+    eigh,
+    eigvalsh,
     matrix_inverse_symm,
     matrix_mult,
     matrix_trace,
+    svd,
     symmetrize_inplace,
 )
 from .base import ComputationBasis, SMWPrepared
@@ -397,7 +399,7 @@ class PixelBasis(ComputationBasis):
 
         # Combine and SVD-orthogonalize (E and B pixel patterns overlap on cut sky)
         U_combined = np.hstack([U_E, U_B])
-        Q, S, _ = np.linalg.svd(U_combined, full_matrices=False)
+        Q, S, _ = svd(U_combined)
         # Keep columns where singular values are significant
         keep = S > 1e-10 * S[0]
         return Q[:, keep]
@@ -1105,7 +1107,7 @@ class PixelBasis(ComputationBasis):
             comp_matrix = self._build_compression_matrix_for_subfield(
                 V_comp, N_field, N_field_inv, basis, cell_sub_full
             )
-            eigenvalues = np.sort(np.linalg.eigvalsh(comp_matrix))[::-1]
+            eigenvalues = np.sort(eigvalsh(comp_matrix))[::-1]
             max_ev = np.max(np.abs(eigenvalues))
             normalized = eigenvalues / max_ev if max_ev > 0 else eigenvalues.copy()
 
@@ -1125,14 +1127,14 @@ class PixelBasis(ComputationBasis):
                 comp_E = self._build_compression_matrix_for_subfield(
                     V_E, N_field, N_field_inv, basis, cell_diag_0
                 )
-                ev_E = np.sort(np.linalg.eigvalsh(comp_E))[::-1]
+                ev_E = np.sort(eigvalsh(comp_E))[::-1]
                 max_E = np.max(np.abs(ev_E))
                 norm_E = ev_E / max_E if max_E > 0 else ev_E.copy()
 
                 comp_B = self._build_compression_matrix_for_subfield(
                     V_B, N_field, N_field_inv, basis, cell_diag_1
                 )
-                ev_B = np.sort(np.linalg.eigvalsh(comp_B))[::-1]
+                ev_B = np.sort(eigvalsh(comp_B))[::-1]
                 max_B = np.max(np.abs(ev_B))
                 norm_B = ev_B / max_B if max_B > 0 else ev_B.copy()
 

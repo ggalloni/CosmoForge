@@ -73,6 +73,7 @@ from cosmocore import (
     writecl,
 )
 from cosmocore._mpi import MPI
+from cosmocore.basics import eigh
 from cosmocore.settings import InputParams
 from qube import Fisher
 from qube.fisher import _basis_path_label
@@ -515,7 +516,7 @@ class Spectra(Core, MPISharedMemoryMixin):
         get_power_spectra : Uses inv_fisher_sqrt for 'decorrelated' mode
         setup_fisher_inversion : Calls this method during setup
         """
-        eigenvalues, eigenvectors = np.linalg.eigh(fisher)
+        eigenvalues, eigenvectors = eigh(fisher)
 
         # Check conditioning
         min_eigenvalue = (
