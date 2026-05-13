@@ -141,7 +141,7 @@ jobs:
 
       - name: Install workspace dependencies
         run: |
-          uv sync --dev
+          uv sync --dev --extra mpi
 
       - name: Run linting
         run: |
@@ -207,7 +207,7 @@ jobs:
 
       - name: Install workspace dependencies
         run: |
-          uv sync --dev
+          uv sync --dev --extra mpi
 
       - name: Run linting
         run: |
@@ -273,7 +273,7 @@ jobs:
 
       - name: Install workspace dependencies
         run: |
-          uv sync --dev
+          uv sync --dev --extra mpi
 
       - name: Run linting
         run: |
@@ -339,7 +339,7 @@ jobs:
 
       - name: Install workspace dependencies
         run: |
-          uv sync --dev
+          uv sync --dev --extra mpi
 
       - name: Run linting
         run: |
