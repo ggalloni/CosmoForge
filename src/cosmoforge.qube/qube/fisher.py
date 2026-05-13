@@ -65,6 +65,8 @@ from cosmocore import (
     SpectrumKey,
     SpectrumKind,
     SymmetryMode,
+    cholesky_factor,
+    cholesky_solve,
     compute_signal_matrix,
     do_derivative_step,
     matrix_inverse_symm,
@@ -891,7 +893,7 @@ class Fisher(Core, MPISharedMemoryMixin):
         """
         if self.rank != 0 or self.fisher is None:
             return None
-        cov_matrix = np.linalg.inv(self.fisher)
+        cov_matrix = matrix_inverse_symm(self.fisher)
         errors = np.sqrt(np.diag(cov_matrix))
         if not as_dict:
             return errors
@@ -1177,7 +1179,7 @@ class Fisher(Core, MPISharedMemoryMixin):
             Q[b, lo - lmin : hi - lmin + 1] = 1.0
 
         # W = F_b^{-1} @ Q @ F_perell
-        W = np.linalg.solve(self.fisher, Q @ per_ell_fisher)
+        W = cholesky_solve(cholesky_factor(self.fisher), Q @ per_ell_fisher)
         self._bandpower_window = W
         return W
 

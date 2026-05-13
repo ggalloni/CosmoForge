@@ -15,11 +15,16 @@ from .linalg import (
     cholesky_decomposition,
     cholesky_factor,
     cholesky_solve,
+    eigh,
+    eigvalsh,
+    inv,
     matrix_inverse_symm,
     matrix_mult,
     matrix_slogdet,
     matrix_slogdet_symm,
     matrix_trace,
+    solve_linear,
+    svd,
     symmetrize_inplace,
 )
 from .smw import smw_inverse, smw_kernel, smw_logdet, smw_quadratic_form
@@ -53,6 +58,11 @@ __all__ = [
     "cholesky_solve",
     "matrix_slogdet_symm",
     "symmetrize_inplace",
+    "inv",
+    "solve_linear",
+    "eigh",
+    "eigvalsh",
+    "svd",
     # smw
     "smw_inverse",
     "smw_logdet",

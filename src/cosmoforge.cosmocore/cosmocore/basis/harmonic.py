@@ -15,6 +15,7 @@ from ..basics import (
     add_diagonal,
     cholesky_decomposition,
     cholesky_solve,
+    inv,
     matrix_inverse_symm,
     matrix_mult,
     matrix_slogdet_symm,
@@ -23,6 +24,7 @@ from ..basics import (
     smw_kernel,
     smw_logdet,
     smw_quadratic_form,
+    solve_linear,
     symmetrize_inplace,
 )
 from .base import (
@@ -376,7 +378,7 @@ class HarmonicBasis(ComputationBasis):
                 lambda_matrix = self._build_lambda_matrix(c_ell_dict)
         inner = lambda_matrix @ self._V_Ninv_VT
         inner[np.diag_indices_from(inner)] += 1.0
-        return np.linalg.inv(inner)
+        return inv(inner)
 
     def _smw_projected_inverse(
         self,
@@ -442,7 +444,7 @@ class HarmonicBasis(ComputationBasis):
             # we use the form that lets numpy's solve do the work.
             inner = lambda_matrix @ M
             inner[np.diag_indices_from(inner)] += 1.0
-            VCVT = np.linalg.solve(inner.T, M.T).T
+            VCVT = solve_linear(inner.T, M.T).T
             symmetrize_inplace(VCVT)
             return np.asfortranarray(VCVT)
 

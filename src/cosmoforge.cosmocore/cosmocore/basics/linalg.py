@@ -199,6 +199,53 @@ def matrix_inverse_symm(M, overwrite=False):
     return inv
 
 
+def inv(A):
+    """
+    General LU-based matrix inverse.
+
+    For symmetric positive-definite matrices, prefer
+    :func:`matrix_inverse_symm` (Cholesky, ~2× faster and more stable).
+    """
+    return np.linalg.inv(A)
+
+
+def solve_linear(A, b):
+    """
+    General LU-based linear solve A x = b.
+
+    For symmetric positive-definite systems, prefer the
+    :func:`cholesky_factor` + :func:`cholesky_solve` pair.
+    """
+    return np.linalg.solve(A, b)
+
+
+def eigh(A):
+    """
+    Eigendecomposition of a symmetric / Hermitian matrix.
+
+    Returns ``(eigenvalues, eigenvectors)`` with eigenvalues in ascending
+    order.
+    """
+    return np.linalg.eigh(A)
+
+
+def eigvalsh(A):
+    """
+    Eigenvalues of a symmetric / Hermitian matrix, ascending order.
+    """
+    return np.linalg.eigvalsh(A)
+
+
+def svd(A, full_matrices=False):
+    """
+    Singular value decomposition with ``full_matrices=False`` by default.
+
+    The thin SVD is the right default for the orthogonalization use cases
+    in this codebase; the wrapper exists so the choice is uniform.
+    """
+    return np.linalg.svd(A, full_matrices=full_matrices)
+
+
 def matrix_slogdet(M):
     """
     Compute sign and logarithm of the determinant of a matrix.
