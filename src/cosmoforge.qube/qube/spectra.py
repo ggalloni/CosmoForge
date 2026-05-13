@@ -55,7 +55,6 @@ import typing
 from contextlib import nullcontext
 
 import numpy as np
-from mpi4py import MPI
 
 from cosmocore import (
     Bins,
@@ -73,6 +72,7 @@ from cosmocore import (
     write_out_matrix,
     writecl,
 )
+from cosmocore._mpi import MPI
 from cosmocore.settings import InputParams
 from qube import Fisher
 from qube.fisher import _basis_path_label

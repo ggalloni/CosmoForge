@@ -25,6 +25,9 @@ dependencies = [
     "tqdm>=4.67.1",
 ]
 
+[project.optional-dependencies]
+mpi = ["cosmocore[mpi]"]
+
 [tool.uv.sources]
 cosmocore = { workspace = true }
 

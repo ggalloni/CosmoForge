@@ -36,7 +36,8 @@ import time
 from contextlib import contextmanager, nullcontext
 
 import numpy as np
-from mpi4py import MPI
+
+from cosmocore._mpi import MPI
 
 try:
     from threadpoolctl import threadpool_limits as _threadpool_limits

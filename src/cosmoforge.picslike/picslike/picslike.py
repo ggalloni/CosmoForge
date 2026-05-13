@@ -58,7 +58,6 @@ import time
 from typing import Any
 
 import numpy as np
-from mpi4py import MPI
 
 from cosmocore import (
     Core,
@@ -70,6 +69,7 @@ from cosmocore import (
     matrix_inverse_symm,
     read_maps,
 )
+from cosmocore._mpi import MPI
 
 from .likelihood_result import LikelihoodResult
 from .parameter_grid import ParameterGrid

@@ -3,7 +3,6 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from mpi4py import MPI
 
 from qube import Fisher, Spectra
 
@@ -122,6 +121,7 @@ def test_cross_spectra_computation(fields, local_path, config_resolver):
 @patch("qube.spectra.MPI")
 def test_spectra_worker_rank_behavior(mock_mpi, config_resolver):
     """Worker ranks (rank != 0) should return None for spectra and noise bias."""
+    MPI = pytest.importorskip("mpi4py.MPI")
     mock_comm = MagicMock()
     mock_comm.Get_rank.return_value = 1
     mock_comm.Get_size.return_value = 2
