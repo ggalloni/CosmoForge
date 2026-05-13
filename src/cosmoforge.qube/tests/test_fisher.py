@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from mpi4py import MPI
 
 from qube import Fisher
 
@@ -129,6 +128,7 @@ def test_cross_fisher_computation(fields, local_path, config_resolver):
 @patch("qube.fisher.MPI")
 def test_fisher_worker_rank_behavior(mock_mpi, config_resolver):
     """Worker ranks (rank != 0) should return None for Fisher matrix and error bars."""
+    MPI = pytest.importorskip("mpi4py.MPI")
     from cosmocore import InputParams
 
     mock_comm = MagicMock()

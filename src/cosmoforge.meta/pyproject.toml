@@ -26,6 +26,9 @@ dependencies = [
     "picslike",
 ]
 
+[project.optional-dependencies]
+mpi = ["cosmocore[mpi]"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

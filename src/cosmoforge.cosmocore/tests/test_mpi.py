@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from mpi4py import MPI
 
 from cosmocore import MPISharedMemoryMixin
+from cosmocore._mpi import MPI
 
 
 class _Helper(MPISharedMemoryMixin):

@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.11, <3.14"
 
 [manifest]
@@ -223,12 +223,16 @@ version = "1.0.0rc2"
 source = { editable = "src/cosmoforge.cosmocore" }
 dependencies = [
     { name = "healpy" },
-    { name = "mpi4py" },
     { name = "numba" },
     { name = "numpy" },
     { name = "psutil" },
     { name = "scipy" },
     { name = "threadpoolctl" },
+]
+
+[package.optional-dependencies]
+mpi = [
+    { name = "mpi4py" },
 ]
 
 [package.dev-dependencies]
@@ -243,13 +247,14 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "healpy", specifier = ">=1.18.1" },
-    { name = "mpi4py", specifier = ">=4.1.0" },
+    { name = "mpi4py", marker = "extra == 'mpi'", specifier = ">=4.1.0" },
     { name = "numba", specifier = ">=0.61.2" },
     { name = "numpy", specifier = ">=2.2.6" },
     { name = "psutil", specifier = ">=5.9" },
     { name = "scipy", specifier = ">=1.16.1" },
     { name = "threadpoolctl", specifier = ">=3.0" },
 ]
+provides-extras = ["mpi"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -270,12 +275,19 @@ dependencies = [
     { name = "qube-qml" },
 ]
 
+[package.optional-dependencies]
+mpi = [
+    { name = "cosmocore", extra = ["mpi"] },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "cosmocore", editable = "src/cosmoforge.cosmocore" },
+    { name = "cosmocore", extras = ["mpi"], marker = "extra == 'mpi'", editable = "src/cosmoforge.cosmocore" },
     { name = "picslike", editable = "src/cosmoforge.picslike" },
     { name = "qube-qml", editable = "src/cosmoforge.qube" },
 ]
+provides-extras = ["mpi"]
 
 [[package]]
 name = "coverage"
@@ -874,11 +886,18 @@ dependencies = [
     { name = "tqdm" },
 ]
 
+[package.optional-dependencies]
+mpi = [
+    { name = "cosmocore", extra = ["mpi"] },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "cosmocore", editable = "src/cosmoforge.cosmocore" },
+    { name = "cosmocore", extras = ["mpi"], marker = "extra == 'mpi'", editable = "src/cosmoforge.cosmocore" },
     { name = "tqdm", specifier = ">=4.67.1" },
 ]
+provides-extras = ["mpi"]
 
 [[package]]
 name = "pillow"
@@ -1131,6 +1150,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+mpi = [
+    { name = "cosmocore", extra = ["mpi"] },
+]
 pcl = [
     { name = "pymaster" },
 ]
@@ -1138,10 +1160,11 @@ pcl = [
 [package.metadata]
 requires-dist = [
     { name = "cosmocore", editable = "src/cosmoforge.cosmocore" },
+    { name = "cosmocore", extras = ["mpi"], marker = "extra == 'mpi'", editable = "src/cosmoforge.cosmocore" },
     { name = "pymaster", marker = "extra == 'pcl'", specifier = ">=2.6" },
     { name = "tqdm", specifier = ">=4.67.1" },
 ]
-provides-extras = ["pcl"]
+provides-extras = ["pcl", "mpi"]
 
 [[package]]
 name = "requests"

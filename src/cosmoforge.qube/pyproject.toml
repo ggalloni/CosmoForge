@@ -27,6 +27,7 @@ dependencies = [
 
 [project.optional-dependencies]
 pcl = ["pymaster>=2.6"]
+mpi = ["cosmocore[mpi]"]
 
 [project.scripts]
 qube-memory-budget = "qube.memory_budget:_main"
