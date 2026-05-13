@@ -122,11 +122,23 @@ jobs:
     timeout-minutes: 10
     needs: detect-changes
     if: needs.detect-changes.outputs.test-cosmocore == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mpi: false
+            leg: nompi
+          - mpi: true
+            leg: mpi
+    env:
+      LEG: ${{ matrix.leg }}
+      WITH_MPI: ${{ matrix.mpi }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Install MPI
+        if: matrix.mpi
         run: |
           sudo apt-get update
           sudo apt-get install -y libopenmpi-dev openmpi-bin
@@ -141,9 +153,14 @@ jobs:
 
       - name: Install workspace dependencies
         run: |
-          uv sync --dev --extra mpi
+          if [[ "$WITH_MPI" == "true" ]]; then
+            uv sync --dev --extra mpi
+          else
+            uv sync --dev
+          fi
 
       - name: Run linting
+        if: ${{ !matrix.mpi }}
         run: |
           uv run ruff check src/cosmoforge.cosmocore/
           uv run ruff format --check src/cosmoforge.cosmocore/
@@ -156,7 +173,7 @@ jobs:
           mv .coverage .coverage.serial
 
       - name: Run MPI tests (mpirun -n 2)
-        if: contains(needs.detect-changes.outputs.cosmocore-strategy, 'test')
+        if: matrix.mpi && contains(needs.detect-changes.outputs.cosmocore-strategy, 'test')
         working-directory: src/cosmoforge.cosmocore
         run: |
           mpirun -n 2 --oversubscribe \
@@ -175,8 +192,8 @@ jobs:
         uses: codecov/codecov-action@v4
         with:
           file: src/cosmoforge.cosmocore/coverage.xml
-          flags: cosmocore
-          name: cosmocore-coverage
+          flags: cosmocore,${{ matrix.leg }}
+          name: cosmocore-coverage-${{ matrix.leg }}
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: ggalloni/CosmoForge
@@ -187,12 +204,23 @@ jobs:
     timeout-minutes: 10
     needs: detect-changes
     if: needs.detect-changes.outputs.test-qube == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mpi: false
+            leg: nompi
+          - mpi: true
+            leg: mpi
+    env:
+      LEG: ${{ matrix.leg }}
+      WITH_MPI: ${{ matrix.mpi }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Install MPI
-        if: contains(needs.detect-changes.outputs.qube-strategy, 'test')
+        if: matrix.mpi && contains(needs.detect-changes.outputs.qube-strategy, 'test')
         run: |
           sudo apt-get update
           sudo apt-get install -y libopenmpi-dev openmpi-bin
@@ -207,9 +235,14 @@ jobs:
 
       - name: Install workspace dependencies
         run: |
-          uv sync --dev --extra mpi
+          if [[ "$WITH_MPI" == "true" ]]; then
+            uv sync --dev --extra mpi
+          else
+            uv sync --dev
+          fi
 
       - name: Run linting
+        if: ${{ !matrix.mpi }}
         run: |
           uv run ruff check src/cosmoforge.qube/
           uv run ruff format --check src/cosmoforge.qube/
@@ -222,7 +255,7 @@ jobs:
           mv .coverage .coverage.serial
 
       - name: Run MPI tests (mpirun -n 2)
-        if: contains(needs.detect-changes.outputs.qube-strategy, 'test')
+        if: matrix.mpi && contains(needs.detect-changes.outputs.qube-strategy, 'test')
         working-directory: src/cosmoforge.qube
         run: |
           mpirun -n 2 --oversubscribe \
@@ -241,8 +274,8 @@ jobs:
         uses: codecov/codecov-action@v4
         with:
           file: src/cosmoforge.qube/coverage.xml
-          flags: qube
-          name: qube-coverage
+          flags: qube,${{ matrix.leg }}
+          name: qube-coverage-${{ matrix.leg }}
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: ggalloni/CosmoForge
@@ -253,12 +286,23 @@ jobs:
     timeout-minutes: 10
     needs: detect-changes
     if: needs.detect-changes.outputs.test-picslike == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mpi: false
+            leg: nompi
+          - mpi: true
+            leg: mpi
+    env:
+      LEG: ${{ matrix.leg }}
+      WITH_MPI: ${{ matrix.mpi }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Install MPI
-        if: contains(needs.detect-changes.outputs.picslike-strategy, 'test')
+        if: matrix.mpi && contains(needs.detect-changes.outputs.picslike-strategy, 'test')
         run: |
           sudo apt-get update
           sudo apt-get install -y libopenmpi-dev openmpi-bin
@@ -273,9 +317,14 @@ jobs:
 
       - name: Install workspace dependencies
         run: |
-          uv sync --dev --extra mpi
+          if [[ "$WITH_MPI" == "true" ]]; then
+            uv sync --dev --extra mpi
+          else
+            uv sync --dev
+          fi
 
       - name: Run linting
+        if: ${{ !matrix.mpi }}
         run: |
           uv run ruff check src/cosmoforge.picslike/
           uv run ruff format --check src/cosmoforge.picslike/
@@ -288,7 +337,7 @@ jobs:
           mv .coverage .coverage.serial
 
       - name: Run MPI tests (mpirun -n 2)
-        if: contains(needs.detect-changes.outputs.picslike-strategy, 'test')
+        if: matrix.mpi && contains(needs.detect-changes.outputs.picslike-strategy, 'test')
         working-directory: src/cosmoforge.picslike
         run: |
           mpirun -n 2 --oversubscribe \
@@ -307,8 +356,8 @@ jobs:
         uses: codecov/codecov-action@v4
         with:
           file: src/cosmoforge.picslike/coverage.xml
-          flags: picslike
-          name: picslike-coverage
+          flags: picslike,${{ matrix.leg }}
+          name: picslike-coverage-${{ matrix.leg }}
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: ggalloni/CosmoForge
@@ -323,12 +372,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install MPI
-        if: contains(needs.detect-changes.outputs.meta-strategy, 'test')
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libopenmpi-dev openmpi-bin
-
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -339,7 +382,7 @@ jobs:
 
       - name: Install workspace dependencies
         run: |
-          uv sync --dev --extra mpi
+          uv sync --dev
 
       - name: Run linting
         run: |
