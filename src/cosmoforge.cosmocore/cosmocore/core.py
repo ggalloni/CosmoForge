@@ -41,8 +41,8 @@ from .in_out import (
     readcl,
     write_covmat_reduced,
 )
-from .pixel import compute_pointings
 from .settings import InputParams
+from .signal_kernels import compute_pointings
 
 
 def _build_fixed_spectra(
@@ -676,7 +676,9 @@ class Core(ABC):
                             self.collection.spectra_manager, lmax=basis_lmax
                         )
 
-                        from .pixel import compute_signal_matrix as _compute_signal_matrix
+                        from .signal_kernels import (
+                            compute_signal_matrix as _compute_signal_matrix,
+                        )
 
                         S_fixed = np.zeros_like(self.noise_cov1, dtype=np.float64)
                         _compute_signal_matrix(

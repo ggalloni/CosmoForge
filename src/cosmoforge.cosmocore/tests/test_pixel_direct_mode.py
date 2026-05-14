@@ -2,7 +2,7 @@
 Tests for PixelBasis direct (V-free) mode.
 
 Direct mode operates on full pixel-space matrices, reusing the existing
-``cosmocore.pixel`` machinery. It is selected by ``setup_computation_basis(
+``cosmocore.signal_kernels`` machinery. It is selected by ``setup_computation_basis(
 method="auto")`` whenever ``n_pix <= n_modes``, or explicitly via
 ``PixelBasis(use_direct=True)``. These tests target the direct-mode-only
 branches of ``PixelBasis``: ``_setup_direct``, ``_spectrum_idx_from_components``,

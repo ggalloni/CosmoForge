@@ -661,7 +661,7 @@ class PixelBasis(ComputationBasis):
         """Direct pixel-space setup. No V operator, no harmonic machinery.
 
         Direct mode reuses existing pixel-space machinery from
-        ``cosmocore.pixel`` — no Legendre or geometry recomputation.
+        ``cosmocore.signal_kernels`` — no Legendre or geometry recomputation.
         """
         if self._fields is None:
             raise ValueError(
@@ -673,7 +673,7 @@ class PixelBasis(ComputationBasis):
         }
 
     # =========================================================================
-    # Direct pixel-space methods (no V operator, reuse cosmocore.pixel)
+    # Direct pixel-space methods (no V operator, reuse cosmocore.signal_kernels)
     # =========================================================================
 
     def _spectrum_idx_from_components(self, comp_i: int, comp_j: int, mode: int) -> int:
@@ -733,10 +733,10 @@ class PixelBasis(ComputationBasis):
     ) -> np.ndarray:
         """Compute dS/dC_ell via existing pixel-space machinery.
 
-        Reuses ``do_derivative_step`` from ``cosmocore.pixel`` — no
+        Reuses ``do_derivative_step`` from ``cosmocore.signal_kernels`` — no
         duplication of Legendre or dispatch logic.
         """
-        from ..pixel import do_derivative_step
+        from ..signal_kernels import do_derivative_step
 
         ci = 0 if comp_i is None else comp_i
         cj = 0 if comp_j is None else comp_j
@@ -778,7 +778,7 @@ class PixelBasis(ComputationBasis):
             into ``(comp_i, comp_j, mode)`` once at entry for the Numba
             kernels below.
         """
-        from ..pixel import (
+        from ..signal_kernels import (
             compute_00_contribution,
             compute_02_contribution,
             compute_22_contribution,
@@ -916,9 +916,9 @@ class PixelBasis(ComputationBasis):
         """Build signal matrix S via existing pixel-space machinery.
 
         Uses the spectra currently set on the FieldCollection.
-        Reuses ``compute_signal_matrix`` from ``cosmocore.pixel``.
+        Reuses ``compute_signal_matrix`` from ``cosmocore.signal_kernels``.
         """
-        from ..pixel import compute_signal_matrix
+        from ..signal_kernels import compute_signal_matrix
 
         S = np.zeros((self.n_pix, self.n_pix), dtype=np.float64)
         S = np.asfortranarray(S)

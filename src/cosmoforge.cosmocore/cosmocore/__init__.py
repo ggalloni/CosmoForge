@@ -65,6 +65,7 @@ from .basis import (
     PixelBasis,
     create_computation_basis,
 )
+from .beam import BeamManager
 from .bins import Bins
 from .core import Core
 from .fields import (
@@ -74,12 +75,6 @@ from .fields import (
     PolarizationField,
     ScalarField,
     create_field,
-)
-from .harmonic import (
-    BeamManager,
-    SpectraManager,
-    cl_to_vec,
-    vec_to_cl,
 )
 from .in_out import (
     convert_spectra_normalization,
@@ -94,7 +89,8 @@ from .in_out import (
 )
 from .logger import CosmoLogger, Timer, get_logger, get_logger_from_params
 from .mpi_utils import MPISharedMemoryMixin
-from .pixel import (
+from .settings import InputParams
+from .signal_kernels import (
     compute_00_contribution,
     compute_02_contribution,
     compute_22_contribution,
@@ -106,7 +102,11 @@ from .pixel import (
     derivative_step_22,
     do_derivative_step,
 )
-from .settings import InputParams
+from .spectra_io import (
+    SpectraManager,
+    cl_to_vec,
+    vec_to_cl,
+)
 from .spectrum_key import (
     Slot,
     SpectrumKey,

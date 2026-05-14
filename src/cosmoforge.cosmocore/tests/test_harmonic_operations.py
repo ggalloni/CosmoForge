@@ -409,7 +409,7 @@ def test_beam_manager_shape_validation():
 )
 def test_coswinbeam_kernel_properties(nside, ell1):
     """Mathematical properties of the cosine kernel at both convention choices."""
-    from cosmocore.harmonic import coswinbeam
+    from cosmocore.beam import coswinbeam
 
     ell2 = 3 * nside
     beam = coswinbeam(nside, ell1=ell1, ell2=ell2)
@@ -428,7 +428,7 @@ def test_coswinbeam_kernel_properties(nside, ell1):
 
 
 def test_coswinbeam_default_matches_legacy():
-    from cosmocore.harmonic import coswinbeam
+    from cosmocore.beam import coswinbeam
 
     nside = 8
     assert np.array_equal(
@@ -438,7 +438,7 @@ def test_coswinbeam_default_matches_legacy():
 
 
 def test_coswinbeam_npipe_diverges_from_legacy_at_low_ell():
-    from cosmocore.harmonic import coswinbeam
+    from cosmocore.beam import coswinbeam
 
     nside = 16
     legacy = coswinbeam(nside, ell1=nside, ell2=3 * nside)
@@ -454,7 +454,7 @@ def test_coswinbeam_npipe_diverges_from_legacy_at_low_ell():
     [(-1, 32), (16, 16), (32, 16), (0, 65)],
 )
 def test_coswinbeam_rejects_invalid_transitions(ell1, ell2):
-    from cosmocore.harmonic import coswinbeam
+    from cosmocore.beam import coswinbeam
 
     with pytest.raises(ValueError, match="transition multipoles"):
         coswinbeam(16, ell1=ell1, ell2=ell2)
@@ -466,7 +466,7 @@ def test_coswinbeam_rejects_invalid_transitions(ell1, ell2):
 )
 def test_compute_beams_dispatches_cosine_variants(smoothtype, expected_ell1):
     """BeamManager dispatch picks the right ell1 for each named convention."""
-    from cosmocore.harmonic import coswinbeam
+    from cosmocore.beam import coswinbeam
 
     nside = 16
     lmax = 4 * nside

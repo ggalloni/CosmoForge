@@ -29,9 +29,10 @@ from dataclasses import dataclass
 import healpy as hp
 import numpy as np
 
-from cosmocore.harmonic import BeamManager, SpectraManager
+from cosmocore.beam import BeamManager
 from cosmocore.in_out import readcl
 from cosmocore.settings import InputParams
+from cosmocore.spectra_io import SpectraManager
 
 
 @dataclass
