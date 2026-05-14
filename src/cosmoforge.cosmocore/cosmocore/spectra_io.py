@@ -1,18 +1,13 @@
-"""
-Harmonic analysis utilities for cosmological power spectra.
+"""Spectra IO and layout: SpectraManager + flat-vector conversions.
 
-This module provides tools for working with spherical harmonic coefficients and
-power spectra in cosmological analyses. It includes functions for converting
-between different representations of power spectra, beam handling, and spectral
-management for field collections.
+Moved from ``cosmocore.harmonic`` (2026-05). See ADR-0002 follow-up
+(architecture backlog #5) for the rename rationale.
 
-The main classes are:
+The main class is:
     - SpectraManager: Manages power spectra for collections of cosmological fields
-    - BeamManager: Handles beam functions and smoothing operations
 
 Key functions:
     - cl_to_vec, vec_to_cl: Convert between C_ℓ matrices and vectorized forms
-    - coswinbeam: Generate cosine window beam functions
 
 References
 ----------
@@ -23,18 +18,10 @@ Power Spectrum Conventions:
    Power Spectrum: A Fast Method for Statistical Analysis of Large and Complex
    Cosmic Microwave Background Data Sets" Astrophys. J. 567, 2-17 (2002)
 
-Beam Window Functions:
-.. [3] Page, L. et al. "First-Year Wilkinson Microwave Anisotropy Probe (WMAP)
-   Observations: Beam Profiles and Window Functions"
-   Astrophys. J. Suppl. 148, 39-50 (2003)
-.. [4] Mitra, S., Rocha, G., Gorski, K.M. et al. "Fast and Efficient Template Fitting
-   of Deterministic Anisotropic Cosmological Models Applied to WMAP Data"
-   Astrophys. J. Suppl. 193, 5 (2011)
-
 Spherical Harmonic Transforms:
-.. [5] Reinecke, M. & Seljak, U. "Libsharp - spherical harmonic transforms revisited"
+.. [3] Reinecke, M. & Seljak, U. "Libsharp - spherical harmonic transforms revisited"
    Astron. Astrophys. 554, A112 (2013)
-.. [6] Gorski, K.M. et al. "HEALPix: A Framework for High-Resolution Discretization
+.. [4] Gorski, K.M. et al. "HEALPix: A Framework for High-Resolution Discretization
    and Fast Analysis of Data Distributed on the Sphere"
    Astrophys. J. 622, 759-771 (2005)
 """
