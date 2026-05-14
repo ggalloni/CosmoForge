@@ -7,7 +7,7 @@ This module provides two computation basis approaches:
    (n_pix → n_modes). Fast and efficient when n_modes << n_pix.
 
 2. **PixelBasis** (Gjerløw-like): Pixel-space projector with
-   eigenvalue truncation (n_pix → n_kept). More flexible, handles systematics
+   eigenvalue truncation (n_pix → dim). More flexible, handles systematics
    through custom projectors.
 
 Use **create_computation_basis** factory function to create basis instances.

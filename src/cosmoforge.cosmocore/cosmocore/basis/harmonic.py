@@ -114,7 +114,7 @@ class HarmonicBasis(ComputationBasis):
             S_fixed=S_fixed,
         )
         self._init_harmonic_internals()
-        self.n_kept = self.n_modes_total
+        self.dim = self.n_modes_total
         self._compress = compress
         self._delta_m = delta_m
 
@@ -155,13 +155,6 @@ class HarmonicBasis(ComputationBasis):
                 "release_pixel_projector incompatible with m-block compression"
             )
         self._harmonic_basis._V = None
-
-    @property
-    def n_compressed(self) -> int:
-        """
-        Size of compressed space (n_modes_total, including spin-2 E+B doubling).
-        """
-        return self.n_modes_total
 
     def setup(self) -> None:
         """
@@ -1092,7 +1085,7 @@ class HarmonicBasis(ComputationBasis):
         Returns
         -------
         numpy.ndarray
-            Diagonal of derivative matrix, shape (n_kept,).
+            Diagonal of derivative matrix, shape (dim,).
         """
         spin = self._spins[comp_i]
         local_mode_indices = self._ell_to_modes_local[ell]

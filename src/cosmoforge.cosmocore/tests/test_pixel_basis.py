@@ -29,8 +29,8 @@ class TestPixelBasisInitialization:
 
         assert ppc.n_pix == setup["n_pix"]
         assert ppc.lmax == setup["lmax"]
-        # Before compression, n_kept = n_pix
-        assert ppc.n_kept == setup["n_pix"]
+        # Before compression, dim = n_pix
+        assert ppc.dim == setup["n_pix"]
 
 
 class TestPixelBasisSetup:
@@ -108,7 +108,7 @@ class TestPixelBasisApply:
 
         ppc.apply_compression(epsilon=1e-3)
 
-        assert ppc.n_kept <= original_n_pix
+        assert ppc.dim <= original_n_pix
         assert ppc.compression_ratio <= 1.0
 
     def test_compression_creates_eigenvectors(self, simple_compression_setup):
@@ -128,7 +128,7 @@ class TestPixelBasisApply:
 
         assert ppc._eigenvectors is not None
         assert ppc._eigenvalues is not None
-        assert ppc._eigenvectors.shape == (setup["n_pix"], ppc.n_kept)
+        assert ppc._eigenvectors.shape == (setup["n_pix"], ppc.dim)
 
     def test_mode_fraction_compression(self, simple_compression_setup):
         """Test compression by specifying mode fraction."""
@@ -146,8 +146,8 @@ class TestPixelBasisApply:
         ppc.apply_compression(mode_fraction=0.5)
 
         # Should keep approximately 50% of significant modes
-        assert ppc.n_kept > 0
-        assert ppc.n_kept <= setup["n_pix"]
+        assert ppc.dim > 0
+        assert ppc.dim <= setup["n_pix"]
 
     def test_mode_fraction_mutual_exclusivity(self, simple_compression_setup):
         """Test that epsilon and mode_fraction are mutually exclusive."""
@@ -206,7 +206,7 @@ class TestPixelBasisOperations:
         data = np.random.randn(setup["n_pix"])
         d_compressed = ppc.compress_data(data)
 
-        assert d_compressed.shape == (ppc.n_kept,)
+        assert d_compressed.shape == (ppc.dim,)
 
     def test_compressed_covariance_shape(self, uniform_sky_setup):
         """Test compressed covariance has correct shape."""
@@ -228,7 +228,7 @@ class TestPixelBasisOperations:
 
         C_compressed = ppc.get_compressed_covariance(C_ell)
 
-        assert C_compressed.shape == (ppc.n_kept, ppc.n_kept)
+        assert C_compressed.shape == (ppc.dim, ppc.dim)
 
     def test_compressed_covariance_symmetric(self, uniform_sky_setup):
         """Test compressed covariance is symmetric."""
@@ -275,7 +275,7 @@ class TestPixelBasisOperations:
         C_compressed_inv = ppc.get_projected_inverse(C_ell)
 
         product = C_compressed @ C_compressed_inv
-        identity = np.eye(ppc.n_kept)
+        identity = np.eye(ppc.dim)
 
         assert_allclose(product, identity, rtol=1e-8, atol=1e-10)
 
@@ -487,8 +487,8 @@ class TestPixelBasisBases:
         ppc.apply_compression(epsilon=1e-6, basis="harmonic")
 
         # Should have selected some modes
-        assert ppc.n_kept > 0
-        assert ppc.n_kept <= ppc.n_pix
+        assert ppc.dim > 0
+        assert ppc.dim <= ppc.n_pix
         assert ppc.compression_basis == "harmonic"
 
     def test_noise_weighted_basis(self, uniform_sky_setup):
@@ -506,7 +506,7 @@ class TestPixelBasisBases:
         ppc.setup()
         ppc.apply_compression(epsilon=1e-6, basis="noise_weighted")
 
-        assert ppc.n_kept > 0
+        assert ppc.dim > 0
         assert ppc.compression_basis == "noise_weighted"
 
     def test_total_covariance_basis(self, uniform_sky_setup):
@@ -527,7 +527,7 @@ class TestPixelBasisBases:
         ppc.setup()
         ppc.apply_compression(epsilon=1e-6, basis="total_covariance", C_ell=C_ell)
 
-        assert ppc.n_kept > 0
+        assert ppc.dim > 0
         assert ppc.compression_basis == "total_covariance"
 
     def test_snr_basis(self, uniform_sky_setup):
@@ -548,7 +548,7 @@ class TestPixelBasisBases:
         ppc.setup()
         ppc.apply_compression(epsilon=1e-6, basis="snr", C_ell=C_ell)
 
-        assert ppc.n_kept > 0
+        assert ppc.dim > 0
         assert ppc.compression_basis == "snr"
 
     def test_total_covariance_requires_cell(self, uniform_sky_setup):
@@ -622,7 +622,7 @@ class TestPixelBasisBases:
 
             c_ell_arg = C_ell if basis in ["total_covariance", "snr"] else None
             ppc.apply_compression(epsilon=1e-4, basis=basis, C_ell=c_ell_arg)
-            results[basis] = ppc.n_kept
+            results[basis] = ppc.dim
 
         # At least some bases should give different mode counts
         unique_counts = set(results.values())
@@ -1052,8 +1052,7 @@ class TestPPCOperationChain:
         C_ell = np.ones(setup["lmax"] - 1) * 1e-6
 
         # Properties
-        assert ppc.projector.shape == (ppc.n_kept, ppc.n_pix)
-        assert ppc.n_compressed == ppc.n_kept
+        assert ppc.projector.shape == (ppc.dim, ppc.n_pix)
         assert ppc.eigenvalues is not None
         assert ppc.compression_basis == "noise_weighted"
         assert 0 < ppc.compression_ratio <= 1.0
@@ -1061,13 +1060,13 @@ class TestPPCOperationChain:
         # Derivative matrix
         ss_key = SpectrumKey(0, 0, SpectrumKind.SS, spins=(0,))
         dC = ppc.get_derivative_matrix(5, ss_key)
-        assert dC.shape == (ppc.n_kept, ppc.n_kept)
+        assert dC.shape == (ppc.dim, ppc.dim)
 
         # Weighted compressed data
         np.random.seed(42)
         data = np.random.randn(ppc.n_pix)
         w = ppc.get_weighted_compressed_data(data, C_ell)
-        assert w.shape == (ppc.n_kept,)
+        assert w.shape == (ppc.dim,)
 
         # Quadratic form
         qf = ppc.compute_quadratic_form(data, C_ell)
@@ -1080,7 +1079,7 @@ class TestPPCOperationChain:
         # Prepare SMW and reuse
         C_ell_dict = {(0, 0, 0): C_ell}
         C_c_inv, logdet_smw = ppc.prepare_smw(C_ell_dict)
-        assert C_c_inv.shape == (ppc.n_kept, ppc.n_kept)
+        assert C_c_inv.shape == (ppc.dim, ppc.dim)
         qf2 = ppc.quadratic_form_from_prepared(data, C_c_inv)
         assert qf2 > 0
 
@@ -1115,11 +1114,11 @@ class TestPPCOperationChain:
 
         # Compressed covariance with dict
         C_c = ppc.get_compressed_covariance(C_ell_dict)
-        assert C_c.shape == (ppc.n_kept, ppc.n_kept)
+        assert C_c.shape == (ppc.dim, ppc.dim)
 
         # Cross-component derivative
         dC = ppc.get_derivative_matrix(5, SpectrumKey(0, 1, SpectrumKind.SS, spins=spins))
-        assert dC.shape == (ppc.n_kept, ppc.n_kept)
+        assert dC.shape == (ppc.dim, ppc.dim)
 
         # Multi-field Fisher
         n_ell = lmax - 1
@@ -1131,7 +1130,7 @@ class TestPPCOperationChain:
         np.random.seed(42)
         data = np.random.randn(ppc.n_pix)
         w = ppc.get_weighted_compressed_data(data, C_ell_dict)
-        assert w.shape == (ppc.n_kept,)
+        assert w.shape == (ppc.dim,)
         qf = ppc.compute_quadratic_form(data, C_ell_dict)
         assert qf > 0
 
@@ -1152,7 +1151,7 @@ class TestPPCOperationChain:
         )
         ppc.setup()
         ppc.apply_compression()
-        assert ppc.n_kept > 0
+        assert ppc.dim > 0
 
     def test_runtime_errors_before_compression(self, uniform_sky_setup):
         """Operations before apply_compression raise RuntimeError."""

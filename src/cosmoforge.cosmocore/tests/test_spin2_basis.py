@@ -748,7 +748,7 @@ class TestPixelProjectedSpin2:
         assert ppc._V.shape == (expected_rows, expected_cols)
 
     def test_spin2_compressed_covariance_shape(self):
-        """Compressed covariance should have shape (n_kept, n_kept)."""
+        """Compressed covariance should have shape (dim, dim)."""
         from cosmocore.basis import PixelBasis
 
         np.random.seed(42)
@@ -776,7 +776,7 @@ class TestPixelProjectedSpin2:
         }
 
         C_c = ppc.get_compressed_covariance(C_ell_dict)
-        assert C_c.shape == (ppc.n_kept, ppc.n_kept)
+        assert C_c.shape == (ppc.dim, ppc.dim)
         # Should be symmetric
         assert_allclose(C_c, C_c.T, atol=1e-12)
 
@@ -872,7 +872,7 @@ class TestPixelProjectedSpin2:
         assert_allclose(fisher, fisher.T, atol=1e-12)
 
     def test_spin2_weighted_data_shape(self):
-        """Weighted compressed data should have shape (n_kept,)."""
+        """Weighted compressed data should have shape (dim,)."""
         from cosmocore.basis import PixelBasis
 
         np.random.seed(42)
@@ -901,7 +901,7 @@ class TestPixelProjectedSpin2:
 
         data = np.random.randn(2 * n_pix)
         w = ppc.get_weighted_compressed_data(data, C_ell_dict)
-        assert w.shape == (ppc.n_kept,)
+        assert w.shape == (ppc.dim,)
 
     def test_spin2_manager_delegates(self):
         """create_computation_basis should produce working spin-2 PixelProjected."""
@@ -1139,7 +1139,7 @@ class TestPixelProjectedSpin2Benchmark:
         )
         max_rel_diff = rel_diff[mask].max() if mask.any() else 0.0
 
-        print(f"\n  PixelProjected QU benchmark (n_kept={ppc.n_kept}, lmax={lmax}):")
+        print(f"\n  PixelProjected QU benchmark (dim={ppc.dim}, lmax={lmax}):")
         print(f"    Max relative difference: {max_rel_diff:.2e}")
 
         # PixelProjected with nearly all modes should be close to pixel-space
@@ -1240,7 +1240,7 @@ class TestPixelProjectedSpin2Benchmark:
         )
         max_rel_diff = rel_diff[mask].max() if mask.any() else 0.0
 
-        print(f"\n  PixelProjected TQU benchmark (n_kept={ppc.n_kept}, lmax={lmax}):")
+        print(f"\n  PixelProjected TQU benchmark (dim={ppc.dim}, lmax={lmax}):")
         print(f"    Max relative difference: {max_rel_diff:.2e}")
 
         assert_allclose(

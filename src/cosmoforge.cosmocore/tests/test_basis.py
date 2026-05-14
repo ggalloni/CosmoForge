@@ -59,7 +59,7 @@ class TestCreateCompression:
 
         assert cm.method == "harmonic"
         assert cm.n_modes > 0
-        assert cm.n_kept == cm.n_modes  # Harmonic keeps all modes
+        assert cm.dim == cm.n_modes  # Harmonic keeps all modes
 
     def test_pixel_method(self, uniform_sky_setup):
         """Test create_computation_basis with pixel method."""
@@ -78,8 +78,8 @@ class TestCreateCompression:
         cm.setup()
 
         assert cm.method == "pixel"
-        assert cm.n_kept > 0
-        assert cm.n_kept <= setup["n_pix"]
+        assert cm.dim > 0
+        assert cm.dim <= setup["n_pix"]
 
     def test_unknown_method_raises(self, uniform_sky_setup):
         """Test that unknown method raises error."""
@@ -175,7 +175,7 @@ class TestCreateCompression:
 
         cm.setup()
 
-        assert cm.n_kept > 0
+        assert cm.dim > 0
 
 
 class TestComputeFisherMatrix:
@@ -354,7 +354,7 @@ class TestPerFieldThreshold:
         )
         ppc2.setup()
 
-        assert ppc1.n_kept == ppc2.n_kept
+        assert ppc1.dim == ppc2.dim
 
         # Fisher must match
         C_ell = np.ones(lmax + 1) * 1e-4
@@ -363,7 +363,7 @@ class TestPerFieldThreshold:
         assert_allclose(f1, f2, rtol=1e-12)
 
     def test_per_field_list_epsilon(self):
-        """Two spin-0 fields with different epsilons → different n_kept per field."""
+        """Two spin-0 fields with different epsilons → different dim per field."""
         from cosmocore.basis import PixelBasis
 
         np.random.seed(42)
@@ -400,7 +400,7 @@ class TestPerFieldThreshold:
         ppc_uniform.setup()
 
         # Split should keep fewer modes (field 1 is aggressive)
-        assert ppc_split.n_kept < ppc_uniform.n_kept
+        assert ppc_split.dim < ppc_uniform.dim
 
     def test_spin2_tuple_epsilon_eb_split(self):
         """Spin-2 field with tuple epsilon uses E/B split thresholding."""
@@ -437,7 +437,7 @@ class TestPerFieldThreshold:
         ppc_uniform.setup()
 
         # Split should keep >= uniform modes since B gets looser threshold
-        assert ppc_split.n_kept >= ppc_uniform.n_kept
+        assert ppc_split.dim >= ppc_uniform.dim
 
         # Fisher should still be PSD and symmetric
         C_ell_dict = {
@@ -540,8 +540,8 @@ class TestPerFieldThreshold:
         )
         ppc.setup()
 
-        assert ppc.n_kept > 0
-        assert ppc.n_kept <= total_pix
+        assert ppc.dim > 0
+        assert ppc.dim <= total_pix
 
         # Fisher should work and be valid
         C_ell_dict = {
@@ -683,7 +683,7 @@ class TestPixelProjectedPICSLikeMethods:
 
         # Two-step: prepare then compute
         C_c_inv, logdet = ppc.prepare_smw(C_ell_dict)
-        assert C_c_inv.shape == (ppc.n_kept, ppc.n_kept)
+        assert C_c_inv.shape == (ppc.dim, ppc.dim)
         assert isinstance(logdet, float)
 
         qf_prepared = ppc.quadratic_form_from_prepared(data, C_c_inv)
@@ -751,7 +751,7 @@ class TestPixelProjectedPICSLikeMethods:
         ppc_split.setup()
 
         # Split should keep more modes (B modes preserved)
-        assert ppc_split.n_kept >= ppc_aggressive.n_kept
+        assert ppc_split.dim >= ppc_aggressive.dim
 
         C_ell_dict = {
             (0, 0, 0): np.ones(lmax + 1) * 5e-4,  # EE

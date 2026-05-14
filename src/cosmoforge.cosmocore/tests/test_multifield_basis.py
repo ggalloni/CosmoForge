@@ -309,7 +309,7 @@ class TestMultiFieldManager:
         cm.setup()
 
         assert cm.n_components == 2
-        assert cm.n_kept > 0
+        assert cm.dim > 0
 
     def test_manager_multi_field_fisher(self, two_scalar_field_setup):
         """Test Fisher computation via create_computation_basis with multi-field dict."""

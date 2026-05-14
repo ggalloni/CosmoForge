@@ -202,14 +202,14 @@ def benchmark_fisher(config_file, bins=None):
     t0 = time.perf_counter()
     fisher.run()
     t_total = time.perf_counter() - t0
-    n_kept = (
-        fisher.basis_manager.n_kept
+    dim = (
+        fisher.basis_manager.dim
         if hasattr(fisher, "basis_manager") and fisher.basis_manager
         else None
     )
     return {
         "total": t_total,
-        "n_modes": n_kept,
+        "n_modes": dim,
         "n_pix": sum(fisher.collection.n_active),
     }, fisher
 
@@ -342,7 +342,7 @@ def main():
                 bins = Bins.fromdeltal(2, lmax, delta_ell)
                 try:
                     timings, fisher = benchmark_fisher(config_file, bins=bins)
-                    print(f"  n_modes/n_kept = {timings['n_modes']}")
+                    print(f"  n_modes/dim = {timings['n_modes']}")
                     print(f"  n_pix          = {timings['n_pix']}")
                     print(f"  Fisher run:    {timings['total']:.2f}s")
                     timings.update(

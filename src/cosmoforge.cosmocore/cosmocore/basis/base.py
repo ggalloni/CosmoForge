@@ -88,7 +88,7 @@ class ComputationBasis(ABC):
         Number of harmonic modes per component (for ℓ=2 to lmax).
     n_modes_total : int
         Total harmonic modes across all components (n_components × n_modes).
-    n_kept : int
+    dim : int
         Number of modes kept after compression (if applicable).
     n_components : int
         Number of field components (1 for single-field, N for multi-field).
@@ -473,28 +473,12 @@ class ComputationBasis(ABC):
 
         This is the fundamental operator that defines the compression:
         - HarmonicBasis: V (n_modes × n_pix)
-        - PixelBasis: U^T (n_kept × n_pix)
+        - PixelBasis: U^T (dim × n_pix)
 
         Returns
         -------
         numpy.ndarray
-            Projection matrix of shape (n_compressed, n_pix).
-        """
-        pass
-
-    @property
-    @abstractmethod
-    def n_compressed(self) -> int:
-        """
-        Size of the compressed space (number of rows in projector).
-
-        - HarmonicBasis: n_modes
-        - PixelBasis: n_kept
-
-        Returns
-        -------
-        int
-            Dimension of compressed space.
+            Projection matrix of shape (dim, n_pix).
         """
         pass
 
@@ -538,7 +522,7 @@ class ComputationBasis(ABC):
         Returns
         -------
         numpy.ndarray
-            Derivative matrix of shape (n_compressed, n_compressed).
+            Derivative matrix of shape (dim, dim).
         """
         pass
 
@@ -558,7 +542,7 @@ class ComputationBasis(ABC):
         Returns
         -------
         numpy.ndarray
-            Compressed covariance of shape (n_compressed, n_compressed).
+            Compressed covariance of shape (dim, dim).
         """
         pass
 
@@ -590,7 +574,7 @@ class ComputationBasis(ABC):
         Returns
         -------
         numpy.ndarray
-            Weighted compressed data of shape (n_compressed,) or (n_compressed, n_sims).
+            Weighted compressed data of shape (dim,) or (dim, n_sims).
         """
         pass
 
@@ -617,7 +601,7 @@ class ComputationBasis(ABC):
         Returns
         -------
         numpy.ndarray
-            Symmetric (n_kept, n_kept) matrix.
+            Symmetric (dim, dim) matrix.
         """
         pass
 
@@ -708,7 +692,7 @@ class ComputationBasis(ABC):
         Returns
         -------
         numpy.ndarray
-            Inverse compressed covariance of shape (n_compressed, n_compressed).
+            Inverse compressed covariance of shape (dim, dim).
         """
         from ..basics import matrix_inverse_symm
 
@@ -841,7 +825,7 @@ class ComputationBasis(ABC):
 
         Uses the compression-specific projector P:
         - HarmonicBasis: P = V (n_modes × n_pix)
-        - PixelBasis: P = U^T (n_kept × n_pix)
+        - PixelBasis: P = U^T (dim × n_pix)
 
         Parameters
         ----------
@@ -851,7 +835,7 @@ class ComputationBasis(ABC):
         Returns
         -------
         numpy.ndarray
-            Compressed data of shape (n_compressed,) or (n_compressed, n_sims).
+            Compressed data of shape (dim,) or (dim, n_sims).
         """
         return matrix_mult(self.projector, data)
 
@@ -876,4 +860,4 @@ class ComputationBasis(ABC):
         float
             Compression ratio (1.0 means no compression).
         """
-        return self.n_kept / self.n_modes_total
+        return self.dim / self.n_modes_total

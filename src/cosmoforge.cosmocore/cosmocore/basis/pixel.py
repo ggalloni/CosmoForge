@@ -46,12 +46,12 @@ class PixelBasis(ComputationBasis):
     Pixel-space compression with projector (Gjerløw-like).
 
     Stays in n_pix space with projector P_h, then uses eigenvalue
-    decomposition to find optimal subspace. Compression: n_pix → n_kept.
+    decomposition to find optimal subspace. Compression: n_pix → dim.
 
     The key operations are:
     - Projector: P_h = V^T V (harmonic projector, n_pix × n_pix but rank n_modes)
     - Eigendecomposition of compression matrix to find optimal modes
-    - Data compression: d_c = P @ d where P = U^T (n_kept × n_pix)
+    - Data compression: d_c = P @ d where P = U^T (dim × n_pix)
 
     This approach is more flexible than HarmonicBasis because it allows
     custom projectors to handle systematics (foreground deprojection, etc.).
@@ -97,7 +97,7 @@ class PixelBasis(ComputationBasis):
 
     Attributes
     ----------
-    n_kept : int
+    dim : int
         Number of modes kept after compression (initially n_pix).
 
     Examples
@@ -156,8 +156,8 @@ class PixelBasis(ComputationBasis):
         if not self._use_direct:
             self._init_harmonic_internals()
 
-        # Before compression, n_kept = n_pix
-        self.n_kept = self.n_pix
+        # Before compression, dim = n_pix
+        self.dim = self.n_pix
         # Compression quantities
         self._basis = basis
         self._C_ell_for_basis = C_ell
@@ -243,7 +243,7 @@ class PixelBasis(ComputationBasis):
         Returns
         -------
         U : numpy.ndarray
-            Kept eigenvectors, shape (n, n_kept).
+            Kept eigenvectors, shape (n, dim).
         eigenvalues : numpy.ndarray or None
             Kept eigenvalues (descending), or None.
         """
@@ -360,7 +360,7 @@ class PixelBasis(ComputationBasis):
         Returns
         -------
         U_combined : numpy.ndarray
-            Orthogonalized eigenvectors, shape (n_field_pix, n_kept).
+            Orthogonalized eigenvectors, shape (n_field_pix, dim).
         """
         n_base = self._n_modes_base
 
@@ -434,7 +434,7 @@ class PixelBasis(ComputationBasis):
         Returns
         -------
         U : numpy.ndarray
-            Eigenvectors for this field, shape (n_field_pix, n_kept).
+            Eigenvectors for this field, shape (n_field_pix, dim).
         eigenvalues : numpy.ndarray or None
             Eigenvalues if available (None for E/B split).
         """
@@ -515,7 +515,7 @@ class PixelBasis(ComputationBasis):
     @property
     def projector(self) -> np.ndarray:
         """
-        Get the projection matrix U^T (n_kept × n_pix).
+        Get the projection matrix U^T (dim × n_pix).
 
         Maps pixel space to eigenbasis compressed space. In direct mode
         without compression, the projector is the identity.
@@ -535,11 +535,6 @@ class PixelBasis(ComputationBasis):
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
         return self._eigenvectors.T
-
-    @property
-    def n_compressed(self) -> int:
-        """Size of compressed space."""
-        return self.n_kept
 
     def compress_data(self, data: np.ndarray) -> np.ndarray:
         """
@@ -1281,13 +1276,13 @@ class PixelBasis(ComputationBasis):
             if show_threshold_lines:
                 colors = plt.cm.Reds(np.linspace(0.3, 0.9, len(threshold_values)))
                 for thresh, color in zip(threshold_values, colors):
-                    n_kept = int(np.sum(normalized > thresh))
+                    dim = int(np.sum(normalized > thresh))
                     ax.axhline(
                         y=thresh,
                         color=color,
                         linestyle="--",
                         alpha=0.7,
-                        label=f"\u03b5={thresh:.0e} ({n_kept} modes)",
+                        label=f"\u03b5={thresh:.0e} ({dim} modes)",
                     )
 
             if log_scale:
@@ -1504,7 +1499,7 @@ class PixelBasis(ComputationBasis):
 
             self._eigenvectors = U_full
             self._eigenvalues = None  # Not meaningful for combined E/B
-            self.n_kept = total_kept
+            self.dim = total_kept
         else:
             # Single-field spin-0 path (backward compatible)
             eps_scalar = eps_list[0] if eps_list is not None else None
@@ -1517,7 +1512,7 @@ class PixelBasis(ComputationBasis):
 
             self._eigenvalues = eigenvalues
             self._eigenvectors = eigenvectors
-            self.n_kept = eigenvectors.shape[1]
+            self.dim = eigenvectors.shape[1]
 
         self._compression_basis = basis
 
@@ -1544,7 +1539,7 @@ class PixelBasis(ComputationBasis):
         ----------
         .. [1] Gjerløw, E., et al. (2015). Section 6.2 - "Precompute: PY"
         """
-        U = self._eigenvectors  # (n_pix, n_kept)
+        U = self._eigenvectors  # (n_pix, dim)
 
         # U^T @ N @ U - compressed noise covariance (independent of C_ell).
         # Goes through _N_symmetric so a post-setup apply_compression call
@@ -1552,11 +1547,11 @@ class PixelBasis(ComputationBasis):
         self._U_N_U = U.T @ self._N_symmetric @ U
 
         # V @ U - used for signal covariance transformation (independent of C_ell)
-        # VU has shape (n_modes, n_kept)
+        # VU has shape (n_modes, dim)
         self._VU = self._V @ U
 
         # Make U_N_U symmetric (numerical stability) — in place to avoid
-        # the n_kept² broadcast temporaries.
+        # the dim² broadcast temporaries.
         symmetrize_inplace(self._U_N_U)
 
         # SMW components for get_weighted_compressed_data
@@ -1579,14 +1574,12 @@ class PixelBasis(ComputationBasis):
         This reduces memory allocation overhead in frequently called methods
         like get_derivative_matrix and get_projected_inverse.
         """
-        # Buffer for VU * diagonal scaling: (n_modes, n_kept)
+        # Buffer for VU * diagonal scaling: (n_modes, dim)
         self._VU_scaled_buffer = np.empty(
-            (self.n_modes, self.n_kept), dtype=np.float64, order="C"
+            (self.n_modes, self.dim), dtype=np.float64, order="C"
         )
-        # Buffer for U_S_U computation: (n_kept, n_kept)
-        self._U_S_U_buffer = np.empty(
-            (self.n_kept, self.n_kept), dtype=np.float64, order="F"
-        )
+        # Buffer for U_S_U computation: (dim, dim)
+        self._U_S_U_buffer = np.empty((self.dim, self.dim), dtype=np.float64, order="F")
 
     def get_projected_inverse(self, C_ell) -> np.ndarray:
         """
@@ -1600,7 +1593,7 @@ class PixelBasis(ComputationBasis):
         Returns
         -------
         numpy.ndarray
-            Inverse of compressed covariance, shape (n_kept, n_kept).
+            Inverse of compressed covariance, shape (dim, dim).
         """
         if self._use_direct:
             C = self._build_signal_matrix_direct() + self._N
@@ -1631,7 +1624,7 @@ class PixelBasis(ComputationBasis):
         Returns
         -------
         numpy.ndarray
-            Derivative matrix of shape (n_compressed, n_compressed).
+            Derivative matrix of shape (dim, dim).
         """
         from ..spectrum_key import SpectrumKind, SymmetryMode, kind_to_legacy_mode
 
@@ -1677,7 +1670,7 @@ class PixelBasis(ComputationBasis):
         Returns
         -------
         numpy.ndarray
-            Covariance matrix of shape (n_compressed, n_compressed).
+            Covariance matrix of shape (dim, dim).
         """
         if self._use_direct:
             return self._build_signal_matrix_direct() + self._N
@@ -1721,7 +1714,7 @@ class PixelBasis(ComputationBasis):
         Returns
         -------
         numpy.ndarray
-            Weighted data of shape (n_compressed,) or (n_compressed, n_sims).
+            Weighted data of shape (dim,) or (dim, n_sims).
         """
         if self._use_direct:
             if C_c_inv is None:
@@ -1945,7 +1938,7 @@ class PixelBasis(ComputationBasis):
         float
             Compression ratio (1.0 means no compression).
         """
-        return self.n_kept / self.n_pix
+        return self.dim / self.n_pix
 
     @property
     def eigenvalues(self) -> np.ndarray | None:

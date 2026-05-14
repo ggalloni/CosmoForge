@@ -443,7 +443,7 @@ class Fisher(Core, MPISharedMemoryMixin):
 
                     if is_diagonal:
                         # dC^b diagonal: E_b = sum_ell beam * E_diag
-                        E_b_diag = np.zeros(bm.n_kept, dtype=np.float64)
+                        E_b_diag = np.zeros(bm.dim, dtype=np.float64)
                         for ell in range(
                             self.bins.lmins[bin_idx], self.bins.lmaxs[bin_idx] + 1
                         ):
@@ -478,15 +478,15 @@ class Fisher(Core, MPISharedMemoryMixin):
                             rows = np.concatenate(all_rows)
                             cols = np.concatenate(all_cols)
                             vals = np.concatenate(all_vals)
-                            rc_pairs = rows * bm.n_kept + cols
+                            rc_pairs = rows * bm.dim + cols
                             unique_pairs, inverse = np.unique(
                                 rc_pairs, return_inverse=True
                             )
                             combined_vals = np.zeros(len(unique_pairs))
                             np.add.at(combined_vals, inverse, vals)
                             sparse_coo_data[cache_key] = (
-                                unique_pairs // bm.n_kept,
-                                unique_pairs % bm.n_kept,
+                                unique_pairs // bm.dim,
+                                unique_pairs % bm.dim,
                                 combined_vals,
                             )
                         else:
@@ -679,9 +679,9 @@ class Fisher(Core, MPISharedMemoryMixin):
                 bm = self.basis_manager
                 path_label = _basis_path_label(bm)
                 if bm.method == "harmonic":
-                    size_desc = f"{bm.n_kept} modes ({bm.compression_ratio:.1%} kept)"
+                    size_desc = f"{bm.dim} modes ({bm.compression_ratio:.1%} kept)"
                 else:
-                    size_desc = f"{bm.n_kept} pixels"
+                    size_desc = f"{bm.dim} pixels"
                 self.log(
                     f"Computation basis: {path_label} — {size_desc}",
                     level=2,

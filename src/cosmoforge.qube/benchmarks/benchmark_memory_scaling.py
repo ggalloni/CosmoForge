@@ -130,12 +130,12 @@ def _profile_cell(config_file, bins, poll_interval, method, cache_derivatives):
             fisher.run()
             timings["fisher_total_s"] = time.perf_counter() - t0
 
-        n_kept = (
-            fisher.basis_manager.n_kept
+        dim = (
+            fisher.basis_manager.dim
             if hasattr(fisher, "basis_manager") and fisher.basis_manager
             else None
         )
-        timings["n_modes"] = n_kept
+        timings["n_modes"] = dim
         timings["n_pix"] = sum(fisher.collection.n_active)
 
         spectra = Spectra(config_file, fisher=fisher, compression={"method": method})
