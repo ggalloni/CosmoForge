@@ -699,7 +699,7 @@ class ComputationBasis(ABC):
         C_compressed = self.get_covariance(C_ell)
         return matrix_inverse_symm(C_compressed, overwrite=True)
 
-    def get_compressed_logdet(self, C_ell) -> float:
+    def get_logdet(self, C_ell) -> float:
         """
         Compute log determinant of compressed covariance matrix.
 
@@ -719,19 +719,27 @@ class ComputationBasis(ABC):
 
     def get_full_logdet(self, C_ell) -> float:
         """
-        Get best available log determinant of full covariance.
+        Return ``log|N + S|``, the full pixel-space log determinant.
 
-        For harmonic compression, returns exact log|C| via SMW formula.
-        For pixel, returns log|C_compressed| (approximation).
+        HarmonicBasis overrides this to compute it exactly via the SMW
+        formula. The default below applies to PixelBasis and is exact
+        only in pixel-direct mode (``U`` is the identity, so the
+        basis-space logdet equals the full logdet).
 
-        Subclasses may override to provide exact computation.
+        On a *truncated compressed* pixel basis the full logdet cannot
+        be recovered from the kept quantities: the discarded complement
+        of ``N + S`` is needed and is not stored. The default falls
+        through to :meth:`get_logdet`, which returns the logdet of the
+        restricted operator ``U^T (N + S) U`` — a different matrix, not
+        an approximation to ``log|N + S|``. Callers that need the exact
+        full logdet on a truncated basis must arrange for it elsewhere.
 
         Parameters
         ----------
         C_ell : numpy.ndarray or dict
             Power spectrum (array for single-field, dict for multi-field).
         """
-        return self.get_compressed_logdet(C_ell)
+        return self.get_logdet(C_ell)
 
     @abstractmethod
     def get_full_inverse(self, C_ell) -> np.ndarray:

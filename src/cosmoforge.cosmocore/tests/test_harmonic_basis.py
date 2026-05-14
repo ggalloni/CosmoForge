@@ -220,7 +220,7 @@ class TestHarmonicBasisOperations:
         n_ell = setup["lmax"] + 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        logdet = hc.get_compressed_logdet(C_ell)
+        logdet = hc.get_logdet(C_ell)
 
         assert np.isfinite(logdet)
 
