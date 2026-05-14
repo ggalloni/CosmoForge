@@ -88,7 +88,6 @@ def _build_direct_basis(core, lmax_signal):
         lmax_signal=lmax_signal,
         spins=spins,
         fields=core.collection,
-        use_direct=True,
     )
     bm.setup()
     assert bm.n_pix == n_pix
@@ -126,7 +125,6 @@ def test_setup_direct_requires_fields():
         theta=theta,
         phi=phi,
         lmax_signal=8,
-        use_direct=True,
     )
     with pytest.raises(ValueError, match="fields"):
         bm.setup()

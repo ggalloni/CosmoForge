@@ -500,7 +500,6 @@ class Core(ABC):
         use_smw_optimization: bool = True,
         compress: bool = False,
         delta_m: int = 0,
-        use_direct: bool = False,
     ):
         """
         Create and configure a computation basis for SMW-based operations.
@@ -542,13 +541,6 @@ class Core(ABC):
             For harmonic basis, whether to absorb signal outside the
             inference window into effective noise. Reduces computation
             while preserving accuracy.
-        use_direct : bool, default False
-            For ``method="pixel"`` only: bypass the V-projection / eigenvalue
-            truncation and run the direct pixel-space pipeline (no harmonic
-            machinery, full $n_\\mathrm{pix}$-dimensional matrices). This is
-            the same internal path that ``method="auto"`` selects when the
-            cost model picks pixel-direct, exposed here for explicit user
-            control. Ignored for ``method="harmonic"``.
 
         Returns
         -------
@@ -713,11 +705,11 @@ class Core(ABC):
 
         # Pixel-direct mode operates on full pixel-space matrices and doesn't
         # need the inference-window narrowing / S_fixed (the high-ℓ signal is
-        # naturally included via the pixel-space S construction). Triggered
-        # when auto picks pixel-direct OR when the user explicitly requests
-        # method="pixel" with use_direct=True.
-        is_pixel_direct = (method == "auto" and resolved_method == "pixel") or (
-            method == "pixel" and use_direct
+        # naturally included via the pixel-space S construction). Pixel-direct
+        # is signalled by no compression intent: method resolves to "pixel"
+        # with neither ``epsilon`` nor ``mode_fraction`` set.
+        is_pixel_direct = resolved_method == "pixel" and (
+            epsilon is None and mode_fraction is None
         )
         if is_pixel_direct:
             lmin_b = None
@@ -752,7 +744,6 @@ class Core(ABC):
             delta_m=delta_m,
             fields=getattr(self, "collection", None),
             n_bins=n_bins,
-            use_direct=use_direct,
         )
 
         # Build harmonic operator and precompute SMW components
@@ -761,7 +752,7 @@ class Core(ABC):
         # Pixel-direct mode never factorises self._N, so noise_cov1 is still
         # the symmetric matrix and Core code can keep using it. Other modes
         # have overwritten it in place; drop the reference as a tripwire.
-        if not getattr(self.basis_manager, "_use_direct", False):
+        if getattr(self.basis_manager, "_is_compressed", True):
             self.noise_cov1 = None
 
         return self.basis_manager
@@ -992,7 +983,7 @@ class Core(ABC):
         bm = getattr(self, "basis_manager", None)
         if (
             bm is not None
-            and getattr(bm, "_use_direct", False)
+            and not getattr(bm, "_is_compressed", True)
             and hasattr(bm, "get_binned_derivative_direct")
         ):
             # The pixel-direct kernel does not yet support spin-2 × spin-2

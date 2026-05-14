@@ -104,7 +104,7 @@ def _auto_pick_method(
     }
     if cost_harmonic <= cost_pixel:
         return "harmonic", {}, costs
-    return "pixel", {"use_direct": True}, costs
+    return "pixel", {}, costs
 
 
 def create_computation_basis(

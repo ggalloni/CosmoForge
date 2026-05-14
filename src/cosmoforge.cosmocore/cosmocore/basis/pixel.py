@@ -133,7 +133,6 @@ class PixelBasis(ComputationBasis):
         lmax: int | None = None,
         S_fixed: np.ndarray | None = None,
         fields=None,
-        use_direct: bool = False,
     ):
         super().__init__(
             N,
@@ -148,10 +147,6 @@ class PixelBasis(ComputationBasis):
             S_fixed=S_fixed,
         )
         self._fields = fields
-        self._use_direct = use_direct
-
-        if not self._use_direct:
-            self._init_harmonic_internals()
 
         # Before compression, dim = n_pix
         self.dim = self.n_pix
@@ -161,6 +156,12 @@ class PixelBasis(ComputationBasis):
         self._epsilon = epsilon
         self._mode_fraction = mode_fraction
         self._eigenvectors = None
+
+        # Direct mode (no compression intent) skips the harmonic-builder
+        # machinery; setup() will route to _setup_direct. Compressed mode
+        # builds V and runs _apply_compression inside _setup_v_based.
+        if self._is_compressed:
+            self._init_harmonic_internals()
 
         # Parse per-field thresholds
         self._epsilon_per_field = self._parse_per_field_thresholds(epsilon, "epsilon")
@@ -510,6 +511,17 @@ class PixelBasis(ComputationBasis):
         return "pixel"
 
     @property
+    def _is_compressed(self) -> bool:
+        """True when this PixelBasis is configured for eigenmode compression.
+
+        Compression intent is fully determined by the constructor kwargs:
+        if either ``epsilon`` or ``mode_fraction`` is non-None, compression
+        will be applied by :meth:`setup`. The property is intentionally
+        derived (no separate flag) so intent and configuration cannot drift.
+        """
+        return self._epsilon is not None or self._mode_fraction is not None
+
+    @property
     def projector(self) -> np.ndarray:
         """
         Get the projection matrix U^T (dim × n_pix).
@@ -523,7 +535,7 @@ class PixelBasis(ComputationBasis):
         RuntimeError
             If compression has not been applied yet (V-based mode only).
         """
-        if self._use_direct:
+        if not self._is_compressed:
             # Cache the identity projector — n_pix×n_pix dense, allocated once.
             cached = getattr(self, "_direct_projector", None)
             if cached is None:
@@ -545,7 +557,7 @@ class PixelBasis(ComputationBasis):
         identity projector (otherwise an ``n_pix × n_sims`` matmul against
         an ``n_pix × n_pix`` identity, allocated and run on every call).
         """
-        if self._use_direct:
+        if not self._is_compressed:
             return data
         return super().to_basis(data)
 
@@ -558,7 +570,7 @@ class PixelBasis(ComputationBasis):
         skip V construction and rely on existing pixel-space machinery
         (compute_signal_matrix, do_derivative_step).
         """
-        if self._use_direct:
+        if not self._is_compressed:
             self._setup_direct()
         else:
             self._setup_v_based()
@@ -1591,7 +1603,7 @@ class PixelBasis(ComputationBasis):
         numpy.ndarray
             Basis-space inverse covariance, shape (dim, dim).
         """
-        if self._use_direct:
+        if not self._is_compressed:
             C = self._build_signal_matrix_direct() + self._N
             return matrix_inverse_symm(np.asfortranarray(C))
         if self._eigenvectors is None:
@@ -1633,7 +1645,7 @@ class PixelBasis(ComputationBasis):
         is_cross = key.comp_i != key.comp_j
         mode = kind_to_legacy_mode(key.kind, is_cross=is_cross)
 
-        if self._use_direct:
+        if not self._is_compressed:
             return self._get_derivative_direct(ell, key.comp_i, key.comp_j, mode)
 
         if self._eigenvectors is None:
@@ -1678,7 +1690,7 @@ class PixelBasis(ComputationBasis):
         numpy.ndarray
             Basis-space covariance, shape (dim, dim).
         """
-        if self._use_direct:
+        if not self._is_compressed:
             return self._build_signal_matrix_direct() + self._N
 
         if self._eigenvectors is None:
@@ -1725,7 +1737,7 @@ class PixelBasis(ComputationBasis):
         numpy.ndarray
             Weighted data of shape (dim,) or (dim, n_sims).
         """
-        if self._use_direct:
+        if not self._is_compressed:
             if C_c_inv is None:
                 C_c_inv = self.get_projected_inverse(C_ell)
             return matrix_mult(C_c_inv, data)
@@ -1762,7 +1774,7 @@ class PixelBasis(ComputationBasis):
         float
             Quadratic form value.
         """
-        if self._use_direct:
+        if not self._is_compressed:
             C_inv = self.get_projected_inverse(C_ell)
             return float(data.T @ C_inv @ data)
 
@@ -1895,7 +1907,7 @@ class PixelBasis(ComputationBasis):
 
     def prepare_for_basis(self, C_ell_dict: dict) -> BasisPrepared:
         """Pre-bake the basis-space inverse and logdet for reuse across sims."""
-        if not self._use_direct and self._eigenvectors is None:
+        if self._is_compressed and self._eigenvectors is None:
             raise RuntimeError(
                 "Compression not applied. Pass epsilon or mode_fraction "
                 "to PixelBasis(...) at construction."
@@ -1912,7 +1924,7 @@ class PixelBasis(ComputationBasis):
         self, data: np.ndarray, C_c_inv: np.ndarray
     ) -> float:
         """Compute ``d^T C^{-1} d`` using a pre-baked basis-space inverse."""
-        if self._use_direct:
+        if not self._is_compressed:
             return float(data.T @ C_c_inv @ data)
         if self._eigenvectors is None:
             raise RuntimeError(
@@ -1954,7 +1966,7 @@ class PixelBasis(ComputationBasis):
         subspace and is zero on the truncated complement.
         """
         C_basis_inv = self.get_inverse(C_ell)
-        if self._use_direct or self._eigenvectors is None:
+        if not self._is_compressed or self._eigenvectors is None:
             return C_basis_inv
         U = self._eigenvectors
         return U @ C_basis_inv @ U.T

@@ -25,6 +25,7 @@ class TestPixelBasisInitialization:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
 
         assert ppc.n_pix == setup["n_pix"]
@@ -46,6 +47,7 @@ class TestPixelBasisSetup:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
 
         ppc.setup()
@@ -78,6 +80,7 @@ class TestPixelBasisSetup:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
 
         ppc.setup()
@@ -659,6 +662,7 @@ class TestPixelBasisEigenspectrum:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -677,6 +681,7 @@ class TestPixelBasisEigenspectrum:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -694,6 +699,7 @@ class TestPixelBasisEigenspectrum:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -715,6 +721,7 @@ class TestPixelBasisEigenspectrum:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -743,6 +750,7 @@ class TestPixelBasisEigenspectrum:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -771,6 +779,7 @@ class TestPixelBasisEigenspectrum:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -794,6 +803,7 @@ class TestPixelBasisEigenspectrum:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -817,6 +827,7 @@ class TestComputeEigenspectrumPerField:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -842,6 +853,7 @@ class TestComputeEigenspectrumPerField:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -868,7 +880,7 @@ class TestComputeEigenspectrumPerField:
         N = np.eye(2 * n_pix) * 0.01
         np.eye(2 * n_pix) * 100.0
 
-        ppc = PixelBasis(N, theta, phi, lmax, spins=[2])
+        ppc = PixelBasis(N, theta, phi, lmax, spins=[2], epsilon=0.0)
         ppc.setup()
 
         result = ppc.compute_eigenspectrum_per_field(basis="noise_weighted")
@@ -896,6 +908,7 @@ class TestComputeEigenspectrumPerField:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -924,6 +937,7 @@ class TestComputeEigenspectrumPerField:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=lmax,
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -945,6 +959,7 @@ class TestComputeEigenspectrumPerField:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -970,6 +985,7 @@ class TestPlotMultiField:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -996,7 +1012,7 @@ class TestPlotMultiField:
         N = np.eye(2 * n_pix) * 0.01
         np.eye(2 * n_pix) * 100.0
 
-        ppc = PixelBasis(N, theta, phi, lmax, spins=[2])
+        ppc = PixelBasis(N, theta, phi, lmax, spins=[2], epsilon=0.0)
         ppc.setup()
 
         fig, axes = ppc.plot_eigenvalue_spectrum(
@@ -1026,6 +1042,7 @@ class TestPlotMultiField:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
