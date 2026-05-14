@@ -605,7 +605,7 @@ class TestPerFieldThreshold:
 
 
 # =============================================================================
-# PICSLike methods tests (prepare_smw, quadratic_form, logdet)
+# PICSLike methods tests (prepare_for_basis, quadratic_form, logdet)
 # =============================================================================
 
 
@@ -672,7 +672,7 @@ class TestPixelProjectedPICSLikeMethods:
         )
 
     def test_prepare_and_quadratic_form_from_prepared(self):
-        """prepare_smw → quadratic_form_from_prepared matches direct compute."""
+        """prepare_for_basis → quadratic_form_from_prepared matches direct compute."""
         np.random.seed(42)
         ppc, C_ell_dict, _ = self._make_spin2_setup()
 
@@ -682,7 +682,7 @@ class TestPixelProjectedPICSLikeMethods:
         qf_direct = ppc.quadratic_form(data, C_ell_dict)
 
         # Two-step: prepare then compute
-        C_c_inv, logdet = ppc.prepare_smw(C_ell_dict)
+        C_c_inv, logdet = ppc.prepare_for_basis(C_ell_dict)
         assert C_c_inv.shape == (ppc.dim, ppc.dim)
         assert isinstance(logdet, float)
 

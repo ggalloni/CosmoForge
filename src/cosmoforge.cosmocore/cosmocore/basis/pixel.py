@@ -27,7 +27,7 @@ from ..basics import (
     svd,
     symmetrize_inplace,
 )
-from .base import ComputationBasis, SMWPrepared
+from .base import BasisPrepared, ComputationBasis
 
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
@@ -1873,7 +1873,7 @@ class PixelBasis(ComputationBasis):
 
         return fisher
 
-    def prepare_smw(self, C_ell_dict: dict) -> SMWPrepared:
+    def prepare_for_basis(self, C_ell_dict: dict) -> BasisPrepared:
         """Precompute compressed inverse and logdet for reuse across sims."""
         if not self._use_direct and self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
@@ -1883,7 +1883,7 @@ class PixelBasis(ComputationBasis):
         C_c = self.get_covariance(C_ell_dict)
         C_c_inv = matrix_inverse_symm(C_c)
         _, logdet = matrix_slogdet_symm(C_c)
-        return SMWPrepared(C_c_inv, logdet)
+        return BasisPrepared(C_c_inv, logdet)
 
     def quadratic_form_from_prepared(
         self, data: np.ndarray, C_c_inv: np.ndarray
@@ -1907,7 +1907,7 @@ class PixelBasis(ComputationBasis):
             Power spectrum (array for single-field, dict for multi-field).
         """
         if isinstance(C_ell, dict):
-            _, logdet = self.prepare_smw(C_ell)
+            _, logdet = self.prepare_for_basis(C_ell)
             return logdet
         from ..basics import matrix_slogdet_symm
 

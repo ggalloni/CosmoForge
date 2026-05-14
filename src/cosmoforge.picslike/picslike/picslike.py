@@ -564,7 +564,7 @@ class PICSLike(Core, MPISharedMemoryMixin):
                     self._smw_data_cache = (projected, term1)
                 projected, term1 = self._smw_data_cache
 
-                K_chol, logdet = bm.prepare_smw(
+                K_chol, logdet = bm.prepare_for_basis(
                     C_ell_dict if is_multi_field else {(0, 0, 0): C_ell_input}
                 )
                 # χ²_n = d_n^T N^{-1} d_n - y_n^T K^{-1} y_n
@@ -574,7 +574,7 @@ class PICSLike(Core, MPISharedMemoryMixin):
                 chi_squared = term1 - term2
 
             if not self.params.do_cross:
-                pass  # logdet already set by prepare_smw
+                pass  # logdet already set by prepare_for_basis
             else:
                 logdet = bm.get_full_logdet(C_ell_input)
 

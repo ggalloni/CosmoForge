@@ -34,7 +34,7 @@ import warnings
 
 import numpy as np
 
-from .base import ComputationBasis, SMWPrepared
+from .base import BasisPrepared, ComputationBasis
 from .harmonic import HarmonicBasis
 from .pixel import COMPRESSION_BASES, PixelBasis
 
@@ -209,7 +209,7 @@ __all__ = [
     "COMPRESSION_BASES",
     "HarmonicBasis",
     "PixelBasis",
-    "SMWPrepared",
+    "BasisPrepared",
     "_problem_dimensions",
     "create_computation_basis",
 ]

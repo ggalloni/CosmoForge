@@ -1078,7 +1078,7 @@ class TestPPCOperationChain:
 
         # Prepare SMW and reuse
         C_ell_dict = {(0, 0, 0): C_ell}
-        C_c_inv, logdet_smw = ppc.prepare_smw(C_ell_dict)
+        C_c_inv, logdet_smw = ppc.prepare_for_basis(C_ell_dict)
         assert C_c_inv.shape == (ppc.dim, ppc.dim)
         qf2 = ppc.quadratic_form_from_prepared(data, C_c_inv)
         assert qf2 > 0
@@ -1182,7 +1182,7 @@ class TestPPCOperationChain:
         with pytest.raises(RuntimeError):
             ppc.quadratic_form(data, C_ell)
         with pytest.raises(RuntimeError):
-            ppc.prepare_smw({(0, 0, 0): C_ell})
+            ppc.prepare_for_basis({(0, 0, 0): C_ell})
         with pytest.raises(RuntimeError):
             ppc.quadratic_form_from_prepared(data, np.eye(2))
 

@@ -19,13 +19,18 @@ _LAMBDA_INV_CAP = 1e30  # Cap for 1/Lambda when Lambda ≈ 0
 _MATRIX_REGULARIZATION = 1e-20  # Tikhonov regularization for matrix inversion
 
 
-class SMWPrepared(NamedTuple):
-    """Pre-computed quantities for SMW-based likelihood evaluation.
+class BasisPrepared(NamedTuple):
+    """Per-``C_ell`` quantities pre-computed for fast likelihood evaluation.
+
+    Returned by :meth:`ComputationBasis.prepare_for_basis`. The stored
+    ``factor`` is basis-specific in form but always usable as the
+    second argument of
+    :meth:`ComputationBasis.quadratic_form_from_prepared`.
 
     Parameters
     ----------
     factor : numpy.ndarray
-        K Cholesky factor (harmonic) or C_c_inv (pixel).
+        K Cholesky factor (harmonic) or basis-space inverse (pixel).
     logdet : float
         log|C| (full covariance log-determinant).
     """

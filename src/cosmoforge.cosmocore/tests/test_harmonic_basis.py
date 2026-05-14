@@ -621,7 +621,7 @@ class TestHarmonicDictOperations:
         assert dC.shape == (hc.n_modes, hc.n_modes)
 
     def test_multi_field_weighted_data_qf_logdet(self, two_scalar_field_setup):
-        """Cover dict paths: weighted data, quadratic form, logdet, prepare_smw."""
+        """Cover dict paths: weighted data, quadratic form, logdet, prepare_for_basis."""
         from cosmocore.basis import HarmonicBasis
 
         setup = two_scalar_field_setup
@@ -657,8 +657,8 @@ class TestHarmonicDictOperations:
         assert isinstance(logdet_full, float)
         assert np.isfinite(logdet_full)
 
-        # prepare_smw and quadratic_form_from_prepared
-        K_chol, logdet_smw = hc.prepare_smw(C_ell_dict)
+        # prepare_for_basis and quadratic_form_from_prepared
+        K_chol, logdet_smw = hc.prepare_for_basis(C_ell_dict)
         assert isinstance(logdet_smw, float)
         qf2 = hc.quadratic_form_from_prepared(data, K_chol)
         assert_allclose(qf, qf2, rtol=1e-8)

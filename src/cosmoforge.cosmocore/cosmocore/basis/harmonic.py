@@ -30,8 +30,8 @@ from .base import (
     _LAMBDA_INV_CAP,
     _LAMBDA_ZERO_THRESHOLD,
     _MATRIX_REGULARIZATION,
+    BasisPrepared,
     ComputationBasis,
-    SMWPrepared,
 )
 
 
@@ -922,7 +922,7 @@ class HarmonicBasis(ComputationBasis):
         """
         c_ell_arr, c_ell_dict, is_single = self._normalize_c_ell(C_ell)
         if not is_single:
-            _, logdet = self.prepare_smw(c_ell_dict)
+            _, logdet = self.prepare_for_basis(c_ell_dict)
             return logdet
         Lambda_diag = self._build_lambda_diagonal(c_ell_arr)
         return smw_logdet(self._log_det_N, self._V_Ninv_VT, Lambda_diag)
@@ -990,7 +990,7 @@ class HarmonicBasis(ComputationBasis):
         """
         c_ell_arr, c_ell_dict, is_single = self._normalize_c_ell(C_ell)
         if not is_single:
-            K_chol, _ = self.prepare_smw(c_ell_dict)
+            K_chol, _ = self.prepare_for_basis(c_ell_dict)
             return self.quadratic_form_from_prepared(data, K_chol)
         Lambda_diag = self._build_lambda_diagonal(c_ell_arr)
         return smw_quadratic_form(
@@ -1007,7 +1007,7 @@ class HarmonicBasis(ComputationBasis):
         K = lambda_inv + self._V_Ninv_VT
         return K, lambda_matrix
 
-    def prepare_smw(self, C_ell_dict: dict) -> SMWPrepared:
+    def prepare_for_basis(self, C_ell_dict: dict) -> BasisPrepared:
         """Precompute K Cholesky factor and log determinant for reuse across sims."""
         K, lambda_matrix = self._build_smw_kernel(C_ell_dict)
 
@@ -1018,7 +1018,7 @@ class HarmonicBasis(ComputationBasis):
 
         logdet = self._log_det_N + log_det_Lambda + log_det_K
 
-        return SMWPrepared(K_chol, logdet)
+        return BasisPrepared(K_chol, logdet)
 
     def quadratic_form_from_prepared(self, data: np.ndarray, K_chol: np.ndarray) -> float:
         """Compute d^T C^{-1} d using precomputed K Cholesky factor."""
