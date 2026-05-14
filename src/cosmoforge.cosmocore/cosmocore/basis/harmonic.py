@@ -939,6 +939,14 @@ class HarmonicBasis(ComputationBasis):
         """Get exact log|N + S| via SMW formula."""
         return self.get_logdet(C_ell)
 
+    def get_noise_for_bias(self) -> np.ndarray:
+        """Return the SMW noise intermediate ``T = V N_eff^{-1} N N_eff^{-1} V^T``.
+
+        See :meth:`ComputationBasis.get_noise_for_bias` for the cross-basis
+        contract. ``T`` is precomputed during basis setup.
+        """
+        return self._noise_cov_T
+
     def get_weighted_compressed_data(
         self, data: np.ndarray, C_ell, C_c_inv: np.ndarray | None = None
     ) -> np.ndarray:

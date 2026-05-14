@@ -868,12 +868,12 @@ class Spectra(Core, MPISharedMemoryMixin):
             else:
                 # For pixel: use compressed quantities. Noise bias requires
                 # the raw N (not N_eff with absorbed high-ℓ signal), so use
-                # the dedicated get_compressed_noise() method.
+                # the dedicated get_noise_for_bias() method.
                 if is_multi_field:
                     C_bar_inv = bm.get_compressed_inverse(C_ell_dict)
                 else:
                     C_bar_inv = bm.get_compressed_inverse(C_ell)
-                N_bar = bm.get_compressed_noise()
+                N_bar = bm.get_noise_for_bias()
                 noise_cov_w = C_bar_inv @ N_bar @ C_bar_inv
 
         # Harmonic-basis binned derivatives are extremely sparse (~2ℓ+1 nonzeros
