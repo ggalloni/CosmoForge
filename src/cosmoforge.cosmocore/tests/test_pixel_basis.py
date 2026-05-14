@@ -1065,7 +1065,7 @@ class TestPPCOperationChain:
         # Weighted compressed data
         np.random.seed(42)
         data = np.random.randn(ppc.n_pix)
-        w = ppc.get_weighted_compressed_data(data, C_ell)
+        w = ppc.get_weighted_data(data, C_ell)
         assert w.shape == (ppc.dim,)
 
         # Quadratic form
@@ -1129,7 +1129,7 @@ class TestPPCOperationChain:
         # Weighted data and quadratic form with dict
         np.random.seed(42)
         data = np.random.randn(ppc.n_pix)
-        w = ppc.get_weighted_compressed_data(data, C_ell_dict)
+        w = ppc.get_weighted_data(data, C_ell_dict)
         assert w.shape == (ppc.dim,)
         qf = ppc.compute_quadratic_form(data, C_ell_dict)
         assert qf > 0
@@ -1178,7 +1178,7 @@ class TestPPCOperationChain:
         with pytest.raises(RuntimeError):
             ppc.get_covariance(C_ell)
         with pytest.raises(RuntimeError):
-            ppc.get_weighted_compressed_data(data, C_ell)
+            ppc.get_weighted_data(data, C_ell)
         with pytest.raises(RuntimeError):
             ppc.compute_quadratic_form(data, C_ell)
         with pytest.raises(RuntimeError):

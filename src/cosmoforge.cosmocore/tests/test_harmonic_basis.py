@@ -594,7 +594,7 @@ class TestHarmonicDictOperations:
     """Cover dict-path operations: weighted data, quadratic form, SMW, logdet."""
 
     def test_single_field_weighted_data_and_qf(self, uniform_sky_setup):
-        """Cover get_weighted_compressed_data and compute_quadratic_form (array)."""
+        """Cover get_weighted_data and compute_quadratic_form (array)."""
         from cosmocore.basis import HarmonicBasis
 
         setup = uniform_sky_setup
@@ -610,7 +610,7 @@ class TestHarmonicDictOperations:
         np.random.seed(42)
         data = np.random.randn(setup["n_pix"])
 
-        w = hc.get_weighted_compressed_data(data, C_ell)
+        w = hc.get_weighted_data(data, C_ell)
         assert w.shape == (hc.n_modes,)
 
         qf = hc.compute_quadratic_form(data, C_ell)
@@ -645,7 +645,7 @@ class TestHarmonicDictOperations:
         data = np.random.randn(hc.n_pix)
 
         # Weighted compressed data (dict path)
-        w = hc.get_weighted_compressed_data(data, C_ell_dict)
+        w = hc.get_weighted_data(data, C_ell_dict)
         assert w.shape == (hc.n_modes_total,)
 
         # Quadratic form (dict path)
@@ -701,8 +701,8 @@ class TestHarmonicDictOperations:
         # Weighted data single-entry dict fast path
         np.random.seed(42)
         data = np.random.randn(setup["n_pix"])
-        w_arr = hc.get_weighted_compressed_data(data, C_ell_arr)
-        w_dict = hc.get_weighted_compressed_data(data, C_ell_dict)
+        w_arr = hc.get_weighted_data(data, C_ell_arr)
+        w_dict = hc.get_weighted_data(data, C_ell_dict)
         assert_allclose(w_arr, w_dict, rtol=1e-10)
 
 

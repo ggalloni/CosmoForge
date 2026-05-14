@@ -900,7 +900,7 @@ class TestPixelProjectedSpin2:
         }
 
         data = np.random.randn(2 * n_pix)
-        w = ppc.get_weighted_compressed_data(data, C_ell_dict)
+        w = ppc.get_weighted_data(data, C_ell_dict)
         assert w.shape == (ppc.dim,)
 
     def test_spin2_manager_delegates(self):

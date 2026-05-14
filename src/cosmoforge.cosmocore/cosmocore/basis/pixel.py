@@ -1554,7 +1554,7 @@ class PixelBasis(ComputationBasis):
         # the dim² broadcast temporaries.
         symmetrize_inplace(self._U_N_U)
 
-        # SMW components for get_weighted_compressed_data
+        # SMW components for get_weighted_data
         # V @ N^{-1} via Cholesky solve: (N^{-1} V^T)^T = cholesky_solve(N_chol, V^T)^T
         self._V_N_inv = cholesky_solve(self._N_chol, self._V.T).T
         # V @ N^{-1} @ V^T (n_modes, n_modes) - the M matrix in SMW
@@ -1690,7 +1690,7 @@ class PixelBasis(ComputationBasis):
         np.matmul(self._VU.T, self._VU_scaled_buffer, out=self._U_S_U_buffer)
         return self._U_N_U + self._U_S_U_buffer
 
-    def get_weighted_compressed_data(
+    def get_weighted_data(
         self,
         data: np.ndarray,
         C_ell,

@@ -939,7 +939,7 @@ class HarmonicBasis(ComputationBasis):
         """
         return self._noise_cov_T
 
-    def get_weighted_compressed_data(
+    def get_weighted_data(
         self,
         data: np.ndarray,
         C_ell,

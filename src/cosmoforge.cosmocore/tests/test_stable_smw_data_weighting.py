@@ -1,6 +1,6 @@
 """Verification (a) for PR #2: refactor equivalence.
 
-The rewritten harmonic.get_weighted_compressed_data must match the
+The rewritten harmonic.get_weighted_data must match the
 two-step composition that qube/spectra.py was doing by hand:
 
     w = stable_inner_inv.T @ (bm._V_N_inv @ d)
@@ -58,7 +58,7 @@ def test_single_field_matches_explicit_composition(single_field_basis):
     inner_inv = bm.prepare_stable_inner_inv(C_ell)
     expected = inner_inv.T @ (bm._V_N_inv @ d)
 
-    actual = bm.get_weighted_compressed_data(d, C_ell, stable_inner_inv=inner_inv)
+    actual = bm.get_weighted_data(d, C_ell, stable_inner_inv=inner_inv)
     np.testing.assert_allclose(actual, expected, rtol=1e-13, atol=0)
 
 
@@ -71,7 +71,7 @@ def test_builds_inner_inv_when_omitted(single_field_basis):
     inner_inv = bm.prepare_stable_inner_inv(C_ell)
     expected = inner_inv.T @ (bm._V_N_inv @ d)
 
-    actual = bm.get_weighted_compressed_data(d, C_ell)
+    actual = bm.get_weighted_data(d, C_ell)
     np.testing.assert_allclose(actual, expected, rtol=1e-13, atol=0)
 
 
@@ -95,7 +95,7 @@ def test_matches_brute_force_reference(single_field_basis, simple_compression_se
     C_pix = N + (V.T * Lambda_diag) @ V
     w_ref = V @ np.linalg.solve(C_pix, d)
 
-    w_actual = bm.get_weighted_compressed_data(d, C_ell)
+    w_actual = bm.get_weighted_data(d, C_ell)
     np.testing.assert_allclose(w_actual, w_ref, rtol=1e-10, atol=1e-12)
 
 
@@ -114,5 +114,5 @@ def test_multi_field_matches_explicit_composition(multi_field_basis):
     inner_inv = bm.prepare_stable_inner_inv(C_ell_dict)
     expected = inner_inv.T @ (bm._V_N_inv @ d)
 
-    actual = bm.get_weighted_compressed_data(d, C_ell_dict, stable_inner_inv=inner_inv)
+    actual = bm.get_weighted_data(d, C_ell_dict, stable_inner_inv=inner_inv)
     np.testing.assert_allclose(actual, expected, rtol=1e-13, atol=0)

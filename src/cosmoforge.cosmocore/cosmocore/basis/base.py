@@ -547,7 +547,7 @@ class ComputationBasis(ABC):
         pass
 
     @abstractmethod
-    def get_weighted_compressed_data(
+    def get_weighted_data(
         self,
         data: np.ndarray,
         C_ell,
