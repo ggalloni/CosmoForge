@@ -664,7 +664,7 @@ class Fisher(Core, MPISharedMemoryMixin):
                     "lmax_signal",
                     "epsilon",
                     "mode_fraction",
-                    "basis",
+                    "compression_target",
                     "C_ell",
                 )
                 kwargs = {

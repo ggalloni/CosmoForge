@@ -494,7 +494,7 @@ class Core(ABC):
         epsilon: float | list[float | tuple[float, float]] | None = 1e-6,
         mode_fraction: float | list[float | tuple[float, float]] | None = None,
         beam: np.ndarray | None = None,
-        basis: str = "noise_weighted",
+        compression_target: str = "noise_weighted",
         C_ell: np.ndarray | None = None,
         lmax_signal: int | None = None,
         use_smw_optimization: bool = True,
@@ -532,9 +532,10 @@ class Core(ABC):
             Beam window function B_ℓ for ℓ=0..lmax_signal. If None and
             beams have been set up via setup_beams(), the first field's
             beam is automatically extracted from the beam manager.
-        basis : str, default "noise_weighted"
-            Eigenvalue basis for pixel method. Options:
-            "harmonic", "noise_weighted", "total_covariance", "snr".
+        compression_target : str, default "noise_weighted"
+            Selector for the matrix to eigendecompose during pixel
+            compression. Options: ``"harmonic"``, ``"noise_weighted"``,
+            ``"total_covariance"``, ``"snr"``.
         C_ell : numpy.ndarray or None, optional
             Power spectrum for bases that require it ("total_covariance", "snr").
         use_smw_optimization : bool, default True
@@ -561,10 +562,10 @@ class Core(ABC):
         >>> core.setup_beams()
         >>> # Harmonic basis (default)
         >>> cm = core.setup_computation_basis(method="harmonic")
-        >>> # Pixel basis with SNR basis
+        >>> # Pixel basis with SNR compression target
         >>> cm = core.setup_computation_basis(
         ...     method="pixel",
-        ...     basis="snr",
+        ...     compression_target="snr",
         ...     C_ell=C_ell,
         ...     epsilon=1e-4,
         ... )
@@ -732,7 +733,7 @@ class Core(ABC):
             lmax_signal=basis_lmax,
             beam=beam,
             spins=spins,
-            basis=basis,
+            compression_target=compression_target,
             C_ell=C_ell,
             epsilon=epsilon,
             mode_fraction=mode_fraction,

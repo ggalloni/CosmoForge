@@ -492,7 +492,7 @@ class TestPixelBasisBases:
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
             epsilon=1e-6,
-            basis="harmonic",
+            compression_target="harmonic",
         )
 
         ppc.setup()
@@ -500,7 +500,7 @@ class TestPixelBasisBases:
         # Should have selected some modes
         assert ppc.dim > 0
         assert ppc.dim <= ppc.n_pix
-        assert ppc.compression_basis == "harmonic"
+        assert ppc.compression_target == "harmonic"
 
     def test_noise_weighted_basis(self, uniform_sky_setup):
         """Test compression with noise-weighted basis (default)."""
@@ -513,13 +513,13 @@ class TestPixelBasisBases:
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
             epsilon=1e-6,
-            basis="noise_weighted",
+            compression_target="noise_weighted",
         )
 
         ppc.setup()
 
         assert ppc.dim > 0
-        assert ppc.compression_basis == "noise_weighted"
+        assert ppc.compression_target == "noise_weighted"
 
     def test_total_covariance_basis(self, uniform_sky_setup):
         """Test compression with total covariance basis."""
@@ -535,14 +535,14 @@ class TestPixelBasisBases:
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
             epsilon=1e-6,
-            basis="total_covariance",
+            compression_target="total_covariance",
             C_ell=C_ell,
         )
 
         ppc.setup()
 
         assert ppc.dim > 0
-        assert ppc.compression_basis == "total_covariance"
+        assert ppc.compression_target == "total_covariance"
 
     def test_snr_basis(self, uniform_sky_setup):
         """Test compression with SNR basis."""
@@ -558,14 +558,14 @@ class TestPixelBasisBases:
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
             epsilon=1e-6,
-            basis="snr",
+            compression_target="snr",
             C_ell=C_ell,
         )
 
         ppc.setup()
 
         assert ppc.dim > 0
-        assert ppc.compression_basis == "snr"
+        assert ppc.compression_target == "snr"
 
     def test_total_covariance_requires_cell(self, uniform_sky_setup):
         """Test that total_covariance basis requires C_ell."""
@@ -578,7 +578,7 @@ class TestPixelBasisBases:
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
             epsilon=1e-6,
-            basis="total_covariance",
+            compression_target="total_covariance",
         )
 
         with pytest.raises(ValueError, match="C_ell is required"):
@@ -595,7 +595,7 @@ class TestPixelBasisBases:
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
             epsilon=1e-6,
-            basis="snr",
+            compression_target="snr",
         )
 
         with pytest.raises(ValueError, match="C_ell is required"):
@@ -612,7 +612,7 @@ class TestPixelBasisBases:
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
             epsilon=1e-6,
-            basis="invalid_basis",
+            compression_target="invalid_basis",
         )
 
         with pytest.raises(ValueError, match="Unknown compression basis"):
@@ -627,20 +627,20 @@ class TestPixelBasisBases:
         C_ell = np.ones(n_ell) * 1e-6
 
         results = {}
-        for basis in ["harmonic", "noise_weighted", "total_covariance", "snr"]:
-            c_ell_arg = C_ell if basis in ["total_covariance", "snr"] else None
+        for target in ["harmonic", "noise_weighted", "total_covariance", "snr"]:
+            c_ell_arg = C_ell if target in ["total_covariance", "snr"] else None
             ppc = PixelBasis(
                 N=setup["N"],
                 theta=setup["theta"],
                 phi=setup["phi"],
                 lmax_signal=setup["lmax"],
                 epsilon=1e-4,
-                basis=basis,
+                compression_target=target,
                 C_ell=c_ell_arg,
             )
             ppc.setup()
 
-            results[basis] = ppc.dim
+            results[target] = ppc.dim
 
         # At least some bases should give different mode counts
         unique_counts = set(results.values())
@@ -1086,7 +1086,7 @@ class TestPPCOperationChain:
         # Properties
         assert ppc.projector.shape == (ppc.dim, ppc.n_pix)
         assert ppc.eigenvalues is not None
-        assert ppc.compression_basis == "noise_weighted"
+        assert ppc.compression_target == "noise_weighted"
         assert 0 < ppc.compression_ratio <= 1.0
 
         # Derivative matrix

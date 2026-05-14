@@ -124,7 +124,7 @@ class PixelBasis(ComputationBasis):
         lmax_signal: int,
         beam: np.ndarray | None = None,
         spins: list[int] | None = None,
-        basis: str = "noise_weighted",
+        compression_target: str = "noise_weighted",
         C_ell: np.ndarray | None = None,
         epsilon: float | list[float | tuple[float, float]] | None = None,
         mode_fraction: float | list[float | tuple[float, float]] | None = None,
@@ -151,7 +151,7 @@ class PixelBasis(ComputationBasis):
         # Before compression, dim = n_pix
         self.dim = self.n_pix
         # Compression quantities
-        self._basis = basis
+        self._compression_target = compression_target
         self._C_ell_for_basis = C_ell
         self._epsilon = epsilon
         self._mode_fraction = mode_fraction
@@ -1415,11 +1415,11 @@ class PixelBasis(ComputationBasis):
         Internal helper invoked by :meth:`setup` when the constructor was
         called with ``epsilon`` or ``mode_fraction``. Reads compression
         configuration from the instance state set at construction:
-        ``self._epsilon``, ``self._mode_fraction``, ``self._basis``,
+        ``self._epsilon``, ``self._mode_fraction``, ``self._compression_target``,
         ``self._C_ell_for_basis``.
 
         Computes the eigendecomposition of the compression matrix (chosen
-        by ``self._basis``) and selects modes to keep based on either an
+        by ``self._compression_target``) and selects modes to keep based on either an
         eigenvalue threshold or a fraction of total modes.
 
         Supports per-field thresholds and separate E/B thresholds for spin-2:
@@ -1436,7 +1436,7 @@ class PixelBasis(ComputationBasis):
         """
         epsilon = self._epsilon
         mode_fraction = self._mode_fraction
-        basis = self._basis
+        compression_target = self._compression_target
         C_ell = self._C_ell_for_basis
 
         # Parse per-field thresholds
@@ -1487,7 +1487,9 @@ class PixelBasis(ComputationBasis):
                 eps_i = eps_list[comp_idx] if eps_list is not None else None
                 mf_i = mf_list[comp_idx] if mf_list is not None else None
 
-                U_i, _ = self._eigendecompose_field(comp_idx, basis, eps_i, mf_i, C_ell)
+                U_i, _ = self._eigendecompose_field(
+                    comp_idx, compression_target, eps_i, mf_i, C_ell
+                )
                 U_blocks.append(U_i)
 
             # Assemble block-diagonal U
@@ -1509,7 +1511,7 @@ class PixelBasis(ComputationBasis):
             eps_scalar = eps_list[0] if eps_list is not None else None
             mf_scalar = mf_list[0] if mf_list is not None else None
 
-            compression_matrix = self._build_compression_matrix(basis, C_ell)
+            compression_matrix = self._build_compression_matrix(compression_target, C_ell)
             eigenvectors, eigenvalues = self._eigendecompose_single(
                 compression_matrix, eps_scalar, mf_scalar
             )
@@ -1517,8 +1519,6 @@ class PixelBasis(ComputationBasis):
             self._eigenvalues = eigenvalues
             self._eigenvectors = eigenvectors
             self.dim = eigenvectors.shape[1]
-
-        self._compression_basis = basis
 
         # Precompute compression-dependent quantities that don't depend on C_ell
         self._precompute_compression_products()
@@ -1996,16 +1996,16 @@ class PixelBasis(ComputationBasis):
         return self._eigenvalues
 
     @property
-    def compression_basis(self) -> str | None:
+    def compression_target(self) -> str | None:
         """
-        The compression basis configured at construction (``basis`` kwarg).
+        The selector configured at construction (``compression_target`` kwarg).
 
-        Returns
-        -------
-        str or None
-            Basis name if compression has been applied, None otherwise.
+        Names the matrix that ``_apply_compression`` eigendecomposes:
+        ``"harmonic"``, ``"noise_weighted"``, ``"total_covariance"``, or
+        ``"snr"``. Returns the configured value regardless of whether
+        compression has actually been applied yet.
         """
-        return self._compression_basis
+        return self._compression_target
 
     @classmethod
     def available_bases(cls) -> dict[str, str]:

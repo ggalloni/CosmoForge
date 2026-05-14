@@ -168,7 +168,7 @@ class TestCreateCompression:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
-            basis="snr",
+            compression_target="snr",
             C_ell=C_ell,
             epsilon=1e-4,
         )
