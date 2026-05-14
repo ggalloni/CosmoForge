@@ -491,35 +491,38 @@ class TestCompressedLikelihood:
         Regression for the SMW cross-quadratic identity
         ``d1^T C^{-1} d2 = d1^T N^{-1} d2 - y1^T K^{-1} y2`` (with
         ``y_i = V N^{-1} d_i``) in the harmonic-basis fast path. We feed
-        ``maps2 = maps1`` so the cross-quadratic reduces to the auto
-        case, then compare against the pixel-space ``do_cross=True``
-        result. They must agree to numerical precision.
+        distinct ``maps2`` (``maps1`` plus a fixed-seed perturbation) so
+        the cross-quadratic does NOT reduce to the auto case — a bug
+        that ignored ``maps2`` or reused ``projected1`` for both sides
+        would diverge from the traditional pixel-space cross. The
+        compressed SMW path and the pixel-space cross must agree to
+        numerical precision.
         """
-        picslike_standard = PICSLike(params_file=fast_config_path)
-        picslike_standard.setup_parameter_grid()
-        picslike_standard.setup_fields()
-        picslike_standard.setup_geometry()
-        picslike_standard.setup_covariance_matrices()
-        picslike_standard.setup_cls(lmax=picslike_standard.lmax_signal)
-        picslike_standard.setup_beams(lmax=picslike_standard.lmax_signal)
-        picslike_standard.setup_maps()
-        picslike_standard.params.do_cross = True
-        picslike_standard.maps2 = picslike_standard.maps1.copy()
+        rng = np.random.default_rng(20260514)
 
-        picslike_compressed = PICSLike(
-            params_file=fast_config_path,
-            compression={"method": "harmonic"},
-        )
-        picslike_compressed.setup_parameter_grid()
-        picslike_compressed.setup_fields()
-        picslike_compressed.setup_geometry()
-        picslike_compressed.setup_covariance_matrices()
-        picslike_compressed.setup_cls(lmax=picslike_compressed.lmax_signal)
-        picslike_compressed.setup_beams(lmax=picslike_compressed.lmax_signal)
-        picslike_compressed.setup_computation_basis(method="harmonic")
-        picslike_compressed.setup_maps()
-        picslike_compressed.params.do_cross = True
-        picslike_compressed.maps2 = picslike_compressed.maps1.copy()
+        def _make_picslike(compression=None):
+            pls = PICSLike(params_file=fast_config_path, compression=compression)
+            pls.setup_parameter_grid()
+            pls.setup_fields()
+            pls.setup_geometry()
+            pls.setup_covariance_matrices()
+            pls.setup_cls(lmax=pls.lmax_signal)
+            pls.setup_beams(lmax=pls.lmax_signal)
+            if compression is not None:
+                pls.setup_computation_basis(method=compression["method"])
+            pls.setup_maps()
+            return pls
+
+        picslike_standard = _make_picslike(compression=None)
+        picslike_compressed = _make_picslike(compression={"method": "harmonic"})
+
+        # Build maps2 = maps1 + small perturbation, identical across the
+        # two PICSLike instances so the cross-quadratic has the same
+        # ground truth on both paths.
+        perturbation = 0.01 * rng.standard_normal(picslike_standard.maps1.shape)
+        for pls in (picslike_standard, picslike_compressed):
+            pls.params.do_cross = True
+            pls.maps2 = pls.maps1 + perturbation
 
         assert picslike_compressed.basis_manager is not None
 
@@ -544,6 +547,63 @@ class TestCompressedLikelihood:
             f"do_cross log-likelihood relative difference too large: "
             f"{rel_diff_log:.2e}. "
             f"Standard={log_std0:.6f}, Compressed={log_comp0:.6f}"
+        )
+
+    def test_compressed_likelihood_pixel_basis_smoke(self, fast_config_path):
+        """Smoke test for the polymorphic pixel-basis use_basis path.
+
+        Verifies that ``_compute_likelihood_point`` runs end-to-end with
+        ``compression={"method": "pixel"}`` — exercising the ABC
+        polymorphic branch (``bm.get_inverse`` / ``bm.to_basis`` /
+        ``bm.get_logdet``) added to picslike alongside the harmonic SMW
+        path. Pre-fix this branch would have ``AttributeError``'d on
+        ``bm._V_N_inv``. Numerical consistency vs the traditional
+        pixel-space path is checked at a relaxed tolerance because the
+        eigenmode truncation is lossy in general.
+        """
+        picslike_standard = PICSLike(params_file=fast_config_path)
+        picslike_standard.setup_parameter_grid()
+        picslike_standard.setup_fields()
+        picslike_standard.setup_geometry()
+        picslike_standard.setup_covariance_matrices()
+        picslike_standard.setup_cls(lmax=picslike_standard.lmax_signal)
+        picslike_standard.setup_beams(lmax=picslike_standard.lmax_signal)
+        picslike_standard.setup_maps()
+
+        picslike_pixel = PICSLike(
+            params_file=fast_config_path,
+            compression={"method": "pixel", "epsilon": 1e-12},
+        )
+        picslike_pixel.setup_parameter_grid()
+        picslike_pixel.setup_fields()
+        picslike_pixel.setup_geometry()
+        picslike_pixel.setup_covariance_matrices()
+        picslike_pixel.setup_cls(lmax=picslike_pixel.lmax_signal)
+        picslike_pixel.setup_beams(lmax=picslike_pixel.lmax_signal)
+        picslike_pixel.setup_computation_basis(method="pixel", epsilon=1e-12)
+        picslike_pixel.setup_maps()
+
+        assert picslike_pixel.basis_manager is not None
+        assert picslike_pixel.basis_manager.method == "pixel"
+
+        param_point = list(picslike_standard.parameter_grid.grid_points)[0]
+        chi2_std, log_std = picslike_standard._compute_likelihood_point(param_point)
+        chi2_pix, log_pix = picslike_pixel._compute_likelihood_point(param_point)
+
+        chi2_std0 = chi2_std[0] if hasattr(chi2_std, "__len__") else chi2_std
+        chi2_pix0 = chi2_pix[0] if hasattr(chi2_pix, "__len__") else chi2_pix
+        log_pix0 = log_pix[0] if hasattr(log_pix, "__len__") else log_pix
+
+        # Smoke: no AttributeError, finite values.
+        assert np.isfinite(chi2_pix0)
+        assert np.isfinite(log_pix0)
+        # Numerical agreement with traditional pixel-space (eigenvalue
+        # truncation at 1e-12 keeps essentially all modes for nside=4).
+        rel_diff_chi2 = abs(chi2_pix0 - chi2_std0) / abs(chi2_std0)
+        assert rel_diff_chi2 < 1e-3, (
+            f"pixel-basis chi-squared relative difference too large: "
+            f"{rel_diff_chi2:.2e}. "
+            f"Standard={chi2_std0:.6f}, Pixel={chi2_pix0:.6f}"
         )
 
     @pytest.mark.slow

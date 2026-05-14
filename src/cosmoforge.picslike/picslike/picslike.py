@@ -546,33 +546,54 @@ class PICSLike(Core, MPISharedMemoryMixin):
 
             self.log(f"C_ell set for parameters: {param_point}", level=3)
 
-            # Cache the parameter-independent SMW pieces once. ``term1`` and
-            # ``projected_i`` depend on N and the data only — not on the
-            # C_ell point — so we'd otherwise re-allocate them each call.
-            if getattr(self, "_smw_data_cache", None) is None:
-                projected1 = bm._V_N_inv @ self.maps1
+            C_ell_arg = C_ell_dict if is_multi_field else {(0, 0, 0): C_ell_input}
+
+            if bm.method == "harmonic":
+                # SMW fast path reaches into HarmonicBasis-private state
+                # (``_V_N_inv``, ``_N_chol``); ``term1`` / ``projected_i``
+                # depend on N and the data only, so cache once per parameter
+                # scan.
+                if getattr(self, "_smw_data_cache", None) is None:
+                    projected1 = bm._V_N_inv @ self.maps1
+                    if self.params.do_cross:
+                        projected2 = bm._V_N_inv @ self.maps2
+                        ninv_maps2 = cholesky_solve(bm._N_chol, self.maps2)
+                        term1 = np.einsum("in,in->n", self.maps1, ninv_maps2)
+                    else:
+                        projected2 = projected1
+                        ninv_maps1 = cholesky_solve(bm._N_chol, self.maps1)
+                        term1 = np.einsum("in,in->n", self.maps1, ninv_maps1)
+                    self._smw_data_cache = (projected1, projected2, term1)
+                projected1, projected2, term1 = self._smw_data_cache
+
+                # SMW identity: d1^T C^{-1} d2 = d1^T N^{-1} d2 − y1^T K^{-1} y2
+                # with y_i = V N^{-1} d_i. Auto case (d1 = d2) is the
+                # symmetric specialisation. ``logdet`` from prepare_for_basis
+                # is the exact full pixel-space log determinant on harmonic.
+                K_chol, logdet = bm.prepare_for_basis(C_ell_arg)
+                kernel_inv_y2 = cholesky_solve((K_chol, True), projected2)
+                term2 = np.einsum("in,in->n", projected1, kernel_inv_y2)
+                chi_squared = term1 - term2
+            else:
+                # Polymorphic basis-space path. ``chi_squared`` and ``logdet``
+                # are both basis-space, so the log-likelihood is internally
+                # consistent. On pixel-direct (U = I) it equals the full
+                # Gaussian; on truncated compressed pixel it is the
+                # basis-space approximation admitted by the kept subspace.
+                C_basis_inv = bm.get_inverse(C_ell_arg)
+                d1_basis = bm.to_basis(self.maps1)
                 if self.params.do_cross:
-                    projected2 = bm._V_N_inv @ self.maps2
-                    ninv_maps2 = cholesky_solve(bm._N_chol, self.maps2)
-                    term1 = np.einsum("in,in->n", self.maps1, ninv_maps2)
+                    d2_basis = bm.to_basis(self.maps2)
+                    chi_squared = np.einsum(
+                        "in,ij,jn->n", d1_basis, C_basis_inv, d2_basis
+                    )
                 else:
-                    projected2 = projected1
-                    ninv_maps1 = cholesky_solve(bm._N_chol, self.maps1)
-                    term1 = np.einsum("in,in->n", self.maps1, ninv_maps1)
-                self._smw_data_cache = (projected1, projected2, term1)
-            projected1, projected2, term1 = self._smw_data_cache
+                    chi_squared = np.einsum(
+                        "in,ij,jn->n", d1_basis, C_basis_inv, d1_basis
+                    )
+                logdet = bm.get_logdet(C_ell_arg)
 
-            K_chol, logdet = bm.prepare_for_basis(
-                C_ell_dict if is_multi_field else {(0, 0, 0): C_ell_input}
-            )
-            # SMW identity: d1^T C^{-1} d2 = d1^T N^{-1} d2 − y1^T K^{-1} y2
-            # with y_i = V N^{-1} d_i. The auto case (d1 = d2) is the
-            # symmetric specialisation.
-            kernel_inv_y2 = cholesky_solve((K_chol, True), projected2)
-            term2 = np.einsum("in,in->n", projected1, kernel_inv_y2)
-            chi_squared = term1 - term2
-
-            self.log(f"Log-determinant (full): {logdet:.2f}", level=3)
+            self.log(f"Log-determinant: {logdet:.2f}", level=3)
         else:
             self.compute_signal_matrix(param_point)
             self.log(f"Signal matrix computed for parameters: {param_point}", level=3)

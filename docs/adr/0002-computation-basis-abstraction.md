@@ -30,8 +30,10 @@ Basis and compression are two orthogonal axes:
 | **Pixel basis** | Pixel direct (identity, dim = n_pix) | Eigenmode-truncated (dim < n_pix) |
 | **Harmonic basis** | Harmonic (V, no m-block) | Harmonic + m-block |
 
-- **Basis** (rows): the change-of-basis operator. `identity` for
-  pixel-direct, `V` for harmonic, `U` for compressed pixel.
+- **Basis** (rows): the pixel-to-basis projector. `identity` for
+  pixel-direct, `V` for harmonic, `U^T` for compressed pixel (the
+  transpose of the kept eigenvectors; the `projector` property returns
+  this form on both subclasses).
 - **Compression** (columns): optional *lossy* reduction within the
   chosen basis. Eigenmode truncation on pixel; m-block on harmonic.
   Pixel-direct and uncompressed harmonic do not compress.

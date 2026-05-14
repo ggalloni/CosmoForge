@@ -889,22 +889,29 @@ class HarmonicBasis(ComputationBasis):
 
     # === Full pixel-space operations (if needed) ===
 
-    def get_full_inverse(self, C_ell: np.ndarray) -> np.ndarray:
+    def get_full_inverse(self, C_ell) -> np.ndarray:
         """
-        Compute full (N + S)^{-1} using SMW formula.
+        Compute full (N + S)^{-1} using the SMW formula.
 
         Parameters
         ----------
-        C_ell : numpy.ndarray
-            Power spectrum values for ell = 2 to lmax.
+        C_ell : numpy.ndarray or dict
+            Power spectrum (array for single-field, dict for multi-field).
 
         Returns
         -------
         numpy.ndarray
             Full inverse covariance matrix of shape (n_pix, n_pix).
         """
-        Lambda_diag = self._build_lambda_diagonal(C_ell)
-        return smw_inverse(self.N_inv, self._V_N_inv, self._V_Ninv_VT, Lambda_diag)
+        c_ell_arr, c_ell_dict, is_single = self._normalize_c_ell(C_ell)
+        if is_single:
+            Lambda_diag = self._build_lambda_diagonal(c_ell_arr)
+            return smw_inverse(self.N_inv, self._V_N_inv, self._V_Ninv_VT, Lambda_diag)
+        # Multi-field: (N + S)^{-1} = N^{-1} - V_N_inv^T @ K^{-1} @ V_N_inv
+        # with K = Lambda^{-1} + V N^{-1} V^T solved via Cholesky.
+        K_chol, _ = self.prepare_for_basis(c_ell_dict)
+        K_inv_V_N_inv = cholesky_solve((K_chol, True), self._V_N_inv)
+        return self.N_inv - self._V_N_inv.T @ K_inv_V_N_inv
 
     def get_full_logdet(self, C_ell) -> float:
         """

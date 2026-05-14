@@ -32,7 +32,17 @@ class BasisPrepared(NamedTuple):
     factor : numpy.ndarray
         K Cholesky factor (harmonic) or basis-space inverse (pixel).
     logdet : float
-        log|C| (full covariance log-determinant).
+        Log determinant. Semantics are basis-specific and intentionally
+        match what ``quadratic_form_from_prepared`` consumes:
+
+        - HarmonicBasis: exact full pixel-space ``log|N + S|`` via SMW.
+        - PixelBasis in pixel-direct mode: exact full ``log|N + S|``
+          (``U`` is the identity, so basis-space equals full-space).
+        - PixelBasis on a truncated compressed basis: basis-space
+          ``log|U^T (N + S) U|`` — the logdet of the restricted
+          operator, NOT the full ``log|N + S|``. Combine with
+          :meth:`quadratic_form_from_prepared` (also basis-space) for
+          an internally-consistent basis-space likelihood.
     """
 
     factor: np.ndarray
