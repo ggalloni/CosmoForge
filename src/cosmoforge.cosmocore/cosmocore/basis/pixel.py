@@ -583,13 +583,13 @@ class PixelBasis(ComputationBasis):
             )
         # Precompute U^T N_raw U so _N_original can be released; the
         # noise-bias path reads only the compressed form thereafter.
-        self._precompute_compressed_noise()
+        self._precompute_noise_in_basis()
         # Factor self._N in place. After this point the symmetric N buffer
         # is gone; consumers go through cholesky_solve via _N_chol or the
         # lazy _N_symmetric reconstruction (deferred compression-basis paths).
         self._factorise_noise()
 
-    def _precompute_compressed_noise(self) -> None:
+    def _precompute_noise_in_basis(self) -> None:
         """Cache U^T N_orig U and release the n_pix x n_pix raw N reference.
 
         Only possible when compression is active (``_eigenvectors`` is set)
@@ -601,7 +601,7 @@ class PixelBasis(ComputationBasis):
             return
         U = self._eigenvectors
         UN_raw_U = U.T @ N_original @ U
-        self._compressed_noise_cache = symmetrize_inplace(UN_raw_U)
+        self._noise_in_basis_cache = symmetrize_inplace(UN_raw_U)
         del self._N_original
 
     def _compute_effective_noise(self) -> None:
@@ -643,7 +643,7 @@ class PixelBasis(ComputationBasis):
         Without switch optimization, N_eff = N and this is identical to
         ``get_covariance(0)``.
         """
-        cached = getattr(self, "_compressed_noise_cache", None)
+        cached = getattr(self, "_noise_in_basis_cache", None)
         if cached is not None:
             return cached
         N_raw = getattr(self, "_N_original", self._N_symmetric)
@@ -1752,9 +1752,9 @@ class PixelBasis(ComputationBasis):
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
-        d_compressed = self._eigenvectors.T @ data
-        C_compressed_inv = self.get_inverse(C_ell)
-        return float(d_compressed.T @ C_compressed_inv @ d_compressed)
+        d_basis = self._eigenvectors.T @ data
+        C_inv = self.get_inverse(C_ell)
+        return float(d_basis.T @ C_inv @ d_basis)
 
     def compute_fisher_matrix(
         self,
