@@ -25,6 +25,11 @@ The "right" basis is not a function of `n_pix` vs `n_modes` alone:
 A useful selector therefore needs to compare these two cost
 expressions, not just two dimensions.
 
+For reference: for HEALPix maps `n_pix = n_modes` at `fsky ≈ 0.35`,
+independent of `nside`. Below this sky fraction the V operator
+strictly expands the problem; above it the dimension argument alone
+no longer suffices and the cost-model comparison takes over.
+
 ## Decision
 
 Add a direct pixel-space code path inside `PixelBasis` that bypasses
