@@ -749,6 +749,22 @@ class ComputationBasis(ABC):
         """
         return self.get_compressed_logdet(C_ell)
 
+    @abstractmethod
+    def get_full_inverse(self, C_ell) -> np.ndarray:
+        """Return the full ``n_pix x n_pix`` inverse covariance.
+
+        For HarmonicBasis: exact ``(N + S)^{-1}`` via the SMW formula.
+        For PixelBasis (any mode): derived from the basis-space inverse
+        via ``U @ get_compressed_inverse(C_ell) @ U.T``. Exact in
+        pixel-direct mode; best available (lossy on the truncated
+        complement) in compressed pixel.
+
+        Callers who only need the basis-space inverse should use
+        :meth:`get_compressed_inverse` instead — cheaper and exact in
+        basis space.
+        """
+        pass
+
     # =========================================================================
     # Delegates to HarmonicBasis
     # =========================================================================

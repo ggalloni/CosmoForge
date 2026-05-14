@@ -1922,6 +1922,19 @@ class PixelBasis(ComputationBasis):
         _, logdet = matrix_slogdet_symm(np.asfortranarray(C_c))
         return logdet
 
+    def get_full_inverse(self, C_ell) -> np.ndarray:
+        """Reconstruct full ``n_pix x n_pix`` inverse from the basis-space form.
+
+        Exact in pixel-direct mode (``U`` is the identity). Lossy on a
+        truncated compressed pixel basis — the result lives in the kept
+        subspace and is zero on the truncated complement.
+        """
+        C_basis_inv = self.get_compressed_inverse(C_ell)
+        if self._use_direct or self._eigenvectors is None:
+            return C_basis_inv
+        U = self._eigenvectors
+        return U @ C_basis_inv @ U.T
+
     @property
     def compression_ratio(self) -> float:
         """
