@@ -1600,7 +1600,7 @@ class PixelBasis(ComputationBasis):
             return matrix_inverse_symm(np.asfortranarray(C))
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
-        return self.get_compressed_inverse(C_ell)
+        return self.get_inverse(C_ell)
 
     def get_derivative_matrix(
         self,
@@ -1726,7 +1726,7 @@ class PixelBasis(ComputationBasis):
 
         d_compressed = self._eigenvectors.T @ data
         if C_c_inv is None:
-            C_c_inv = self.get_compressed_inverse(C_ell)
+            C_c_inv = self.get_inverse(C_ell)
         return matrix_mult(C_c_inv, d_compressed)
 
     def compute_quadratic_form(self, data: np.ndarray, C_ell) -> float:
@@ -1753,7 +1753,7 @@ class PixelBasis(ComputationBasis):
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
         d_compressed = self._eigenvectors.T @ data
-        C_compressed_inv = self.get_compressed_inverse(C_ell)
+        C_compressed_inv = self.get_inverse(C_ell)
         return float(d_compressed.T @ C_compressed_inv @ d_compressed)
 
     def compute_fisher_matrix(
@@ -1803,7 +1803,7 @@ class PixelBasis(ComputationBasis):
             n_ell = ell_max - ell_min + 1
             fisher = np.zeros((n_ell, n_ell))
 
-            C_c_inv = self.get_compressed_inverse(C_ell)
+            C_c_inv = self.get_inverse(C_ell)
 
             from ..spectrum_key import SpectrumKey, SpectrumKind
 
@@ -1843,7 +1843,7 @@ class PixelBasis(ComputationBasis):
         n_spec = len(spectra_list)
         fisher = np.zeros((n_spec * n_ell, n_spec * n_ell))
 
-        C_c_inv = self.get_compressed_inverse(C_ell)
+        C_c_inv = self.get_inverse(C_ell)
 
         cinv_times_dc = {}
         for spec_idx, spec_entry in enumerate(spectra_list):
@@ -1922,7 +1922,7 @@ class PixelBasis(ComputationBasis):
         truncated compressed pixel basis — the result lives in the kept
         subspace and is zero on the truncated complement.
         """
-        C_basis_inv = self.get_compressed_inverse(C_ell)
+        C_basis_inv = self.get_inverse(C_ell)
         if self._use_direct or self._eigenvectors is None:
             return C_basis_inv
         U = self._eigenvectors

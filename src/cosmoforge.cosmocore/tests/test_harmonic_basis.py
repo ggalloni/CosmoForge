@@ -195,7 +195,7 @@ class TestHarmonicBasisOperations:
         C_ell = np.ones(n_ell) * 1e-6
 
         C_bar = hc.get_compressed_covariance(C_ell)
-        C_bar_inv = hc.get_compressed_inverse(C_ell)
+        C_bar_inv = hc.get_inverse(C_ell)
 
         product = C_bar @ C_bar_inv
         identity = np.eye(hc.n_modes)

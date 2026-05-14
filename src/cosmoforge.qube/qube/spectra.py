@@ -769,7 +769,7 @@ class Spectra(Core, MPISharedMemoryMixin):
                 self.maps1, C_arg, stable_inner_inv=stable_inner_inv
             )
         else:
-            C_c_inv = bm.get_compressed_inverse(C_arg)
+            C_c_inv = bm.get_inverse(C_arg)
             if is_multi_field:
                 # pixel multi-field: explicit compress-then-multiply
                 d_c = bm.to_basis(self.maps1)
@@ -816,9 +816,9 @@ class Spectra(Core, MPISharedMemoryMixin):
                 # the raw N (not N_eff with absorbed high-ℓ signal), so use
                 # the dedicated get_noise_for_bias() method.
                 if is_multi_field:
-                    C_bar_inv = bm.get_compressed_inverse(C_ell_dict)
+                    C_bar_inv = bm.get_inverse(C_ell_dict)
                 else:
-                    C_bar_inv = bm.get_compressed_inverse(C_ell)
+                    C_bar_inv = bm.get_inverse(C_ell)
                 N_bar = bm.get_noise_for_bias()
                 noise_cov_w = C_bar_inv @ N_bar @ C_bar_inv
 

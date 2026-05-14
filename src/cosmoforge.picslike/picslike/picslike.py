@@ -547,7 +547,7 @@ class PICSLike(Core, MPISharedMemoryMixin):
             self.log(f"C_ell set for parameters: {param_point}", level=3)
 
             if self.params.do_cross:
-                C_c_inv = bm.get_compressed_inverse(C_ell_input)
+                C_c_inv = bm.get_inverse(C_ell_input)
                 d1_c = bm.to_basis(self.maps1)
                 d2_c = bm.to_basis(self.maps2)
                 # Batch: χ²_n = d1_c[:,n]^T @ C_c_inv @ d2_c[:,n]

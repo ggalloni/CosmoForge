@@ -813,7 +813,7 @@ class Core(ABC):
             Inverse covariance matrix (compressed or full).
         """
         if hasattr(self, "basis_manager") and self.basis_manager is not None:
-            return self.basis_manager.get_compressed_inverse(C_ell)
+            return self.basis_manager.get_inverse(C_ell)
         else:
             return matrix_inverse_symm(self.get_total_covariance(C_ell), overwrite=True)
 
