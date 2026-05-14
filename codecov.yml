@@ -39,6 +39,8 @@ flag_management:
         - type: project
           target: 90%
           threshold: 1%
+    - name: quelo
+      carryforward: false
 
 ignore:
   - "*/tests/*"
