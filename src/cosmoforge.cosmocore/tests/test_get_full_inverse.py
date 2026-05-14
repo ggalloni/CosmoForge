@@ -7,7 +7,6 @@ truncated subspace).
 """
 
 import numpy as np
-import pytest
 
 from cosmocore.basis import create_computation_basis
 from cosmocore.basis.base import ComputationBasis
@@ -21,12 +20,9 @@ def test_abc_declares_get_full_inverse():
     )
 
 
-@pytest.mark.skip(
-    reason="Enable after Task 6 renames harmonic get_inverse -> get_full_inverse"
-)
-def test_harmonic_get_full_inverse_matches_existing_get_inverse(uniform_sky_setup):
-    """During Task 6, harmonic's existing get_inverse becomes get_full_inverse;
-    the method body is unchanged. This test guards the rename."""
+def test_harmonic_get_full_inverse_returns_npix_npix(uniform_sky_setup):
+    """Harmonic exposes the exact SMW-based full inverse under the
+    polymorphic name `get_full_inverse`."""
     setup = uniform_sky_setup
     bm = create_computation_basis(
         method="harmonic",

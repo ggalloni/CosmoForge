@@ -889,7 +889,7 @@ class HarmonicBasis(ComputationBasis):
 
     # === Full pixel-space operations (if needed) ===
 
-    def get_inverse(self, C_ell: np.ndarray) -> np.ndarray:
+    def get_full_inverse(self, C_ell: np.ndarray) -> np.ndarray:
         """
         Compute full (N + S)^{-1} using SMW formula.
 
@@ -905,11 +905,6 @@ class HarmonicBasis(ComputationBasis):
         """
         Lambda_diag = self._build_lambda_diagonal(C_ell)
         return smw_inverse(self.N_inv, self._V_N_inv, self._V_Ninv_VT, Lambda_diag)
-
-    def get_full_inverse(self, C_ell: np.ndarray) -> np.ndarray:
-        # Temporary delegator: Task 6 of the ADR-0002 rename will consolidate
-        # ``get_inverse`` into ``get_full_inverse`` and drop this method.
-        return self.get_inverse(C_ell)
 
     def get_logdet(self, C_ell) -> float:
         """

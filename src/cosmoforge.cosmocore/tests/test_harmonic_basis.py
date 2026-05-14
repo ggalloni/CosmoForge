@@ -298,7 +298,7 @@ class TestHarmonicBasisPixelSpace:
         n_ell = setup["lmax"] + 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        C_inv = hc.get_inverse(C_ell)
+        C_inv = hc.get_full_inverse(C_ell)
 
         assert C_inv.shape == (setup["n_pix"], setup["n_pix"])
 
@@ -319,7 +319,7 @@ class TestHarmonicBasisPixelSpace:
         n_ell = setup["lmax"] + 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        C_inv = hc.get_inverse(C_ell)
+        C_inv = hc.get_full_inverse(C_ell)
 
         assert_allclose(C_inv, C_inv.T, rtol=1e-8)
 
@@ -411,7 +411,7 @@ class TestHarmonicBasisValidation:
         C_direct = setup["N"] + S
         C_inv_direct = np.linalg.inv(C_direct)
 
-        C_inv_smw = hc.get_inverse(C_ell)
+        C_inv_smw = hc.get_full_inverse(C_ell)
 
         assert_allclose(C_inv_smw, C_inv_direct, rtol=1e-8, atol=1e-12)
 
@@ -462,7 +462,7 @@ class TestHarmonicBasisValidation:
         )
         C_full = setup["N"] + S
 
-        C_inv_smw = hc.get_inverse(C_ell)
+        C_inv_smw = hc.get_full_inverse(C_ell)
 
         product = C_full @ C_inv_smw
         identity = np.eye(setup["n_pix"])
