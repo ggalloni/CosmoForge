@@ -517,8 +517,9 @@ class PixelBasis(ComputationBasis):
         """
         Get the projection matrix U^T (dim × n_pix).
 
-        Maps pixel space to eigenbasis compressed space. In direct mode
-        without compression, the projector is the identity.
+        Maps pixel space to the basis. In pixel-direct mode the
+        projector is the identity; in compressed mode it is ``U^T``,
+        the transpose of the kept eigenvectors.
 
         Raises
         ------
@@ -1583,7 +1584,11 @@ class PixelBasis(ComputationBasis):
 
     def get_projected_inverse(self, C_ell) -> np.ndarray:
         """
-        Compute inverse of compressed covariance (U^T @ C @ U)^{-1}.
+        Compute the basis-space inverse covariance.
+
+        In pixel-direct mode this is the exact ``(N + S)^{-1}``; on a
+        truncated compressed basis it is ``(U^T (N + S) U)^{-1}`` —
+        the inverse of the restricted operator on the kept subspace.
 
         Parameters
         ----------
@@ -1593,7 +1598,7 @@ class PixelBasis(ComputationBasis):
         Returns
         -------
         numpy.ndarray
-            Inverse of compressed covariance, shape (dim, dim).
+            Basis-space inverse covariance, shape (dim, dim).
         """
         if self._use_direct:
             C = self._build_signal_matrix_direct() + self._N
@@ -1610,7 +1615,7 @@ class PixelBasis(ComputationBasis):
         symmetry_mode=None,
     ) -> np.ndarray:
         """
-        Get derivative matrix ∂C/∂C_ℓ in the compressed basis.
+        Get derivative matrix ∂C/∂C_ℓ in the basis space.
 
         Parameters
         ----------
@@ -1660,7 +1665,11 @@ class PixelBasis(ComputationBasis):
 
     def get_covariance(self, C_ell) -> np.ndarray:
         """
-        Compute covariance matrix in the compressed space.
+        Compute the basis-space covariance.
+
+        In pixel-direct mode this is the exact ``N + S``; on a truncated
+        compressed basis it is ``U^T (N + S) U`` — the restriction of
+        the full covariance to the kept subspace.
 
         Parameters
         ----------
@@ -1670,7 +1679,7 @@ class PixelBasis(ComputationBasis):
         Returns
         -------
         numpy.ndarray
-            Covariance matrix of shape (dim, dim).
+            Basis-space covariance, shape (dim, dim).
         """
         if self._use_direct:
             return self._build_signal_matrix_direct() + self._N
@@ -1731,7 +1740,12 @@ class PixelBasis(ComputationBasis):
 
     def quadratic_form(self, data: np.ndarray, C_ell) -> float:
         """
-        Compute d^T C^{-1} d in the compressed space.
+        Compute ``d^T C^{-1} d`` using the basis-space inverse.
+
+        In pixel-direct mode this equals the full pixel-space quadratic
+        form ``d^T (N + S)^{-1} d``. On a truncated compressed basis it
+        is ``(U^T d)^T (U^T (N + S) U)^{-1} (U^T d)`` — the quadratic
+        form of the restricted operator on the kept subspace.
 
         Parameters
         ----------
@@ -1874,7 +1888,7 @@ class PixelBasis(ComputationBasis):
         return fisher
 
     def prepare_for_basis(self, C_ell_dict: dict) -> BasisPrepared:
-        """Precompute compressed inverse and logdet for reuse across sims."""
+        """Pre-bake the basis-space inverse and logdet for reuse across sims."""
         if not self._use_direct and self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
@@ -1888,7 +1902,7 @@ class PixelBasis(ComputationBasis):
     def quadratic_form_from_prepared(
         self, data: np.ndarray, C_c_inv: np.ndarray
     ) -> float:
-        """Compute d^T C^{-1} d using precomputed compressed inverse."""
+        """Compute ``d^T C^{-1} d`` using a pre-baked basis-space inverse."""
         if self._use_direct:
             return float(data.T @ C_c_inv @ data)
         if self._eigenvectors is None:
@@ -1899,7 +1913,12 @@ class PixelBasis(ComputationBasis):
 
     def get_logdet(self, C_ell) -> float:
         """
-        Compute log determinant of compressed covariance.
+        Compute the log determinant of the basis-space covariance.
+
+        In pixel-direct mode this equals the exact full ``log|N + S|``.
+        On a truncated compressed basis it is the logdet of the
+        restricted operator ``U^T (N + S) U`` — not the full
+        ``log|N + S|``; see :meth:`get_full_logdet` for the ABC contract.
 
         Parameters
         ----------

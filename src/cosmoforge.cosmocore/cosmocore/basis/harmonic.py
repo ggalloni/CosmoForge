@@ -164,7 +164,7 @@ class HarmonicBasis(ComputationBasis):
         - V: harmonic operator (n_modes × n_pix)
         - V N^{-1}: precomputed for SMW
         - V N^{-1} V^T: SMW kernel
-        - V N V^T: compressed noise covariance
+        - V N V^T: harmonic-space noise covariance
         - log|N|: for determinant calculations
         - Derivative diagonals: E_ℓ for all ℓ
 
@@ -832,7 +832,7 @@ class HarmonicBasis(ComputationBasis):
         symmetry_mode=None,
     ) -> np.ndarray:
         """
-        Get the derivative matrix ∂S/∂C_ℓ in compressed form.
+        Get the derivative matrix ∂S/∂C_ℓ in harmonic space.
 
         Parameters
         ----------
@@ -866,7 +866,7 @@ class HarmonicBasis(ComputationBasis):
 
     def get_covariance(self, C_ell):
         """
-        Compute compressed covariance C̄ = V N V^T + Λ.
+        Compute harmonic-space covariance C̄ = V N V^T + Λ.
 
         Parameters
         ----------
@@ -966,7 +966,7 @@ class HarmonicBasis(ComputationBasis):
         Returns
         -------
         numpy.ndarray
-            Weighted compressed data ``w = V C^{-1} d``.
+            Weighted harmonic-space data ``w = V C^{-1} d``.
         """
         if stable_inner_inv is None:
             stable_inner_inv = self.prepare_stable_inner_inv(C_ell)

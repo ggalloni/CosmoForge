@@ -662,6 +662,10 @@ class TestHarmonicDictOperations:
         assert isinstance(logdet_smw, float)
         qf2 = hc.quadratic_form_from_prepared(data, K_chol)
         assert_allclose(qf, qf2, rtol=1e-8)
+        # prepare_for_basis must return the full-space logdet (the
+        # quantity fast-path likelihood callers will combine with
+        # quadratic_form_from_prepared).
+        assert_allclose(logdet_smw, logdet_full, rtol=1e-12)
 
     def test_single_entry_dict_fast_paths(self, uniform_sky_setup):
         """Cover single-entry dict fast paths in projected_inverse, covariance, Fisher."""
