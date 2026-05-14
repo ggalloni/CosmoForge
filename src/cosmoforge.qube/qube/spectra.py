@@ -797,44 +797,36 @@ class Spectra(Core, MPISharedMemoryMixin):
         smw_kernel_inv = None
         stable_inner_inv = None
         maps1_weighted = np.zeros((n_compressed, n_sims), dtype=np.float64)
-        if is_multi_field:
-            if bm.method == "harmonic":
-                stable_inner_inv = bm.prepare_stable_inner_inv(C_ell_dict)
-                projected_data1 = bm._V_N_inv @ self.maps1
-                maps1_weighted = stable_inner_inv.T @ projected_data1
-            else:
-                # pixel: use compressed-space weighted data
-                C_c_inv = bm.get_compressed_inverse(C_ell_dict)
+        C_arg = C_ell_dict if is_multi_field else C_ell
+        if bm.method == "harmonic":
+            stable_inner_inv = bm.prepare_stable_inner_inv(C_arg)
+            maps1_weighted = bm.get_weighted_compressed_data(
+                self.maps1, C_arg, stable_inner_inv=stable_inner_inv
+            )
+        else:
+            C_c_inv = bm.get_compressed_inverse(C_arg)
+            if is_multi_field:
+                # pixel multi-field: explicit compress-then-multiply
                 d_c = bm.compress_data(self.maps1)
                 maps1_weighted = C_c_inv @ d_c
-        else:
-            if bm.method == "harmonic":
-                stable_inner_inv = bm.prepare_stable_inner_inv(C_ell)
-                projected_data1 = bm._V_N_inv @ self.maps1
-                maps1_weighted = stable_inner_inv.T @ projected_data1
             else:
-                C_c_inv = bm.get_compressed_inverse(C_ell)
                 maps1_weighted = bm.get_weighted_compressed_data(
                     self.maps1, C_ell, C_c_inv=C_c_inv
                 )
 
         if self.params.do_cross:
             maps2_weighted = np.zeros((n_compressed, n_sims), dtype=np.float64)
-            if is_multi_field:
-                if bm.method == "harmonic":
-                    projected_data2 = bm._V_N_inv @ self.maps2
-                    maps2_weighted = stable_inner_inv.T @ projected_data2
-                else:
-                    d_c2 = bm.compress_data(self.maps2)
-                    maps2_weighted = C_c_inv @ d_c2
+            if bm.method == "harmonic":
+                maps2_weighted = bm.get_weighted_compressed_data(
+                    self.maps2, C_arg, stable_inner_inv=stable_inner_inv
+                )
+            elif is_multi_field:
+                d_c2 = bm.compress_data(self.maps2)
+                maps2_weighted = C_c_inv @ d_c2
             else:
-                if bm.method == "harmonic":
-                    projected_data2 = bm._V_N_inv @ self.maps2
-                    maps2_weighted = stable_inner_inv.T @ projected_data2
-                else:
-                    maps2_weighted = bm.get_weighted_compressed_data(
-                        self.maps2, C_ell, C_c_inv=C_c_inv
-                    )
+                maps2_weighted = bm.get_weighted_compressed_data(
+                    self.maps2, C_ell, C_c_inv=C_c_inv
+                )
 
         # For noise bias computation (only for non-cross)
         noise_cov_w_diag = None
