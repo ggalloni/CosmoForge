@@ -1,5 +1,8 @@
 """
-Pixel-space operations for cosmological analysis.
+Pixel-space signal-matrix kernels for cosmological analysis.
+
+Renamed from ``cosmocore.pixel`` (2026-05); see ADR-0002 follow-up
+(architecture backlog #5) for the rename rationale.
 
 This module provides optimized functions for pixel-space computations in
 cosmological data analysis, including signal matrix calculations, pointing

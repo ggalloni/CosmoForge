@@ -14,7 +14,7 @@ from cosmocore import (
     read_mask,
 )
 from cosmocore.core import Core
-from cosmocore.pixel import compute_00_contribution
+from cosmocore.signal_kernels import compute_00_contribution
 
 
 class _StubCore(Core):

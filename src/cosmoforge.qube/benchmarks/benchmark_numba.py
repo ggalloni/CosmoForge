@@ -84,7 +84,7 @@ def benchmark_signal_matrix():
     fisher.setup_cls(lmax=fisher.lmax_signal)
     fisher.setup_beams(lmax=fisher.lmax_signal)
 
-    from cosmocore.pixel import compute_signal_matrix
+    from cosmocore.signal_kernels import compute_signal_matrix
 
     # Match the production call site (qube/fisher.py:204): the kernel's
     # internal `cl * legendre[1:]` only broadcasts if the legendre buffer

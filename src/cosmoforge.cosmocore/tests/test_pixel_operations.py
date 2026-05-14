@@ -58,7 +58,7 @@ def test_compute_pointings():
 
 def test_count_nonzero_mask():
     """Test count_nonzero_mask function."""
-    from cosmocore.pixel import count_nonzero_mask
+    from cosmocore.signal_kernels import count_nonzero_mask
 
     # Test counting non-zero pixels in mask
     nside = 4

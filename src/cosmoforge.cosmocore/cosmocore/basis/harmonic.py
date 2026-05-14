@@ -261,7 +261,7 @@ class HarmonicBasis(ComputationBasis):
         This is kept for backward compatibility but the preferred approach is to
         compute S_fixed externally using the existing signal matrix infrastructure.
         """
-        from ..pixel import compute_00_contribution
+        from ..signal_kernels import compute_00_contribution
 
         cl_fixed = np.zeros(self.lmax_signal + 1, dtype=np.float64)
         for ell in range(self.lmax + 1, self.lmax_signal + 1):
