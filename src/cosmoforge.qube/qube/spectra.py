@@ -679,53 +679,19 @@ class Spectra(Core, MPISharedMemoryMixin):
     def _compute_noise_cov_compressed(
         self,
         bm,
-        C_ell,
-        C_ell_dict,
-        is_multi_field,
+        stable_inner_inv,
         *,
         full_matrix=False,
-        kernel_inv=None,
-        stable_inner_inv=None,
     ) -> np.ndarray:
+        """Compute noise covariance in compressed space.
+
+        ``Cov(w|noise) = V C^{-1} N C^{-1} V^T = A T A^T`` with
+        ``A = (I + Lambda M)^{-T} = stable_inner_inv.T`` and
+        ``T = V N_eff^{-1} N N_eff^{-1} V^T`` (sourced from the basis
+        via :meth:`ComputationBasis.get_noise_for_bias`).
         """
-        Compute noise covariance in compressed space.
-
-        Cov(w|noise) = V C^{-1} N C^{-1} V^T = A T A^T
-
-        with A = I - M K^{-1} = (I + Lambda M)^{-1} (stable identity)
-        and T = V N_eff^{-1} N N_eff^{-1} V^T.
-
-        Parameters
-        ----------
-        full_matrix : bool
-            If False, return only the diagonal. If True, return the full
-            matrix (needed when non-diagonal derivatives like EB/TE/TB
-            are present).
-        stable_inner_inv : np.ndarray or None
-            Precomputed (I + Lambda M)^{-1}. Preferred — avoids the
-            cancellation in the legacy ``A = I - M K^{-1}`` form.
-        kernel_inv : np.ndarray or None
-            Legacy precomputed (Lambda^{-1} + M)^{-1}. Kept for backward
-            compatibility; may lose precision at high SNR.
-        """
-        if stable_inner_inv is not None:
-            # stable_inner_inv = (I + Lambda M)^{-1};
-            # A = I - M K^{-1} = (I + M Lambda)^{-1} = stable_inner_inv^T
-            A = stable_inner_inv.T
-        else:
-            if kernel_inv is None:
-                if is_multi_field:
-                    K, _ = bm._build_smw_kernel(C_ell_dict)
-                else:
-                    from cosmocore.basics import smw_kernel
-
-                    Lambda_diag = bm._build_lambda_diagonal(C_ell)
-                    K = smw_kernel(bm._V_Ninv_VT, Lambda_diag)
-                kernel_inv = matrix_inverse_symm(np.asfortranarray(K))
-            n = kernel_inv.shape[0]
-            A = np.eye(n) - bm._V_Ninv_VT @ kernel_inv
-
-        AT = A @ bm._noise_cov_T
+        A = stable_inner_inv.T
+        AT = A @ bm.get_noise_for_bias()
         if full_matrix:
             return AT @ A.T
         return np.einsum("ij,ij->i", AT, A)
@@ -794,7 +760,6 @@ class Spectra(Core, MPISharedMemoryMixin):
         # the cosmic-variance-limited regime via catastrophic cancellation.
         # The same matrix (I + Lambda M)^{-1} reappears as the noise-bias
         # matrix A = I - M K^{-1}, so we cache it once and reuse below.
-        smw_kernel_inv = None
         stable_inner_inv = None
         maps1_weighted = np.zeros((n_compressed, n_sims), dtype=np.float64)
         C_arg = C_ell_dict if is_multi_field else C_ell
@@ -839,23 +804,12 @@ class Spectra(Core, MPISharedMemoryMixin):
                 need_full = self.params.nspectra > 1
                 if need_full:
                     noise_cov_w = self._compute_noise_cov_compressed(
-                        bm,
-                        C_ell,
-                        C_ell_dict,
-                        is_multi_field,
-                        full_matrix=True,
-                        stable_inner_inv=stable_inner_inv,
-                        kernel_inv=smw_kernel_inv,
+                        bm, stable_inner_inv, full_matrix=True
                     )
                     noise_cov_w_diag = np.diag(noise_cov_w)
                 else:
                     noise_cov_w_diag = self._compute_noise_cov_compressed(
-                        bm,
-                        C_ell,
-                        C_ell_dict,
-                        is_multi_field,
-                        stable_inner_inv=stable_inner_inv,
-                        kernel_inv=smw_kernel_inv,
+                        bm, stable_inner_inv
                     )
             else:
                 # For pixel: use compressed quantities. Noise bias requires
