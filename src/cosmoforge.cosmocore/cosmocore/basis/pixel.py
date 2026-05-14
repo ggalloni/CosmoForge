@@ -1698,7 +1698,11 @@ class PixelBasis(ComputationBasis):
         return self._U_N_U + self._U_S_U_buffer
 
     def get_weighted_compressed_data(
-        self, data: np.ndarray, C_ell, C_c_inv: np.ndarray | None = None
+        self,
+        data: np.ndarray,
+        C_ell,
+        C_c_inv: np.ndarray | None = None,
+        stable_inner_inv: np.ndarray | None = None,
     ) -> np.ndarray:
         """
         Compute C^{-1} @ d for QML estimation.
@@ -1711,6 +1715,8 @@ class PixelBasis(ComputationBasis):
             Power spectrum (array for single-field, dict for multi-field).
         C_c_inv : numpy.ndarray, optional
             Precomputed inverse covariance.
+        stable_inner_inv : numpy.ndarray, optional
+            Unused for pixel basis; accepted for ABC signature parity.
 
         Returns
         -------

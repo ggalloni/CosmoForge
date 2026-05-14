@@ -564,7 +564,11 @@ class ComputationBasis(ABC):
 
     @abstractmethod
     def get_weighted_compressed_data(
-        self, data: np.ndarray, C_ell, C_c_inv: np.ndarray | None = None
+        self,
+        data: np.ndarray,
+        C_ell,
+        C_c_inv: np.ndarray | None = None,
+        stable_inner_inv: np.ndarray | None = None,
     ) -> np.ndarray:
         """
         Compute weighted compressed data for QML estimation.
@@ -576,7 +580,12 @@ class ComputationBasis(ABC):
         C_ell : numpy.ndarray or dict
             Power spectrum (array for single-field, dict for multi-field).
         C_c_inv : numpy.ndarray, optional
-            Precomputed compressed inverse (pixel only).
+            Precomputed compressed inverse. Used by PixelBasis only;
+            ignored by HarmonicBasis.
+        stable_inner_inv : numpy.ndarray, optional
+            Precomputed ``(I + Lambda M)^{-1}``, as returned by
+            :meth:`HarmonicBasis.prepare_stable_inner_inv`. Used by
+            HarmonicBasis only; ignored by PixelBasis.
 
         Returns
         -------
