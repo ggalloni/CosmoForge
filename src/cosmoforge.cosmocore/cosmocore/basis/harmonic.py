@@ -146,7 +146,7 @@ class HarmonicBasis(ComputationBasis):
         QML hot paths (Fisher trace, Spectra weighted-data) read only
         ``_V_N_inv`` and ``_V_Ninv_VT``. The remaining V consumers —
         ``get_compressed_covariance``/``get_compressed_inverse``,
-        ``compress_data``, m-block compression, and PICSLike ``do_cross``
+        ``to_basis``, m-block compression, and PICSLike ``do_cross``
         with the harmonic basis — must not be invoked after this call.
         Raises if m-block compression was requested at construction.
         """

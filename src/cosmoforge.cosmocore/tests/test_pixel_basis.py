@@ -204,7 +204,7 @@ class TestPixelBasisOperations:
         ppc.apply_compression(epsilon=1e-6)
 
         data = np.random.randn(setup["n_pix"])
-        d_compressed = ppc.compress_data(data)
+        d_compressed = ppc.to_basis(data)
 
         assert d_compressed.shape == (ppc.dim,)
 

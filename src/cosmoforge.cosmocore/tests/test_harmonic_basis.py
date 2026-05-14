@@ -131,7 +131,7 @@ class TestHarmonicBasisOperations:
         hc.setup()
 
         data = np.random.randn(setup["n_pix"])
-        d_compressed = hc.compress_data(data)
+        d_compressed = hc.to_basis(data)
 
         assert d_compressed.shape == (hc.n_modes,)
 

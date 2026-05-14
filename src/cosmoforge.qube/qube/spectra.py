@@ -772,7 +772,7 @@ class Spectra(Core, MPISharedMemoryMixin):
             C_c_inv = bm.get_compressed_inverse(C_arg)
             if is_multi_field:
                 # pixel multi-field: explicit compress-then-multiply
-                d_c = bm.compress_data(self.maps1)
+                d_c = bm.to_basis(self.maps1)
                 maps1_weighted = C_c_inv @ d_c
             else:
                 maps1_weighted = bm.get_weighted_compressed_data(
@@ -786,7 +786,7 @@ class Spectra(Core, MPISharedMemoryMixin):
                     self.maps2, C_arg, stable_inner_inv=stable_inner_inv
                 )
             elif is_multi_field:
-                d_c2 = bm.compress_data(self.maps2)
+                d_c2 = bm.to_basis(self.maps2)
                 maps2_weighted = C_c_inv @ d_c2
             else:
                 maps2_weighted = bm.get_weighted_compressed_data(

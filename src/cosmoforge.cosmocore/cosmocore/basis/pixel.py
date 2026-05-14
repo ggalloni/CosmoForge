@@ -536,7 +536,7 @@ class PixelBasis(ComputationBasis):
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
         return self._eigenvectors.T
 
-    def compress_data(self, data: np.ndarray) -> np.ndarray:
+    def to_basis(self, data: np.ndarray) -> np.ndarray:
         """
         Project pixel-space data into the basis.
 
@@ -546,7 +546,7 @@ class PixelBasis(ComputationBasis):
         """
         if self._use_direct:
             return data
-        return super().compress_data(data)
+        return super().to_basis(data)
 
     def setup(self) -> None:
         """

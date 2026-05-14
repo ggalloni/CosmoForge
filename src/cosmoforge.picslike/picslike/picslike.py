@@ -548,8 +548,8 @@ class PICSLike(Core, MPISharedMemoryMixin):
 
             if self.params.do_cross:
                 C_c_inv = bm.get_compressed_inverse(C_ell_input)
-                d1_c = bm.compress_data(self.maps1)
-                d2_c = bm.compress_data(self.maps2)
+                d1_c = bm.to_basis(self.maps1)
+                d2_c = bm.to_basis(self.maps2)
                 # Batch: χ²_n = d1_c[:,n]^T @ C_c_inv @ d2_c[:,n]
                 chi_squared = np.einsum("in,ij,jn->n", d1_c, C_c_inv, d2_c)
             else:

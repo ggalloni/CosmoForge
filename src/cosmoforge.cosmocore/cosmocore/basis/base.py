@@ -819,7 +819,7 @@ class ComputationBasis(ABC):
         """No-op default. HarmonicBasis overrides to drop V post-SMW build."""
         return None
 
-    def compress_data(self, data: np.ndarray) -> np.ndarray:
+    def to_basis(self, data: np.ndarray) -> np.ndarray:
         """
         Project pixel data to compressed representation: d_c = P @ d.
 
