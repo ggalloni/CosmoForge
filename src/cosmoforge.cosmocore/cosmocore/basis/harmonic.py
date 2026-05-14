@@ -145,7 +145,7 @@ class HarmonicBasis(ComputationBasis):
 
         QML hot paths (Fisher trace, Spectra weighted-data) read only
         ``_V_N_inv`` and ``_V_Ninv_VT``. The remaining V consumers —
-        ``get_compressed_covariance``/``get_inverse``,
+        ``get_covariance``/``get_inverse``,
         ``to_basis``, m-block compression, and PICSLike ``do_cross``
         with the harmonic basis — must not be invoked after this call.
         Raises if m-block compression was requested at construction.
@@ -294,7 +294,7 @@ class HarmonicBasis(ComputationBasis):
             - V @ N^{-1} @ V^T (SMW kernel matrix)
             - log|N| (for determinant computation)
 
-        Note: V @ N @ V^T is computed lazily when needed (get_compressed_covariance)
+        Note: V @ N @ V^T is computed lazily when needed (get_covariance)
         to avoid expensive O(n_pix³) inversion when only Fisher is needed.
         """
         self._V_N_inv = cholesky_solve(self._N_chol, self._V.T).T
@@ -864,7 +864,7 @@ class HarmonicBasis(ComputationBasis):
             ell, key.comp_i, key.comp_j, mode, symmetry_mode=symmetry_mode
         )
 
-    def get_compressed_covariance(self, C_ell):
+    def get_covariance(self, C_ell):
         """
         Compute compressed covariance C̄ = V N V^T + Λ.
 

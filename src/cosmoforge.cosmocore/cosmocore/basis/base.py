@@ -527,7 +527,7 @@ class ComputationBasis(ABC):
         pass
 
     @abstractmethod
-    def get_compressed_covariance(self, C_ell) -> np.ndarray:
+    def get_covariance(self, C_ell) -> np.ndarray:
         """
         Compute covariance matrix in the compressed space.
 
@@ -696,7 +696,7 @@ class ComputationBasis(ABC):
         """
         from ..basics import matrix_inverse_symm
 
-        C_compressed = self.get_compressed_covariance(C_ell)
+        C_compressed = self.get_covariance(C_ell)
         return matrix_inverse_symm(C_compressed, overwrite=True)
 
     def get_compressed_logdet(self, C_ell) -> float:
@@ -713,7 +713,7 @@ class ComputationBasis(ABC):
         float
             Log determinant of compressed covariance.
         """
-        C_compressed = self.get_compressed_covariance(C_ell)
+        C_compressed = self.get_covariance(C_ell)
         _, logdet = matrix_slogdet_symm(np.asfortranarray(C_compressed))
         return logdet
 

@@ -226,7 +226,7 @@ class TestPixelBasisOperations:
         n_ell = setup["lmax"] - 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        C_compressed = ppc.get_compressed_covariance(C_ell)
+        C_compressed = ppc.get_covariance(C_ell)
 
         assert C_compressed.shape == (ppc.dim, ppc.dim)
 
@@ -248,7 +248,7 @@ class TestPixelBasisOperations:
         n_ell = setup["lmax"] - 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        C_compressed = ppc.get_compressed_covariance(C_ell)
+        C_compressed = ppc.get_covariance(C_ell)
 
         # Use atol for numerical precision with small values
         assert_allclose(C_compressed, C_compressed.T, rtol=1e-10, atol=1e-15)
@@ -271,7 +271,7 @@ class TestPixelBasisOperations:
         n_ell = setup["lmax"] - 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        C_compressed = ppc.get_compressed_covariance(C_ell)
+        C_compressed = ppc.get_covariance(C_ell)
         C_compressed_inv = ppc.get_projected_inverse(C_ell)
 
         product = C_compressed @ C_compressed_inv
@@ -1113,7 +1113,7 @@ class TestPPCOperationChain:
         spectra_list = keys
 
         # Compressed covariance with dict
-        C_c = ppc.get_compressed_covariance(C_ell_dict)
+        C_c = ppc.get_covariance(C_ell_dict)
         assert C_c.shape == (ppc.dim, ppc.dim)
 
         # Cross-component derivative
@@ -1176,7 +1176,7 @@ class TestPPCOperationChain:
         with pytest.raises(RuntimeError):
             ppc.get_derivative_matrix(5, SpectrumKey(0, 0, SpectrumKind.SS, spins=(0,)))
         with pytest.raises(RuntimeError):
-            ppc.get_compressed_covariance(C_ell)
+            ppc.get_covariance(C_ell)
         with pytest.raises(RuntimeError):
             ppc.get_weighted_compressed_data(data, C_ell)
         with pytest.raises(RuntimeError):

@@ -125,8 +125,8 @@ class TestCreateCompression:
 
         # Results should match
         assert_allclose(
-            cm.get_compressed_covariance(C_ell),
-            hc.get_compressed_covariance(C_ell),
+            cm.get_covariance(C_ell),
+            hc.get_covariance(C_ell),
             rtol=1e-10,
         )
 
@@ -703,7 +703,7 @@ class TestPixelProjectedPICSLikeMethods:
         logdet = ppc.get_logdet(C_ell_dict)
 
         # Directly compute
-        C_c = ppc.get_compressed_covariance(C_ell_dict)
+        C_c = ppc.get_covariance(C_ell_dict)
         _, expected_logdet = np.linalg.slogdet(C_c)
 
         assert_allclose(

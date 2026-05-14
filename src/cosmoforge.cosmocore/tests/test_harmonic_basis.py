@@ -152,7 +152,7 @@ class TestHarmonicBasisOperations:
         n_ell = setup["lmax"] + 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        C_bar = hc.get_compressed_covariance(C_ell)
+        C_bar = hc.get_covariance(C_ell)
 
         assert C_bar.shape == (hc.n_modes, hc.n_modes)
 
@@ -173,7 +173,7 @@ class TestHarmonicBasisOperations:
         n_ell = setup["lmax"] + 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        C_bar = hc.get_compressed_covariance(C_ell)
+        C_bar = hc.get_covariance(C_ell)
 
         assert_allclose(C_bar, C_bar.T, rtol=1e-10)
 
@@ -194,7 +194,7 @@ class TestHarmonicBasisOperations:
         n_ell = setup["lmax"] + 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        C_bar = hc.get_compressed_covariance(C_ell)
+        C_bar = hc.get_covariance(C_ell)
         C_bar_inv = hc.get_inverse(C_ell)
 
         product = C_bar @ C_bar_inv
@@ -225,7 +225,7 @@ class TestHarmonicBasisOperations:
         assert np.isfinite(logdet)
 
         # Cross-check with numpy
-        C_bar = hc.get_compressed_covariance(C_ell)
+        C_bar = hc.get_covariance(C_ell)
         _, logdet_np = np.linalg.slogdet(C_bar)
 
         assert_allclose(logdet, logdet_np, rtol=1e-8)
@@ -580,8 +580,8 @@ class TestHarmonicBasisBeam:
 
         assert_allclose(hc_no_beam._V, hc_unit_beam._V, rtol=1e-12)
 
-        C_bar_no_beam = hc_no_beam.get_compressed_covariance(C_ell)
-        C_bar_unit_beam = hc_unit_beam.get_compressed_covariance(C_ell)
+        C_bar_no_beam = hc_no_beam.get_covariance(C_ell)
+        C_bar_unit_beam = hc_unit_beam.get_covariance(C_ell)
         assert_allclose(C_bar_no_beam, C_bar_unit_beam, rtol=1e-10)
 
 
@@ -685,8 +685,8 @@ class TestHarmonicDictOperations:
 
         # These should hit the single-entry dict fast paths
         # and produce results identical to the array path
-        cov_arr = hc.get_compressed_covariance(C_ell_arr)
-        cov_dict = hc.get_compressed_covariance(C_ell_dict)
+        cov_arr = hc.get_covariance(C_ell_arr)
+        cov_dict = hc.get_covariance(C_ell_dict)
         assert_allclose(cov_arr, cov_dict, rtol=1e-10)
 
         inv_arr = hc.get_projected_inverse(C_ell_arr)

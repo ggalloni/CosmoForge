@@ -775,7 +775,7 @@ class TestPixelProjectedSpin2:
             (0, 0, 1): np.ones(lmax + 1) * 1e-4,  # BB
         }
 
-        C_c = ppc.get_compressed_covariance(C_ell_dict)
+        C_c = ppc.get_covariance(C_ell_dict)
         assert C_c.shape == (ppc.dim, ppc.dim)
         # Should be symmetric
         assert_allclose(C_c, C_c.T, atol=1e-12)

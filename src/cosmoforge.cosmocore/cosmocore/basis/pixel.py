@@ -641,7 +641,7 @@ class PixelBasis(ComputationBasis):
         effective N_eff that includes the absorbed high-ℓ signal.
 
         Without switch optimization, N_eff = N and this is identical to
-        ``get_compressed_covariance(0)``.
+        ``get_covariance(0)``.
         """
         cached = getattr(self, "_compressed_noise_cache", None)
         if cached is not None:
@@ -1658,7 +1658,7 @@ class PixelBasis(ComputationBasis):
         E_VU = matrix_mult(E, self._VU)
         return matrix_mult(self._VU.T, E_VU)
 
-    def get_compressed_covariance(self, C_ell) -> np.ndarray:
+    def get_covariance(self, C_ell) -> np.ndarray:
         """
         Compute covariance matrix in the compressed space.
 
@@ -1880,7 +1880,7 @@ class PixelBasis(ComputationBasis):
 
         from ..basics import matrix_slogdet_symm
 
-        C_c = self.get_compressed_covariance(C_ell_dict)
+        C_c = self.get_covariance(C_ell_dict)
         C_c_inv = matrix_inverse_symm(C_c)
         _, logdet = matrix_slogdet_symm(C_c)
         return SMWPrepared(C_c_inv, logdet)
@@ -1911,7 +1911,7 @@ class PixelBasis(ComputationBasis):
             return logdet
         from ..basics import matrix_slogdet_symm
 
-        C_c = self.get_compressed_covariance(C_ell)
+        C_c = self.get_covariance(C_ell)
         _, logdet = matrix_slogdet_symm(np.asfortranarray(C_c))
         return logdet
 

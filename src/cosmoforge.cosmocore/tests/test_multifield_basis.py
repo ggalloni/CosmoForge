@@ -171,7 +171,7 @@ class TestMultiFieldCompressedOperations:
         }
 
         # Multi-field covariance via dedicated method
-        C_compressed = hc.get_compressed_covariance(C_ell_dict)
+        C_compressed = hc.get_covariance(C_ell_dict)
 
         # Shape should be (n_modes_total, n_modes_total)
         n_modes_per_component = (setup["lmax"] + 1) ** 2 - 4
@@ -198,7 +198,7 @@ class TestMultiFieldCompressedOperations:
             (0, 1): np.ones(n_ell) * 0.5e-6,
         }
 
-        C_compressed = hc.get_compressed_covariance(C_ell_dict)
+        C_compressed = hc.get_covariance(C_ell_dict)
 
         assert_allclose(C_compressed, C_compressed.T, rtol=1e-10, atol=1e-15)
 
@@ -492,7 +492,7 @@ class TestMultiFieldIntegration:
         )
         hc.setup()
 
-        C_compressed = hc.get_compressed_covariance(setup["C_ell_dict"])
+        C_compressed = hc.get_covariance(setup["C_ell_dict"])
 
         # Check positive definiteness
         eigenvalues = np.linalg.eigvalsh(C_compressed)

@@ -791,7 +791,7 @@ class Core(ABC):
             Total covariance matrix (compressed or full).
         """
         if hasattr(self, "basis_manager") and self.basis_manager is not None:
-            return self.basis_manager.get_compressed_covariance(C_ell)
+            return self.basis_manager.get_covariance(C_ell)
         else:
             return self.noise_cov1 + self._build_signal_matrix(C_ell)
 
