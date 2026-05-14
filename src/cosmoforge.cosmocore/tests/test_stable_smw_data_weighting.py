@@ -75,6 +75,30 @@ def test_builds_inner_inv_when_omitted(single_field_basis):
     np.testing.assert_allclose(actual, expected, rtol=1e-13, atol=0)
 
 
+def test_matches_brute_force_reference(single_field_basis, simple_compression_setup):
+    """Pin the SMW identity against a brute-force pixel-space reference.
+
+    Reference: ``w_ref = V C^{-1} d`` computed by explicit pixel-space
+    solve, with ``C = N + V^T Λ V``. Guards against regressions in the
+    algebra itself, not just refactor equivalence with the previous
+    composition.
+    """
+    bm = single_field_basis
+    n_pix = bm.n_pix
+    rng = np.random.default_rng(7)
+    d = rng.standard_normal(n_pix)
+    C_ell = np.ones(bm.lmax_signal + 1) * 1.0  # CV-limited regime (S >> N)
+
+    V = bm._V
+    Lambda_diag = bm._build_lambda_diagonal(C_ell)
+    N = simple_compression_setup["N"]
+    C_pix = N + (V.T * Lambda_diag) @ V
+    w_ref = V @ np.linalg.solve(C_pix, d)
+
+    w_actual = bm.get_weighted_compressed_data(d, C_ell)
+    np.testing.assert_allclose(w_actual, w_ref, rtol=1e-10, atol=1e-12)
+
+
 def test_multi_field_matches_explicit_composition(multi_field_basis):
     bm = multi_field_basis
     rng = np.random.default_rng(1)
