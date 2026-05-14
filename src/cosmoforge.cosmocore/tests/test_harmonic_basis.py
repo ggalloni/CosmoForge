@@ -131,7 +131,7 @@ class TestHarmonicBasisOperations:
         hc.setup()
 
         data = np.random.randn(setup["n_pix"])
-        d_compressed = hc.compress_data(data)
+        d_compressed = hc.to_basis(data)
 
         assert d_compressed.shape == (hc.n_modes,)
 
@@ -152,7 +152,7 @@ class TestHarmonicBasisOperations:
         n_ell = setup["lmax"] + 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        C_bar = hc.get_compressed_covariance(C_ell)
+        C_bar = hc.get_covariance(C_ell)
 
         assert C_bar.shape == (hc.n_modes, hc.n_modes)
 
@@ -173,7 +173,7 @@ class TestHarmonicBasisOperations:
         n_ell = setup["lmax"] + 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        C_bar = hc.get_compressed_covariance(C_ell)
+        C_bar = hc.get_covariance(C_ell)
 
         assert_allclose(C_bar, C_bar.T, rtol=1e-10)
 
@@ -194,8 +194,8 @@ class TestHarmonicBasisOperations:
         n_ell = setup["lmax"] + 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        C_bar = hc.get_compressed_covariance(C_ell)
-        C_bar_inv = hc.get_compressed_inverse(C_ell)
+        C_bar = hc.get_covariance(C_ell)
+        C_bar_inv = hc.get_inverse(C_ell)
 
         product = C_bar @ C_bar_inv
         identity = np.eye(hc.n_modes)
@@ -220,12 +220,12 @@ class TestHarmonicBasisOperations:
         n_ell = setup["lmax"] + 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        logdet = hc.get_compressed_logdet(C_ell)
+        logdet = hc.get_logdet(C_ell)
 
         assert np.isfinite(logdet)
 
         # Cross-check with numpy
-        C_bar = hc.get_compressed_covariance(C_ell)
+        C_bar = hc.get_covariance(C_ell)
         _, logdet_np = np.linalg.slogdet(C_bar)
 
         assert_allclose(logdet, logdet_np, rtol=1e-8)
@@ -298,7 +298,7 @@ class TestHarmonicBasisPixelSpace:
         n_ell = setup["lmax"] + 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        C_inv = hc.get_inverse(C_ell)
+        C_inv = hc.get_full_inverse(C_ell)
 
         assert C_inv.shape == (setup["n_pix"], setup["n_pix"])
 
@@ -319,7 +319,7 @@ class TestHarmonicBasisPixelSpace:
         n_ell = setup["lmax"] + 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        C_inv = hc.get_inverse(C_ell)
+        C_inv = hc.get_full_inverse(C_ell)
 
         assert_allclose(C_inv, C_inv.T, rtol=1e-8)
 
@@ -340,7 +340,7 @@ class TestHarmonicBasisPixelSpace:
         n_ell = setup["lmax"] + 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        logdet = hc.get_logdet(C_ell)
+        logdet = hc.get_full_logdet(C_ell)
 
         assert np.isfinite(logdet)
 
@@ -411,7 +411,7 @@ class TestHarmonicBasisValidation:
         C_direct = setup["N"] + S
         C_inv_direct = np.linalg.inv(C_direct)
 
-        C_inv_smw = hc.get_inverse(C_ell)
+        C_inv_smw = hc.get_full_inverse(C_ell)
 
         assert_allclose(C_inv_smw, C_inv_direct, rtol=1e-8, atol=1e-12)
 
@@ -437,7 +437,7 @@ class TestHarmonicBasisValidation:
         C_direct = setup["N"] + S
         _, logdet_direct = np.linalg.slogdet(C_direct)
 
-        logdet_smw = hc.get_logdet(C_ell)
+        logdet_smw = hc.get_full_logdet(C_ell)
 
         assert_allclose(logdet_smw, logdet_direct, rtol=1e-8)
 
@@ -462,7 +462,7 @@ class TestHarmonicBasisValidation:
         )
         C_full = setup["N"] + S
 
-        C_inv_smw = hc.get_inverse(C_ell)
+        C_inv_smw = hc.get_full_inverse(C_ell)
 
         product = C_full @ C_inv_smw
         identity = np.eye(setup["n_pix"])
@@ -498,7 +498,7 @@ class TestHarmonicBasisValidation:
         quad_form_direct = float(data.T @ C_inv_direct @ data)
 
         # SMW computation
-        quad_form_smw = hc.compute_quadratic_form(data, C_ell)
+        quad_form_smw = hc.quadratic_form(data, C_ell)
 
         assert_allclose(quad_form_smw, quad_form_direct, rtol=1e-8)
 
@@ -580,8 +580,8 @@ class TestHarmonicBasisBeam:
 
         assert_allclose(hc_no_beam._V, hc_unit_beam._V, rtol=1e-12)
 
-        C_bar_no_beam = hc_no_beam.get_compressed_covariance(C_ell)
-        C_bar_unit_beam = hc_unit_beam.get_compressed_covariance(C_ell)
+        C_bar_no_beam = hc_no_beam.get_covariance(C_ell)
+        C_bar_unit_beam = hc_unit_beam.get_covariance(C_ell)
         assert_allclose(C_bar_no_beam, C_bar_unit_beam, rtol=1e-10)
 
 
@@ -594,7 +594,7 @@ class TestHarmonicDictOperations:
     """Cover dict-path operations: weighted data, quadratic form, SMW, logdet."""
 
     def test_single_field_weighted_data_and_qf(self, uniform_sky_setup):
-        """Cover get_weighted_compressed_data and compute_quadratic_form (array)."""
+        """Cover get_weighted_data and quadratic_form (array)."""
         from cosmocore.basis import HarmonicBasis
 
         setup = uniform_sky_setup
@@ -610,10 +610,10 @@ class TestHarmonicDictOperations:
         np.random.seed(42)
         data = np.random.randn(setup["n_pix"])
 
-        w = hc.get_weighted_compressed_data(data, C_ell)
+        w = hc.get_weighted_data(data, C_ell)
         assert w.shape == (hc.n_modes,)
 
-        qf = hc.compute_quadratic_form(data, C_ell)
+        qf = hc.quadratic_form(data, C_ell)
         assert qf > 0
 
         ss_key = SpectrumKey(0, 0, SpectrumKind.SS, spins=(0,))
@@ -621,7 +621,7 @@ class TestHarmonicDictOperations:
         assert dC.shape == (hc.n_modes, hc.n_modes)
 
     def test_multi_field_weighted_data_qf_logdet(self, two_scalar_field_setup):
-        """Cover dict paths: weighted data, quadratic form, logdet, prepare_smw."""
+        """Cover dict paths: weighted data, quadratic form, logdet, prepare_for_basis."""
         from cosmocore.basis import HarmonicBasis
 
         setup = two_scalar_field_setup
@@ -645,26 +645,27 @@ class TestHarmonicDictOperations:
         data = np.random.randn(hc.n_pix)
 
         # Weighted compressed data (dict path)
-        w = hc.get_weighted_compressed_data(data, C_ell_dict)
+        w = hc.get_weighted_data(data, C_ell_dict)
         assert w.shape == (hc.n_modes_total,)
 
         # Quadratic form (dict path)
-        qf = hc.compute_quadratic_form(data, C_ell_dict)
+        qf = hc.quadratic_form(data, C_ell_dict)
         assert qf > 0
 
-        # Log determinant (dict path)
-        logdet = hc.get_logdet(C_ell_dict)
-        assert isinstance(logdet, float)
+        # Log determinant (full, dict path)
+        logdet_full = hc.get_full_logdet(C_ell_dict)
+        assert isinstance(logdet_full, float)
+        assert np.isfinite(logdet_full)
 
-        # get_full_logdet alias
-        logdet2 = hc.get_full_logdet(C_ell_dict)
-        assert_allclose(logdet, logdet2)
-
-        # prepare_smw and quadratic_form_from_prepared
-        K_chol, logdet_smw = hc.prepare_smw(C_ell_dict)
+        # prepare_for_basis and quadratic_form_from_prepared
+        K_chol, logdet_smw = hc.prepare_for_basis(C_ell_dict)
         assert isinstance(logdet_smw, float)
         qf2 = hc.quadratic_form_from_prepared(data, K_chol)
         assert_allclose(qf, qf2, rtol=1e-8)
+        # prepare_for_basis must return the full-space logdet (the
+        # quantity fast-path likelihood callers will combine with
+        # quadratic_form_from_prepared).
+        assert_allclose(logdet_smw, logdet_full, rtol=1e-12)
 
     def test_single_entry_dict_fast_paths(self, uniform_sky_setup):
         """Cover single-entry dict fast paths in projected_inverse, covariance, Fisher."""
@@ -685,8 +686,8 @@ class TestHarmonicDictOperations:
 
         # These should hit the single-entry dict fast paths
         # and produce results identical to the array path
-        cov_arr = hc.get_compressed_covariance(C_ell_arr)
-        cov_dict = hc.get_compressed_covariance(C_ell_dict)
+        cov_arr = hc.get_covariance(C_ell_arr)
+        cov_dict = hc.get_covariance(C_ell_dict)
         assert_allclose(cov_arr, cov_dict, rtol=1e-10)
 
         inv_arr = hc.get_projected_inverse(C_ell_arr)
@@ -701,8 +702,8 @@ class TestHarmonicDictOperations:
         # Weighted data single-entry dict fast path
         np.random.seed(42)
         data = np.random.randn(setup["n_pix"])
-        w_arr = hc.get_weighted_compressed_data(data, C_ell_arr)
-        w_dict = hc.get_weighted_compressed_data(data, C_ell_dict)
+        w_arr = hc.get_weighted_data(data, C_ell_arr)
+        w_dict = hc.get_weighted_data(data, C_ell_dict)
         assert_allclose(w_arr, w_dict, rtol=1e-10)
 
 

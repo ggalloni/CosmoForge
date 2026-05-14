@@ -19,15 +19,30 @@ _LAMBDA_INV_CAP = 1e30  # Cap for 1/Lambda when Lambda ≈ 0
 _MATRIX_REGULARIZATION = 1e-20  # Tikhonov regularization for matrix inversion
 
 
-class SMWPrepared(NamedTuple):
-    """Pre-computed quantities for SMW-based likelihood evaluation.
+class BasisPrepared(NamedTuple):
+    """Per-``C_ell`` quantities pre-computed for fast likelihood evaluation.
+
+    Returned by :meth:`ComputationBasis.prepare_for_basis`. The stored
+    ``factor`` is basis-specific in form but always usable as the
+    second argument of
+    :meth:`ComputationBasis.quadratic_form_from_prepared`.
 
     Parameters
     ----------
     factor : numpy.ndarray
-        K Cholesky factor (harmonic) or C_c_inv (pixel).
+        K Cholesky factor (harmonic) or basis-space inverse (pixel).
     logdet : float
-        log|C| (full covariance log-determinant).
+        Log determinant. Semantics are basis-specific and intentionally
+        match what ``quadratic_form_from_prepared`` consumes:
+
+        - HarmonicBasis: exact full pixel-space ``log|N + S|`` via SMW.
+        - PixelBasis in pixel-direct mode: exact full ``log|N + S|``
+          (``U`` is the identity, so basis-space equals full-space).
+        - PixelBasis on a truncated compressed basis: basis-space
+          ``log|U^T (N + S) U|`` — the logdet of the restricted
+          operator, NOT the full ``log|N + S|``. Combine with
+          :meth:`quadratic_form_from_prepared` (also basis-space) for
+          an internally-consistent basis-space likelihood.
     """
 
     factor: np.ndarray
@@ -88,7 +103,7 @@ class ComputationBasis(ABC):
         Number of harmonic modes per component (for ℓ=2 to lmax).
     n_modes_total : int
         Total harmonic modes across all components (n_components × n_modes).
-    n_kept : int
+    dim : int
         Number of modes kept after compression (if applicable).
     n_components : int
         Number of field components (1 for single-field, N for multi-field).
@@ -310,7 +325,7 @@ class ComputationBasis(ABC):
     @cached_property
     def _L(self) -> np.ndarray:
         # Pre-_factorise_noise fallback. Load-bearing: PixelBasis
-        # _setup_compressed_arrays reads cholesky_solve(self._N_chol, V.T)
+        # _setup_v_based reads cholesky_solve(self._N_chol, V.T)
         # to build _V_N_inv during apply_compression, which runs *before*
         # _factorise_noise in _setup_v_based. Without this fallback, that
         # access would AttributeError. _factorise_noise then writes the
@@ -469,32 +484,17 @@ class ComputationBasis(ABC):
     @abstractmethod
     def projector(self) -> np.ndarray:
         """
-        Get the projection matrix that maps pixel space to compressed space.
+        Get the projection matrix that maps pixel space to the basis.
 
-        This is the fundamental operator that defines the compression:
+        The fundamental change-of-basis operator:
         - HarmonicBasis: V (n_modes × n_pix)
-        - PixelBasis: U^T (n_kept × n_pix)
+        - PixelBasis: U^T (dim × n_pix) when compression is active;
+          identity-equivalent in pixel-direct mode.
 
         Returns
         -------
         numpy.ndarray
-            Projection matrix of shape (n_compressed, n_pix).
-        """
-        pass
-
-    @property
-    @abstractmethod
-    def n_compressed(self) -> int:
-        """
-        Size of the compressed space (number of rows in projector).
-
-        - HarmonicBasis: n_modes
-        - PixelBasis: n_kept
-
-        Returns
-        -------
-        int
-            Dimension of compressed space.
+            Projection matrix of shape (dim, n_pix).
         """
         pass
 
@@ -524,7 +524,7 @@ class ComputationBasis(ABC):
         symmetry_mode=None,
     ) -> np.ndarray:
         """
-        Get the derivative matrix ∂C/∂C_ℓ in the compressed basis.
+        Get the derivative matrix ∂C/∂C_ℓ in the basis space.
 
         Parameters
         ----------
@@ -538,14 +538,14 @@ class ComputationBasis(ABC):
         Returns
         -------
         numpy.ndarray
-            Derivative matrix of shape (n_compressed, n_compressed).
+            Derivative matrix of shape (dim, dim).
         """
         pass
 
     @abstractmethod
-    def get_compressed_covariance(self, C_ell) -> np.ndarray:
+    def get_covariance(self, C_ell) -> np.ndarray:
         """
-        Compute covariance matrix in the compressed space.
+        Compute the covariance matrix in the basis space.
 
         - HarmonicBasis: C̄ = V @ N @ V^T + Λ
         - PixelBasis: C_c = U^T @ C @ U
@@ -558,12 +558,12 @@ class ComputationBasis(ABC):
         Returns
         -------
         numpy.ndarray
-            Compressed covariance of shape (n_compressed, n_compressed).
+            Basis-space covariance of shape (dim, dim).
         """
         pass
 
     @abstractmethod
-    def get_weighted_compressed_data(
+    def get_weighted_data(
         self,
         data: np.ndarray,
         C_ell,
@@ -571,7 +571,7 @@ class ComputationBasis(ABC):
         stable_inner_inv: np.ndarray | None = None,
     ) -> np.ndarray:
         """
-        Compute weighted compressed data for QML estimation.
+        Compute weighted basis-space data for QML estimation.
 
         Parameters
         ----------
@@ -580,7 +580,7 @@ class ComputationBasis(ABC):
         C_ell : numpy.ndarray or dict
             Power spectrum (array for single-field, dict for multi-field).
         C_c_inv : numpy.ndarray, optional
-            Precomputed compressed inverse. Used by PixelBasis only;
+            Precomputed basis-space inverse. Used by PixelBasis only;
             ignored by HarmonicBasis.
         stable_inner_inv : numpy.ndarray, optional
             Precomputed ``(I + Lambda M)^{-1}``, as returned by
@@ -590,7 +590,7 @@ class ComputationBasis(ABC):
         Returns
         -------
         numpy.ndarray
-            Weighted compressed data of shape (n_compressed,) or (n_compressed, n_sims).
+            Weighted basis-space data of shape (dim,) or (dim, n_sims).
         """
         pass
 
@@ -617,7 +617,7 @@ class ComputationBasis(ABC):
         Returns
         -------
         numpy.ndarray
-            Symmetric (n_kept, n_kept) matrix.
+            Symmetric (dim, dim) matrix.
         """
         pass
 
@@ -696,9 +696,9 @@ class ComputationBasis(ABC):
 
     # === Shared implementations ===
 
-    def get_compressed_inverse(self, C_ell) -> np.ndarray:
+    def get_inverse(self, C_ell) -> np.ndarray:
         """
-        Compute inverse of compressed covariance matrix.
+        Compute the inverse of the basis-space covariance.
 
         Parameters
         ----------
@@ -708,16 +708,16 @@ class ComputationBasis(ABC):
         Returns
         -------
         numpy.ndarray
-            Inverse compressed covariance of shape (n_compressed, n_compressed).
+            Basis-space inverse covariance of shape (dim, dim).
         """
         from ..basics import matrix_inverse_symm
 
-        C_compressed = self.get_compressed_covariance(C_ell)
-        return matrix_inverse_symm(C_compressed, overwrite=True)
+        C_basis = self.get_covariance(C_ell)
+        return matrix_inverse_symm(C_basis, overwrite=True)
 
-    def get_compressed_logdet(self, C_ell) -> float:
+    def get_logdet(self, C_ell) -> float:
         """
-        Compute log determinant of compressed covariance matrix.
+        Compute the log determinant of the basis-space covariance.
 
         Parameters
         ----------
@@ -727,27 +727,109 @@ class ComputationBasis(ABC):
         Returns
         -------
         float
-            Log determinant of compressed covariance.
+            Log determinant of basis-space covariance.
         """
-        C_compressed = self.get_compressed_covariance(C_ell)
-        _, logdet = matrix_slogdet_symm(np.asfortranarray(C_compressed))
+        C_basis = self.get_covariance(C_ell)
+        _, logdet = matrix_slogdet_symm(np.asfortranarray(C_basis))
         return logdet
 
     def get_full_logdet(self, C_ell) -> float:
         """
-        Get best available log determinant of full covariance.
+        Return ``log|N + S|``, the full pixel-space log determinant.
 
-        For harmonic compression, returns exact log|C| via SMW formula.
-        For pixel, returns log|C_compressed| (approximation).
+        HarmonicBasis overrides this to compute it exactly via the SMW
+        formula. The default below applies to PixelBasis and is exact
+        only in pixel-direct mode (``U`` is the identity, so the
+        basis-space logdet equals the full logdet).
 
-        Subclasses may override to provide exact computation.
+        On a *truncated compressed* pixel basis the full logdet cannot
+        be recovered from the kept quantities: the discarded complement
+        of ``N + S`` is needed and is not stored. The default falls
+        through to :meth:`get_logdet`, which returns the logdet of the
+        restricted operator ``U^T (N + S) U`` — a different matrix, not
+        an approximation to ``log|N + S|``. Callers that need the exact
+        full logdet on a truncated basis must arrange for it elsewhere.
 
         Parameters
         ----------
         C_ell : numpy.ndarray or dict
             Power spectrum (array for single-field, dict for multi-field).
         """
-        return self.get_compressed_logdet(C_ell)
+        return self.get_logdet(C_ell)
+
+    @abstractmethod
+    def get_full_inverse(self, C_ell) -> np.ndarray:
+        """Return the full ``n_pix x n_pix`` inverse covariance.
+
+        For HarmonicBasis: exact ``(N + S)^{-1}`` via the SMW formula.
+        For PixelBasis in pixel-direct mode: also exact (``U`` is the
+        identity, so ``U @ get_inverse(C_ell) @ U.T`` equals the full
+        inverse).
+
+        For PixelBasis on a *truncated compressed* basis: the returned
+        matrix is ``U @ get_inverse(C_ell) @ U.T``, which lives in the
+        kept subspace and is zero on the truncated complement. It is
+        *not* the inverse of the full pixel-space covariance; it is the
+        inverse of the restricted operator, lifted back to ``n_pix``
+        dimensions. Use with care.
+
+        Callers who only need the basis-space inverse should use
+        :meth:`get_inverse` instead — cheaper and equivalent in
+        basis-space algebra.
+        """
+        pass
+
+    @abstractmethod
+    def quadratic_form(self, data: np.ndarray, C_ell) -> float:
+        """Compute ``d^T C^{-1} d`` for full pixel-space data.
+
+        The basis chooses its fastest path. Returns a single ``float``
+        for a 1-D ``data`` vector, or a length-``n_sims`` array if
+        ``data`` is shape ``(n_pix, n_sims)``.
+
+        Parameters
+        ----------
+        data : numpy.ndarray
+            Pixel-space data, shape ``(n_pix,)`` or ``(n_pix, n_sims)``.
+        C_ell : numpy.ndarray or dict
+            Power spectrum (array for single-field, dict for multi-field).
+        """
+        pass
+
+    @abstractmethod
+    def quadratic_form_from_prepared(self, data: np.ndarray, factor: np.ndarray) -> float:
+        """Compute ``d^T C^{-1} d`` using a pre-baked ``factor`` from
+        :meth:`prepare_for_basis`.
+
+        Fast path for evaluating the quadratic form many times against
+        the same ``C_ell``: caller calls :meth:`prepare_for_basis` once
+        and reuses the resulting ``factor`` across simulations.
+
+        Parameters
+        ----------
+        data : numpy.ndarray
+            Pixel-space data, shape ``(n_pix,)`` or ``(n_pix, n_sims)``.
+        factor : numpy.ndarray
+            Basis-specific pre-baked quantity:
+            ``BasisPrepared.factor`` from :meth:`prepare_for_basis`.
+        """
+        pass
+
+    @abstractmethod
+    def prepare_for_basis(self, C_ell_dict: dict) -> BasisPrepared:
+        """Pre-bake per-``C_ell`` quantities for fast likelihood reuse.
+
+        Returns a :class:`BasisPrepared` carrying the basis-specific
+        ``factor`` and the full log determinant. The ``factor`` is
+        consumable by :meth:`quadratic_form_from_prepared` on the same
+        basis instance.
+
+        Parameters
+        ----------
+        C_ell_dict : dict
+            Multi-field power spectrum dict keyed by :class:`SpectrumKey`.
+        """
+        pass
 
     # =========================================================================
     # Delegates to HarmonicBasis
@@ -819,13 +901,14 @@ class ComputationBasis(ABC):
         """No-op default. HarmonicBasis overrides to drop V post-SMW build."""
         return None
 
-    def compress_data(self, data: np.ndarray) -> np.ndarray:
+    def to_basis(self, data: np.ndarray) -> np.ndarray:
         """
-        Project pixel data to compressed representation: d_c = P @ d.
+        Project pixel data into the basis: ``d_basis = P @ d``.
 
-        Uses the compression-specific projector P:
+        Uses the basis-specific projector P:
         - HarmonicBasis: P = V (n_modes × n_pix)
-        - PixelBasis: P = U^T (n_kept × n_pix)
+        - PixelBasis: P = U^T (dim × n_pix) when compression is active;
+          identity short-circuit in pixel-direct mode.
 
         Parameters
         ----------
@@ -835,7 +918,7 @@ class ComputationBasis(ABC):
         Returns
         -------
         numpy.ndarray
-            Compressed data of shape (n_compressed,) or (n_compressed, n_sims).
+            Basis-space data of shape (dim,) or (dim, n_sims).
         """
         return matrix_mult(self.projector, data)
 
@@ -860,4 +943,4 @@ class ComputationBasis(ABC):
         float
             Compression ratio (1.0 means no compression).
         """
-        return self.n_kept / self.n_modes_total
+        return self.dim / self.n_modes_total

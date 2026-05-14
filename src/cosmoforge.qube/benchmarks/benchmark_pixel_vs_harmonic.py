@@ -199,14 +199,14 @@ def benchmark_fisher(config_file, method, bins=None):
     t0 = time.perf_counter()
     fisher.run()
     t_total = time.perf_counter() - t0
-    n_kept = (
-        fisher.basis_manager.n_kept
+    dim = (
+        fisher.basis_manager.dim
         if hasattr(fisher, "basis_manager") and fisher.basis_manager
         else None
     )
     return {
         "total": t_total,
-        "n_modes": n_kept,
+        "n_modes": dim,
         "n_pix": sum(fisher.collection.n_active),
     }, fisher
 
@@ -367,7 +367,7 @@ def _drive_subprocesses():
                 if "error" in payload:
                     print(f"  WORKER ERROR: {payload['error']} (wall={wall:.1f}s)")
                 else:
-                    print(f"  n_modes/n_kept = {payload.get('n_modes')}")
+                    print(f"  n_modes/dim = {payload.get('n_modes')}")
                     print(f"  n_pix          = {payload.get('n_pix')}")
                     print(
                         f"  Fisher run:    {payload.get('total', float('nan')):.2f}s "

@@ -180,7 +180,7 @@ def benchmark_fisher(config_file, method):
 
     return {
         "total": t_total,
-        "n_modes": fisher.basis_manager.n_kept
+        "n_modes": fisher.basis_manager.dim
         if hasattr(fisher, "basis_manager") and fisher.basis_manager
         else None,
         "n_pix": sum(fisher.collection.n_active),

@@ -261,8 +261,8 @@ class TestMblockCompressFalseUnchanged:
         assert_allclose(fisher_default, fisher_explicit, rtol=1e-15)
 
         # Covariance should be identical
-        cov_default = hc_default.get_compressed_covariance(C_ell)
-        cov_explicit = hc_explicit.get_compressed_covariance(C_ell)
+        cov_default = hc_default.get_covariance(C_ell)
+        cov_explicit = hc_explicit.get_covariance(C_ell)
         assert_allclose(cov_default, cov_explicit, rtol=1e-15)
 
 

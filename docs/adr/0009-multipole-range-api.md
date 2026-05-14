@@ -125,7 +125,7 @@ this:
 - It departs from the Tegmark literature convention.
 - It would have to be applied across all three QML paths together —
   ``harmonic.py:_compute_smw_components``,
-  ``pixel.py:get_compressed_noise``, and
+  ``pixel.py:get_noise_for_bias``, and
   ``spectra.py:_compute_qml_spectra_traditional`` — otherwise the
   cross-implementation tests
   (``test_compressed_spectra_T``,

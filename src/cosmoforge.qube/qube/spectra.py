@@ -733,7 +733,7 @@ class Spectra(Core, MPISharedMemoryMixin):
 
         bm = self.basis_manager
         n_sims = self.params.nsims
-        n_compressed = bm.n_kept
+        dim = bm.dim
 
         # Multi-field path is needed when >1 components or spin-2 (spin-2 has
         # multiple spectra EE/BB/EB even for a single field)
@@ -761,37 +761,33 @@ class Spectra(Core, MPISharedMemoryMixin):
         # The same matrix (I + Lambda M)^{-1} reappears as the noise-bias
         # matrix A = I - M K^{-1}, so we cache it once and reuse below.
         stable_inner_inv = None
-        maps1_weighted = np.zeros((n_compressed, n_sims), dtype=np.float64)
+        maps1_weighted = np.zeros((dim, n_sims), dtype=np.float64)
         C_arg = C_ell_dict if is_multi_field else C_ell
         if bm.method == "harmonic":
             stable_inner_inv = bm.prepare_stable_inner_inv(C_arg)
-            maps1_weighted = bm.get_weighted_compressed_data(
+            maps1_weighted = bm.get_weighted_data(
                 self.maps1, C_arg, stable_inner_inv=stable_inner_inv
             )
         else:
-            C_c_inv = bm.get_compressed_inverse(C_arg)
+            C_c_inv = bm.get_inverse(C_arg)
             if is_multi_field:
                 # pixel multi-field: explicit compress-then-multiply
-                d_c = bm.compress_data(self.maps1)
+                d_c = bm.to_basis(self.maps1)
                 maps1_weighted = C_c_inv @ d_c
             else:
-                maps1_weighted = bm.get_weighted_compressed_data(
-                    self.maps1, C_ell, C_c_inv=C_c_inv
-                )
+                maps1_weighted = bm.get_weighted_data(self.maps1, C_ell, C_c_inv=C_c_inv)
 
         if self.params.do_cross:
-            maps2_weighted = np.zeros((n_compressed, n_sims), dtype=np.float64)
+            maps2_weighted = np.zeros((dim, n_sims), dtype=np.float64)
             if bm.method == "harmonic":
-                maps2_weighted = bm.get_weighted_compressed_data(
+                maps2_weighted = bm.get_weighted_data(
                     self.maps2, C_arg, stable_inner_inv=stable_inner_inv
                 )
             elif is_multi_field:
-                d_c2 = bm.compress_data(self.maps2)
+                d_c2 = bm.to_basis(self.maps2)
                 maps2_weighted = C_c_inv @ d_c2
             else:
-                maps2_weighted = bm.get_weighted_compressed_data(
-                    self.maps2, C_ell, C_c_inv=C_c_inv
-                )
+                maps2_weighted = bm.get_weighted_data(self.maps2, C_ell, C_c_inv=C_c_inv)
 
         # For noise bias computation (only for non-cross)
         noise_cov_w_diag = None
@@ -816,9 +812,9 @@ class Spectra(Core, MPISharedMemoryMixin):
                 # the raw N (not N_eff with absorbed high-ℓ signal), so use
                 # the dedicated get_noise_for_bias() method.
                 if is_multi_field:
-                    C_bar_inv = bm.get_compressed_inverse(C_ell_dict)
+                    C_bar_inv = bm.get_inverse(C_ell_dict)
                 else:
-                    C_bar_inv = bm.get_compressed_inverse(C_ell)
+                    C_bar_inv = bm.get_inverse(C_ell)
                 N_bar = bm.get_noise_for_bias()
                 noise_cov_w = C_bar_inv @ N_bar @ C_bar_inv
 

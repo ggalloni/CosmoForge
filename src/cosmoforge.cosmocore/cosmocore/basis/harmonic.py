@@ -30,8 +30,8 @@ from .base import (
     _LAMBDA_INV_CAP,
     _LAMBDA_ZERO_THRESHOLD,
     _MATRIX_REGULARIZATION,
+    BasisPrepared,
     ComputationBasis,
-    SMWPrepared,
 )
 
 
@@ -114,7 +114,7 @@ class HarmonicBasis(ComputationBasis):
             S_fixed=S_fixed,
         )
         self._init_harmonic_internals()
-        self.n_kept = self.n_modes_total
+        self.dim = self.n_modes_total
         self._compress = compress
         self._delta_m = delta_m
 
@@ -145,8 +145,8 @@ class HarmonicBasis(ComputationBasis):
 
         QML hot paths (Fisher trace, Spectra weighted-data) read only
         ``_V_N_inv`` and ``_V_Ninv_VT``. The remaining V consumers —
-        ``get_compressed_covariance``/``get_compressed_inverse``,
-        ``compress_data``, m-block compression, and PICSLike ``do_cross``
+        ``get_covariance``/``get_inverse``,
+        ``to_basis``, m-block compression, and PICSLike ``do_cross``
         with the harmonic basis — must not be invoked after this call.
         Raises if m-block compression was requested at construction.
         """
@@ -156,13 +156,6 @@ class HarmonicBasis(ComputationBasis):
             )
         self._harmonic_basis._V = None
 
-    @property
-    def n_compressed(self) -> int:
-        """
-        Size of compressed space (n_modes_total, including spin-2 E+B doubling).
-        """
-        return self.n_modes_total
-
     def setup(self) -> None:
         """
         Build V and precompute SMW components.
@@ -171,7 +164,7 @@ class HarmonicBasis(ComputationBasis):
         - V: harmonic operator (n_modes × n_pix)
         - V N^{-1}: precomputed for SMW
         - V N^{-1} V^T: SMW kernel
-        - V N V^T: compressed noise covariance
+        - V N V^T: harmonic-space noise covariance
         - log|N|: for determinant calculations
         - Derivative diagonals: E_ℓ for all ℓ
 
@@ -301,7 +294,7 @@ class HarmonicBasis(ComputationBasis):
             - V @ N^{-1} @ V^T (SMW kernel matrix)
             - log|N| (for determinant computation)
 
-        Note: V @ N @ V^T is computed lazily when needed (get_compressed_covariance)
+        Note: V @ N @ V^T is computed lazily when needed (get_covariance)
         to avoid expensive O(n_pix³) inversion when only Fisher is needed.
         """
         self._V_N_inv = cholesky_solve(self._N_chol, self._V.T).T
@@ -839,7 +832,7 @@ class HarmonicBasis(ComputationBasis):
         symmetry_mode=None,
     ) -> np.ndarray:
         """
-        Get the derivative matrix ∂S/∂C_ℓ in compressed form.
+        Get the derivative matrix ∂S/∂C_ℓ in harmonic space.
 
         Parameters
         ----------
@@ -871,9 +864,9 @@ class HarmonicBasis(ComputationBasis):
             ell, key.comp_i, key.comp_j, mode, symmetry_mode=symmetry_mode
         )
 
-    def get_compressed_covariance(self, C_ell):
+    def get_covariance(self, C_ell):
         """
-        Compute compressed covariance C̄ = V N V^T + Λ.
+        Compute harmonic-space covariance C̄ = V N V^T + Λ.
 
         Parameters
         ----------
@@ -896,24 +889,31 @@ class HarmonicBasis(ComputationBasis):
 
     # === Full pixel-space operations (if needed) ===
 
-    def get_inverse(self, C_ell: np.ndarray) -> np.ndarray:
+    def get_full_inverse(self, C_ell) -> np.ndarray:
         """
-        Compute full (N + S)^{-1} using SMW formula.
+        Compute full (N + S)^{-1} using the SMW formula.
 
         Parameters
         ----------
-        C_ell : numpy.ndarray
-            Power spectrum values for ell = 2 to lmax.
+        C_ell : numpy.ndarray or dict
+            Power spectrum (array for single-field, dict for multi-field).
 
         Returns
         -------
         numpy.ndarray
             Full inverse covariance matrix of shape (n_pix, n_pix).
         """
-        Lambda_diag = self._build_lambda_diagonal(C_ell)
-        return smw_inverse(self.N_inv, self._V_N_inv, self._V_Ninv_VT, Lambda_diag)
+        c_ell_arr, c_ell_dict, is_single = self._normalize_c_ell(C_ell)
+        if is_single:
+            Lambda_diag = self._build_lambda_diagonal(c_ell_arr)
+            return smw_inverse(self.N_inv, self._V_N_inv, self._V_Ninv_VT, Lambda_diag)
+        # Multi-field: (N + S)^{-1} = N^{-1} - V_N_inv^T @ K^{-1} @ V_N_inv
+        # with K = Lambda^{-1} + V N^{-1} V^T solved via Cholesky.
+        K_chol, _ = self.prepare_for_basis(c_ell_dict)
+        K_inv_V_N_inv = cholesky_solve((K_chol, True), self._V_N_inv)
+        return self.N_inv - self._V_N_inv.T @ K_inv_V_N_inv
 
-    def get_logdet(self, C_ell) -> float:
+    def get_full_logdet(self, C_ell) -> float:
         """
         Compute log|N + S| using SMW formula.
 
@@ -929,14 +929,10 @@ class HarmonicBasis(ComputationBasis):
         """
         c_ell_arr, c_ell_dict, is_single = self._normalize_c_ell(C_ell)
         if not is_single:
-            _, logdet = self.prepare_smw(c_ell_dict)
+            _, logdet = self.prepare_for_basis(c_ell_dict)
             return logdet
         Lambda_diag = self._build_lambda_diagonal(c_ell_arr)
         return smw_logdet(self._log_det_N, self._V_Ninv_VT, Lambda_diag)
-
-    def get_full_logdet(self, C_ell) -> float:
-        """Get exact log|N + S| via SMW formula."""
-        return self.get_logdet(C_ell)
 
     def get_noise_for_bias(self) -> np.ndarray:
         """Return the SMW noise intermediate ``T = V N_eff^{-1} N N_eff^{-1} V^T``.
@@ -946,7 +942,7 @@ class HarmonicBasis(ComputationBasis):
         """
         return self._noise_cov_T
 
-    def get_weighted_compressed_data(
+    def get_weighted_data(
         self,
         data: np.ndarray,
         C_ell,
@@ -977,13 +973,13 @@ class HarmonicBasis(ComputationBasis):
         Returns
         -------
         numpy.ndarray
-            Weighted compressed data ``w = V C^{-1} d``.
+            Weighted harmonic-space data ``w = V C^{-1} d``.
         """
         if stable_inner_inv is None:
             stable_inner_inv = self.prepare_stable_inner_inv(C_ell)
         return stable_inner_inv.T @ (self._V_N_inv @ data)
 
-    def compute_quadratic_form(self, data: np.ndarray, C_ell) -> float:
+    def quadratic_form(self, data: np.ndarray, C_ell) -> float:
         """
         Compute d^T C^{-1} d efficiently using SMW formula.
 
@@ -1001,7 +997,7 @@ class HarmonicBasis(ComputationBasis):
         """
         c_ell_arr, c_ell_dict, is_single = self._normalize_c_ell(C_ell)
         if not is_single:
-            K_chol, _ = self.prepare_smw(c_ell_dict)
+            K_chol, _ = self.prepare_for_basis(c_ell_dict)
             return self.quadratic_form_from_prepared(data, K_chol)
         Lambda_diag = self._build_lambda_diagonal(c_ell_arr)
         return smw_quadratic_form(
@@ -1018,7 +1014,7 @@ class HarmonicBasis(ComputationBasis):
         K = lambda_inv + self._V_Ninv_VT
         return K, lambda_matrix
 
-    def prepare_smw(self, C_ell_dict: dict) -> SMWPrepared:
+    def prepare_for_basis(self, C_ell_dict: dict) -> BasisPrepared:
         """Precompute K Cholesky factor and log determinant for reuse across sims."""
         K, lambda_matrix = self._build_smw_kernel(C_ell_dict)
 
@@ -1029,7 +1025,7 @@ class HarmonicBasis(ComputationBasis):
 
         logdet = self._log_det_N + log_det_Lambda + log_det_K
 
-        return SMWPrepared(K_chol, logdet)
+        return BasisPrepared(K_chol, logdet)
 
     def quadratic_form_from_prepared(self, data: np.ndarray, K_chol: np.ndarray) -> float:
         """Compute d^T C^{-1} d using precomputed K Cholesky factor."""
@@ -1087,7 +1083,7 @@ class HarmonicBasis(ComputationBasis):
         Returns
         -------
         numpy.ndarray
-            Diagonal of derivative matrix, shape (n_kept,).
+            Diagonal of derivative matrix, shape (dim,).
         """
         spin = self._spins[comp_i]
         local_mode_indices = self._ell_to_modes_local[ell]

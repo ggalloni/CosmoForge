@@ -59,7 +59,7 @@ class TestCreateCompression:
 
         assert cm.method == "harmonic"
         assert cm.n_modes > 0
-        assert cm.n_kept == cm.n_modes  # Harmonic keeps all modes
+        assert cm.dim == cm.n_modes  # Harmonic keeps all modes
 
     def test_pixel_method(self, uniform_sky_setup):
         """Test create_computation_basis with pixel method."""
@@ -78,8 +78,8 @@ class TestCreateCompression:
         cm.setup()
 
         assert cm.method == "pixel"
-        assert cm.n_kept > 0
-        assert cm.n_kept <= setup["n_pix"]
+        assert cm.dim > 0
+        assert cm.dim <= setup["n_pix"]
 
     def test_unknown_method_raises(self, uniform_sky_setup):
         """Test that unknown method raises error."""
@@ -125,8 +125,8 @@ class TestCreateCompression:
 
         # Results should match
         assert_allclose(
-            cm.get_compressed_covariance(C_ell),
-            hc.get_compressed_covariance(C_ell),
+            cm.get_covariance(C_ell),
+            hc.get_covariance(C_ell),
             rtol=1e-10,
         )
 
@@ -175,7 +175,7 @@ class TestCreateCompression:
 
         cm.setup()
 
-        assert cm.n_kept > 0
+        assert cm.dim > 0
 
 
 class TestComputeFisherMatrix:
@@ -354,7 +354,7 @@ class TestPerFieldThreshold:
         )
         ppc2.setup()
 
-        assert ppc1.n_kept == ppc2.n_kept
+        assert ppc1.dim == ppc2.dim
 
         # Fisher must match
         C_ell = np.ones(lmax + 1) * 1e-4
@@ -363,7 +363,7 @@ class TestPerFieldThreshold:
         assert_allclose(f1, f2, rtol=1e-12)
 
     def test_per_field_list_epsilon(self):
-        """Two spin-0 fields with different epsilons → different n_kept per field."""
+        """Two spin-0 fields with different epsilons → different dim per field."""
         from cosmocore.basis import PixelBasis
 
         np.random.seed(42)
@@ -400,7 +400,7 @@ class TestPerFieldThreshold:
         ppc_uniform.setup()
 
         # Split should keep fewer modes (field 1 is aggressive)
-        assert ppc_split.n_kept < ppc_uniform.n_kept
+        assert ppc_split.dim < ppc_uniform.dim
 
     def test_spin2_tuple_epsilon_eb_split(self):
         """Spin-2 field with tuple epsilon uses E/B split thresholding."""
@@ -437,7 +437,7 @@ class TestPerFieldThreshold:
         ppc_uniform.setup()
 
         # Split should keep >= uniform modes since B gets looser threshold
-        assert ppc_split.n_kept >= ppc_uniform.n_kept
+        assert ppc_split.dim >= ppc_uniform.dim
 
         # Fisher should still be PSD and symmetric
         C_ell_dict = {
@@ -540,8 +540,8 @@ class TestPerFieldThreshold:
         )
         ppc.setup()
 
-        assert ppc.n_kept > 0
-        assert ppc.n_kept <= total_pix
+        assert ppc.dim > 0
+        assert ppc.dim <= total_pix
 
         # Fisher should work and be valid
         C_ell_dict = {
@@ -605,7 +605,7 @@ class TestPerFieldThreshold:
 
 
 # =============================================================================
-# PICSLike methods tests (prepare_smw, quadratic_form, logdet)
+# PICSLike methods tests (prepare_for_basis, quadratic_form, logdet)
 # =============================================================================
 
 
@@ -644,7 +644,7 @@ class TestPixelProjectedPICSLikeMethods:
         }
         return ppc, C_ell_dict, N
 
-    def test_compute_quadratic_form(self):
+    def test_quadratic_form(self):
         """Quadratic form matches brute-force d^T C^{-1} d."""
         from cosmocore.basics import matrix_inverse_symm
 
@@ -655,7 +655,7 @@ class TestPixelProjectedPICSLikeMethods:
         data = np.random.randn(ppc.n_pix)
 
         # Compressed quadratic form
-        qf_compressed = ppc.compute_quadratic_form(data, C_ell_dict)
+        qf_compressed = ppc.quadratic_form(data, C_ell_dict)
 
         # Brute-force in full pixel space
         lambda_matrix = ppc._build_lambda_matrix_3tuple(C_ell_dict)
@@ -672,18 +672,18 @@ class TestPixelProjectedPICSLikeMethods:
         )
 
     def test_prepare_and_quadratic_form_from_prepared(self):
-        """prepare_smw → quadratic_form_from_prepared matches direct compute."""
+        """prepare_for_basis → quadratic_form_from_prepared matches direct compute."""
         np.random.seed(42)
         ppc, C_ell_dict, _ = self._make_spin2_setup()
 
         data = np.random.randn(ppc.n_pix)
 
         # Direct computation
-        qf_direct = ppc.compute_quadratic_form(data, C_ell_dict)
+        qf_direct = ppc.quadratic_form(data, C_ell_dict)
 
         # Two-step: prepare then compute
-        C_c_inv, logdet = ppc.prepare_smw(C_ell_dict)
-        assert C_c_inv.shape == (ppc.n_kept, ppc.n_kept)
+        C_c_inv, logdet = ppc.prepare_for_basis(C_ell_dict)
+        assert C_c_inv.shape == (ppc.dim, ppc.dim)
         assert isinstance(logdet, float)
 
         qf_prepared = ppc.quadratic_form_from_prepared(data, C_c_inv)
@@ -703,7 +703,7 @@ class TestPixelProjectedPICSLikeMethods:
         logdet = ppc.get_logdet(C_ell_dict)
 
         # Directly compute
-        C_c = ppc.get_compressed_covariance(C_ell_dict)
+        C_c = ppc.get_covariance(C_ell_dict)
         _, expected_logdet = np.linalg.slogdet(C_c)
 
         assert_allclose(
@@ -751,7 +751,7 @@ class TestPixelProjectedPICSLikeMethods:
         ppc_split.setup()
 
         # Split should keep more modes (B modes preserved)
-        assert ppc_split.n_kept >= ppc_aggressive.n_kept
+        assert ppc_split.dim >= ppc_aggressive.dim
 
         C_ell_dict = {
             (0, 0, 0): np.ones(lmax + 1) * 5e-4,  # EE

@@ -27,7 +27,7 @@ from ..basics import (
     svd,
     symmetrize_inplace,
 )
-from .base import ComputationBasis, SMWPrepared
+from .base import BasisPrepared, ComputationBasis
 
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
@@ -46,12 +46,12 @@ class PixelBasis(ComputationBasis):
     Pixel-space compression with projector (Gjerløw-like).
 
     Stays in n_pix space with projector P_h, then uses eigenvalue
-    decomposition to find optimal subspace. Compression: n_pix → n_kept.
+    decomposition to find optimal subspace. Compression: n_pix → dim.
 
     The key operations are:
     - Projector: P_h = V^T V (harmonic projector, n_pix × n_pix but rank n_modes)
     - Eigendecomposition of compression matrix to find optimal modes
-    - Data compression: d_c = P @ d where P = U^T (n_kept × n_pix)
+    - Data compression: d_c = P @ d where P = U^T (dim × n_pix)
 
     This approach is more flexible than HarmonicBasis because it allows
     custom projectors to handle systematics (foreground deprojection, etc.).
@@ -97,7 +97,7 @@ class PixelBasis(ComputationBasis):
 
     Attributes
     ----------
-    n_kept : int
+    dim : int
         Number of modes kept after compression (initially n_pix).
 
     Examples
@@ -156,8 +156,8 @@ class PixelBasis(ComputationBasis):
         if not self._use_direct:
             self._init_harmonic_internals()
 
-        # Before compression, n_kept = n_pix
-        self.n_kept = self.n_pix
+        # Before compression, dim = n_pix
+        self.dim = self.n_pix
         # Compression quantities
         self._basis = basis
         self._C_ell_for_basis = C_ell
@@ -243,7 +243,7 @@ class PixelBasis(ComputationBasis):
         Returns
         -------
         U : numpy.ndarray
-            Kept eigenvectors, shape (n, n_kept).
+            Kept eigenvectors, shape (n, dim).
         eigenvalues : numpy.ndarray or None
             Kept eigenvalues (descending), or None.
         """
@@ -360,7 +360,7 @@ class PixelBasis(ComputationBasis):
         Returns
         -------
         U_combined : numpy.ndarray
-            Orthogonalized eigenvectors, shape (n_field_pix, n_kept).
+            Orthogonalized eigenvectors, shape (n_field_pix, dim).
         """
         n_base = self._n_modes_base
 
@@ -434,7 +434,7 @@ class PixelBasis(ComputationBasis):
         Returns
         -------
         U : numpy.ndarray
-            Eigenvectors for this field, shape (n_field_pix, n_kept).
+            Eigenvectors for this field, shape (n_field_pix, dim).
         eigenvalues : numpy.ndarray or None
             Eigenvalues if available (None for E/B split).
         """
@@ -515,10 +515,11 @@ class PixelBasis(ComputationBasis):
     @property
     def projector(self) -> np.ndarray:
         """
-        Get the projection matrix U^T (n_kept × n_pix).
+        Get the projection matrix U^T (dim × n_pix).
 
-        Maps pixel space to eigenbasis compressed space. In direct mode
-        without compression, the projector is the identity.
+        Maps pixel space to the basis. In pixel-direct mode the
+        projector is the identity; in compressed mode it is ``U^T``,
+        the transpose of the kept eigenvectors.
 
         Raises
         ------
@@ -536,12 +537,7 @@ class PixelBasis(ComputationBasis):
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
         return self._eigenvectors.T
 
-    @property
-    def n_compressed(self) -> int:
-        """Size of compressed space."""
-        return self.n_kept
-
-    def compress_data(self, data: np.ndarray) -> np.ndarray:
+    def to_basis(self, data: np.ndarray) -> np.ndarray:
         """
         Project pixel-space data into the basis.
 
@@ -551,7 +547,7 @@ class PixelBasis(ComputationBasis):
         """
         if self._use_direct:
             return data
-        return super().compress_data(data)
+        return super().to_basis(data)
 
     def setup(self) -> None:
         """
@@ -588,13 +584,13 @@ class PixelBasis(ComputationBasis):
             )
         # Precompute U^T N_raw U so _N_original can be released; the
         # noise-bias path reads only the compressed form thereafter.
-        self._precompute_compressed_noise()
+        self._precompute_noise_in_basis()
         # Factor self._N in place. After this point the symmetric N buffer
         # is gone; consumers go through cholesky_solve via _N_chol or the
         # lazy _N_symmetric reconstruction (deferred compression-basis paths).
         self._factorise_noise()
 
-    def _precompute_compressed_noise(self) -> None:
+    def _precompute_noise_in_basis(self) -> None:
         """Cache U^T N_orig U and release the n_pix x n_pix raw N reference.
 
         Only possible when compression is active (``_eigenvectors`` is set)
@@ -606,7 +602,7 @@ class PixelBasis(ComputationBasis):
             return
         U = self._eigenvectors
         UN_raw_U = U.T @ N_original @ U
-        self._compressed_noise_cache = symmetrize_inplace(UN_raw_U)
+        self._noise_in_basis_cache = symmetrize_inplace(UN_raw_U)
         del self._N_original
 
     def _compute_effective_noise(self) -> None:
@@ -646,9 +642,9 @@ class PixelBasis(ComputationBasis):
         effective N_eff that includes the absorbed high-ℓ signal.
 
         Without switch optimization, N_eff = N and this is identical to
-        ``get_compressed_covariance(0)``.
+        ``get_covariance(0)``.
         """
-        cached = getattr(self, "_compressed_noise_cache", None)
+        cached = getattr(self, "_noise_in_basis_cache", None)
         if cached is not None:
             return cached
         N_raw = getattr(self, "_N_original", self._N_symmetric)
@@ -1281,13 +1277,13 @@ class PixelBasis(ComputationBasis):
             if show_threshold_lines:
                 colors = plt.cm.Reds(np.linspace(0.3, 0.9, len(threshold_values)))
                 for thresh, color in zip(threshold_values, colors):
-                    n_kept = int(np.sum(normalized > thresh))
+                    dim = int(np.sum(normalized > thresh))
                     ax.axhline(
                         y=thresh,
                         color=color,
                         linestyle="--",
                         alpha=0.7,
-                        label=f"\u03b5={thresh:.0e} ({n_kept} modes)",
+                        label=f"\u03b5={thresh:.0e} ({dim} modes)",
                     )
 
             if log_scale:
@@ -1504,7 +1500,7 @@ class PixelBasis(ComputationBasis):
 
             self._eigenvectors = U_full
             self._eigenvalues = None  # Not meaningful for combined E/B
-            self.n_kept = total_kept
+            self.dim = total_kept
         else:
             # Single-field spin-0 path (backward compatible)
             eps_scalar = eps_list[0] if eps_list is not None else None
@@ -1517,7 +1513,7 @@ class PixelBasis(ComputationBasis):
 
             self._eigenvalues = eigenvalues
             self._eigenvectors = eigenvectors
-            self.n_kept = eigenvectors.shape[1]
+            self.dim = eigenvectors.shape[1]
 
         self._compression_basis = basis
 
@@ -1544,7 +1540,7 @@ class PixelBasis(ComputationBasis):
         ----------
         .. [1] Gjerløw, E., et al. (2015). Section 6.2 - "Precompute: PY"
         """
-        U = self._eigenvectors  # (n_pix, n_kept)
+        U = self._eigenvectors  # (n_pix, dim)
 
         # U^T @ N @ U - compressed noise covariance (independent of C_ell).
         # Goes through _N_symmetric so a post-setup apply_compression call
@@ -1552,14 +1548,14 @@ class PixelBasis(ComputationBasis):
         self._U_N_U = U.T @ self._N_symmetric @ U
 
         # V @ U - used for signal covariance transformation (independent of C_ell)
-        # VU has shape (n_modes, n_kept)
+        # VU has shape (n_modes, dim)
         self._VU = self._V @ U
 
         # Make U_N_U symmetric (numerical stability) — in place to avoid
-        # the n_kept² broadcast temporaries.
+        # the dim² broadcast temporaries.
         symmetrize_inplace(self._U_N_U)
 
-        # SMW components for get_weighted_compressed_data
+        # SMW components for get_weighted_data
         # V @ N^{-1} via Cholesky solve: (N^{-1} V^T)^T = cholesky_solve(N_chol, V^T)^T
         self._V_N_inv = cholesky_solve(self._N_chol, self._V.T).T
         # V @ N^{-1} @ V^T (n_modes, n_modes) - the M matrix in SMW
@@ -1579,18 +1575,20 @@ class PixelBasis(ComputationBasis):
         This reduces memory allocation overhead in frequently called methods
         like get_derivative_matrix and get_projected_inverse.
         """
-        # Buffer for VU * diagonal scaling: (n_modes, n_kept)
+        # Buffer for VU * diagonal scaling: (n_modes, dim)
         self._VU_scaled_buffer = np.empty(
-            (self.n_modes, self.n_kept), dtype=np.float64, order="C"
+            (self.n_modes, self.dim), dtype=np.float64, order="C"
         )
-        # Buffer for U_S_U computation: (n_kept, n_kept)
-        self._U_S_U_buffer = np.empty(
-            (self.n_kept, self.n_kept), dtype=np.float64, order="F"
-        )
+        # Buffer for U_S_U computation: (dim, dim)
+        self._U_S_U_buffer = np.empty((self.dim, self.dim), dtype=np.float64, order="F")
 
     def get_projected_inverse(self, C_ell) -> np.ndarray:
         """
-        Compute inverse of compressed covariance (U^T @ C @ U)^{-1}.
+        Compute the basis-space inverse covariance.
+
+        In pixel-direct mode this is the exact ``(N + S)^{-1}``; on a
+        truncated compressed basis it is ``(U^T (N + S) U)^{-1}`` —
+        the inverse of the restricted operator on the kept subspace.
 
         Parameters
         ----------
@@ -1600,14 +1598,14 @@ class PixelBasis(ComputationBasis):
         Returns
         -------
         numpy.ndarray
-            Inverse of compressed covariance, shape (n_kept, n_kept).
+            Basis-space inverse covariance, shape (dim, dim).
         """
         if self._use_direct:
             C = self._build_signal_matrix_direct() + self._N
             return matrix_inverse_symm(np.asfortranarray(C))
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
-        return self.get_compressed_inverse(C_ell)
+        return self.get_inverse(C_ell)
 
     def get_derivative_matrix(
         self,
@@ -1617,7 +1615,7 @@ class PixelBasis(ComputationBasis):
         symmetry_mode=None,
     ) -> np.ndarray:
         """
-        Get derivative matrix ∂C/∂C_ℓ in the compressed basis.
+        Get derivative matrix ∂C/∂C_ℓ in the basis space.
 
         Parameters
         ----------
@@ -1631,7 +1629,7 @@ class PixelBasis(ComputationBasis):
         Returns
         -------
         numpy.ndarray
-            Derivative matrix of shape (n_compressed, n_compressed).
+            Derivative matrix of shape (dim, dim).
         """
         from ..spectrum_key import SpectrumKind, SymmetryMode, kind_to_legacy_mode
 
@@ -1665,9 +1663,13 @@ class PixelBasis(ComputationBasis):
         E_VU = matrix_mult(E, self._VU)
         return matrix_mult(self._VU.T, E_VU)
 
-    def get_compressed_covariance(self, C_ell) -> np.ndarray:
+    def get_covariance(self, C_ell) -> np.ndarray:
         """
-        Compute covariance matrix in the compressed space.
+        Compute the basis-space covariance.
+
+        In pixel-direct mode this is the exact ``N + S``; on a truncated
+        compressed basis it is ``U^T (N + S) U`` — the restriction of
+        the full covariance to the kept subspace.
 
         Parameters
         ----------
@@ -1677,7 +1679,7 @@ class PixelBasis(ComputationBasis):
         Returns
         -------
         numpy.ndarray
-            Covariance matrix of shape (n_compressed, n_compressed).
+            Basis-space covariance, shape (dim, dim).
         """
         if self._use_direct:
             return self._build_signal_matrix_direct() + self._N
@@ -1697,7 +1699,7 @@ class PixelBasis(ComputationBasis):
         np.matmul(self._VU.T, self._VU_scaled_buffer, out=self._U_S_U_buffer)
         return self._U_N_U + self._U_S_U_buffer
 
-    def get_weighted_compressed_data(
+    def get_weighted_data(
         self,
         data: np.ndarray,
         C_ell,
@@ -1721,7 +1723,7 @@ class PixelBasis(ComputationBasis):
         Returns
         -------
         numpy.ndarray
-            Weighted data of shape (n_compressed,) or (n_compressed, n_sims).
+            Weighted data of shape (dim,) or (dim, n_sims).
         """
         if self._use_direct:
             if C_c_inv is None:
@@ -1733,12 +1735,17 @@ class PixelBasis(ComputationBasis):
 
         d_compressed = self._eigenvectors.T @ data
         if C_c_inv is None:
-            C_c_inv = self.get_compressed_inverse(C_ell)
+            C_c_inv = self.get_inverse(C_ell)
         return matrix_mult(C_c_inv, d_compressed)
 
-    def compute_quadratic_form(self, data: np.ndarray, C_ell) -> float:
+    def quadratic_form(self, data: np.ndarray, C_ell) -> float:
         """
-        Compute d^T C^{-1} d in the compressed space.
+        Compute ``d^T C^{-1} d`` using the basis-space inverse.
+
+        In pixel-direct mode this equals the full pixel-space quadratic
+        form ``d^T (N + S)^{-1} d``. On a truncated compressed basis it
+        is ``(U^T d)^T (U^T (N + S) U)^{-1} (U^T d)`` — the quadratic
+        form of the restricted operator on the kept subspace.
 
         Parameters
         ----------
@@ -1759,9 +1766,9 @@ class PixelBasis(ComputationBasis):
         if self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
-        d_compressed = self._eigenvectors.T @ data
-        C_compressed_inv = self.get_compressed_inverse(C_ell)
-        return float(d_compressed.T @ C_compressed_inv @ d_compressed)
+        d_basis = self._eigenvectors.T @ data
+        C_inv = self.get_inverse(C_ell)
+        return float(d_basis.T @ C_inv @ d_basis)
 
     def compute_fisher_matrix(
         self,
@@ -1810,7 +1817,7 @@ class PixelBasis(ComputationBasis):
             n_ell = ell_max - ell_min + 1
             fisher = np.zeros((n_ell, n_ell))
 
-            C_c_inv = self.get_compressed_inverse(C_ell)
+            C_c_inv = self.get_inverse(C_ell)
 
             from ..spectrum_key import SpectrumKey, SpectrumKind
 
@@ -1850,7 +1857,7 @@ class PixelBasis(ComputationBasis):
         n_spec = len(spectra_list)
         fisher = np.zeros((n_spec * n_ell, n_spec * n_ell))
 
-        C_c_inv = self.get_compressed_inverse(C_ell)
+        C_c_inv = self.get_inverse(C_ell)
 
         cinv_times_dc = {}
         for spec_idx, spec_entry in enumerate(spectra_list):
@@ -1880,22 +1887,22 @@ class PixelBasis(ComputationBasis):
 
         return fisher
 
-    def prepare_smw(self, C_ell_dict: dict) -> SMWPrepared:
-        """Precompute compressed inverse and logdet for reuse across sims."""
+    def prepare_for_basis(self, C_ell_dict: dict) -> BasisPrepared:
+        """Pre-bake the basis-space inverse and logdet for reuse across sims."""
         if not self._use_direct and self._eigenvectors is None:
             raise RuntimeError("Compression not applied. Call apply_compression() first.")
 
         from ..basics import matrix_slogdet_symm
 
-        C_c = self.get_compressed_covariance(C_ell_dict)
+        C_c = self.get_covariance(C_ell_dict)
         C_c_inv = matrix_inverse_symm(C_c)
         _, logdet = matrix_slogdet_symm(C_c)
-        return SMWPrepared(C_c_inv, logdet)
+        return BasisPrepared(C_c_inv, logdet)
 
     def quadratic_form_from_prepared(
         self, data: np.ndarray, C_c_inv: np.ndarray
     ) -> float:
-        """Compute d^T C^{-1} d using precomputed compressed inverse."""
+        """Compute ``d^T C^{-1} d`` using a pre-baked basis-space inverse."""
         if self._use_direct:
             return float(data.T @ C_c_inv @ data)
         if self._eigenvectors is None:
@@ -1906,7 +1913,12 @@ class PixelBasis(ComputationBasis):
 
     def get_logdet(self, C_ell) -> float:
         """
-        Compute log determinant of compressed covariance.
+        Compute the log determinant of the basis-space covariance.
+
+        In pixel-direct mode this equals the exact full ``log|N + S|``.
+        On a truncated compressed basis it is the logdet of the
+        restricted operator ``U^T (N + S) U`` — not the full
+        ``log|N + S|``; see :meth:`get_full_logdet` for the ABC contract.
 
         Parameters
         ----------
@@ -1914,13 +1926,26 @@ class PixelBasis(ComputationBasis):
             Power spectrum (array for single-field, dict for multi-field).
         """
         if isinstance(C_ell, dict):
-            _, logdet = self.prepare_smw(C_ell)
+            _, logdet = self.prepare_for_basis(C_ell)
             return logdet
         from ..basics import matrix_slogdet_symm
 
-        C_c = self.get_compressed_covariance(C_ell)
+        C_c = self.get_covariance(C_ell)
         _, logdet = matrix_slogdet_symm(np.asfortranarray(C_c))
         return logdet
+
+    def get_full_inverse(self, C_ell) -> np.ndarray:
+        """Reconstruct full ``n_pix x n_pix`` inverse from the basis-space form.
+
+        Exact in pixel-direct mode (``U`` is the identity). Lossy on a
+        truncated compressed pixel basis — the result lives in the kept
+        subspace and is zero on the truncated complement.
+        """
+        C_basis_inv = self.get_inverse(C_ell)
+        if self._use_direct or self._eigenvectors is None:
+            return C_basis_inv
+        U = self._eigenvectors
+        return U @ C_basis_inv @ U.T
 
     @property
     def compression_ratio(self) -> float:
@@ -1932,7 +1957,7 @@ class PixelBasis(ComputationBasis):
         float
             Compression ratio (1.0 means no compression).
         """
-        return self.n_kept / self.n_pix
+        return self.dim / self.n_pix
 
     @property
     def eigenvalues(self) -> np.ndarray | None:
