@@ -576,9 +576,9 @@ class PICSLike(Core, MPISharedMemoryMixin):
             if not self.params.do_cross:
                 pass  # logdet already set by prepare_smw
             else:
-                logdet = bm.get_logdet(C_ell_input)
+                logdet = bm.get_full_logdet(C_ell_input)
 
-            self.log(f"Log-determinant (basis): {logdet:.2f}", level=3)
+            self.log(f"Log-determinant (full): {logdet:.2f}", level=3)
         else:
             self.compute_signal_matrix(param_point)
             self.log(f"Signal matrix computed for parameters: {param_point}", level=3)
