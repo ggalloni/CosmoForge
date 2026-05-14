@@ -485,6 +485,67 @@ class TestCompressedLikelihood:
             f"Standard={log_std:.6f}, Compressed={log_comp:.6f}"
         )
 
+    def test_compressed_likelihood_consistency_tqu_do_cross(self, fast_config_path):
+        """Compressed vs traditional pixel-space for ``do_cross=True``.
+
+        Regression for the SMW cross-quadratic identity
+        ``d1^T C^{-1} d2 = d1^T N^{-1} d2 - y1^T K^{-1} y2`` (with
+        ``y_i = V N^{-1} d_i``) in the harmonic-basis fast path. We feed
+        ``maps2 = maps1`` so the cross-quadratic reduces to the auto
+        case, then compare against the pixel-space ``do_cross=True``
+        result. They must agree to numerical precision.
+        """
+        picslike_standard = PICSLike(params_file=fast_config_path)
+        picslike_standard.setup_parameter_grid()
+        picslike_standard.setup_fields()
+        picslike_standard.setup_geometry()
+        picslike_standard.setup_covariance_matrices()
+        picslike_standard.setup_cls(lmax=picslike_standard.lmax_signal)
+        picslike_standard.setup_beams(lmax=picslike_standard.lmax_signal)
+        picslike_standard.setup_maps()
+        picslike_standard.params.do_cross = True
+        picslike_standard.maps2 = picslike_standard.maps1.copy()
+
+        picslike_compressed = PICSLike(
+            params_file=fast_config_path,
+            compression={"method": "harmonic"},
+        )
+        picslike_compressed.setup_parameter_grid()
+        picslike_compressed.setup_fields()
+        picslike_compressed.setup_geometry()
+        picslike_compressed.setup_covariance_matrices()
+        picslike_compressed.setup_cls(lmax=picslike_compressed.lmax_signal)
+        picslike_compressed.setup_beams(lmax=picslike_compressed.lmax_signal)
+        picslike_compressed.setup_computation_basis(method="harmonic")
+        picslike_compressed.setup_maps()
+        picslike_compressed.params.do_cross = True
+        picslike_compressed.maps2 = picslike_compressed.maps1.copy()
+
+        assert picslike_compressed.basis_manager is not None
+
+        param_point = list(picslike_standard.parameter_grid.grid_points)[0]
+        chi2_std, log_std = picslike_standard._compute_likelihood_point(param_point)
+        chi2_comp, log_comp = picslike_compressed._compute_likelihood_point(param_point)
+
+        chi2_std0 = chi2_std[0] if hasattr(chi2_std, "__len__") else chi2_std
+        chi2_comp0 = chi2_comp[0] if hasattr(chi2_comp, "__len__") else chi2_comp
+        log_std0 = log_std[0] if hasattr(log_std, "__len__") else log_std
+        log_comp0 = log_comp[0] if hasattr(log_comp, "__len__") else log_comp
+
+        rel_diff_chi2 = abs(chi2_comp0 - chi2_std0) / abs(chi2_std0)
+        assert rel_diff_chi2 < 1e-7, (
+            f"do_cross chi-squared relative difference too large: "
+            f"{rel_diff_chi2:.2e}. "
+            f"Standard={chi2_std0:.6f}, Compressed={chi2_comp0:.6f}"
+        )
+
+        rel_diff_log = abs(log_comp0 - log_std0) / abs(log_std0)
+        assert rel_diff_log < 1e-7, (
+            f"do_cross log-likelihood relative difference too large: "
+            f"{rel_diff_log:.2e}. "
+            f"Standard={log_std0:.6f}, Compressed={log_comp0:.6f}"
+        )
+
     @pytest.mark.slow
     def test_compressed_likelihood_consistency_single_field(self, local_path):
         """Test compressed vs traditional for B-only (single-field, nside=8).
