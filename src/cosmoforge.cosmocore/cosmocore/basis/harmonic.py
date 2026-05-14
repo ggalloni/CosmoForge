@@ -906,7 +906,7 @@ class HarmonicBasis(ComputationBasis):
         Lambda_diag = self._build_lambda_diagonal(C_ell)
         return smw_inverse(self.N_inv, self._V_N_inv, self._V_Ninv_VT, Lambda_diag)
 
-    def get_logdet(self, C_ell) -> float:
+    def get_full_logdet(self, C_ell) -> float:
         """
         Compute log|N + S| using SMW formula.
 
@@ -926,10 +926,6 @@ class HarmonicBasis(ComputationBasis):
             return logdet
         Lambda_diag = self._build_lambda_diagonal(c_ell_arr)
         return smw_logdet(self._log_det_N, self._V_Ninv_VT, Lambda_diag)
-
-    def get_full_logdet(self, C_ell) -> float:
-        """Get exact log|N + S| via SMW formula."""
-        return self.get_logdet(C_ell)
 
     def get_noise_for_bias(self) -> np.ndarray:
         """Return the SMW noise intermediate ``T = V N_eff^{-1} N N_eff^{-1} V^T``.

@@ -340,7 +340,7 @@ class TestHarmonicBasisPixelSpace:
         n_ell = setup["lmax"] + 1
         C_ell = np.ones(n_ell) * 1e-6
 
-        logdet = hc.get_logdet(C_ell)
+        logdet = hc.get_full_logdet(C_ell)
 
         assert np.isfinite(logdet)
 
@@ -437,7 +437,7 @@ class TestHarmonicBasisValidation:
         C_direct = setup["N"] + S
         _, logdet_direct = np.linalg.slogdet(C_direct)
 
-        logdet_smw = hc.get_logdet(C_ell)
+        logdet_smw = hc.get_full_logdet(C_ell)
 
         assert_allclose(logdet_smw, logdet_direct, rtol=1e-8)
 
@@ -652,13 +652,10 @@ class TestHarmonicDictOperations:
         qf = hc.compute_quadratic_form(data, C_ell_dict)
         assert qf > 0
 
-        # Log determinant (dict path)
-        logdet = hc.get_logdet(C_ell_dict)
-        assert isinstance(logdet, float)
-
-        # get_full_logdet alias
-        logdet2 = hc.get_full_logdet(C_ell_dict)
-        assert_allclose(logdet, logdet2)
+        # Log determinant (full, dict path)
+        logdet_full = hc.get_full_logdet(C_ell_dict)
+        assert isinstance(logdet_full, float)
+        assert np.isfinite(logdet_full)
 
         # prepare_smw and quadratic_form_from_prepared
         K_chol, logdet_smw = hc.prepare_smw(C_ell_dict)
