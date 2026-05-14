@@ -107,11 +107,46 @@ class SpectrumKey:
             )
 
 
+def _spin_pair_mode_to_kind(
+    spin_i: int, spin_j: int, mode: int, *, is_cross: bool = False
+):
+    """Translate a legacy (spin_i, spin_j, mode) triple to a SpectrumKind.
+
+    The mode→kind mapping for spin-2 × spin-2 depends on whether the
+    pair is an auto-pair or a cross-component pair, because the underlying
+    label enumeration differs:
+
+    - Auto (i == j): PolarizationField.get_spectrum_labels returns
+      ``[EE, BB, EB]`` → 3 modes, mapped to ``[GG, CC, GC]``.
+    - Cross (i != j): PolarizationField.get_cross_spectrum_labels returns
+      ``[E_iE_j, E_iB_j, B_iE_j, B_iB_j]`` → 4 modes, mapped to
+      ``[GG, GC, CG, CC]``.
+
+    All other spin pairs have a single mode count and ordering.
+    """
+    if (spin_i, spin_j) == (0, 0):
+        return SpectrumKind.SS
+    if (spin_i, spin_j) == (2, 2):
+        if is_cross:
+            return [
+                SpectrumKind.GG,
+                SpectrumKind.GC,
+                SpectrumKind.CG,
+                SpectrumKind.CC,
+            ][mode]
+        return [SpectrumKind.GG, SpectrumKind.CC, SpectrumKind.GC][mode]
+    if (spin_i, spin_j) == (0, 2):
+        return [SpectrumKind.SG, SpectrumKind.SC][mode]
+    if (spin_i, spin_j) == (2, 0):
+        return [SpectrumKind.GS, SpectrumKind.CS][mode]
+    raise ValueError(f"unsupported spin pair ({spin_i}, {spin_j})")
+
+
 def kind_to_legacy_mode(kind: SpectrumKind, *, is_cross: bool = False) -> int:
     """Bridge for migration: map SpectrumKind to the legacy int `mode`.
 
     For spin-2 × spin-2 the mode→kind mapping is context-dependent and must
-    match ``_spin_pair_mode_to_kind`` in ``cosmocore.harmonic``:
+    match ``_spin_pair_mode_to_kind`` (above) in this module:
 
     - Auto-pair (``is_cross=False``, default): ``[GG=0, CC=1, GC=2]``. CG has
       no slot here — auto-pair derivative builders emit the symmetrised GC

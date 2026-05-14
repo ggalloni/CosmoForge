@@ -159,43 +159,6 @@ def coswinbeam(nside, ell1=None, ell2=None):
     return beam
 
 
-def _spin_pair_mode_to_kind(
-    spin_i: int, spin_j: int, mode: int, *, is_cross: bool = False
-):
-    """Translate a legacy (spin_i, spin_j, mode) triple to a SpectrumKind.
-
-    The mode→kind mapping for spin-2 × spin-2 depends on whether the
-    pair is an auto-pair or a cross-component pair, because the underlying
-    label enumeration differs:
-
-    - Auto (i == j): PolarizationField.get_spectrum_labels returns
-      ``[EE, BB, EB]`` → 3 modes, mapped to ``[GG, CC, GC]``.
-    - Cross (i != j): PolarizationField.get_cross_spectrum_labels returns
-      ``[E_iE_j, E_iB_j, B_iE_j, B_iB_j]`` → 4 modes, mapped to
-      ``[GG, GC, CG, CC]``.
-
-    All other spin pairs have a single mode count and ordering.
-    """
-    from cosmocore.spectrum_key import SpectrumKind
-
-    if (spin_i, spin_j) == (0, 0):
-        return SpectrumKind.SS
-    if (spin_i, spin_j) == (2, 2):
-        if is_cross:
-            return [
-                SpectrumKind.GG,
-                SpectrumKind.GC,
-                SpectrumKind.CG,
-                SpectrumKind.CC,
-            ][mode]
-        return [SpectrumKind.GG, SpectrumKind.CC, SpectrumKind.GC][mode]
-    if (spin_i, spin_j) == (0, 2):
-        return [SpectrumKind.SG, SpectrumKind.SC][mode]
-    if (spin_i, spin_j) == (2, 0):
-        return [SpectrumKind.GS, SpectrumKind.CS][mode]
-    raise ValueError(f"unsupported spin pair ({spin_i}, {spin_j})")
-
-
 class SpectraManager:
     """
     Manages power spectra for a collection of cosmological fields.
@@ -451,7 +414,12 @@ class SpectraManager:
             extra CG entries in their original positions; SYMMETRIC skips
             them so the spectrum count stays at the legacy 3-per-cross-pair.
         """
-        from cosmocore.spectrum_key import SpectrumKey, SpectrumKind, SymmetryMode
+        from cosmocore.spectrum_key import (
+            SpectrumKey,
+            SpectrumKind,
+            SymmetryMode,
+            _spin_pair_mode_to_kind,
+        )
 
         # Coerce so downstream `is SymmetryMode.SYMMETRIC` checks behave
         # correctly when a caller passes the string form (e.g. from YAML).
