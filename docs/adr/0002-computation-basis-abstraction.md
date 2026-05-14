@@ -21,6 +21,26 @@ naming was wrong on two counts:
    about "harmonic basis with no compression" or "pixel basis with
    eigenmode truncation".
 
+## Conceptual model
+
+Basis and compression are two orthogonal axes:
+
+|  | **No compression** | **With compression** |
+|---|---|---|
+| **Pixel basis** | Pixel direct (identity, dim = n_pix) | Eigenmode-truncated (dim < n_pix) |
+| **Harmonic basis** | Harmonic (V, no m-block) | Harmonic + m-block |
+
+- **Basis** (rows): the change-of-basis operator. `identity` for
+  pixel-direct, `V` for harmonic, `U` for compressed pixel.
+- **Compression** (columns): optional *lossy* reduction within the
+  chosen basis. Eigenmode truncation on pixel; m-block on harmonic.
+  Pixel-direct and uncompressed harmonic do not compress.
+
+Each basis instance occupies one of the four cells. Methods on the
+basis return values in *the basis's current operating space* — a
+polymorphic notion that varies per instance but is well-defined for
+any given instance.
+
 ## Decision
 
 Restructure the abstraction:
@@ -42,6 +62,69 @@ The V operator is built m-ordered (modes grouped by `|m|`, not by ℓ).
 This is a prerequisite for m-block compression and is harmless for
 the uncompressed path.
 
+### Method naming convention
+
+`ComputationBasis` methods follow the polymorphism convention
+*bare = basis-native; `_full_` = pixel-space*:
+
+- **Bare method names** are polymorphic across `ComputationBasis`
+  subclasses. They return / refer to the basis-native form — the value
+  in *whatever space the instance currently operates in* (n_pix for
+  pixel-direct, n_modes for harmonic, the truncated dim for compressed
+  instances).
+- **`_full_` qualifier** explicitly demands a full n_pix-dim
+  pixel-space object, regardless of basis. It marks an explicit break
+  from the basis abstraction. Callers use it when they need the full
+  pixel-space object for downstream non-basis code (e.g. the full
+  Gaussian likelihood covariance).
+
+Examples (post-2026-05 vocabulary cleanup):
+- `bm.dim` — dimension of the basis's operating space (polymorphic).
+- `bm.to_basis(data)` — inject pixel-space data into the basis.
+- `bm.get_inverse(C_ell)` — basis-space inverse, dim × dim.
+- `bm.get_full_inverse(C_ell)` — full pixel-space inverse, n_pix × n_pix.
+- `bm.get_logdet(C_ell)` — basis-space logdet.
+- `bm.get_full_logdet(C_ell)` — full pixel-space logdet.
+
+### ABC contract: symmetric `bare` / `_full_` pairs
+
+When a `_full_` variant exists for a quantity, the bare variant exists
+too, and **both are declared on the `ComputationBasis` ABC**.
+Subclasses must implement both. This prevents partial APIs (one
+implementation provides only the bare variant, another provides only
+the full variant) and keeps callers from branching on `bm.method` to
+pick the right method name. Any method called polymorphically through
+`basis_manager` is similarly declared on the ABC — including the
+`prepare_for_basis` / `quadratic_form_from_prepared` fast-path pair
+and the `quadratic_form` slow-path.
+
+The `_full_` variant on pixel basis is exact only in pixel-direct
+mode. On a *truncated compressed* pixel basis it returns the
+quantity's restriction to the kept subspace, lifted back to ``n_pix``
+dimensions — a different operator than the full pixel-space one, not
+an approximation. The ABC docstrings on `get_full_inverse` and
+`get_full_logdet` spell this out per-method.
+
+### Basis-specific form, same QML slot
+
+Some methods return values whose *form* is basis-specific but whose
+*role* in downstream math is shared. The canonical case is
+`get_noise_for_bias()`:
+
+- `HarmonicBasis.get_noise_for_bias()` returns
+  `V N_eff^{-1} N N_eff^{-1} V^T` (the SMW intermediate ``T``).
+- `PixelBasis.get_noise_for_bias()` returns `U^T N_raw U` (raw noise
+  projected once into the eigenmode basis).
+
+Both fill the same slot in the QML noise-bias sandwich
+`Cov(w | noise) = X · get_noise_for_bias() · X^T`, where `X` is the
+basis's natural inverse-equivalent (`(I + Λ M)^{-T}` for harmonic;
+basis-space `C^{-1}` for pixel). The two return values are *not*
+interchangeable — they have different shapes of pre-multiplication
+baked in. The ABC docstring documents this contract; callers compose
+with the basis's own inverse-equivalent and never assume the two
+forms are the same matrix.
+
 ## Consequences
 
 - **Public API break**: `compression="harmonic"` and the old
@@ -58,3 +141,16 @@ the uncompressed path.
   comments, docstrings, or paper drafts must be updated to "harmonic
   basis". Compression now refers only to *lossy* approximations
   within a basis.
+- **Naming-convention enforcement is at the ABC, not at call sites.**
+  Any new method on `ComputationBasis` chooses bare or `_full_` (or
+  both, as a symmetric pair) at declaration time. Callers in `qube/`
+  and `picslike/` consume polymorphically — they ask the basis for the
+  value in whatever form they need and never branch on `bm.method` to
+  construct the call.
+- **The 2×2 model is the load-bearing mental model.** Future
+  architectural changes (m-block compression on harmonic, pixel-direct
+  as a default configuration, new compression algorithms) should be
+  expressible as a move within the 2×2, not as a new outermost mode
+  flag. Backlog candidate #8 (`PixelBasis` class-name and
+  configuration model) explicitly works on making the implementation
+  match this model.
