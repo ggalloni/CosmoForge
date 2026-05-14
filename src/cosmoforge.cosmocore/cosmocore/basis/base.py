@@ -605,7 +605,7 @@ class ComputationBasis(ABC):
         matrix is therefore basis-specific:
 
         - HarmonicBasis: ``V N_eff^{-1} N N_eff^{-1} V^T`` (the SMW
-          intermediate ``T`` from ``N_eff = N - S_fixed`` when the
+          intermediate ``T`` from ``N_eff = N + S_fixed`` when the
           switch optimisation is active; otherwise
           ``V N^{-1} N N^{-1} V^T``).
         - PixelBasis: ``U^T N U`` (raw noise projected once into the
