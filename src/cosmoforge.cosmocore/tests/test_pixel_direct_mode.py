@@ -4,7 +4,8 @@ Tests for PixelBasis direct (V-free) mode.
 Direct mode operates on full pixel-space matrices, reusing the existing
 ``cosmocore.signal_kernels`` machinery. It is selected by ``setup_computation_basis(
 method="auto")`` whenever ``n_pix <= n_modes``, or explicitly via
-``PixelBasis(use_direct=True)``. These tests target the direct-mode-only
+``PixelBasis(...)`` with no compression kwargs (the natural default).
+These tests target the direct-mode-only
 branches of ``PixelBasis``: ``_setup_direct``, ``_spectrum_idx_from_components``,
 ``_get_derivative_direct``, ``get_binned_derivative_direct``, and the
 single/multi-spin combinations they dispatch to.
@@ -76,7 +77,7 @@ def _make_core(spins, labels, nfields, nside=8, lmax=16, mask_half=True):
 
 
 def _build_direct_basis(core, lmax_signal):
-    """Construct a PixelBasis with use_direct=True from a configured Core."""
+    """Construct a PixelBasis in direct mode from a configured Core."""
     spins = [field.spin for field in core.collection.fields]
     n_pix = core.noise_cov1.shape[0]
     np.diag(1.0 / np.diag(core.noise_cov1))
