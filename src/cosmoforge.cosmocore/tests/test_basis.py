@@ -644,7 +644,7 @@ class TestPixelProjectedPICSLikeMethods:
         }
         return ppc, C_ell_dict, N
 
-    def test_compute_quadratic_form(self):
+    def test_quadratic_form(self):
         """Quadratic form matches brute-force d^T C^{-1} d."""
         from cosmocore.basics import matrix_inverse_symm
 
@@ -655,7 +655,7 @@ class TestPixelProjectedPICSLikeMethods:
         data = np.random.randn(ppc.n_pix)
 
         # Compressed quadratic form
-        qf_compressed = ppc.compute_quadratic_form(data, C_ell_dict)
+        qf_compressed = ppc.quadratic_form(data, C_ell_dict)
 
         # Brute-force in full pixel space
         lambda_matrix = ppc._build_lambda_matrix_3tuple(C_ell_dict)
@@ -679,7 +679,7 @@ class TestPixelProjectedPICSLikeMethods:
         data = np.random.randn(ppc.n_pix)
 
         # Direct computation
-        qf_direct = ppc.compute_quadratic_form(data, C_ell_dict)
+        qf_direct = ppc.quadratic_form(data, C_ell_dict)
 
         # Two-step: prepare then compute
         C_c_inv, logdet = ppc.prepare_smw(C_ell_dict)

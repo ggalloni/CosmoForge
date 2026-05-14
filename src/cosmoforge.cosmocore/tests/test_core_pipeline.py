@@ -5,7 +5,7 @@ Exercises the realistic call sequence
 (setup_fields → setup_geometry → setup_covariance_matrices →
 setup_cls → setup_beams → setup_computation_basis) and the
 basis-aware wrappers (get_binned_derivative_matrix,
-get_total_covariance, get_full_logdet, compute_quadratic_form).
+get_total_covariance, get_full_logdet, quadratic_form).
 Targets the ``setup_computation_basis`` paths that previous unit
 tests bypassed (beam extraction, ``method="auto"`` resolution,
 SMW lswitch + ``S_fixed``).
@@ -128,7 +128,7 @@ def test_compressed_pipeline_via_core(method, nside, basis_lmax):
       - the pixel-direct lswitch zeroing branch in setup_computation_basis
       - get_binned_derivative_matrix dispatch (both basis-aware paths:
         the pixel-direct fast path and the per-ℓ summed fallback)
-      - get_total_covariance / get_covariance_logdet / compute_quadratic_form
+      - get_total_covariance / get_covariance_logdet / quadratic_form
         through the basis manager
     """
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -174,7 +174,7 @@ def test_compressed_pipeline_via_core(method, nside, basis_lmax):
         n = core.basis_manager.n_pix
         rng = np.random.default_rng(0)
         d = rng.standard_normal(n)
-        q = core.compute_quadratic_form(d, cls)
+        q = core.quadratic_form(d, cls)
         assert np.isfinite(q)
         assert q > 0  # positive-definite covariance ⇒ d^T C^{-1} d > 0
 

@@ -1069,7 +1069,7 @@ class TestPPCOperationChain:
         assert w.shape == (ppc.dim,)
 
         # Quadratic form
-        qf = ppc.compute_quadratic_form(data, C_ell)
+        qf = ppc.quadratic_form(data, C_ell)
         assert qf > 0
 
         # Log determinant (array path)
@@ -1131,7 +1131,7 @@ class TestPPCOperationChain:
         data = np.random.randn(ppc.n_pix)
         w = ppc.get_weighted_data(data, C_ell_dict)
         assert w.shape == (ppc.dim,)
-        qf = ppc.compute_quadratic_form(data, C_ell_dict)
+        qf = ppc.quadratic_form(data, C_ell_dict)
         assert qf > 0
 
         # Logdet with dict
@@ -1180,7 +1180,7 @@ class TestPPCOperationChain:
         with pytest.raises(RuntimeError):
             ppc.get_weighted_data(data, C_ell)
         with pytest.raises(RuntimeError):
-            ppc.compute_quadratic_form(data, C_ell)
+            ppc.quadratic_form(data, C_ell)
         with pytest.raises(RuntimeError):
             ppc.prepare_smw({(0, 0, 0): C_ell})
         with pytest.raises(RuntimeError):

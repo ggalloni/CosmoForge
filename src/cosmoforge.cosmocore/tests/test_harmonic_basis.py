@@ -498,7 +498,7 @@ class TestHarmonicBasisValidation:
         quad_form_direct = float(data.T @ C_inv_direct @ data)
 
         # SMW computation
-        quad_form_smw = hc.compute_quadratic_form(data, C_ell)
+        quad_form_smw = hc.quadratic_form(data, C_ell)
 
         assert_allclose(quad_form_smw, quad_form_direct, rtol=1e-8)
 
@@ -594,7 +594,7 @@ class TestHarmonicDictOperations:
     """Cover dict-path operations: weighted data, quadratic form, SMW, logdet."""
 
     def test_single_field_weighted_data_and_qf(self, uniform_sky_setup):
-        """Cover get_weighted_data and compute_quadratic_form (array)."""
+        """Cover get_weighted_data and quadratic_form (array)."""
         from cosmocore.basis import HarmonicBasis
 
         setup = uniform_sky_setup
@@ -613,7 +613,7 @@ class TestHarmonicDictOperations:
         w = hc.get_weighted_data(data, C_ell)
         assert w.shape == (hc.n_modes,)
 
-        qf = hc.compute_quadratic_form(data, C_ell)
+        qf = hc.quadratic_form(data, C_ell)
         assert qf > 0
 
         ss_key = SpectrumKey(0, 0, SpectrumKind.SS, spins=(0,))
@@ -649,7 +649,7 @@ class TestHarmonicDictOperations:
         assert w.shape == (hc.n_modes_total,)
 
         # Quadratic form (dict path)
-        qf = hc.compute_quadratic_form(data, C_ell_dict)
+        qf = hc.quadratic_form(data, C_ell_dict)
         assert qf > 0
 
         # Log determinant (full, dict path)

@@ -685,12 +685,12 @@ def test_uncompressed_covariance_api():
     logdet_d = core.get_covariance_logdet({(0, 0, 0): C_ell})
     np.testing.assert_allclose(logdet_d, expected_logdet, atol=1e-12)
 
-    # compute_quadratic_form - array and dict paths
+    # quadratic_form - array and dict paths
     data = np.random.randn(n)
-    qf = core.compute_quadratic_form(data, C_ell)
+    qf = core.quadratic_form(data, C_ell)
     qf_expected = float(data @ C_inv @ data)
     np.testing.assert_allclose(qf, qf_expected, atol=1e-12)
-    qf_d = core.compute_quadratic_form(data, {(0, 0, 0): C_ell})
+    qf_d = core.quadratic_form(data, {(0, 0, 0): C_ell})
     np.testing.assert_allclose(qf_d, qf_expected, atol=1e-12)
 
 

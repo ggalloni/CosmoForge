@@ -972,7 +972,7 @@ class HarmonicBasis(ComputationBasis):
             stable_inner_inv = self.prepare_stable_inner_inv(C_ell)
         return stable_inner_inv.T @ (self._V_N_inv @ data)
 
-    def compute_quadratic_form(self, data: np.ndarray, C_ell) -> float:
+    def quadratic_form(self, data: np.ndarray, C_ell) -> float:
         """
         Compute d^T C^{-1} d efficiently using SMW formula.
 

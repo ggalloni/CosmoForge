@@ -1729,7 +1729,7 @@ class PixelBasis(ComputationBasis):
             C_c_inv = self.get_inverse(C_ell)
         return matrix_mult(C_c_inv, d_compressed)
 
-    def compute_quadratic_form(self, data: np.ndarray, C_ell) -> float:
+    def quadratic_form(self, data: np.ndarray, C_ell) -> float:
         """
         Compute d^T C^{-1} d in the compressed space.
 

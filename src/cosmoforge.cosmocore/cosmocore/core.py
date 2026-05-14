@@ -1028,7 +1028,7 @@ class Core(ABC):
                 dC_b += weight * dC_ell
         return dC_b
 
-    def compute_quadratic_form(self, data: np.ndarray, C_ell) -> float:
+    def quadratic_form(self, data: np.ndarray, C_ell) -> float:
         """
         Compute quadratic form d^T C^{-1} d.
 
@@ -1048,7 +1048,7 @@ class Core(ABC):
             Quadratic form value d^T C^{-1} d.
         """
         if hasattr(self, "basis_manager") and self.basis_manager is not None:
-            return self.basis_manager.compute_quadratic_form(data, C_ell)
+            return self.basis_manager.quadratic_form(data, C_ell)
         else:
             if isinstance(C_ell, dict):
                 C_ell_arr = C_ell.get((0, 0, 0), next(iter(C_ell.values())))
