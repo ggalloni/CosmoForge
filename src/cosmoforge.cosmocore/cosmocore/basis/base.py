@@ -564,7 +564,11 @@ class ComputationBasis(ABC):
 
     @abstractmethod
     def get_weighted_compressed_data(
-        self, data: np.ndarray, C_ell, C_c_inv: np.ndarray | None = None
+        self,
+        data: np.ndarray,
+        C_ell,
+        C_c_inv: np.ndarray | None = None,
+        stable_inner_inv: np.ndarray | None = None,
     ) -> np.ndarray:
         """
         Compute weighted compressed data for QML estimation.
@@ -576,12 +580,44 @@ class ComputationBasis(ABC):
         C_ell : numpy.ndarray or dict
             Power spectrum (array for single-field, dict for multi-field).
         C_c_inv : numpy.ndarray, optional
-            Precomputed compressed inverse (pixel only).
+            Precomputed compressed inverse. Used by PixelBasis only;
+            ignored by HarmonicBasis.
+        stable_inner_inv : numpy.ndarray, optional
+            Precomputed ``(I + Lambda M)^{-1}``, as returned by
+            :meth:`HarmonicBasis.prepare_stable_inner_inv`. Used by
+            HarmonicBasis only; ignored by PixelBasis.
 
         Returns
         -------
         numpy.ndarray
             Weighted compressed data of shape (n_compressed,) or (n_compressed, n_sims).
+        """
+        pass
+
+    @abstractmethod
+    def get_noise_for_bias(self) -> np.ndarray:
+        """Basis-projected noise consumed by the QML noise-bias sandwich.
+
+        Spectra computes ``Cov(w | noise) = X get_noise_for_bias() X^T``
+        where ``X`` is the basis's natural inverse-equivalent
+        (``A = (I + Lambda M)^{-T}`` for the harmonic basis;
+        ``C_c^{-1}`` for the pixel basis). The *form* of the returned
+        matrix is therefore basis-specific:
+
+        - HarmonicBasis: ``V N_eff^{-1} N N_eff^{-1} V^T`` (the SMW
+          intermediate ``T`` from ``N_eff = N + S_fixed`` when the
+          switch optimisation is active; otherwise
+          ``V N^{-1} N N^{-1} V^T``).
+        - PixelBasis: ``U^T N U`` (raw noise projected once into the
+          eigenmode basis).
+
+        The two are not interchangeable. Callers must compose with the
+        basis's own inverse-equivalent.
+
+        Returns
+        -------
+        numpy.ndarray
+            Symmetric (n_kept, n_kept) matrix.
         """
         pass
 

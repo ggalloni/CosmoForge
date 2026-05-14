@@ -21,7 +21,6 @@ from ..basics import (
     matrix_slogdet_symm,
     matrix_trace,
     smw_inverse,
-    smw_kernel,
     smw_logdet,
     smw_quadratic_form,
     solve_linear,
@@ -370,9 +369,9 @@ class HarmonicBasis(ComputationBasis):
             (I + Lambda M)^{-1}, n_modes_total x n_modes_total.
         """
         if lambda_matrix is None:
-            _, c_ell_dict, is_single = self._normalize_c_ell(C_ell)
+            c_ell_arr, c_ell_dict, is_single = self._normalize_c_ell(C_ell)
             if is_single:
-                lambda_diag = self._build_lambda_diagonal(C_ell)
+                lambda_diag = self._build_lambda_diagonal(c_ell_arr)
                 lambda_matrix = np.diag(lambda_diag)
             else:
                 lambda_matrix = self._build_lambda_matrix(c_ell_dict)
@@ -939,38 +938,50 @@ class HarmonicBasis(ComputationBasis):
         """Get exact log|N + S| via SMW formula."""
         return self.get_logdet(C_ell)
 
-    def get_weighted_compressed_data(
-        self, data: np.ndarray, C_ell, C_c_inv: np.ndarray | None = None
-    ) -> np.ndarray:
+    def get_noise_for_bias(self) -> np.ndarray:
+        """Return the SMW noise intermediate ``T = V N_eff^{-1} N N_eff^{-1} V^T``.
+
+        See :meth:`ComputationBasis.get_noise_for_bias` for the cross-basis
+        contract. ``T`` is precomputed during basis setup.
         """
-        Compute V @ C^{-1} @ d for QML estimation in compressed space.
+        return self._noise_cov_T
+
+    def get_weighted_compressed_data(
+        self,
+        data: np.ndarray,
+        C_ell,
+        C_c_inv: np.ndarray | None = None,
+        stable_inner_inv: np.ndarray | None = None,
+    ) -> np.ndarray:
+        """Compute ``w = V C^{-1} d`` via the stable SMW algebra.
+
+        ``w = (I + Lambda M)^{-T} (V N^{-1} d)`` — algebraically equivalent to
+        ``M K^{-1} d`` but never subtracts large nearly-equal matrices, so it
+        retains precision in the cosmic-variance-limited regime where the
+        legacy subtractive form ``y - M K^{-1} y`` cancelled.
 
         Parameters
         ----------
         data : numpy.ndarray
-            Pixel-space data vector of length n_pix.
+            Pixel-space data, shape ``(n_pix,)`` or ``(n_pix, n_sims)``.
         C_ell : numpy.ndarray or dict
-            Power spectrum (array for single-field, dict for multi-field).
+            Power spectrum (single-field array or multi-field dict).
         C_c_inv : numpy.ndarray, optional
-            Unused for harmonic compression.
+            Unused for harmonic basis; accepted for ABC signature parity.
+        stable_inner_inv : numpy.ndarray, optional
+            Precomputed ``(I + Lambda M)^{-1}``. If supplied, avoids
+            rebuilding it internally. Callers that weight several data
+            vectors with the same ``C_ell`` should build it once via
+            :meth:`prepare_stable_inner_inv` and pass it in.
 
         Returns
         -------
         numpy.ndarray
-            Weighted compressed data vector w = V C^{-1} d.
+            Weighted compressed data ``w = V C^{-1} d``.
         """
-        c_ell_arr, c_ell_dict, is_single = self._normalize_c_ell(C_ell)
-
-        y = self._V_N_inv @ data
-        if is_single:
-            Lambda_diag = self._build_lambda_diagonal(c_ell_arr)
-            K = smw_kernel(self._V_Ninv_VT, Lambda_diag)
-        else:
-            K, _ = self._build_smw_kernel(c_ell_dict)
-
-        L = cholesky_decomposition(K)
-        kernel_inv_y = cholesky_solve((L, True), y)
-        return y - matrix_mult(self._V_Ninv_VT, kernel_inv_y)
+        if stable_inner_inv is None:
+            stable_inner_inv = self.prepare_stable_inner_inv(C_ell)
+        return stable_inner_inv.T @ (self._V_N_inv @ data)
 
     def compute_quadratic_form(self, data: np.ndarray, C_ell) -> float:
         """

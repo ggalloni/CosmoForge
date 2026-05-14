@@ -599,7 +599,7 @@ class PixelBasis(ComputationBasis):
 
         Only possible when compression is active (``_eigenvectors`` is set)
         and switch optimization captured a raw ``_N_original``. Otherwise
-        ``get_compressed_noise`` falls back to ``_N`` / ``_N_original``.
+        ``get_noise_for_bias`` falls back to ``_N`` / ``_N_original``.
         """
         N_original = getattr(self, "_N_original", None)
         if N_original is None or self._eigenvectors is None:
@@ -624,7 +624,7 @@ class PixelBasis(ComputationBasis):
         S_fixed = np.asarray(self._S_fixed, dtype=np.float64)
 
         # Preserve raw N for noise-bias computations (still read lazily by
-        # get_compressed_noise, so we cannot release it here).
+        # get_noise_for_bias, so we cannot release it here).
         self._N_original = self._N
 
         # Build N_eff = N + S_fixed straight into a preallocated F-order
@@ -637,12 +637,13 @@ class PixelBasis(ComputationBasis):
         # S_fixed has been absorbed into N_eff and is not read again; release.
         self._S_fixed = None
 
-    def get_compressed_noise(self) -> np.ndarray:
-        """U^T N_raw U — compressed *raw* noise covariance.
+    def get_noise_for_bias(self) -> np.ndarray:
+        """U^T N_raw U — raw noise projected into the eigenmode basis.
 
-        Use this for noise-bias computations: ``Tr[C^{-1} N C^{-1} dS]``
-        requires the actual noise N, not the effective N_eff that includes
-        the absorbed high-ℓ signal.
+        See :meth:`ComputationBasis.get_noise_for_bias` for the cross-basis
+        contract. Use this for noise-bias computations:
+        ``Tr[C^{-1} N C^{-1} dS]`` requires the actual noise N, not the
+        effective N_eff that includes the absorbed high-ℓ signal.
 
         Without switch optimization, N_eff = N and this is identical to
         ``get_compressed_covariance(0)``.
@@ -1697,7 +1698,11 @@ class PixelBasis(ComputationBasis):
         return self._U_N_U + self._U_S_U_buffer
 
     def get_weighted_compressed_data(
-        self, data: np.ndarray, C_ell, C_c_inv: np.ndarray | None = None
+        self,
+        data: np.ndarray,
+        C_ell,
+        C_c_inv: np.ndarray | None = None,
+        stable_inner_inv: np.ndarray | None = None,
     ) -> np.ndarray:
         """
         Compute C^{-1} @ d for QML estimation.
@@ -1710,6 +1715,8 @@ class PixelBasis(ComputationBasis):
             Power spectrum (array for single-field, dict for multi-field).
         C_c_inv : numpy.ndarray, optional
             Precomputed inverse covariance.
+        stable_inner_inv : numpy.ndarray, optional
+            Unused for pixel basis; accepted for ABC signature parity.
 
         Returns
         -------
