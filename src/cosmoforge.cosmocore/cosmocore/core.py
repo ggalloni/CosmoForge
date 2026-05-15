@@ -491,7 +491,7 @@ class Core(ABC):
     def setup_computation_basis(
         self,
         method: str = "auto",
-        epsilon: float | list[float | tuple[float, float]] | None = 1e-6,
+        epsilon: float | list[float | tuple[float, float]] | None = None,
         mode_fraction: float | list[float | tuple[float, float]] | None = None,
         beam: np.ndarray | None = None,
         compression_target: str = "noise_weighted",
@@ -521,7 +521,10 @@ class Core(ABC):
             - "pixel": Gjerløw-style pixel-space projector with eigenvalue truncation
         epsilon : float or None, optional
             Eigenvalue threshold for pixel basis. Modes with eigenvalue
-            < epsilon * max_eigenvalue are discarded. Default is 1e-6.
+            < ``epsilon * max_eigenvalue`` are discarded. ``None`` (the
+            default) signals direct mode — no compression intent, V
+            operator never materialised. Pass a value (e.g. ``1e-6``)
+            to opt into the V-based / eigenmode-truncated path.
         lmax_signal : int or None, optional
             Signal-cov ceiling. If None, defaults to ``params.lmax_signal``
             or ``4 * nside``.

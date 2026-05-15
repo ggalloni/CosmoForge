@@ -786,7 +786,7 @@ class PICSLike(Core, MPISharedMemoryMixin):
                     "method",
                     "epsilon",
                     "mode_fraction",
-                    "basis",
+                    "compression_target",
                     "C_ell",
                 )
                 kwargs = {

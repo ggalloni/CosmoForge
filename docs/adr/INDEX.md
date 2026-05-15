@@ -1,7 +1,11 @@
 # ADR Index
 
-Architectural decisions for CosmoForge. Each ADR is immutable once accepted;
-revisit by writing a new ADR that supersedes or extends an earlier one.
+Architectural decisions for CosmoForge. The **Decision** of an accepted
+ADR is immutable: changes to what was decided require a new ADR that
+supersedes or extends the earlier one. Implementation amendments
+(documenting how the decision was realised, dated follow-up work, or
+clarifications that don't alter the original decision) are recorded
+in an "Update (YYYY-MM-DD)" section appended to the original ADR.
 
 See [`CONTEXT.md`](../../CONTEXT.md) for the domain language used in these
 ADRs, and [`docs/agents/domain.md`](../agents/domain.md) for the
@@ -49,3 +53,16 @@ Next number is **0012**. Use the pattern `NNNN-kebab-title.md`.
 3. Write a new ADR when the decision is **hard to reverse and surprising without context** — not for routine choices that are obvious from the code.
 4. Update this index when adding (topic placement + status table).
 5. If the new ADR supersedes or modifies an earlier one, link both directions: the new ADR's Status references the old; the old ADR's Status appends a "Superseded by ADR-NNNN" note. Add a row to the supersession chain table above when this happens.
+
+## Amending an existing ADR
+
+For implementation amendments that don't change the Decision (dated
+follow-up notes, references to the PR that realised the decision,
+clarifications, deprecation notices on now-removed flags), append an
+``## Update (YYYY-MM-DD)`` section at the bottom of the original ADR.
+The Decision section itself stays untouched; readers see the
+chronology by reading top-to-bottom.
+
+Anything that changes *what was decided* — flag semantics flipped,
+the cost model replaced, a different basis chosen — requires a new
+ADR per the supersession protocol above.

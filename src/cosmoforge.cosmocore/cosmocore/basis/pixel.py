@@ -106,7 +106,10 @@ class PixelBasis(ComputationBasis):
     >>> from cosmocore.basis import PixelBasis
     >>> N = np.diag(noise_variance)  # Noise covariance matrix
     >>> # Compressed mode: pass epsilon at construction.
-    >>> ppc = PixelBasis(N, theta, phi, lmax=100, epsilon=1e-4, basis="noise_weighted")
+    >>> ppc = PixelBasis(
+    ...     N, theta, phi, lmax_signal=100,
+    ...     epsilon=1e-4, compression_target="noise_weighted",
+    ... )
     >>> ppc.setup()
     >>> fisher_element = ppc.compute_fisher_element(C_ell, ell_i=10, ell_j=10)
 
@@ -1234,13 +1237,17 @@ class PixelBasis(ComputationBasis):
         Examples
         --------
         >>> # Pick threshold by plotting first, then construct a compressed basis.
-        >>> ppc_probe = PixelBasis(N, N_inv, theta, phi, lmax=100)
+        >>> # The probe construction uses epsilon=0.0 to opt into the V-based
+        >>> # path (keeps all modes) so plot_eigenvalue_spectrum has V to read.
+        >>> ppc_probe = PixelBasis(
+        ...     N, theta, phi, lmax_signal=100, epsilon=0.0,
+        ... )
         >>> ppc_probe.setup()
         >>> fig, axes = ppc_probe.plot_eigenvalue_spectrum(basis="noise_weighted")
         >>> # From the plot, decide threshold (e.g., 1e-4).
         >>> ppc = PixelBasis(
-        ...     N, N_inv, theta, phi, lmax=100,
-        ...     epsilon=1e-4, basis="noise_weighted",
+        ...     N, theta, phi, lmax_signal=100,
+        ...     epsilon=1e-4, compression_target="noise_weighted",
         ... )
         >>> ppc.setup()
         """
