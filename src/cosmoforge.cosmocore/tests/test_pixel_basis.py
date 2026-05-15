@@ -25,6 +25,7 @@ class TestPixelBasisInitialization:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
 
         assert ppc.n_pix == setup["n_pix"]
@@ -46,6 +47,7 @@ class TestPixelBasisSetup:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
 
         ppc.setup()
@@ -78,6 +80,7 @@ class TestPixelBasisSetup:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
 
         ppc.setup()
@@ -101,12 +104,11 @@ class TestPixelBasisApply:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=1e-3,
         )
 
         ppc.setup()
         original_n_pix = ppc.n_pix
-
-        ppc.apply_compression(epsilon=1e-3)
 
         assert ppc.dim <= original_n_pix
         assert ppc.compression_ratio <= 1.0
@@ -121,10 +123,10 @@ class TestPixelBasisApply:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=1e-6,
         )
 
         ppc.setup()
-        ppc.apply_compression(epsilon=1e-6)
 
         assert ppc._eigenvectors is not None
         assert ppc._eigenvalues is not None
@@ -140,10 +142,10 @@ class TestPixelBasisApply:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            mode_fraction=0.5,
         )
 
         ppc.setup()
-        ppc.apply_compression(mode_fraction=0.5)
 
         # Should keep approximately 50% of significant modes
         assert ppc.dim > 0
@@ -159,30 +161,38 @@ class TestPixelBasisApply:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=1e-4,
+            mode_fraction=0.5,
         )
-        ppc.setup()
 
         with pytest.raises(ValueError, match="mutually exclusive"):
-            ppc.apply_compression(epsilon=1e-4, mode_fraction=0.5)
+            ppc.setup()
 
     def test_mode_fraction_validation(self, simple_compression_setup):
         """Test mode_fraction validation for invalid values."""
         from cosmocore.basis import PixelBasis
 
         setup = simple_compression_setup
-        ppc = PixelBasis(
-            N=setup["N"],
-            theta=setup["theta"],
-            phi=setup["phi"],
-            lmax_signal=setup["lmax"],
-        )
-        ppc.setup()
 
         with pytest.raises(ValueError, match="mode_fraction must be in"):
-            ppc.apply_compression(mode_fraction=0.0)
+            ppc = PixelBasis(
+                N=setup["N"],
+                theta=setup["theta"],
+                phi=setup["phi"],
+                lmax_signal=setup["lmax"],
+                mode_fraction=0.0,
+            )
+            ppc.setup()
 
         with pytest.raises(ValueError, match="mode_fraction must be in"):
-            ppc.apply_compression(mode_fraction=-0.1)
+            ppc = PixelBasis(
+                N=setup["N"],
+                theta=setup["theta"],
+                phi=setup["phi"],
+                lmax_signal=setup["lmax"],
+                mode_fraction=-0.1,
+            )
+            ppc.setup()
 
 
 class TestPixelBasisOperations:
@@ -198,10 +208,10 @@ class TestPixelBasisOperations:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=1e-6,
         )
 
         ppc.setup()
-        ppc.apply_compression(epsilon=1e-6)
 
         data = np.random.randn(setup["n_pix"])
         d_compressed = ppc.to_basis(data)
@@ -218,10 +228,10 @@ class TestPixelBasisOperations:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=1e-6,
         )
 
         ppc.setup()
-        ppc.apply_compression(epsilon=1e-6)
 
         n_ell = setup["lmax"] - 1
         C_ell = np.ones(n_ell) * 1e-6
@@ -240,10 +250,10 @@ class TestPixelBasisOperations:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=1e-6,
         )
 
         ppc.setup()
-        ppc.apply_compression(epsilon=1e-6)
 
         n_ell = setup["lmax"] - 1
         C_ell = np.ones(n_ell) * 1e-6
@@ -263,10 +273,10 @@ class TestPixelBasisOperations:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=1e-6,
         )
 
         ppc.setup()
-        ppc.apply_compression(epsilon=1e-6)
 
         n_ell = setup["lmax"] - 1
         C_ell = np.ones(n_ell) * 1e-6
@@ -293,10 +303,10 @@ class TestPixelBasisFisher:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=1e-6,
         )
 
         ppc.setup()
-        ppc.apply_compression(epsilon=1e-6)
 
         n_ell = setup["lmax"] - 1
         C_ell = np.ones(n_ell) * 1e-6
@@ -316,10 +326,10 @@ class TestPixelBasisFisher:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=1e-6,
         )
 
         ppc.setup()
-        ppc.apply_compression(epsilon=1e-6)
 
         n_ell = setup["lmax"] - 1
         C_ell = np.ones(n_ell) * 1e-6
@@ -384,15 +394,15 @@ class TestCompressionCrossValidation:
         hc.setup()
         fisher_hc = hc.compute_fisher_matrix(C_ell)
 
-        # PixelBasis
+        # PixelBasis — keep almost all modes
         ppc = PixelBasis(
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=lmax,
+            epsilon=1e-10,
         )
         ppc.setup()
-        ppc.apply_compression(epsilon=1e-10)  # Keep almost all modes
         fisher_ppc = ppc.compute_fisher_matrix(C_ell)
 
         # Both should be symmetric
@@ -427,15 +437,15 @@ class TestCompressionCrossValidation:
         hc.setup()
         fisher_hc = hc.compute_fisher_matrix(C_ell)
 
-        # PixelBasis with minimal compression (keep most modes)
+        # PixelBasis with minimal compression — keep all significant modes
         ppc = PixelBasis(
             N=setup["N"],
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=lmax,
+            epsilon=1e-15,
         )
         ppc.setup()
-        ppc.apply_compression(epsilon=1e-15)  # Keep all significant modes
         fisher_ppc = ppc.compute_fisher_matrix(C_ell)
 
         # Compare Fisher elements for a few ell values
@@ -481,15 +491,16 @@ class TestPixelBasisBases:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=1e-6,
+            compression_target="harmonic",
         )
 
         ppc.setup()
-        ppc.apply_compression(epsilon=1e-6, basis="harmonic")
 
         # Should have selected some modes
         assert ppc.dim > 0
         assert ppc.dim <= ppc.n_pix
-        assert ppc.compression_basis == "harmonic"
+        assert ppc.compression_target == "harmonic"
 
     def test_noise_weighted_basis(self, uniform_sky_setup):
         """Test compression with noise-weighted basis (default)."""
@@ -501,13 +512,14 @@ class TestPixelBasisBases:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=1e-6,
+            compression_target="noise_weighted",
         )
 
         ppc.setup()
-        ppc.apply_compression(epsilon=1e-6, basis="noise_weighted")
 
         assert ppc.dim > 0
-        assert ppc.compression_basis == "noise_weighted"
+        assert ppc.compression_target == "noise_weighted"
 
     def test_total_covariance_basis(self, uniform_sky_setup):
         """Test compression with total covariance basis."""
@@ -522,13 +534,15 @@ class TestPixelBasisBases:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=1e-6,
+            compression_target="total_covariance",
+            C_ell=C_ell,
         )
 
         ppc.setup()
-        ppc.apply_compression(epsilon=1e-6, basis="total_covariance", C_ell=C_ell)
 
         assert ppc.dim > 0
-        assert ppc.compression_basis == "total_covariance"
+        assert ppc.compression_target == "total_covariance"
 
     def test_snr_basis(self, uniform_sky_setup):
         """Test compression with SNR basis."""
@@ -543,13 +557,15 @@ class TestPixelBasisBases:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=1e-6,
+            compression_target="snr",
+            C_ell=C_ell,
         )
 
         ppc.setup()
-        ppc.apply_compression(epsilon=1e-6, basis="snr", C_ell=C_ell)
 
         assert ppc.dim > 0
-        assert ppc.compression_basis == "snr"
+        assert ppc.compression_target == "snr"
 
     def test_total_covariance_requires_cell(self, uniform_sky_setup):
         """Test that total_covariance basis requires C_ell."""
@@ -561,12 +577,12 @@ class TestPixelBasisBases:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=1e-6,
+            compression_target="total_covariance",
         )
 
-        ppc.setup()
-
         with pytest.raises(ValueError, match="C_ell is required"):
-            ppc.apply_compression(basis="total_covariance")
+            ppc.setup()
 
     def test_snr_requires_cell(self, uniform_sky_setup):
         """Test that snr basis requires C_ell."""
@@ -578,12 +594,12 @@ class TestPixelBasisBases:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=1e-6,
+            compression_target="snr",
         )
 
-        ppc.setup()
-
         with pytest.raises(ValueError, match="C_ell is required"):
-            ppc.apply_compression(basis="snr")
+            ppc.setup()
 
     def test_unknown_basis_raises(self, uniform_sky_setup):
         """Test that unknown basis raises error."""
@@ -595,12 +611,12 @@ class TestPixelBasisBases:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=1e-6,
+            compression_target="invalid_basis",
         )
 
-        ppc.setup()
-
         with pytest.raises(ValueError, match="Unknown compression basis"):
-            ppc.apply_compression(basis="invalid_basis")
+            ppc.setup()
 
     def test_different_bases_give_different_results(self, uniform_sky_setup):
         """Test that different bases lead to different mode selections."""
@@ -611,18 +627,20 @@ class TestPixelBasisBases:
         C_ell = np.ones(n_ell) * 1e-6
 
         results = {}
-        for basis in ["harmonic", "noise_weighted", "total_covariance", "snr"]:
+        for target in ["harmonic", "noise_weighted", "total_covariance", "snr"]:
+            c_ell_arg = C_ell if target in ["total_covariance", "snr"] else None
             ppc = PixelBasis(
                 N=setup["N"],
                 theta=setup["theta"],
                 phi=setup["phi"],
                 lmax_signal=setup["lmax"],
+                epsilon=1e-4,
+                compression_target=target,
+                C_ell=c_ell_arg,
             )
             ppc.setup()
 
-            c_ell_arg = C_ell if basis in ["total_covariance", "snr"] else None
-            ppc.apply_compression(epsilon=1e-4, basis=basis, C_ell=c_ell_arg)
-            results[basis] = ppc.dim
+            results[target] = ppc.dim
 
         # At least some bases should give different mode counts
         unique_counts = set(results.values())
@@ -644,6 +662,7 @@ class TestPixelBasisEigenspectrum:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -662,6 +681,7 @@ class TestPixelBasisEigenspectrum:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -679,6 +699,7 @@ class TestPixelBasisEigenspectrum:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -700,6 +721,7 @@ class TestPixelBasisEigenspectrum:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -728,6 +750,7 @@ class TestPixelBasisEigenspectrum:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -756,6 +779,7 @@ class TestPixelBasisEigenspectrum:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -779,6 +803,7 @@ class TestPixelBasisEigenspectrum:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -802,6 +827,7 @@ class TestComputeEigenspectrumPerField:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -827,6 +853,7 @@ class TestComputeEigenspectrumPerField:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -853,7 +880,7 @@ class TestComputeEigenspectrumPerField:
         N = np.eye(2 * n_pix) * 0.01
         np.eye(2 * n_pix) * 100.0
 
-        ppc = PixelBasis(N, theta, phi, lmax, spins=[2])
+        ppc = PixelBasis(N, theta, phi, lmax, spins=[2], epsilon=0.0)
         ppc.setup()
 
         result = ppc.compute_eigenspectrum_per_field(basis="noise_weighted")
@@ -881,6 +908,7 @@ class TestComputeEigenspectrumPerField:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -909,6 +937,7 @@ class TestComputeEigenspectrumPerField:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=lmax,
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -930,6 +959,7 @@ class TestComputeEigenspectrumPerField:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -955,6 +985,7 @@ class TestPlotMultiField:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -981,7 +1012,7 @@ class TestPlotMultiField:
         N = np.eye(2 * n_pix) * 0.01
         np.eye(2 * n_pix) * 100.0
 
-        ppc = PixelBasis(N, theta, phi, lmax, spins=[2])
+        ppc = PixelBasis(N, theta, phi, lmax, spins=[2], epsilon=0.0)
         ppc.setup()
 
         fig, axes = ppc.plot_eigenvalue_spectrum(
@@ -1011,6 +1042,7 @@ class TestPlotMultiField:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=0.0,
         )
         ppc.setup()
 
@@ -1045,16 +1077,16 @@ class TestPPCOperationChain:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=1e-6,
         )
         ppc.setup()
-        ppc.apply_compression(epsilon=1e-6)
 
         C_ell = np.ones(setup["lmax"] - 1) * 1e-6
 
         # Properties
         assert ppc.projector.shape == (ppc.dim, ppc.n_pix)
         assert ppc.eigenvalues is not None
-        assert ppc.compression_basis == "noise_weighted"
+        assert ppc.compression_target == "noise_weighted"
         assert 0 < ppc.compression_ratio <= 1.0
 
         # Derivative matrix
@@ -1095,9 +1127,9 @@ class TestPPCOperationChain:
             phi=setup["phi"],
             lmax_signal=lmax,
             spins=[0, 0],
+            epsilon=1e-6,
         )
         ppc.setup()
-        ppc.apply_compression(epsilon=1e-6)
 
         spins = (0, 0)
         keys = [
@@ -1138,54 +1170,6 @@ class TestPPCOperationChain:
         logdet = ppc.get_logdet(C_ell_dict)
         assert isinstance(logdet, float)
 
-    def test_default_compression_no_threshold(self, uniform_sky_setup):
-        """apply_compression with neither epsilon nor mode_fraction."""
-        from cosmocore.basis import PixelBasis
-
-        setup = uniform_sky_setup
-        ppc = PixelBasis(
-            N=setup["N"],
-            theta=setup["theta"],
-            phi=setup["phi"],
-            lmax_signal=setup["lmax"],
-        )
-        ppc.setup()
-        ppc.apply_compression()
-        assert ppc.dim > 0
-
-    def test_runtime_errors_before_compression(self, uniform_sky_setup):
-        """Operations before apply_compression raise RuntimeError."""
-        from cosmocore.basis import PixelBasis
-
-        setup = uniform_sky_setup
-        ppc = PixelBasis(
-            N=setup["N"],
-            theta=setup["theta"],
-            phi=setup["phi"],
-            lmax_signal=setup["lmax"],
-        )
-        ppc.setup()
-
-        C_ell = np.ones(setup["lmax"] - 1) * 1e-6
-        data = np.zeros(ppc.n_pix)
-
-        with pytest.raises(RuntimeError):
-            ppc.projector
-        with pytest.raises(RuntimeError):
-            ppc.get_projected_inverse(C_ell)
-        with pytest.raises(RuntimeError):
-            ppc.get_derivative_matrix(5, SpectrumKey(0, 0, SpectrumKind.SS, spins=(0,)))
-        with pytest.raises(RuntimeError):
-            ppc.get_covariance(C_ell)
-        with pytest.raises(RuntimeError):
-            ppc.get_weighted_data(data, C_ell)
-        with pytest.raises(RuntimeError):
-            ppc.quadratic_form(data, C_ell)
-        with pytest.raises(RuntimeError):
-            ppc.prepare_for_basis({(0, 0, 0): C_ell})
-        with pytest.raises(RuntimeError):
-            ppc.quadratic_form_from_prepared(data, np.eye(2))
-
     def test_spectra_list_required_for_dict(self, uniform_sky_setup):
         """compute_fisher_matrix with dict C_ell requires spectra_list."""
         from cosmocore.basis import PixelBasis
@@ -1196,9 +1180,9 @@ class TestPPCOperationChain:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=1e-6,
         )
         ppc.setup()
-        ppc.apply_compression(epsilon=1e-6)
 
         C_ell_dict = {(0, 0, 0): np.ones(setup["lmax"] - 1) * 1e-6}
         with pytest.raises(ValueError, match="spectra_list is required"):
@@ -1214,9 +1198,9 @@ class TestPPCOperationChain:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
+            epsilon=1e-6,
         )
         ppc.setup()
-        ppc.apply_compression(epsilon=1e-6)
 
         C_ell = np.ones(setup["lmax"] - 1) * 1e-6
         with pytest.raises(ValueError, match="spectra_list should be None"):

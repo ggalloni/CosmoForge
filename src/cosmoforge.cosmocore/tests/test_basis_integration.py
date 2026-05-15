@@ -159,7 +159,6 @@ class TestBasisCombinations:
             epsilon=0.0,
         )
         pb.setup()
-        pb.apply_compression(epsilon=0.0)
         F = pb.compute_fisher_matrix(s["C_ell"], ell_min=2, ell_max=s["lmax"])
         assert F.shape == (s["lmax"] - 1, s["lmax"] - 1)
         assert_allclose(F, F.T, atol=1e-10)
@@ -177,7 +176,6 @@ class TestBasisCombinations:
             epsilon=1e-6,
         )
         pb.setup()
-        pb.apply_compression(epsilon=1e-6)
         F = pb.compute_fisher_matrix(s["C_ell"], ell_min=2, ell_max=s["lmax"])
         assert F.shape == (s["lmax"] - 1, s["lmax"] - 1)
         assert_allclose(F, F.T, atol=1e-10)
@@ -202,7 +200,6 @@ class TestBasisCombinations:
             epsilon=0.0,
         )
         pb.setup()
-        pb.apply_compression(epsilon=0.0)
         F_p = pb.compute_fisher_matrix(s["C_ell"], ell_min=2, ell_max=s["lmax"])
 
         assert_allclose(F_h, F_p, rtol=1e-6)

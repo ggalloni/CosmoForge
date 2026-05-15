@@ -25,6 +25,11 @@ The "right" basis is not a function of `n_pix` vs `n_modes` alone:
 A useful selector therefore needs to compare these two cost
 expressions, not just two dimensions.
 
+For reference: for HEALPix maps `n_pix = n_modes` at `fsky ≈ 0.35`,
+independent of `nside`. Below this sky fraction the V operator
+strictly expands the problem; above it the dimension argument alone
+no longer suffices and the cost-model comparison takes over.
+
 ## Decision
 
 Add a direct pixel-space code path inside `PixelBasis` that bypasses
@@ -32,18 +37,32 @@ V entirely and works on the pixel-space covariance directly, plus an
 `"auto"` method that selects between bases using a leading-order
 cost model.
 
-- `PixelBasis._use_direct` flag, set by the factory (not auto-detected
-  inside the basis). Direct mode calls `do_derivative_step` and
-  `compute_signal_matrix` from the no-basis path — the same Numba JIT
-  functions Fisher already uses — so there is no second
-  implementation to maintain.
+- **Direct vs compressed mode is inferred from construction kwargs,
+  not a separate flag.** When `PixelBasis` is constructed with
+  `epsilon=None` and `mode_fraction=None`, `setup()` builds the
+  direct pixel-space kernels and the V operator is never materialised.
+  When either kwarg is non-None, `setup()` builds V, computes
+  `P_h = V^T V`, and runs the internal `_apply_compression()` helper
+  to eigendecompose the chosen `compression_target`. There is no
+  `use_direct` parameter — the configuration is fully determined by
+  whether compression is requested.
+
+  Direct mode reuses `do_derivative_step` and `compute_signal_matrix`
+  from the no-basis path (the same Numba JIT functions Fisher already
+  uses), so there is no second implementation to maintain.
+
+  The previous "V-based but uncompressed" intermediate (no compression
+  intent, but V operator built) is no longer expressible — neither as
+  a configuration nor as a transient runtime state. It was strictly
+  worse than both direct and compressed for any production use.
 
 - Selector `_auto_pick_method(n_pix, n_modes, lmax, n_bins)` in
   `cosmocore/basis/__init__.py` compares
   `cost_harmonic = n_modes³` against
   `cost_pixel = (n_bins + 1) × n_pix³`
-  and returns `"harmonic"` or `"pixel"` (with `use_direct=True`) for
-  the smaller cost. Dimensions are computed at the **effective lmax**
+  and returns `"harmonic"` or `"pixel"` for the smaller cost. The
+  pixel pick passes no compression kwargs, so direct mode is the
+  natural default. Dimensions are computed at the **effective lmax**
   (post-lswitch, not the basis lmax). `n_bins` defaults to
   `max(lmax − 1, 1)` (unbinned, the worst case for pixel-direct) when
   the caller does not pass a value.
@@ -99,3 +118,21 @@ cost model.
   `tests/test_pixel_direct_mode.py`.
 - fsky-sweep benchmark:
   `benchmark_pixel_vs_harmonic.py` (laptop + g100 cluster).
+
+## Update (2026-05-14)
+
+The original `_use_direct` flag described above was removed in the
+PixelBasis class-model cleanup (architecture backlog #8). Direct mode
+is now inferred from the absence of `epsilon` / `mode_fraction` at
+construction; the factory's auto-pick returns no extra kwargs for the
+pixel pick. The runtime `apply_compression()` entry point became the
+internal `_apply_compression(self)` helper called by `setup()`; all
+compression intent must be set at construction.
+
+The constructor kwarg formerly named `basis` (the selector for which
+matrix is eigendecomposed) became `compression_target` in the same
+change, removing the 3-way "basis" vocabulary collision documented in
+ADR-0002.
+
+See `project_pixelbasis_class_model_design.md` (memory) for the
+design discussion.

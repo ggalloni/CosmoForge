@@ -66,8 +66,32 @@ about *where* it appears, not *whether*.
   bandpower-window-aware binning) inherit the same attribution
   obligation as long as they build on the existing class.
 
+## Note on initial-binning vs rebinning (Bond/Jaffe/Knox 1998 §IV)
+
+Two distinct estimators are admissible for binned bandpowers and
+they do **not** coincide in general:
+
+- **Initial binning** (CosmoForge's path): the derivative matrices
+  `dC^b = Σ_{ℓ∈b} P_{b,ℓ} dC^ℓ` are summed *before* Fisher / QML
+  evaluation. Fisher is `(n_bins × n_bins)` directly. The estimator
+  is `(P F P^T)^{-1} P q` only when the unbinned `F` is diagonal in
+  ℓ. For non-diagonal Fisher (the generic case) the algebra reduces
+  to the binned trace `Tr[C^{-1} dC^b C^{-1} dC^{b'}]`, which is
+  what CosmoForge implements.
+- **Rebinning**: estimate per-ℓ spectra first, then collapse with
+  `(P F P^T)^{-1} P F q`. Different operand ordering; identical to
+  initial binning iff `F` is diagonal.
+
+The two coincide for an azimuthally symmetric mask and isotropic
+noise; they diverge whenever the mask/noise induces ℓ-ℓ' coupling.
+CosmoForge ships the initial-binning form for both algebraic
+simplicity and because the per-bin derivative path is the natural
+intermediate for both bases.
+
 ## References
 
-- Bond, Jaffe & Knox 1998 — original P/Q bandpower formalism.
+- Bond, Jaffe & Knox 1998 — original P/Q bandpower formalism,
+  including the §IV distinction between initial-binning and
+  rebinning estimators.
 - Vanneste et al. 2018 (xQML), arXiv:1807.02484 — implementation
   pattern adopted here.

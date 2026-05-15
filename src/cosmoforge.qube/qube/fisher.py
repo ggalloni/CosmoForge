@@ -85,9 +85,9 @@ def _basis_path_label(basis_manager) -> str:
         return "traditional"
     if basis_manager.method == "pixel":
         return (
-            "pixel-direct"
-            if getattr(basis_manager, "_use_direct", False)
-            else "pixel-truncated"
+            "pixel-truncated"
+            if getattr(basis_manager, "_is_compressed", False)
+            else "pixel-direct"
         )
     return "harmonic"
 
@@ -664,9 +664,8 @@ class Fisher(Core, MPISharedMemoryMixin):
                     "lmax_signal",
                     "epsilon",
                     "mode_fraction",
-                    "basis",
+                    "compression_target",
                     "C_ell",
-                    "use_direct",
                 )
                 kwargs = {
                     k: self._basis_config[k]

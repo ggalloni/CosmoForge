@@ -491,16 +491,15 @@ class Core(ABC):
     def setup_computation_basis(
         self,
         method: str = "auto",
-        epsilon: float | list[float | tuple[float, float]] | None = 1e-6,
+        epsilon: float | list[float | tuple[float, float]] | None = None,
         mode_fraction: float | list[float | tuple[float, float]] | None = None,
         beam: np.ndarray | None = None,
-        basis: str = "noise_weighted",
+        compression_target: str = "noise_weighted",
         C_ell: np.ndarray | None = None,
         lmax_signal: int | None = None,
         use_smw_optimization: bool = True,
         compress: bool = False,
         delta_m: int = 0,
-        use_direct: bool = False,
     ):
         """
         Create and configure a computation basis for SMW-based operations.
@@ -522,7 +521,10 @@ class Core(ABC):
             - "pixel": Gjerløw-style pixel-space projector with eigenvalue truncation
         epsilon : float or None, optional
             Eigenvalue threshold for pixel basis. Modes with eigenvalue
-            < epsilon * max_eigenvalue are discarded. Default is 1e-6.
+            < ``epsilon * max_eigenvalue`` are discarded. ``None`` (the
+            default) signals direct mode — no compression intent, V
+            operator never materialised. Pass a value (e.g. ``1e-6``)
+            to opt into the V-based / eigenmode-truncated path.
         lmax_signal : int or None, optional
             Signal-cov ceiling. If None, defaults to ``params.lmax_signal``
             or ``4 * nside``.
@@ -533,22 +535,16 @@ class Core(ABC):
             Beam window function B_ℓ for ℓ=0..lmax_signal. If None and
             beams have been set up via setup_beams(), the first field's
             beam is automatically extracted from the beam manager.
-        basis : str, default "noise_weighted"
-            Eigenvalue basis for pixel method. Options:
-            "harmonic", "noise_weighted", "total_covariance", "snr".
+        compression_target : str, default "noise_weighted"
+            Selector for the matrix to eigendecompose during pixel
+            compression. Options: ``"harmonic"``, ``"noise_weighted"``,
+            ``"total_covariance"``, ``"snr"``.
         C_ell : numpy.ndarray or None, optional
             Power spectrum for bases that require it ("total_covariance", "snr").
         use_smw_optimization : bool, default True
             For harmonic basis, whether to absorb signal outside the
             inference window into effective noise. Reduces computation
             while preserving accuracy.
-        use_direct : bool, default False
-            For ``method="pixel"`` only: bypass the V-projection / eigenvalue
-            truncation and run the direct pixel-space pipeline (no harmonic
-            machinery, full $n_\\mathrm{pix}$-dimensional matrices). This is
-            the same internal path that ``method="auto"`` selects when the
-            cost model picks pixel-direct, exposed here for explicit user
-            control. Ignored for ``method="harmonic"``.
 
         Returns
         -------
@@ -569,10 +565,10 @@ class Core(ABC):
         >>> core.setup_beams()
         >>> # Harmonic basis (default)
         >>> cm = core.setup_computation_basis(method="harmonic")
-        >>> # Pixel basis with SNR basis
+        >>> # Pixel basis with SNR compression target
         >>> cm = core.setup_computation_basis(
         ...     method="pixel",
-        ...     basis="snr",
+        ...     compression_target="snr",
         ...     C_ell=C_ell,
         ...     epsilon=1e-4,
         ... )
@@ -713,11 +709,11 @@ class Core(ABC):
 
         # Pixel-direct mode operates on full pixel-space matrices and doesn't
         # need the inference-window narrowing / S_fixed (the high-ℓ signal is
-        # naturally included via the pixel-space S construction). Triggered
-        # when auto picks pixel-direct OR when the user explicitly requests
-        # method="pixel" with use_direct=True.
-        is_pixel_direct = (method == "auto" and resolved_method == "pixel") or (
-            method == "pixel" and use_direct
+        # naturally included via the pixel-space S construction). Pixel-direct
+        # is signalled by no compression intent: method resolves to "pixel"
+        # with neither ``epsilon`` nor ``mode_fraction`` set.
+        is_pixel_direct = resolved_method == "pixel" and (
+            epsilon is None and mode_fraction is None
         )
         if is_pixel_direct:
             lmin_b = None
@@ -740,7 +736,7 @@ class Core(ABC):
             lmax_signal=basis_lmax,
             beam=beam,
             spins=spins,
-            basis=basis,
+            compression_target=compression_target,
             C_ell=C_ell,
             epsilon=epsilon,
             mode_fraction=mode_fraction,
@@ -752,7 +748,6 @@ class Core(ABC):
             delta_m=delta_m,
             fields=getattr(self, "collection", None),
             n_bins=n_bins,
-            use_direct=use_direct,
         )
 
         # Build harmonic operator and precompute SMW components
@@ -761,7 +756,7 @@ class Core(ABC):
         # Pixel-direct mode never factorises self._N, so noise_cov1 is still
         # the symmetric matrix and Core code can keep using it. Other modes
         # have overwritten it in place; drop the reference as a tripwire.
-        if not getattr(self.basis_manager, "_use_direct", False):
+        if getattr(self.basis_manager, "_is_compressed", True):
             self.noise_cov1 = None
 
         return self.basis_manager
@@ -992,7 +987,7 @@ class Core(ABC):
         bm = getattr(self, "basis_manager", None)
         if (
             bm is not None
-            and getattr(bm, "_use_direct", False)
+            and not getattr(bm, "_is_compressed", True)
             and hasattr(bm, "get_binned_derivative_direct")
         ):
             # The pixel-direct kernel does not yet support spin-2 × spin-2

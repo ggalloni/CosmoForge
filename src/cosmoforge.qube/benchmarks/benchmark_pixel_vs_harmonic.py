@@ -10,8 +10,8 @@ Geometry: polar cap centred on the north pole, fsky ~ 0.1.
 Sweep: lmax in {8, 16, 24, 32, 48}, T-only and QU.
 Methods:
   - harmonic:     V-based, full SMW pipeline
-  - pixel_direct: pixel basis in direct mode (use_direct=True, no V,
-                  full pixel-space ops)
+  - pixel_direct: pixel basis in direct mode (no compression kwargs,
+                  no V, full pixel-space ops)
   - auto:         factory picks harmonic vs pixel-direct via the cost
                   model (n_modes^3 vs (n_bins+1)*n_pix^3)
 
@@ -183,12 +183,11 @@ def _compression_dict(method):
     """Build the basis-construction config for a method label.
 
     The benchmark labels are ``harmonic``, ``pixel_direct``, ``auto``.
-    The label ``pixel_direct`` maps to ``method='pixel'`` plus
-    ``use_direct=True`` so the basis runs the no-V direct pixel-space
-    path that the auto selector picks at high lmax.
+    The label ``pixel_direct`` maps to ``method='pixel'`` with no
+    compression kwargs — direct pixel-space is the natural default.
     """
     if method == "pixel_direct":
-        return {"method": "pixel", "use_direct": True}
+        return {"method": "pixel"}
     return {"method": method}
 
 

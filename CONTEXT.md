@@ -9,6 +9,14 @@ in issue titles, plans, hypotheses, and test names. Do not paraphrase.
 - **qube** — QML estimator. Fisher matrix construction (`fisher.py`) and power-spectrum estimation (`spectra.py`).
 - **picslike** — Pixel-space Gaussian likelihood over a parameter grid.
 
+## Orchestration classes
+
+- **Core** — Abstract base shared by `Fisher`, `Spectra`, `PICSLike`. Owns field initialisation, pixel geometry, noise covariance loading, beam/spectra config, and `setup_computation_basis()`.
+- **Fisher** — Builds and inverts the QML Fisher matrix; trace evaluation is per-bin. Optionally caches binned derivatives for re-use by `Spectra`.
+- **Spectra** — Evaluates `q_b` per simulation, applies the chosen normalisation (`mode=…`), subtracts noise bias for auto-spectra, supports cross-correlation via independent C₁, C₂ filtering.
+- **PICSLike** — Evaluates the pixel-space Gaussian log-likelihood `−½(dᵀ C⁻¹ d + ln|C|)` over a parameter grid; uses the SMW fast path on harmonic basis and the direct path on pixel basis.
+- **FieldCollection** — Groups one or more `BaseField` instances (`ScalarField`, `PolarizationField`), auto-derives the relevant auto/cross spectra, and carries per-component multipole floors `lmin_signal`.
+
 ## QML estimator
 
 - **QML** — Quadratic Maximum Likelihood estimator for CMB power spectra. Optimal under Gaussian assumptions.
@@ -24,14 +32,30 @@ in issue titles, plans, hypotheses, and test names. Do not paraphrase.
 
 - **ComputationBasis** — Abstract base for the basis in which signal/noise are represented. Concrete: `HarmonicBasis`, `PixelBasis`.
 - **basis_manager** — Manages basis state and transforms (replaces the older `compression_manager`).
-- **HarmonicBasis** — Modes ordered by |m|, not ℓ. Default for compression-based paths.
-- **PixelBasis** — Direct pixel-space algebra. `method="pixel"` (replaces `method="pixel_projected"`).
+- **HarmonicBasis** — Modes ordered by |m|, not ℓ. SMW kernel path; cost scales as O(n_modes³).
+- **PixelBasis** — Pixel-space algebra. Two internal modes: **direct** (no V; signal matrix and derivatives built via Legendre kernels, selected when no `epsilon` / `mode_fraction` is passed) and **compressed** (V with eigenmode truncation). Direct-mode cost ≈ `(n_bins+1)·n_pix³` per setup.
+- **`method="auto"`** — Default for `setup_computation_basis()`. Cost-based selector (ADR-0003): compares `n_modes³` (harmonic) against `(n_bins+1)·n_pix³` (pixel-direct) and picks the cheaper. `n_pix = n_modes` at fsky ≈ 0.35.
 - **V operator** — Maps pixels → modes. Spin-0 uses normalised `legendre_plm`; spin-2 uses `scale_ell = sqrt((2ℓ+1)/(4π))`.
   Spin-2 layout: rows `[E modes | B modes]`, cols `[Q pixels | U pixels]`.
 - **Λ (Lambda)** — Block-diagonal signal covariance in the harmonic basis. Spin-0 diagonal; spin-2 has 2×2 blocks (EE, BB, EB) at each (ℓ, m). For cross-component spin-2×spin-2 pairs in DIRECTIONAL mode the two off-diagonal blocks carry separate GC and CG values (`_build_lambda_block_spin2` accepts `C_GC` and `C_CG` independently); in SYMMETRIC mode a single `C_EB` fills both.
 - **SMW** — Sherman-Morrison-Woodbury. Used to invert (S+N) without forming the full pixel-space matrix. Stable form: `M(I + ΛM)⁻¹` (not `M − M K⁻¹ M`).
-- **m-block compression** — Approximation: `compress=True, delta_m=0` treats K as block-diagonal in m. ~lmax² speedup. Currently single-field spin-0 only.
+- **m-block compression** — `compress=True, delta_m=0` treats K as block-diagonal in m. **Exact** for azimuthally symmetric masks (Oh/Spergel/Hinshaw 1999); approximation only for generic masks where the mask induces m–m' coupling. ~lmax² speedup. Currently single-field spin-0 only.
 - **Field block-diagonal K** — Auto-detected when no cross-spectra and noise is independent per field. Exact, no flag.
+
+## Basis-native vs pixel-space methods
+
+Naming convention introduced by ADR-0002 (vocab debt, PR #32):
+
+- **Bare method name** (`get_inverse`, `get_logdet`, `quadratic_form`, `to_basis`) — operates in the basis's **native** space. On `HarmonicBasis` this is mode-space; on `PixelBasis` direct mode this is pixel-space.
+- **`_full_` prefix** (`get_full_logdet`, etc.) — operates in **pixel-space** regardless of basis. On `PixelBasis` direct mode these coincide with the bare form; on `HarmonicBasis` they reconstruct the pixel-space quantity via SMW.
+
+Other renamed vocabulary (use these, not the legacy names):
+
+- **`dim`** — basis dimension (was `n_kept`).
+- **`to_basis(d)`** — project a pixel-space vector into the basis (was `compress_data`).
+- **`prepare_for_basis(C_ell)`** / **`BasisPrepared`** — pre-computed per-spectrum-point factor used by `quadratic_form` and `get_logdet` (was `prepare_smw` / `SMWPrepared`).
+- **`quadratic_form(d1, d2, C_ell)`** — `d1ᵀ C⁻¹ d2` in the basis (was `compute_quadratic_form`).
+- **`get_logdet(C_ell)`** — `ln|C|` in the basis (was `get_compressed_logdet`).
 
 ## Binning
 

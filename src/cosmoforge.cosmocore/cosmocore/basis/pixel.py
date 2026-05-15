@@ -105,12 +105,12 @@ class PixelBasis(ComputationBasis):
     >>> import numpy as np
     >>> from cosmocore.basis import PixelBasis
     >>> N = np.diag(noise_variance)  # Noise covariance matrix
-    >>> ppc = PixelBasis(N, theta, phi, lmax=100)
+    >>> # Compressed mode: pass epsilon at construction.
+    >>> ppc = PixelBasis(
+    ...     N, theta, phi, lmax_signal=100,
+    ...     epsilon=1e-4, compression_target="noise_weighted",
+    ... )
     >>> ppc.setup()
-    >>> # Inspect eigenvalue spectrum to choose threshold
-    >>> fig, axes = ppc.plot_eigenvalue_spectrum(basis="noise_weighted")
-    >>> # Apply compression with chosen threshold
-    >>> ppc.apply_compression(epsilon=1e-4, basis="noise_weighted")
     >>> fisher_element = ppc.compute_fisher_element(C_ell, ell_i=10, ell_j=10)
 
     References
@@ -127,7 +127,7 @@ class PixelBasis(ComputationBasis):
         lmax_signal: int,
         beam: np.ndarray | None = None,
         spins: list[int] | None = None,
-        basis: str = "noise_weighted",
+        compression_target: str = "noise_weighted",
         C_ell: np.ndarray | None = None,
         epsilon: float | list[float | tuple[float, float]] | None = None,
         mode_fraction: float | list[float | tuple[float, float]] | None = None,
@@ -136,7 +136,6 @@ class PixelBasis(ComputationBasis):
         lmax: int | None = None,
         S_fixed: np.ndarray | None = None,
         fields=None,
-        use_direct: bool = False,
     ):
         super().__init__(
             N,
@@ -151,19 +150,21 @@ class PixelBasis(ComputationBasis):
             S_fixed=S_fixed,
         )
         self._fields = fields
-        self._use_direct = use_direct
-
-        if not self._use_direct:
-            self._init_harmonic_internals()
 
         # Before compression, dim = n_pix
         self.dim = self.n_pix
         # Compression quantities
-        self._basis = basis
+        self._compression_target = compression_target
         self._C_ell_for_basis = C_ell
         self._epsilon = epsilon
         self._mode_fraction = mode_fraction
         self._eigenvectors = None
+
+        # Direct mode (no compression intent) skips the harmonic-builder
+        # machinery; setup() will route to _setup_direct. Compressed mode
+        # builds V and runs _apply_compression inside _setup_v_based.
+        if self._is_compressed:
+            self._init_harmonic_internals()
 
         # Parse per-field thresholds
         self._epsilon_per_field = self._parse_per_field_thresholds(epsilon, "epsilon")
@@ -513,6 +514,17 @@ class PixelBasis(ComputationBasis):
         return "pixel"
 
     @property
+    def _is_compressed(self) -> bool:
+        """True when this PixelBasis is configured for eigenmode compression.
+
+        Compression intent is fully determined by the constructor kwargs:
+        if either ``epsilon`` or ``mode_fraction`` is non-None, compression
+        will be applied by :meth:`setup`. The property is intentionally
+        derived (no separate flag) so intent and configuration cannot drift.
+        """
+        return self._epsilon is not None or self._mode_fraction is not None
+
+    @property
     def projector(self) -> np.ndarray:
         """
         Get the projection matrix U^T (dim × n_pix).
@@ -526,7 +538,7 @@ class PixelBasis(ComputationBasis):
         RuntimeError
             If compression has not been applied yet (V-based mode only).
         """
-        if self._use_direct:
+        if not self._is_compressed:
             # Cache the identity projector — n_pix×n_pix dense, allocated once.
             cached = getattr(self, "_direct_projector", None)
             if cached is None:
@@ -534,7 +546,10 @@ class PixelBasis(ComputationBasis):
                 self._direct_projector = cached
             return cached
         if self._eigenvectors is None:
-            raise RuntimeError("Compression not applied. Call apply_compression() first.")
+            raise RuntimeError(
+                "Compression not applied. Pass epsilon or mode_fraction "
+                "to PixelBasis(...) at construction."
+            )
         return self._eigenvectors.T
 
     def to_basis(self, data: np.ndarray) -> np.ndarray:
@@ -545,7 +560,7 @@ class PixelBasis(ComputationBasis):
         identity projector (otherwise an ``n_pix × n_sims`` matmul against
         an ``n_pix × n_pix`` identity, allocated and run on every call).
         """
-        if self._use_direct:
+        if not self._is_compressed:
             return data
         return super().to_basis(data)
 
@@ -558,7 +573,7 @@ class PixelBasis(ComputationBasis):
         skip V construction and rely on existing pixel-space machinery
         (compute_signal_matrix, do_derivative_step).
         """
-        if self._use_direct:
+        if not self._is_compressed:
             self._setup_direct()
         else:
             self._setup_v_based()
@@ -576,12 +591,7 @@ class PixelBasis(ComputationBasis):
             self._compute_effective_noise()
         self._P_h = matrix_mult(self._V.T, self._V)
         if self._epsilon is not None or self._mode_fraction is not None:
-            self.apply_compression(
-                epsilon=self._epsilon,
-                mode_fraction=self._mode_fraction,
-                basis=self._basis,
-                C_ell=self._C_ell_for_basis,
-            )
+            self._apply_compression()
         # Precompute U^T N_raw U so _N_original can be released; the
         # noise-bias path reads only the compressed form thereafter.
         self._precompute_noise_in_basis()
@@ -1195,7 +1205,7 @@ class PixelBasis(ComputationBasis):
 
         Creates one subplot per component.  The y-axis shows eigenvalues
         normalized by the maximum value, so values can be directly used as the
-        ``epsilon`` threshold for :meth:`apply_compression`.  For spin-2
+        ``epsilon`` constructor kwarg of :class:`PixelBasis`.  For spin-2
         components the E and B sub-spectra are shown as dashed curves when
         ``show_eb_split`` is True.
 
@@ -1226,11 +1236,20 @@ class PixelBasis(ComputationBasis):
 
         Examples
         --------
-        >>> ppc = PixelBasis(N, N_inv, theta, phi, lmax=100)
+        >>> # Pick threshold by plotting first, then construct a compressed basis.
+        >>> # The probe construction uses epsilon=0.0 to opt into the V-based
+        >>> # path (keeps all modes) so plot_eigenvalue_spectrum has V to read.
+        >>> ppc_probe = PixelBasis(
+        ...     N, theta, phi, lmax_signal=100, epsilon=0.0,
+        ... )
+        >>> ppc_probe.setup()
+        >>> fig, axes = ppc_probe.plot_eigenvalue_spectrum(basis="noise_weighted")
+        >>> # From the plot, decide threshold (e.g., 1e-4).
+        >>> ppc = PixelBasis(
+        ...     N, theta, phi, lmax_signal=100,
+        ...     epsilon=1e-4, compression_target="noise_weighted",
+        ... )
         >>> ppc.setup()
-        >>> fig, axes = ppc.plot_eigenvalue_spectrum(basis="noise_weighted")
-        >>> # From the plot, decide threshold (e.g., 1e-4)
-        >>> ppc.apply_compression(epsilon=1e-4, basis="noise_weighted")
         """
         import matplotlib.pyplot as plt
 
@@ -1396,46 +1415,37 @@ class PixelBasis(ComputationBasis):
         plt.tight_layout()
         return fig, axes_arr
 
-    def apply_compression(
-        self,
-        epsilon: float | list[float | tuple[float, float]] | None = None,
-        mode_fraction: float | list[float | tuple[float, float]] | None = None,
-        basis: str = "noise_weighted",
-        C_ell: np.ndarray | None = None,
-    ) -> None:
+    def _apply_compression(self) -> None:
         """
-        Apply eigenvalue compression to find optimal subspace.
+        Apply eigenvalue compression to find the optimal subspace.
 
-        Computes the eigendecomposition of the compression matrix (determined by
-        the basis) and selects modes to keep based on either an eigenvalue
-        threshold or a fraction of total modes.
+        Internal helper invoked by :meth:`setup` when the constructor was
+        called with ``epsilon`` or ``mode_fraction``. Reads compression
+        configuration from the instance state set at construction:
+        ``self._epsilon``, ``self._mode_fraction``, ``self._compression_target``,
+        ``self._C_ell_for_basis``.
+
+        Computes the eigendecomposition of the compression matrix (chosen
+        by ``self._compression_target``) and selects modes to keep based on either an
+        eigenvalue threshold or a fraction of total modes.
 
         Supports per-field thresholds and separate E/B thresholds for spin-2:
         - float: broadcast to all fields
         - list[float]: per-field threshold
         - list[float | tuple[float, float]]: tuples give (E, B) split for spin-2
 
-        Parameters
-        ----------
-        epsilon : float, list, or None
-            Eigenvalue threshold. Modes with eigenvalue > epsilon * max_eigenvalue
-            are kept. Mutually exclusive with mode_fraction.
-        mode_fraction : float, list, or None
-            Fraction of modes to keep (between 0 and 1). Keeps the top modes
-            ordered by eigenvalue. Mutually exclusive with epsilon.
-        basis : str, default "noise_weighted"
-            Compression basis determining which matrix to eigendecompose.
-        C_ell : numpy.ndarray, optional
-            Power spectrum values for ell = 2 to lmax. Required for
-            "total_covariance" and "snr" bases.
-
         Raises
         ------
         ValueError
-            If both epsilon and mode_fraction are provided.
-            If mode_fraction is not in (0, 1].
-            If C_ell is required but not provided.
+            If both ``epsilon`` and ``mode_fraction`` were provided at construction.
+            If ``mode_fraction`` is not in (0, 1].
+            If ``C_ell`` is required but not provided.
         """
+        epsilon = self._epsilon
+        mode_fraction = self._mode_fraction
+        compression_target = self._compression_target
+        C_ell = self._C_ell_for_basis
+
         # Parse per-field thresholds
         eps_list = self._parse_per_field_thresholds(epsilon, "epsilon")
         mf_list = self._parse_per_field_thresholds(mode_fraction, "mode_fraction")
@@ -1484,7 +1494,9 @@ class PixelBasis(ComputationBasis):
                 eps_i = eps_list[comp_idx] if eps_list is not None else None
                 mf_i = mf_list[comp_idx] if mf_list is not None else None
 
-                U_i, _ = self._eigendecompose_field(comp_idx, basis, eps_i, mf_i, C_ell)
+                U_i, _ = self._eigendecompose_field(
+                    comp_idx, compression_target, eps_i, mf_i, C_ell
+                )
                 U_blocks.append(U_i)
 
             # Assemble block-diagonal U
@@ -1506,7 +1518,7 @@ class PixelBasis(ComputationBasis):
             eps_scalar = eps_list[0] if eps_list is not None else None
             mf_scalar = mf_list[0] if mf_list is not None else None
 
-            compression_matrix = self._build_compression_matrix(basis, C_ell)
+            compression_matrix = self._build_compression_matrix(compression_target, C_ell)
             eigenvectors, eigenvalues = self._eigendecompose_single(
                 compression_matrix, eps_scalar, mf_scalar
             )
@@ -1514,8 +1526,6 @@ class PixelBasis(ComputationBasis):
             self._eigenvalues = eigenvalues
             self._eigenvectors = eigenvectors
             self.dim = eigenvectors.shape[1]
-
-        self._compression_basis = basis
 
         # Precompute compression-dependent quantities that don't depend on C_ell
         self._precompute_compression_products()
@@ -1543,8 +1553,8 @@ class PixelBasis(ComputationBasis):
         U = self._eigenvectors  # (n_pix, dim)
 
         # U^T @ N @ U - compressed noise covariance (independent of C_ell).
-        # Goes through _N_symmetric so a post-setup apply_compression call
-        # still works after _factorise_noise has overwritten self._N.
+        # Goes through _N_symmetric so the precompute can run after
+        # _factorise_noise has overwritten self._N in place.
         self._U_N_U = U.T @ self._N_symmetric @ U
 
         # V @ U - used for signal covariance transformation (independent of C_ell)
@@ -1600,11 +1610,14 @@ class PixelBasis(ComputationBasis):
         numpy.ndarray
             Basis-space inverse covariance, shape (dim, dim).
         """
-        if self._use_direct:
+        if not self._is_compressed:
             C = self._build_signal_matrix_direct() + self._N
             return matrix_inverse_symm(np.asfortranarray(C))
         if self._eigenvectors is None:
-            raise RuntimeError("Compression not applied. Call apply_compression() first.")
+            raise RuntimeError(
+                "Compression not applied. Pass epsilon or mode_fraction "
+                "to PixelBasis(...) at construction."
+            )
         return self.get_inverse(C_ell)
 
     def get_derivative_matrix(
@@ -1639,11 +1652,14 @@ class PixelBasis(ComputationBasis):
         is_cross = key.comp_i != key.comp_j
         mode = kind_to_legacy_mode(key.kind, is_cross=is_cross)
 
-        if self._use_direct:
+        if not self._is_compressed:
             return self._get_derivative_direct(ell, key.comp_i, key.comp_j, mode)
 
         if self._eigenvectors is None:
-            raise RuntimeError("Compression not applied. Call apply_compression() first.")
+            raise RuntimeError(
+                "Compression not applied. Pass epsilon or mode_fraction "
+                "to PixelBasis(...) at construction."
+            )
 
         # Single spin-0 field: use precomputed diagonal. The precomputed
         # diagonal is the SS derivative; reject other kinds so a bogus key
@@ -1681,11 +1697,14 @@ class PixelBasis(ComputationBasis):
         numpy.ndarray
             Basis-space covariance, shape (dim, dim).
         """
-        if self._use_direct:
+        if not self._is_compressed:
             return self._build_signal_matrix_direct() + self._N
 
         if self._eigenvectors is None:
-            raise RuntimeError("Compression not applied. Call apply_compression() first.")
+            raise RuntimeError(
+                "Compression not applied. Pass epsilon or mode_fraction "
+                "to PixelBasis(...) at construction."
+            )
 
         if isinstance(C_ell, dict):
             lambda_matrix = self._build_lambda_matrix(C_ell)
@@ -1725,13 +1744,16 @@ class PixelBasis(ComputationBasis):
         numpy.ndarray
             Weighted data of shape (dim,) or (dim, n_sims).
         """
-        if self._use_direct:
+        if not self._is_compressed:
             if C_c_inv is None:
                 C_c_inv = self.get_projected_inverse(C_ell)
             return matrix_mult(C_c_inv, data)
 
         if self._eigenvectors is None:
-            raise RuntimeError("Compression not applied. Call apply_compression() first.")
+            raise RuntimeError(
+                "Compression not applied. Pass epsilon or mode_fraction "
+                "to PixelBasis(...) at construction."
+            )
 
         d_compressed = self._eigenvectors.T @ data
         if C_c_inv is None:
@@ -1759,12 +1781,15 @@ class PixelBasis(ComputationBasis):
         float
             Quadratic form value.
         """
-        if self._use_direct:
+        if not self._is_compressed:
             C_inv = self.get_projected_inverse(C_ell)
             return float(data.T @ C_inv @ data)
 
         if self._eigenvectors is None:
-            raise RuntimeError("Compression not applied. Call apply_compression() first.")
+            raise RuntimeError(
+                "Compression not applied. Pass epsilon or mode_fraction "
+                "to PixelBasis(...) at construction."
+            )
 
         d_basis = self._eigenvectors.T @ data
         C_inv = self.get_inverse(C_ell)
@@ -1889,8 +1914,11 @@ class PixelBasis(ComputationBasis):
 
     def prepare_for_basis(self, C_ell_dict: dict) -> BasisPrepared:
         """Pre-bake the basis-space inverse and logdet for reuse across sims."""
-        if not self._use_direct and self._eigenvectors is None:
-            raise RuntimeError("Compression not applied. Call apply_compression() first.")
+        if self._is_compressed and self._eigenvectors is None:
+            raise RuntimeError(
+                "Compression not applied. Pass epsilon or mode_fraction "
+                "to PixelBasis(...) at construction."
+            )
 
         from ..basics import matrix_slogdet_symm
 
@@ -1903,10 +1931,13 @@ class PixelBasis(ComputationBasis):
         self, data: np.ndarray, C_c_inv: np.ndarray
     ) -> float:
         """Compute ``d^T C^{-1} d`` using a pre-baked basis-space inverse."""
-        if self._use_direct:
+        if not self._is_compressed:
             return float(data.T @ C_c_inv @ data)
         if self._eigenvectors is None:
-            raise RuntimeError("Compression not applied. Call apply_compression() first.")
+            raise RuntimeError(
+                "Compression not applied. Pass epsilon or mode_fraction "
+                "to PixelBasis(...) at construction."
+            )
 
         d_c = self._eigenvectors.T @ data
         return float(d_c.T @ C_c_inv @ d_c)
@@ -1942,7 +1973,7 @@ class PixelBasis(ComputationBasis):
         subspace and is zero on the truncated complement.
         """
         C_basis_inv = self.get_inverse(C_ell)
-        if self._use_direct or self._eigenvectors is None:
+        if not self._is_compressed or self._eigenvectors is None:
             return C_basis_inv
         U = self._eigenvectors
         return U @ C_basis_inv @ U.T
@@ -1972,16 +2003,16 @@ class PixelBasis(ComputationBasis):
         return self._eigenvalues
 
     @property
-    def compression_basis(self) -> str | None:
+    def compression_target(self) -> str | None:
         """
-        The compression basis used in apply_compression().
+        The selector configured at construction (``compression_target`` kwarg).
 
-        Returns
-        -------
-        str or None
-            Basis name if compression has been applied, None otherwise.
+        Names the matrix that ``_apply_compression`` eigendecomposes:
+        ``"harmonic"``, ``"noise_weighted"``, ``"total_covariance"``, or
+        ``"snr"``. Returns the configured value regardless of whether
+        compression has actually been applied yet.
         """
-        return self._compression_basis
+        return self._compression_target
 
     @classmethod
     def available_bases(cls) -> dict[str, str]:

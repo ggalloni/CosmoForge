@@ -168,7 +168,7 @@ class TestCreateCompression:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=setup["lmax"],
-            basis="snr",
+            compression_target="snr",
             C_ell=C_ell,
             epsilon=1e-4,
         )
@@ -291,9 +291,9 @@ class TestComputeFisherMatrix:
             theta=setup["theta"],
             phi=setup["phi"],
             lmax_signal=lmax,
+            epsilon=1e-6,
         )
         ppc.setup()
-        ppc.apply_compression(epsilon=1e-6)
 
         # Compute via optimized method
         fisher = ppc.compute_fisher_matrix(C_ell, ell_min=2, ell_max=lmax)
