@@ -105,7 +105,7 @@ html_extra_path = [".nojekyll"]
 # HTML theme options
 html_theme_options = {
     "analytics_id": "",  # Provided by you if you have Google Analytics
-    "logo_only": False,
+    "logo_only": True,
     "prev_next_buttons_location": "bottom",
     "style_external_links": False,
     "collapse_navigation": True,
