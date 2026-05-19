@@ -1,4 +1,7 @@
-# CosmoForge
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ggalloni/CosmoForge/master/logos/logo_cosmoforge_light.png#gh-light-mode-only" alt="CosmoForge logo (light)" width="60%"/>
+  <img src="https://raw.githubusercontent.com/ggalloni/CosmoForge/master/logos/logo_cosmoforge_dark.png#gh-dark-mode-only" alt="CosmoForge logo (dark)" width="60%"/>
+</p>
 
 [![Build Status](https://github.com/ggalloni/CosmoForge/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/ggalloni/CosmoForge/actions/workflows/test.yml)
 [![Documentation](https://github.com/ggalloni/CosmoForge/actions/workflows/docs.yml/badge.svg?branch=master)](https://ggalloni.github.io/CosmoForge/)
@@ -7,11 +10,6 @@
 [![Code style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/charliermarsh/ruff)
 [![Python](https://img.shields.io/pypi/pyversions/cosmoforge)](https://pypi.org/project/cosmoforge/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/ggalloni/CosmoForge/master/logos/logo_cosmoforge_light.png#gh-light-mode-only" alt="CosmoForge logo (light)" style="max-width:30%; height:auto;"/>
-  <img src="https://raw.githubusercontent.com/ggalloni/CosmoForge/master/logos/logo_cosmoforge_dark.png#gh-dark-mode-only" alt="CosmoForge logo (dark)" style="max-width:30%; height:auto;"/>
-</p>
 
 > **📚 [Complete Documentation](https://ggalloni.github.io/CosmoForge/) | [Installation Guide](https://ggalloni.github.io/CosmoForge/installation.html) | [Quick Start](https://ggalloni.github.io/CosmoForge/quickstart.html) | [API Reference](https://ggalloni.github.io/CosmoForge/api/cosmocore.html)**
 

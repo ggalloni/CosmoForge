@@ -1,14 +1,12 @@
-# QUBE
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ggalloni/CosmoForge/master/src/cosmoforge.qube/logos/QUBE_logo.png" alt="QUBE logo" width="40%"/>
+</p>
 
 [![PyPI](https://img.shields.io/pypi/v/qube-qml?include_prereleases)](https://pypi.org/project/qube-qml/)
 [![Python](https://img.shields.io/pypi/pyversions/qube-qml)](https://pypi.org/project/qube-qml/)
 [![Documentation](https://img.shields.io/badge/docs-qube-blue.svg)](https://ggalloni.github.io/CosmoForge/api/qube.html)
 [![Parallelization](https://img.shields.io/badge/MPI-parallel-orange.svg)](https://www.mpi-forum.org/)
 [![QML Method](https://img.shields.io/badge/method-QML-red.svg)](https://en.wikipedia.org/wiki/Maximum_likelihood_estimation)
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/ggalloni/CosmoForge/master/src/cosmoforge.qube/logos/QUBE_logo.png" alt="QUBE logo" style="max-width:25%; height:auto;"/>
-</p>
 
 > **📚 [QUBE Documentation](https://ggalloni.github.io/CosmoForge/api/qube.html) | [Fisher Analysis API](https://ggalloni.github.io/CosmoForge/api/qube/fisher.html) | [Spectra API](https://ggalloni.github.io/CosmoForge/api/qube/spectra.html) | [Main Documentation](https://ggalloni.github.io/CosmoForge/)**
 
