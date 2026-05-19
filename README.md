@@ -1,4 +1,7 @@
-# CosmoForge
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ggalloni/CosmoForge/master/logos/logo_cosmoforge_light.png#gh-light-mode-only" alt="CosmoForge logo (light)" width="60%"/>
+  <img src="https://raw.githubusercontent.com/ggalloni/CosmoForge/master/logos/logo_cosmoforge_dark.png#gh-dark-mode-only" alt="CosmoForge logo (dark)" width="60%"/>
+</p>
 
 [![Build Status](https://github.com/ggalloni/CosmoForge/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/ggalloni/CosmoForge/actions/workflows/test.yml)
 [![Documentation](https://github.com/ggalloni/CosmoForge/actions/workflows/docs.yml/badge.svg?branch=master)](https://ggalloni.github.io/CosmoForge/)
@@ -8,11 +11,6 @@
 [![Python](https://img.shields.io/pypi/pyversions/cosmoforge)](https://pypi.org/project/cosmoforge/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/ggalloni/CosmoForge/master/logos/logo_cosmoforge_light.png#gh-light-mode-only" alt="CosmoForge logo (light)" width="60%"/>
-  <img src="https://raw.githubusercontent.com/ggalloni/CosmoForge/master/logos/logo_cosmoforge_dark.png#gh-dark-mode-only" alt="CosmoForge logo (dark)" width="60%"/>
-</p>
-
 > **📚 [Complete Documentation](https://ggalloni.github.io/CosmoForge/) | [Installation Guide](https://ggalloni.github.io/CosmoForge/installation.html) | [Quick Start](https://ggalloni.github.io/CosmoForge/quickstart.html) | [API Reference](https://ggalloni.github.io/CosmoForge/api/cosmocore.html)**
 
 CosmoForge is a comprehensive Python framework for power spectrum estimation and likelihood analysis of spin-0 and spin-2 fields on the sphere, using Fisher matrix, Quadratic Maximum Likelihood (QML), and pixel-based likelihood methods. While widely applicable to any sky signal (e.g. CMB, galaxy surveys, 21 cm), it is particularly optimized for the analysis of partial-sky, noisy observations with complex noise covariance.
@@ -21,7 +19,7 @@ CosmoForge is a comprehensive Python framework for power spectrum estimation and
 
 CosmoForge consists of several interconnected packages designed for efficient and accurate cosmological parameter estimation:
 
-- **cosmocore**: Core functionality for cosmological analysis including field management, matrix operations, and I/O utilities
+- **cosmocore**: Core functionality for cosmological analysis, including field management, matrix operations, and I/O utilities
 - **qube-qml**: QML and Fisher matrix implementations for power spectrum estimation (imported as `qube`)
 - **picslike**: Pixel-based Inference with Correlated-Skies Likelihood — pixel-space likelihood analysis for parameter estimation
 
