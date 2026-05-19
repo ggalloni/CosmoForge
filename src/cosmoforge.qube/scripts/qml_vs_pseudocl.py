@@ -23,6 +23,7 @@ Outputs:
 Run: ``uv run --extra pcl python src/cosmoforge.qube/scripts/qml_vs_pseudocl.py``
 """
 
+import argparse
 import json
 import os
 import tempfile
@@ -715,74 +716,79 @@ def analyze_case(
 # Plotting
 # ---------------------------------------------------------------------------
 def make_dl_variance_figure(results, lmax_science, fname):
-    """Two-panel layout (one row): bandpowers + sigma_PCL/sigma_QML ratio.
+    """Three-panel layout (one row): high-fsky spectra, low-fsky spectra,
+    and sigma_PCL/sigma_QML ratio.
 
-    Both fsky cases overlaid in each panel: color encodes fsky (low -> blue
-    family, high -> orange family); marker shape distinguishes QML (circle)
-    vs PCL (square) where applicable.
+    Each fsky case sits in its own panel so the visual y-offset that the
+    earlier two-panel layout needed (to keep both lanes positive) is gone.
+    Markers distinguish QML (circle) vs PCL (square); colour encodes fsky.
     """
-    fig, (ax_dl, ax_ratio) = plt.subplots(1, 2, figsize=(14.4, 3.6))
-
     case_colors = {
         "low_fsky": ("#1f5fae", "#5fa1d8"),  # QML, PCL shades for low fsky
         "high_fsky": ("#cc6a05", "#f0a55a"),  # QML, PCL shades for high fsky
     }
-    # Vertical offsets in D_ell to separate the two fsky cases visually.
-    # We shift the binned (low-fsky) lane *up* rather than the unbinned
-    # (high-fsky) lane down, so all displayed values stay positive.
-    # Offsets are disclosed in the legend.
-    case_offsets = {"low_fsky": +2500.0, "high_fsky": 0.0}
+
+    fig = plt.figure(figsize=(16.2, 3.8))
+    ax_high = fig.add_subplot(1, 3, 1)
+    ax_low = fig.add_subplot(1, 3, 2, sharey=ax_high)
+    ax_ratio = fig.add_subplot(1, 3, 3)
+    spectra_axes = {"high_fsky": ax_high, "low_fsky": ax_low}
 
     for key, r in results.items():
         qml_ells = np.asarray(r["qml_ells"])
         pcl_ells = np.asarray(r["pcl_ells"])
         deconv = r["qml"]["deconvolved"]
-        # Use NaMaster's invvar-weighted ell for both methods. QUBE reports
-        # the bin midpoint, but its bandpower observable is also an invvar
-        # average, so the invvar-weighted ell is the physically correct
-        # "effective ell" for both. (QUBE's get_effective_ells() reporting
-        # is being addressed in a separate issue.)
+        # NaMaster's invvar-weighted ell is the physically correct
+        # "effective ell" for both methods (QUBE's bandpower observable
+        # is also an invvar average; bin-midpoint reporting is being
+        # addressed separately).
         n_q = min(len(qml_ells), len(pcl_ells))
         ell_eff = pcl_ells[:n_q]
         dl = ell_eff * (ell_eff + 1) / (2 * np.pi)
         c_qml, c_pcl = case_colors.get(key, (C_QML, C_PCL))
-        offset = case_offsets.get(key, 0.0)
-        offset_str = "" if offset == 0.0 else f" $({offset:+g}$ µK$^2)$"
+        ax = spectra_axes.get(key)
+        if ax is None:
+            continue
 
-        # Theory line (we use QML's windowed theory; the two methods'
-        # windowed theories differ slightly at low ell due to mode-coupling
-        # treatment but the invvar-weighted means align well).
-        ax_dl.plot(
+        ax.plot(
             ell_eff,
-            deconv["windowed_theory"][:n_q] * dl + offset,
+            deconv["windowed_theory"][:n_q] * dl,
             color=c_qml,
             ls="--",
             lw=1.5,
             alpha=0.7,
-            label=f"{r['label']}: theory{offset_str}",
+            label="theory",
         )
-        ax_dl.errorbar(
+        ax.errorbar(
             ell_eff - 0.25,
-            deconv["mean"][:n_q] * dl + offset,
+            deconv["mean"][:n_q] * dl,
             yerr=deconv["std"][:n_q] * dl,
             fmt="o",
             ms=5,
             capsize=2.5,
             color=c_qml,
-            label=f"{r['label']}: QML",
+            label="QML",
         )
-        ax_dl.errorbar(
+        ax.errorbar(
             ell_eff + 0.25,
-            r["pcl"]["mean"][:n_q] * dl + offset,
+            r["pcl"]["mean"][:n_q] * dl,
             yerr=r["pcl"]["std"][:n_q] * dl,
             fmt="s",
             ms=5,
             capsize=2.5,
             color=c_pcl,
-            label=f"{r['label']}: PCL",
+            label="PCL",
+        )
+        ax.text(
+            0.97,
+            0.95,
+            r["label"],
+            transform=ax.transAxes,
+            ha="right",
+            va="top",
+            fontsize=15,
         )
 
-        # Right panel: sigma_PCL / sigma_QML ratio (no offset — physical ratio)
         ratio = r["pcl"]["std"][:n_q] / deconv["std"][:n_q]
         ax_ratio.plot(
             ell_eff,
@@ -794,23 +800,48 @@ def make_dl_variance_figure(results, lmax_science, fname):
             label=r["label"],
         )
 
-    ax_dl.set_xlabel(r"Multipole $\ell$")
-    ax_dl.set_ylabel(r"$D_\ell^{TT}\;[\mu K^2]$ (with offsets)")
-    ax_dl.legend(loc="upper left", fontsize=11, ncol=2, framealpha=0.95)
-    ax_dl.set_xlim(0, lmax_science + 2)
-    # Add headroom at the top so the legend doesn't overlap data.
-    ymin, ymax = ax_dl.get_ylim()
-    ax_dl.set_ylim(ymin, ymax + 0.45 * (ymax - ymin))
+    for ax in (ax_high, ax_low):
+        ax.set_xlabel(r"Multipole $\ell$")
+        ax.set_xlim(0, lmax_science + 2)
+        ax.legend(loc="upper left", fontsize=13, ncol=2, framealpha=0.95)
+    ax_high.set_ylabel(r"$D_\ell^{TT}\;[\mu K^2]$")
+    # Headroom for the legend in the shared y-range.
+    ymin, ymax = ax_high.get_ylim()
+    ax_high.set_ylim(ymin, ymax + 0.25 * (ymax - ymin))
 
-    ax_ratio.axhline(1.0, color="black", ls=":", lw=1.0, label="QML = PCL")
+    ax_ratio.axhline(1.0, color="black", ls=":", lw=1.0)
     ax_ratio.set_xlabel(r"Multipole $\ell$")
     ax_ratio.set_ylabel(r"$\sigma_{\rm PCL} / \sigma_{\rm QML}$")
-    ax_ratio.legend(loc="upper right", fontsize=12)
+    ax_ratio.legend(loc="upper right", fontsize=13)
     ax_ratio.set_xlim(0, lmax_science + 2)
 
     fig.savefig(fname)
     print(f"  Wrote {fname}")
     plt.close(fig)
+
+
+def _load_results_from_json(path):
+    """Restore the results dict produced by save_results_json.
+
+    Re-hydrates numerical fields into numpy arrays so the downstream figure
+    functions can apply slice arithmetic exactly as in the post-MC path.
+    """
+    with open(path) as f:
+        payload = json.load(f)
+    cases = payload.get("cases", payload)
+
+    def _arrayify(obj):
+        if isinstance(obj, dict):
+            return {k: _arrayify(v) for k, v in obj.items()}
+        if isinstance(obj, list) and obj and isinstance(obj[0], (int, float, list)):
+            try:
+                return np.asarray(obj)
+            except (ValueError, TypeError):
+                return obj
+        return obj
+
+    cases = _arrayify(cases)
+    return cases, payload.get("config", {})
 
 
 def make_correlation_figure(results, fname):
@@ -928,7 +959,28 @@ def save_results_json(results, path, config):
 # Main
 # ---------------------------------------------------------------------------
 def main():
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument(
+        "--replot-from-json",
+        type=str,
+        default=None,
+        help=(
+            "Skip the Monte Carlo and rebuild the figures from a previously "
+            "saved qml_vs_pcl_results.json. Use this to regenerate plots "
+            "after editing make_dl_variance_figure / make_correlation_figure."
+        ),
+    )
+    args = parser.parse_args()
+
     configure_plt()
+
+    if args.replot_from_json is not None:
+        results, config = _load_results_from_json(args.replot_from_json)
+        lmax_science = int(config.get("lmax_science", LMAX_SCIENCE))
+        make_dl_variance_figure(results, lmax_science, "qml_vs_pcl_dl_variance.png")
+        make_correlation_figure(results, "qml_vs_pcl_correlations.png")
+        return
+
     raw_cls, cl_full = load_theory(LMAX_SIM)
     sigma_noise = sigma_noise_tt_matching_bb(
         cl_full, NOISE_SENS_UKARCMIN_POL, NOISE_REF_ELL, NPIX
