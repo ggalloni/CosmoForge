@@ -436,6 +436,23 @@ cProfile.run('run_analysis()', 'profile_output.prof')
 
 See the main CosmoForge README for contribution guidelines.
 
+## Citation
+
+If you use PICSLike (as part of CosmoForge) in your research, please cite:
+
+> Galloni, G. & Pagano, L., *CosmoForge I: A unified framework for QML power spectrum estimation and pixel-based likelihood analysis*, in preparation (2026).
+
+```bibtex
+@article{GalloniPagano_CosmoForgeI,
+    author = {Galloni, G. and Pagano, L.},
+    title  = {{CosmoForge I}: A unified framework for {QML} power spectrum estimation and pixel-based likelihood analysis},
+    year   = {2026},
+    note   = {in preparation}
+}
+```
+
+This entry will be updated with the arXiv identifier and journal reference once available.
+
 ## References
 
 - Wandelt, B.D., Larson, D.L. & Lakshminarayanan, A. "Global, exact cosmic microwave background data analysis using Gibbs sampling" Phys. Rev. D 70, 083511 (2004)

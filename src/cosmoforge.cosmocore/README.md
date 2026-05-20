@@ -269,6 +269,23 @@ uv run pytest src/cosmoforge.cosmocore/tests/
 - [Harmonic Module](https://ggalloni.github.io/CosmoForge/api/cosmocore/harmonic.html) - Power spectrum and beams
 - [I/O Module](https://ggalloni.github.io/CosmoForge/api/cosmocore/in_out.html) - Data input/output
 
+## Citation
+
+If you use CosmoCore (as part of CosmoForge) in your research, please cite:
+
+> Galloni, G. & Pagano, L., *CosmoForge I: A unified framework for QML power spectrum estimation and pixel-based likelihood analysis*, in preparation (2026).
+
+```bibtex
+@article{GalloniPagano_CosmoForgeI,
+    author = {Galloni, G. and Pagano, L.},
+    title  = {{CosmoForge I}: A unified framework for {QML} power spectrum estimation and pixel-based likelihood analysis},
+    year   = {2026},
+    note   = {in preparation}
+}
+```
+
+This entry will be updated with the arXiv identifier and journal reference once available.
+
 ## References
 
 - Tegmark, M. "How to measure CMB power spectra without losing information" Phys. Rev. D 55, 5895 (1997)
