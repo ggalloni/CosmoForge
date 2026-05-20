@@ -4,14 +4,14 @@
 </p>
 
 [![Build Status](https://github.com/ggalloni/CosmoForge/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/ggalloni/CosmoForge/actions/workflows/test.yml)
-[![Documentation](https://github.com/ggalloni/CosmoForge/actions/workflows/docs.yml/badge.svg?branch=master)](https://ggalloni.github.io/CosmoForge/)
+[![Documentation Status](https://readthedocs.org/projects/cosmoforge/badge/?version=latest)](https://cosmoforge.readthedocs.io/en/latest/?badge=latest)
 [![codecov](https://codecov.io/gh/ggalloni/CosmoForge/branch/master/graph/badge.svg?token=UOm3LdvL7J)](https://codecov.io/gh/ggalloni/CosmoForge)
 [![PyPI](https://img.shields.io/pypi/v/cosmoforge?include_prereleases)](https://pypi.org/project/cosmoforge/)
 [![Code style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/charliermarsh/ruff)
 [![Python](https://img.shields.io/pypi/pyversions/cosmoforge)](https://pypi.org/project/cosmoforge/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-> **📚 [Complete Documentation](https://ggalloni.github.io/CosmoForge/) | [Installation Guide](https://ggalloni.github.io/CosmoForge/installation.html) | [Quick Start](https://ggalloni.github.io/CosmoForge/quickstart.html) | [API Reference](https://ggalloni.github.io/CosmoForge/api/cosmocore.html)**
+> **📚 [Complete Documentation](https://cosmoforge.readthedocs.io/en/latest/) | [Installation Guide](https://cosmoforge.readthedocs.io/en/latest/installation.html) | [Quick Start](https://cosmoforge.readthedocs.io/en/latest/quickstart.html) | [API Reference](https://cosmoforge.readthedocs.io/en/latest/api/cosmocore.html)**
 
 CosmoForge is a comprehensive Python framework for power spectrum estimation and likelihood analysis of spin-0 and spin-2 fields on the sphere, using Fisher matrix, Quadratic Maximum Likelihood (QML), and pixel-based likelihood methods. While widely applicable to any sky signal (e.g. CMB, galaxy surveys, 21 cm), it is particularly optimized for the analysis of partial-sky, noisy observations with complex noise covariance.
 
@@ -35,7 +35,7 @@ CosmoForge consists of several interconnected packages designed for efficient an
 
 ## Installation
 
-> **📖 For detailed installation instructions, see the [Installation Guide](https://ggalloni.github.io/CosmoForge/installation.html)**
+> **📖 For detailed installation instructions, see the [Installation Guide](https://cosmoforge.readthedocs.io/en/latest/installation.html)**
 
 ### Requirements
 
@@ -70,7 +70,7 @@ uv sync --all-packages --all-extras --dev
 
 ## Quick Start
 
-> **🚀 For comprehensive tutorials and examples, visit the [Quick Start Guide](https://ggalloni.github.io/CosmoForge/quickstart.html) and [Tutorials](https://ggalloni.github.io/CosmoForge/tutorials/index.html)**
+> **🚀 For comprehensive tutorials and examples, visit the [Quick Start Guide](https://cosmoforge.readthedocs.io/en/latest/quickstart.html) and [Tutorials](https://cosmoforge.readthedocs.io/en/latest/tutorials/index.html)**
 
 ### Fisher Matrix Analysis
 
@@ -208,7 +208,7 @@ This entry will be updated with the arXiv identifier and journal reference once 
 
 ## Support
 
-> **📖 Complete documentation is available at: [https://ggalloni.github.io/CosmoForge/](https://ggalloni.github.io/CosmoForge/)**
+> **📖 Complete documentation is available at: [https://cosmoforge.readthedocs.io/en/latest/](https://cosmoforge.readthedocs.io/en/latest/)**
 
 For questions and support:
 

@@ -2,10 +2,10 @@
 
 [![PyPI](https://img.shields.io/pypi/v/cosmocore?include_prereleases)](https://pypi.org/project/cosmocore/)
 [![Python](https://img.shields.io/pypi/pyversions/cosmocore)](https://pypi.org/project/cosmocore/)
-[![Documentation](https://img.shields.io/badge/docs-cosmocore-blue.svg)](https://ggalloni.github.io/CosmoForge/api/cosmocore.html)
+[![Documentation](https://img.shields.io/badge/docs-cosmocore-blue.svg)](https://cosmoforge.readthedocs.io/en/latest/api/cosmocore.html)
 [![Performance](https://img.shields.io/badge/performance-numba-green.svg)](https://numba.pydata.org/)
 
-> [CosmoCore Documentation](https://ggalloni.github.io/CosmoForge/api/cosmocore.html) | [API Reference](https://ggalloni.github.io/CosmoForge/api/cosmocore/basics.html) | [Main Documentation](https://ggalloni.github.io/CosmoForge/)
+> [CosmoCore Documentation](https://cosmoforge.readthedocs.io/en/latest/api/cosmocore.html) | [API Reference](https://cosmoforge.readthedocs.io/en/latest/api/cosmocore/basics.html) | [Main Documentation](https://cosmoforge.readthedocs.io/en/latest/)
 
 CosmoCore is the foundational package of CosmoForge, providing core functionality for the analysis of spin-0 and spin-2 fields on the sphere, including field management, computation basis methods, matrix operations, I/O utilities, and spherical harmonic operations.
 
@@ -201,9 +201,13 @@ cosmocore/
 ├── core.py                  # Core base class
 ├── fields.py                # Field implementations (Scalar, Polarization)
 ├── settings.py              # Parameter management
-├── harmonic.py              # Power spectrum and beam managers
-├── pixel.py                 # Pixel-based signal matrix operations
-├── in_out.py                # I/O utilities
+├── beam.py                  # Beam and pixwin manager
+├── bins.py                  # Multipole binning (Bins, Bins.fromdeltal)
+├── spectrum_key.py          # SpectrumKey, SpectrumKind, SymmetryMode
+├── spectra_io.py            # Spectra I/O and SpectraManager
+├── signal_kernels.py        # Per-ell Legendre signal kernels
+├── in_out.py                # File I/O utilities
+├── mpi_utils.py             # MPI helpers (shared-memory mixin)
 ├── logger.py                # Logging and timing
 ├── basics/                  # Mathematical primitives
 │   ├── linalg.py            #   Matrix operations (mult, inverse, trace)
@@ -212,11 +216,13 @@ cosmocore/
 │   ├── geometry.py          #   Rotation angles and coordinate transforms
 │   ├── indexing.py          #   Spectrum index utilities
 │   └── smw.py               #   Sherman-Morrison-Woodbury formula
-└── basis/             # Computation basis for Fisher/QML
-    ├── base.py              #   Abstract base class and SMW types
-    ├── harmonic_basis.py    #   Harmonic basis builder (V operator, Lambda)
-    ├── harmonic.py          #   HarmonicBasis (Tegmark-like)
-    └── pixel.py             #   PixelBasis (Gjerlow-like)
+├── basis/                   # Computation basis for Fisher/QML
+│   ├── base.py              #   Abstract base class and SMW types
+│   ├── harmonic_basis.py    #   Harmonic basis builder (V operator, Lambda)
+│   ├── harmonic.py          #   HarmonicBasis (Tegmark-like)
+│   └── pixel.py             #   PixelBasis (Gjerlow-like)
+└── conventions/             # Domain-specific naming
+    └── cmb.py               #   CMB aliases (TT/EE/BB/EB/TE/...)
 ```
 
 ## Performance Features
@@ -263,11 +269,12 @@ uv run pytest src/cosmoforge.cosmocore/tests/
 
 ## Documentation
 
-- [Core Module](https://ggalloni.github.io/CosmoForge/api/cosmocore/core.html) - Main Core class and pipeline
-- [Fields Module](https://ggalloni.github.io/CosmoForge/api/cosmocore/fields.html) - Field management and HEALPix
-- [Basics Module](https://ggalloni.github.io/CosmoForge/api/cosmocore/basics.html) - Mathematical utilities
-- [Harmonic Module](https://ggalloni.github.io/CosmoForge/api/cosmocore/harmonic.html) - Power spectrum and beams
-- [I/O Module](https://ggalloni.github.io/CosmoForge/api/cosmocore/in_out.html) - Data input/output
+- [Core Module](https://cosmoforge.readthedocs.io/en/latest/api/cosmocore/core.html) - Main Core class and pipeline
+- [Fields Module](https://cosmoforge.readthedocs.io/en/latest/api/cosmocore/fields.html) - Field management and HEALPix
+- [Basics Module](https://cosmoforge.readthedocs.io/en/latest/api/cosmocore/basics.html) - Mathematical utilities
+- [Basis Module](https://cosmoforge.readthedocs.io/en/latest/api/cosmocore/basis.html) - Computation basis (harmonic + pixel)
+- [Beam Module](https://cosmoforge.readthedocs.io/en/latest/api/cosmocore/beam.html) - Beam and pixwin handling
+- [I/O Module](https://cosmoforge.readthedocs.io/en/latest/api/cosmocore/in_out.html) - Data input/output
 
 ## Citation
 

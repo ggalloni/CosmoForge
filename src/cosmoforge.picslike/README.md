@@ -5,11 +5,11 @@
 
 [![PyPI](https://img.shields.io/pypi/v/picslike?include_prereleases)](https://pypi.org/project/picslike/)
 [![Python](https://img.shields.io/pypi/pyversions/picslike)](https://pypi.org/project/picslike/)
-[![Documentation](https://img.shields.io/badge/docs-picslike-blue.svg)](https://ggalloni.github.io/CosmoForge/api/picslike.html)
+[![Documentation](https://img.shields.io/badge/docs-picslike-blue.svg)](https://cosmoforge.readthedocs.io/en/latest/api/picslike.html)
 [![Parallelization](https://img.shields.io/badge/MPI-parallel-orange.svg)](https://www.mpi-forum.org/)
 [![Method](https://img.shields.io/badge/method-Pixel--based%20Likelihood-red.svg)](https://en.wikipedia.org/wiki/Likelihood_function)
 
-> **[PICSLike Documentation](https://ggalloni.github.io/CosmoForge/api/picslike.html) | [Main Documentation](https://ggalloni.github.io/CosmoForge/)**
+> **[PICSLike Documentation](https://cosmoforge.readthedocs.io/en/latest/api/picslike.html) | [Main Documentation](https://cosmoforge.readthedocs.io/en/latest/)**
 
 PICSLike (Pixel-based Inference with Correlated-Skies Likelihood) is the pixel-based likelihood analysis engine of CosmoForge, implementing direct likelihood evaluation in map pixel space for cosmological parameter inference from CMB data.
 
@@ -65,9 +65,9 @@ pip install mpi4py
 
 For detailed API documentation and examples:
 
-- **[PICSLike API](https://ggalloni.github.io/CosmoForge/api/picslike.html)** - Pixel-based likelihood computation
-- **[Parameter Grid](https://ggalloni.github.io/CosmoForge/api/picslike/parameter_grid.html)** - Parameter space management
-- **[Likelihood Results](https://ggalloni.github.io/CosmoForge/api/picslike/likelihood_result.html)** - Result storage and analysis
+- **[PICSLike API](https://cosmoforge.readthedocs.io/en/latest/api/picslike.html)** - Pixel-based likelihood computation
+- **[Parameter Grid](https://cosmoforge.readthedocs.io/en/latest/api/picslike/parameter_grid.html)** - Parameter space management
+- **[Likelihood Results](https://cosmoforge.readthedocs.io/en/latest/api/picslike/likelihood_result.html)** - Result storage and analysis
 
 ## Quick Start
 

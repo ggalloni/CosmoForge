@@ -7,7 +7,7 @@
 
 CosmoForge uses Sphinx to build its documentation. The latest docs are available online:
 
-- **[Online Documentation](https://ggalloni.github.io/CosmoForge/)**
+- **[Online Documentation](https://cosmoforge.readthedocs.io/en/latest/)**
 
 ## Building Locally
 
