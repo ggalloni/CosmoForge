@@ -242,10 +242,3 @@ PICSLike sits alongside the other CosmoForge packages:
 - **qube**: complementary QML power-spectrum analysis for cross-checks.
 - **cosmoforge**: umbrella metapackage that pulls all three in with one install.
 
-References
-----------
-
-.. [Wandelt2004] Wandelt, B.D., Larson, D.L. & Lakshminarayanan, A. "Global, exact cosmic
-   microwave background data analysis using Gibbs sampling"
-   *Phys. Rev. D* **70**, 083511 (2004)
-

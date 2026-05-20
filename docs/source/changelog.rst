@@ -3,34 +3,76 @@ Changelog
 
 All notable changes to CosmoForge will be documented here.
 
-Version 0.1.0 (In Development)
--------------------------------
+Version 1.0.0 (2026-05-20)
+--------------------------
 
-**Features:**
+First stable release. CosmoForge is now a public, paper-validated framework
+covering QML power spectrum estimation and pixel-space Gaussian likelihood
+evaluation for spin-0 and spin-2 fields on the sphere.
 
-* Initial release of CosmoForge framework
-* Complete cosmocore package with mathematical utilities
-* HEALPix integration for spherical harmonic analysis
-* Numba-optimized computational functions
-* YAML-based configuration system
-* **Automatic field label expansion**: Support for concatenated field labels
-  (e.g., "QU" → ["Q", "U"]) and underscore-separated multi-character fields
-  (e.g., "T1_T2" → ["T1", "T2"])
-* Comprehensive documentation with Sphinx
+**API stabilisation:**
 
-**API:**
+* ``SpectrumKey`` type system replaces the legacy ``(comp_i, comp_j, mode)``
+  tuple-based keying across cosmocore, qube, and picslike. ``SpectrumKind``
+  enumerates ordered slot pairs (``SS``, ``GG/CC/GC``, ``SG/SC``); CMB aliases
+  (``TT``, ``EE``, ``BB``, ``EB``, ``BE``, ``TE``, ...) and the
+  ``to_cmb_canonical`` re-keying helper live in ``cosmocore.conventions.cmb``.
+* Label-keyed user-facing accessors on ``Fisher`` and ``Spectra``; legacy
+  tuple-keyed inputs and tuple-rewrap shims removed.
+* ``SymmetryMode`` flag on ``Fisher`` and ``Spectra`` (``SYMMETRIC`` default,
+  ``DIRECTIONAL`` for calibration diagnostics) controls how cross-component
+  spin-2 ``GC`` / ``CG`` blocks are handled; the directional path uses
+  separate ``Lambda`` and derivative E matrices (ADR-0011).
 
-* ``cosmocore.basics``: Mathematical utilities and Legendre polynomials
-* ``cosmocore.core``: Abstract base classes for analysis workflows
-* ``cosmocore.fields``: Cosmological field representations
-* ``cosmocore.harmonic``: Spherical harmonic transforms and power spectra
-* ``cosmocore.in_out``: I/O operations for cosmological data
-* ``cosmocore.pixel``: Pixel-space operations and signal matrices
-* ``cosmocore.settings``: Parameter management and configuration
+**Architecture:**
+
+* ``ComputationBasis`` polymorphism convention closed (ADR-0002):
+  ``prepare_for_basis``/``BasisPrepared`` contract, ``quadratic_form``
+  abstract method, basis-seam leak in ``qube/spectra.py`` closed, single
+  SMW-cross quadratic-form path.
+* ``PixelBasis`` class-model cleanup: ``use_direct`` flag dropped (pixel-direct
+  is the natural default when no ``epsilon``/``mode_fraction`` is passed);
+  ``basis`` kwarg renamed to ``compression_target``; ``apply_compression``
+  internalised.
+* Top-level ``harmonic.py``/``pixel.py`` renamed to remove name collision with
+  the ``basis/`` subpackage.
+
+**Numerical stability:**
+
+* Stable SMW rewrite in ``qube/spectra.py`` (replaced the
+  catastrophically-cancellation-prone ``M - M K^{-1} M`` form with
+  ``M (I + Lambda M)^{-1}``); fixes high-SNR negative ``VCVT`` and yields
+  a ~5x speed-up in the multi-spectrum harmonic path.
+
+**Packaging:**
+
+* ``mpi4py`` is now an optional dependency (``cosmocore[mpi]``,
+  ``qube-qml[mpi]``, ``picslike[mpi]``). CI runs the test matrix on both
+  branches of ``cosmocore._mpi``.
+* All remaining ``np.linalg`` / ``scipy.linalg`` call sites routed through
+  ``cosmocore.basics`` for consistency.
+
+**Validation:**
+
+* End-to-end reproduction of the Planck low-:math:`\ell` Fortran reference
+  for both the QML and pixel-space likelihood pipelines, consistent with
+  double-precision arithmetic.
 
 **Documentation:**
 
-* Complete API reference with NumPy-style docstrings
-* Installation and quick start guides
-* Tutorial series for common use cases
-* Read the Docs integration
+* Hosting migrated from GitHub Pages to Read the Docs.
+* Doc-drift sweep policy: at the end of every feature touching public surface,
+  grep for renamed symbols, rebuild the Sphinx tree, and verify CONTEXT.md
+  and per-package READMEs.
+* Tutorials refreshed for the SpectrumKey/SymmetryMode API and re-executed
+  end-to-end at tier-A.
+* Installation guide reworked (developer install opt-in,
+  ``pymaster``/``namaster`` trap documented).
+* ``CONTEXT.md`` updated with Slot, SpectrumKind, SpectrumKey, SymmetryMode.
+
+**Distribution:**
+
+* Three independently pip-installable packages — ``cosmocore`` (foundation),
+  ``qube-qml`` (Fisher and QML estimation), ``picslike`` (pixel-space
+  Gaussian likelihood) — plus the ``cosmoforge`` umbrella metapackage that
+  installs all three.

@@ -1030,6 +1030,7 @@ class Spectra(Core, MPISharedMemoryMixin):
         Execute the complete QML power spectrum analysis pipeline.
 
         Pipeline phases:
+
         1. Master setup: fields, geometry, covariance, spectra, beams
            (reuses Fisher components if provided)
         2. QML setup: maps, Fisher inversion
@@ -1202,19 +1203,18 @@ class Spectra(Core, MPISharedMemoryMixin):
         Returns
         -------
         numpy.ndarray or tuple or dict or None
-            For "deconvolved" or "decorrelated" modes with
-            ``as_dict=False``:
-                Array of shape ``(n_simulations, n_parameters)`` where
-                ``n_parameters = n_spectra * n_bins``.
+            For "deconvolved" or "decorrelated" modes with ``as_dict=False``,
+            an array of shape ``(n_simulations, n_parameters)`` where
+            ``n_parameters = n_spectra * n_bins``.
 
-            For "convolved" mode with ``as_dict=False``:
-                Tuple of ``(y, W, convolve_theory_func)`` where:
+            For "convolved" mode with ``as_dict=False``, a tuple
+            ``(y, W, convolve_theory_func)`` where ``y`` is the raw estimates
+            of shape ``(n_simulations, n_parameters)``, ``W`` is the window
+            matrix of shape ``(n_parameters, n_parameters)``, and
+            ``convolve_theory_func`` is a callable that applies
+            ``W @ theory``.
 
-                - ``y``: Raw estimates of shape ``(n_simulations, n_parameters)``
-                - ``W``: Window matrix of shape ``(n_parameters, n_parameters)``
-                - ``convolve_theory_func``: Callable that applies ``W @ theory``
-
-            With ``as_dict=True``: a dict for the per-spectrum arrays
+            With ``as_dict=True``, a dict for the per-spectrum arrays
             (and, in convolved mode, a 3-tuple ``(y_dict, W, convolve)``).
 
             Returns ``None`` for worker processes (rank != 0) or if
@@ -1248,13 +1248,13 @@ class Spectra(Core, MPISharedMemoryMixin):
 
         Notes
         -----
-        **Mode Comparison:**
+        **Mode comparison:**
 
-        | Mode | Formula | Covariance | Use Case |
-        |------|---------|------------|----------|
-        | deconvolved | F⁻¹y | F⁻¹ (correlated) | Standard analysis |
-        | decorrelated | F⁻¹/²y | I (identity) | Independent errors |
-        | convolved | y | F | Theory comparison |
+        - **deconvolved** -- formula ``F⁻¹y``, covariance ``F⁻¹`` (correlated),
+          standard analysis.
+        - **decorrelated** -- formula ``F⁻¹/²y``, covariance ``I`` (identity),
+          independent errors.
+        - **convolved** -- formula ``y``, covariance ``F``, theory comparison.
 
         **Deconvolved Mode (default):**
         The standard QML output that inverts the window function to recover
@@ -1555,18 +1555,20 @@ class Spectra(Core, MPISharedMemoryMixin):
 
         Returns the expected binned bandpower for the given theory, in
         the same convention as ``get_power_spectra(mode="deconvolved")``.
-        Use this in a Gaussian likelihood for parameter inference:
+        Use this in a Gaussian likelihood for parameter inference::
 
-            mu_b(θ) = convolve_theory_for_inference(C_ℓ(θ))
-            -2 ln L = (d - mu)ᵀ F_b (d - mu)
+            mu_b(theta) = convolve_theory_for_inference(C_ell(theta))
+            -2 ln L = (d - mu)^T F_b (d - mu)
 
         Parameters
         ----------
         cl_theory : np.ndarray
             Per-ℓ theory C_ℓ. Two formats accepted:
+
             - shape ``(n_ell,)`` for ℓ=lmin..lmax (length lmax-lmin+1)
             - shape ``(lmax+1,)`` starting at ℓ=0 (entries below ``lmin``
               are ignored)
+
             Must be **unbeamed** physical C_ℓ — beam² is already absorbed
             into the window.
 
@@ -1687,13 +1689,12 @@ class Spectra(Core, MPISharedMemoryMixin):
         -----
         **Mode-specific covariances:**
 
-        | Mode | Covariance | Interpretation |
-        |------|------------|----------------|
-        | deconvolved | F⁻¹ | Correlated errors on C_ℓ estimates |
-        | decorrelated | I | Unit variance (uncorrelated) |
-        | convolved | F | Covariance of raw y estimates |
+        - **deconvolved** -- ``F⁻¹``, correlated errors on C_ℓ estimates.
+        - **decorrelated** -- ``I``, unit variance (uncorrelated).
+        - **convolved** -- ``F``, covariance of raw y estimates.
 
         The covariance matrix is essential for:
+
         - Computing chi-square statistics
         - Parameter estimation from power spectra
         - Constructing likelihood functions

@@ -45,7 +45,7 @@ Grid Navigation
 Spectrum Access
 ^^^^^^^^^^^^^^^
 
-.. automethod:: ParameterGrid.get_theoretical_spectra
+.. automethod:: ParameterGrid.get_spectrum
    :no-index:
 
 Usage Examples
@@ -110,7 +110,7 @@ MPI Work Distribution
 
    for point in my_points:
        # Get theoretical spectra for this point
-       spectra = grid.get_theoretical_spectra(point)
+       spectra = grid.get_spectrum(point)
        # Compute likelihood at this point...
 
 Iterating Over Grid Points
@@ -121,7 +121,7 @@ Iterating Over Grid Points
    # Iterate over all grid points
    for point in grid.grid_points:
        omega_b, omega_c = point
-       spectra = grid.get_theoretical_spectra(point)
+       spectra = grid.get_spectrum(point)
        print(f"Point ({omega_b:.4f}, {omega_c:.4f}): {len(spectra)} spectra")
 
 Grid Properties

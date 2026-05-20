@@ -49,14 +49,10 @@ Initialization and Setup
    :no-index:
 .. automethod:: Fisher.prepare_covariance_matrices
    :no-index:
-.. automethod:: Fisher.setup_fisher_matrices
-   :no-index:
 
 Core Computation
 ^^^^^^^^^^^^^^^^^
 
-.. automethod:: Fisher.compute_fisher_element
-   :no-index:
 .. automethod:: Fisher.compute
    :no-index:
 .. automethod:: Fisher.run

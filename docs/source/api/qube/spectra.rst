@@ -72,8 +72,6 @@ Core Computation
    :no-index:
 .. automethod:: Spectra.setup_qml_computation
    :no-index:
-.. automethod:: Spectra.compute_e_operator
-   :no-index:
 .. automethod:: Spectra.compute_qml_spectra
    :no-index:
 .. automethod:: Spectra.compute
