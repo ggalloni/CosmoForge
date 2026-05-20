@@ -1,100 +1,110 @@
 Installation
 ============
 
-CosmoForge is organized as a namespace package with three main subpackages that can be
-installed independently or together.
+CosmoForge is distributed as four PyPI packages that share a uv workspace in
+this repository:
+
+* **CosmoCore** (``cosmocore``) — shared algebra, fields, I/O, computation bases.
+* **QUBE** (``qube``, PyPI name ``qube-qml``) — Fisher and QML estimation.
+* **PICSLike** (``picslike``) — pixel-space likelihood.
+* **CosmoForge** (``cosmoforge``) — umbrella metapackage that depends on the three above.
 
 Requirements
 ------------
 
-**Core Requirements (all packages):**
+* Python 3.11–3.13
 
-* Python 3.11+
+**cosmocore runtime dependencies** (installed automatically):
 
-**CosmoCore Requirements:**
+* ``numpy >= 2.2.6``
+* ``scipy >= 1.16.1``
+* ``healpy >= 1.18.1``
+* ``numba >= 0.61.2``
+* ``psutil >= 5.9``
+* ``threadpoolctl >= 3.0``
 
-* NumPy >= 2.2.6
-* SciPy >= 1.16.1  
-* HEALPy >= 1.18.1
-* Numba >= 0.61.2
-* mpi4py >= 4.1.0
+**Optional extras:**
 
-**Development Requirements:**
+* ``cosmocore[mpi]`` — adds ``mpi4py >= 4.1.0`` for MPI parallel runs.
+  ``qube-qml[mpi]``, ``picslike[mpi]``, ``cosmoforge[mpi]`` all pull this in transitively.
+* ``qube-qml[pcl]`` — adds ``pymaster >= 2.6`` for the pseudo-Cl comparison utilities.
 
-* matplotlib >= 3.10.5
-* pytest
-* ruff (for linting)
+**Development tools** (uv dependency group ``dev``):
 
-Installation Options
---------------------
+* ``matplotlib``, ``pytest``, ``pytest-cov``, ``ruff``, ``pre-commit``,
+  ``sphinx`` (under the ``docs`` group)
 
-Complete Installation
-^^^^^^^^^^^^^^^^^^^^^
+Install from PyPI
+-----------------
 
-Install the entire CosmoForge framework:
+The umbrella distribution pulls in all three subpackages:
+
+.. code-block:: bash
+
+   pip install cosmoforge
+
+Or pick subpackages individually:
+
+.. code-block:: bash
+
+   pip install cosmocore       # core utilities only
+   pip install qube-qml        # adds QML / Fisher (imports as `qube`)
+   pip install picslike        # adds pixel-space likelihood
+
+Add the MPI extra if you intend to run in parallel:
+
+.. code-block:: bash
+
+   pip install "cosmoforge[mpi]"
+
+Install from source (development)
+---------------------------------
+
+The repository is a `uv <https://docs.astral.sh/uv/>`_ workspace. Install
+uv first, then:
 
 .. code-block:: bash
 
    git clone https://github.com/ggalloni/CosmoForge.git
    cd CosmoForge
-   pip install -e .
+   uv sync --all-packages --all-extras --dev
 
-This installs all subpackages: cosmocore, qube, and meta.
+This creates a ``.venv/`` and installs every workspace member in editable
+mode together with all optional extras and the ``dev`` / ``docs`` groups.
 
-Individual Package Installation
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Install specific subpackages as needed:
+Any subsequent Python command should be run through ``uv``:
 
 .. code-block:: bash
 
-   # Install only CosmoCore
-   cd CosmoForge/src/cosmoforge.cosmocore
-   pip install -e .
-
-   # Install only QUBE
-   cd CosmoForge/src/cosmoforge.qube
-   pip install -e .
-   
-   # Install only Meta
-   cd CosmoForge/src/cosmoforge.meta
-   pip install -e .
-
-Development Installation
-------------------------
-
-For development work with all packages:
-
-.. code-block:: bash
-
-   git clone https://github.com/ggalloni/CosmoForge.git
-   cd CosmoForge
-   pip install -e ".[dev]"
-
-This includes testing, documentation, and code quality tools.
+   uv run python -c "import cosmocore"
+   uv run pytest src/cosmoforge.cosmocore/tests/ -s
+   uv run sphinx-build -b html docs/source docs/build/html
 
 Verification
 ------------
 
-Verify your installation:
+After installation, confirm the imports succeed:
 
 .. code-block:: python
 
-   # Test CosmoCore
-   from cosmoforge.cosmocore.cosmocore.settings import InputParams
+   # cosmocore
+   from cosmocore.settings import InputParams
    params = InputParams()
-   print(f"CosmoCore installed! nside={params.nside}")
+   print(f"cosmocore OK, nside={params.nside}")
 
-   # Test QUBE (if installed)
+   # qube
    try:
-       from cosmoforge.qube import Fisher
-       print("QUBE installed successfully!")
+       from qube import Fisher, Spectra
+       print("qube OK")
    except ImportError:
-       print("QUBE not installed")
-   
-   # Test Meta (if installed)
+       print("qube not installed")
+
+   # picslike
    try:
-       import cosmoforge.meta
-       print("Meta installed successfully!")
+       from picslike import PICSLike
+       print("picslike OK")
    except ImportError:
-       print("Meta not installed")
+       print("picslike not installed")
+
+The ``cosmoforge`` umbrella package itself exposes no module surface — it
+only declares dependencies on the three packages above.
