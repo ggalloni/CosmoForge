@@ -1,5 +1,5 @@
-CosmoForge.QUBE Package
-=======================
+QUBE Package
+============
 
 .. image:: /_static/logo_qube.png
    :alt: QUBE Logo
@@ -101,6 +101,7 @@ Core Analysis Classes
 
    qube/fisher
    qube/spectra
+   qube/memory_budget
 
 Main Execution Scripts
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -133,7 +134,7 @@ Basic Fisher Matrix Analysis
 
 .. code-block:: python
 
-   from cosmoforge.qube import Fisher
+   from qube import Fisher
 
    # Initialize Fisher matrix computation
    fisher = Fisher("config/analysis.yaml")
@@ -152,7 +153,7 @@ QML Power Spectrum Estimation
 
 .. code-block:: python
 
-   from cosmoforge.qube import Spectra
+   from qube import Spectra
 
    # Initialize QML estimation
    spectra = Spectra("config/qml_analysis.yaml")
@@ -174,7 +175,7 @@ Combined Fisher + QML Analysis
 
 .. code-block:: python
 
-   from cosmoforge.qube import Fisher, Spectra
+   from qube import Fisher, Spectra
    
    # Compute Fisher matrix first
    fisher = Fisher("config/fisher.yaml")
@@ -248,6 +249,3 @@ References
    the power spectrum from cosmic microwave background sky maps" 
    *Astrophys. J.* **510**, 551 (1999)
 
-.. [Wandelt2004] Wandelt, B.D., Larson, D.L. & Lakshminarayanan, A. "Global, exact cosmic 
-   microwave background data analysis using Gibbs sampling" 
-   *Phys. Rev. D* **70**, 083511 (2004)

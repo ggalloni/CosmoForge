@@ -15,12 +15,12 @@ optimized for the analysis of partial-sky, noisy observations with complex noise
 Architecture
 ------------
 
-CosmoForge is organized as a namespace package containing four main subpackages:
+CosmoForge is a uv workspace of three runtime packages plus an umbrella metapackage:
 
-* **cosmoforge.cosmocore**: Core functionality for cosmological analysis including field management, matrix operations, and mathematical utilities
-* **cosmoforge.qube**: QML and Fisher matrix implementations for power spectrum estimation
-* **cosmoforge.picslike**: Pixel-based Inference with Correlated-Skies Likelihood — pixel-space likelihood analysis for parameter estimation
-* **cosmoforge.meta**: Metadata and utilities package for project-wide configuration
+* **CosmoCore** (``cosmocore``): shared algebra, fields, computation bases, I/O.
+* **QUBE** (``qube``, PyPI name ``qube-qml``): Fisher and QML power-spectrum estimation.
+* **PICSLike** (``picslike``): Pixel-based Inference with Correlated-Skies Likelihood — pixel-space likelihood analysis.
+* **CosmoForge** (``cosmoforge``): umbrella metapackage; one-line install for the whole framework.
 
 Key Features
 ------------
@@ -71,7 +71,7 @@ Contents
    api/cosmocore
    api/qube
    api/picslike
-   api/meta
+   api/cosmoforge
 
 .. toctree::
    :maxdepth: 1

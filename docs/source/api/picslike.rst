@@ -1,5 +1,5 @@
-CosmoForge.PICSLike Package
-============================
+PICSLike Package
+================
 
 .. image:: /_static/logo_picslike.png
    :alt: PICSLike Logo
@@ -236,11 +236,11 @@ PICSLike uses YAML configuration files for analysis setup:
 Integration with CosmoForge
 ---------------------------
 
-PICSLike seamlessly integrates with other CosmoForge packages:
+PICSLike sits alongside the other CosmoForge packages:
 
-- **cosmocore**: Provides base functionality, field management, and mathematical utilities
-- **qube**: Complementary QML power spectrum analysis for comparison
-- **meta**: Workflow management and configuration utilities
+- **cosmocore**: shared base functionality, field management, computation bases.
+- **qube**: complementary QML power-spectrum analysis for cross-checks.
+- **cosmoforge**: umbrella metapackage that pulls all three in with one install.
 
 References
 ----------
@@ -249,12 +249,3 @@ References
    microwave background data analysis using Gibbs sampling"
    *Phys. Rev. D* **70**, 083511 (2004)
 
-.. [Jewell2004] Jewell, J., Levin, S. & Anderson, C.H. "Application of Monte Carlo algorithms
-   to the Bayesian analysis of the cosmic microwave background"
-   *Astrophys. J.* **609**, 1-14 (2004)
-
-.. [Eriksen2004] Eriksen, H.K. et al. "Power Spectrum Estimation from High-Resolution Maps by
-   Gibbs Sampling" *Astrophys. J. Suppl.* **155**, 227-241 (2004)
-
-.. [Planck2020] Planck Collaboration "Planck 2018 results. V. CMB power spectra and likelihoods"
-   *Astron. Astrophys.* **641**, A5 (2020)

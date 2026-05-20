@@ -20,8 +20,14 @@ sys.path.insert(0, os.path.abspath("../../src/cosmoforge.meta"))
 project = "CosmoForge"
 copyright = "2025, Giacomo Galloni"
 author = "Giacomo Galloni"
-release = "0.1.0"
-version = "0.1.0"
+
+try:
+    from importlib.metadata import version as _pkg_version
+
+    release = _pkg_version("cosmoforge")
+except Exception:
+    release = "1.0.0rc2"
+version = release
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

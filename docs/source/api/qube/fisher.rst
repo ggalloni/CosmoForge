@@ -80,7 +80,7 @@ Basic Fisher Matrix Computation
 
 .. code-block:: python
 
-   from cosmoforge.qube import Fisher
+   from qube import Fisher
 
    # Initialize with configuration file
    fisher = Fisher("config/fisher_analysis.yaml")
@@ -103,7 +103,7 @@ MPI Parallel Execution
 
    # Run with 8 MPI processes
    mpirun -n 8 python -c "
-   from cosmoforge.qube import Fisher
+   from qube import Fisher
    fisher = Fisher('config.yaml')
    fisher.run()
    "

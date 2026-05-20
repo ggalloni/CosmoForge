@@ -1,5 +1,5 @@
-CosmoForge.CosmoCore Package
-============================
+CosmoCore Package
+=================
 
 CosmoCore is the foundational package of CosmoForge, providing core functionality for 
 cosmological analysis including field management, matrix operations, I/O utilities, 
@@ -29,10 +29,15 @@ Core Modules
    :maxdepth: 1
 
    cosmocore/basics
-   cosmocore/compression
+   cosmocore/basis
+   cosmocore/beam
+   cosmocore/bins
+   cosmocore/conventions_cmb
    cosmocore/core
    cosmocore/fields
-   cosmocore/harmonic
    cosmocore/in_out
-   cosmocore/pixel
+   cosmocore/mpi_utils
    cosmocore/settings
+   cosmocore/signal_kernels
+   cosmocore/spectra_io
+   cosmocore/spectrum_key

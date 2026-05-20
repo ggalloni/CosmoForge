@@ -187,7 +187,7 @@ Basic QML Estimation
 
 .. code-block:: python
 
-   from cosmoforge.qube import Spectra
+   from qube import Spectra
 
    # Initialize QML analysis
    spectra = Spectra("config/qml_config.yaml")
@@ -224,7 +224,7 @@ MPI Parallel Execution
 
    # Run QML estimation with 16 processes
    mpirun -n 16 python -c "
-   from cosmoforge.qube import Spectra
+   from qube import Spectra
    spectra = Spectra('qml_config.yaml')
    spectra.run()
    "
@@ -235,7 +235,7 @@ Error Analysis
 .. code-block:: python
 
    # Compute error estimates from Fisher matrix
-   from cosmoforge.qube import Fisher, Spectra
+   from qube import Fisher, Spectra
 
    # First run Fisher analysis for error forecasting
    fisher = Fisher("fisher_config.yaml")

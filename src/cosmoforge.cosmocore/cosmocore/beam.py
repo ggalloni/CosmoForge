@@ -101,7 +101,7 @@ class BeamManager:
 
     Examples
     --------
-    >>> from cosmoforge.cosmocore import ScalarField, PolarizationField
+    >>> from cosmocore import ScalarField, PolarizationField
     >>> temp_field = ScalarField(['T'], spin=0, lmax=100)
     >>> pol_field = PolarizationField(['E', 'B'], spin=2, lmax=100)
     >>> beam_mgr = BeamManager([temp_field, pol_field])

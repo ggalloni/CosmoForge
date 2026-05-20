@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use CosmoForge in your research, please cite the following work."
+title: "CosmoForge I: A unified framework for QML power spectrum estimation and pixel-based likelihood analysis"
+authors:
+  - family-names: Galloni
+    given-names: Giacomo
+    orcid: "https://orcid.org/0000-0002-2412-8311"
+    email: giacomo.galloni@unife.it
+    affiliation: "University of Ferrara"
+  - family-names: Pagano
+    given-names: Luca
+    orcid: "https://orcid.org/0000-0003-1820-5998"
+    email: luca.pagano@unife.it
+    affiliation: "University of Ferrara"
+repository-code: "https://github.com/ggalloni/CosmoForge"
+url: "https://ggalloni.github.io/CosmoForge/"
+license: MIT
+preferred-citation:
+  type: article
+  title: "CosmoForge I: A unified framework for QML power spectrum estimation and pixel-based likelihood analysis"
+  authors:
+    - family-names: Galloni
+      given-names: Giacomo
+      orcid: "https://orcid.org/0000-0002-2412-8311"
+    - family-names: Pagano
+      given-names: Luca
+      orcid: "https://orcid.org/0000-0003-1820-5998"
+  year: 2026
+  notes: "in preparation"

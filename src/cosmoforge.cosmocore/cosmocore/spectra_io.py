@@ -128,7 +128,7 @@ class SpectraManager:
 
     Examples
     --------
-    >>> from cosmoforge.cosmocore import ScalarField, PolarizationField
+    >>> from cosmocore import ScalarField, PolarizationField
     >>> temp_field = ScalarField(['T'], spin=0, lmax=100)
     >>> pol_field = PolarizationField(['E', 'B'], spin=2, lmax=100)
     >>> spectra_mgr = SpectraManager([temp_field, pol_field])

@@ -6,11 +6,13 @@ This tutorial covers the fundamental concepts and basic usage patterns of CosmoF
 Overview
 --------
 
-CosmoForge is designed around three main packages:
+CosmoForge is a uv workspace of three runtime packages plus an umbrella
+metapackage:
 
-1. **CosmoCore**: Provides the mathematical foundation
-2. **QUBE**: Implements analysis algorithms
-3. **Meta**: Handles metadata and utilities
+1. **CosmoCore** (``cosmocore``): shared algebra, fields, computation bases, I/O.
+2. **QUBE** (``qube``, PyPI name ``qube-qml``): Fisher and QML estimation.
+3. **PICSLike** (``picslike``): pixel-space likelihood.
+4. **CosmoForge** (``cosmoforge``): umbrella metapackage; depends on the three above.
 
 Working with CosmoCore
 ----------------------
@@ -22,7 +24,7 @@ The foundation of any CosmoForge analysis is proper parameter management:
 
 .. code-block:: python
 
-   from cosmoforge.cosmocore.cosmocore.settings import InputParams
+   from cosmocore.settings import InputParams
    
    # Create default parameters
    params = InputParams()
@@ -64,31 +66,21 @@ CosmoCore provides optimized mathematical functions:
 
 .. code-block:: python
 
-   from cosmoforge.cosmocore.cosmocore.basics import (
+   from cosmocore.basics import (
        legendre_00, legendre_22, legendre_02,
-       scalar_prod, ext_prod
    )
-   import numpy as np
-   
-   # Legendre polynomials for different spin cases
-   x = 0.7  # cos(θ)
+
+   x = 0.7    # cos(theta)
    lmax = 100
-   
+
    # Temperature (spin-0) case
    P_l = legendre_00(x, lmax)
-   
+
    # Polarization (spin-2) auto-correlation
    P_l_22 = legendre_22(x, lmax)
-   
+
    # Temperature-polarization cross-correlation
    P_l_02 = legendre_02(x, lmax)
-   
-   # Vector operations
-   v1 = np.array([1.0, 0.0, 0.0])
-   v2 = np.array([0.0, 1.0, 0.0])
-   
-   dot_prod = scalar_prod(v1, v2)    # Dot product
-   cross_prod = ext_prod(v1, v2)     # Cross product
 
 Spectrum Results and Conventions
 --------------------------------
@@ -173,8 +165,8 @@ ordering split:
 Symmetric vs directional EB handling
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-``Fisher`` (and ``Spectra``, which inherits the flag) accept a
-``symmetry_mode`` argument:
+``Fisher`` accepts a ``symmetry_mode`` argument; ``Spectra`` inherits
+the flag from its ``Fisher`` instance and cannot drift apart:
 
 .. code-block:: python
 
@@ -299,6 +291,6 @@ Best Practices
 Next Steps
 ----------
 
-- Learn about :doc:`configuration` for advanced parameter management
-- Explore :doc:`mathematical_utilities` for detailed function references
-- See :doc:`cmb_analysis` for complete analysis workflows
+- See the :doc:`../api/cosmocore` reference for the full CosmoCore surface
+- See :doc:`../api/qube` for ``Fisher`` and ``Spectra``
+- See :doc:`../api/picslike` for ``PICSLike`` and ``ParameterGrid``

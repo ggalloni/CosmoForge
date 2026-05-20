@@ -5,11 +5,11 @@
 
 [![PyPI](https://img.shields.io/pypi/v/picslike?include_prereleases)](https://pypi.org/project/picslike/)
 [![Python](https://img.shields.io/pypi/pyversions/picslike)](https://pypi.org/project/picslike/)
-[![Documentation](https://img.shields.io/badge/docs-picslike-blue.svg)](https://ggalloni.github.io/CosmoForge/api/picslike.html)
+[![Documentation](https://img.shields.io/badge/docs-picslike-blue.svg)](https://cosmoforge.readthedocs.io/en/latest/api/picslike.html)
 [![Parallelization](https://img.shields.io/badge/MPI-parallel-orange.svg)](https://www.mpi-forum.org/)
 [![Method](https://img.shields.io/badge/method-Pixel--based%20Likelihood-red.svg)](https://en.wikipedia.org/wiki/Likelihood_function)
 
-> **[PICSLike Documentation](https://ggalloni.github.io/CosmoForge/api/picslike.html) | [Main Documentation](https://ggalloni.github.io/CosmoForge/)**
+> **[PICSLike Documentation](https://cosmoforge.readthedocs.io/en/latest/api/picslike.html) | [Main Documentation](https://cosmoforge.readthedocs.io/en/latest/)**
 
 PICSLike (Pixel-based Inference with Correlated-Skies Likelihood) is the pixel-based likelihood analysis engine of CosmoForge, implementing direct likelihood evaluation in map pixel space for cosmological parameter inference from CMB data.
 
@@ -65,9 +65,9 @@ pip install mpi4py
 
 For detailed API documentation and examples:
 
-- **[PICSLike API](https://ggalloni.github.io/CosmoForge/api/picslike.html)** - Pixel-based likelihood computation
-- **[Parameter Grid](https://ggalloni.github.io/CosmoForge/api/picslike/parameter_grid.html)** - Parameter space management
-- **[Likelihood Results](https://ggalloni.github.io/CosmoForge/api/picslike/likelihood_result.html)** - Result storage and analysis
+- **[PICSLike API](https://cosmoforge.readthedocs.io/en/latest/api/picslike.html)** - Pixel-based likelihood computation
+- **[Parameter Grid](https://cosmoforge.readthedocs.io/en/latest/api/picslike/parameter_grid.html)** - Parameter space management
+- **[Likelihood Results](https://cosmoforge.readthedocs.io/en/latest/api/picslike/likelihood_result.html)** - Result storage and analysis
 
 ## Quick Start
 
@@ -340,24 +340,18 @@ Processes    Speed-up
 
 ## Testing
 
-Run the test suite:
+Run the test suite (from the repository root):
 
 ```bash
-cd src/cosmoforge.picslike
-python -m pytest tests/ -v
+uv run pytest src/cosmoforge.picslike/tests/ -s
 ```
 
 Specific tests:
 
 ```bash
-# Test likelihood result class
-python -m pytest tests/test_likelihood_result.py
-
-# Test parameter grid
-python -m pytest tests/test_parameter_grid.py
-
-# Test full pipeline
-python -m pytest tests/test_picslike.py
+uv run pytest src/cosmoforge.picslike/tests/test_likelihood_result.py -s
+uv run pytest src/cosmoforge.picslike/tests/test_parameter_grid.py -s
+uv run pytest src/cosmoforge.picslike/tests/test_picslike.py -s
 ```
 
 ## Examples
@@ -435,6 +429,23 @@ cProfile.run('run_analysis()', 'profile_output.prof')
 ## Contributing
 
 See the main CosmoForge README for contribution guidelines.
+
+## Citation
+
+If you use PICSLike (as part of CosmoForge) in your research, please cite:
+
+> Galloni, G. & Pagano, L., *CosmoForge I: A unified framework for QML power spectrum estimation and pixel-based likelihood analysis*, in preparation (2026).
+
+```bibtex
+@article{GalloniPagano_CosmoForgeI,
+    author = {Galloni, G. and Pagano, L.},
+    title  = {{CosmoForge I}: A unified framework for {QML} power spectrum estimation and pixel-based likelihood analysis},
+    year   = {2026},
+    note   = {in preparation}
+}
+```
+
+This entry will be updated with the arXiv identifier and journal reference once available.
 
 ## References
 

@@ -4,11 +4,11 @@
 
 [![PyPI](https://img.shields.io/pypi/v/qube-qml?include_prereleases)](https://pypi.org/project/qube-qml/)
 [![Python](https://img.shields.io/pypi/pyversions/qube-qml)](https://pypi.org/project/qube-qml/)
-[![Documentation](https://img.shields.io/badge/docs-qube-blue.svg)](https://ggalloni.github.io/CosmoForge/api/qube.html)
+[![Documentation](https://img.shields.io/badge/docs-qube-blue.svg)](https://cosmoforge.readthedocs.io/en/latest/api/qube.html)
 [![Parallelization](https://img.shields.io/badge/MPI-parallel-orange.svg)](https://www.mpi-forum.org/)
 [![QML Method](https://img.shields.io/badge/method-QML-red.svg)](https://en.wikipedia.org/wiki/Maximum_likelihood_estimation)
 
-> **📚 [QUBE Documentation](https://ggalloni.github.io/CosmoForge/api/qube.html) | [Fisher Analysis API](https://ggalloni.github.io/CosmoForge/api/qube/fisher.html) | [Spectra API](https://ggalloni.github.io/CosmoForge/api/qube/spectra.html) | [Main Documentation](https://ggalloni.github.io/CosmoForge/)**
+> **📚 [QUBE Documentation](https://cosmoforge.readthedocs.io/en/latest/api/qube.html) | [Fisher Analysis API](https://cosmoforge.readthedocs.io/en/latest/api/qube/fisher.html) | [Spectra API](https://cosmoforge.readthedocs.io/en/latest/api/qube/spectra.html) | [Main Documentation](https://cosmoforge.readthedocs.io/en/latest/)**
 
 QUBE: Quadratic maximum likelihood UnBiased Estimator is the analysis engine of CosmoForge, implementing Fisher matrix analysis and Quadratic Maximum Likelihood (QML) power spectrum estimation for any spin-0 or spin-2 field on the sphere. Applications include CMB temperature and polarization, galaxy surveys, 21 cm intensity mapping, and any other signal that can be described by angular power spectra.
 
@@ -72,10 +72,10 @@ pip install mpi4py
 
 For detailed API documentation and examples:
 
-- **[Fisher Analysis](https://ggalloni.github.io/CosmoForge/api/qube/fisher.html)** - Fisher matrix computation and parameter forecasting
-- **[Spectra Analysis](https://ggalloni.github.io/CosmoForge/api/qube/spectra.html)** - QML power spectrum estimation
-- **[Main Scripts](https://ggalloni.github.io/CosmoForge/api/qube/main_fisher.html)** - Command-line interfaces for analysis
-- **[Mock Data Generation](https://ggalloni.github.io/CosmoForge/api/qube/produce_mock_inputs.html)** - Mock data generation utilities
+- **[Fisher Analysis](https://cosmoforge.readthedocs.io/en/latest/api/qube/fisher.html)** - Fisher matrix computation and parameter forecasting
+- **[Spectra Analysis](https://cosmoforge.readthedocs.io/en/latest/api/qube/spectra.html)** - QML power spectrum estimation
+- **[Main Scripts](https://cosmoforge.readthedocs.io/en/latest/api/qube/main_fisher.html)** - Command-line interfaces for analysis
+- **[Mock Data Generation](https://cosmoforge.readthedocs.io/en/latest/api/qube/produce_mock_inputs.html)** - Mock data generation utilities
 
 ## Quick Start
 
@@ -341,24 +341,18 @@ Processes    Speed-up (Fisher)    Speed-up (QML)
 
 ## Testing
 
-Run the test suite:
+Run the test suite (from the repository root):
 
 ```bash
-cd src/cosmoforge.qube
-python -m pytest tests/ -v
+uv run pytest src/cosmoforge.qube/tests/ -s
 ```
 
 Specific tests:
 
 ```bash
-# Test Fisher matrix computation
-python tests/test_fisher.py
-
-# Test QML estimation
-python tests/test_spectra.py
-
-# Test signal covariance
-python tests/test_signal_covmat.py
+uv run pytest src/cosmoforge.qube/tests/test_fisher.py -s
+uv run pytest src/cosmoforge.qube/tests/test_spectra.py -s
+uv run pytest src/cosmoforge.qube/tests/test_signal_covmat.py -s
 ```
 
 ## Examples
@@ -459,6 +453,23 @@ cProfile.run('run_analysis()', 'profile_output.prof')
 ## Contributing
 
 See the main CosmoForge README for contribution guidelines.
+
+## Citation
+
+If you use QUBE (as part of CosmoForge) in your research, please cite:
+
+> Galloni, G. & Pagano, L., *CosmoForge I: A unified framework for QML power spectrum estimation and pixel-based likelihood analysis*, in preparation (2026).
+
+```bibtex
+@article{GalloniPagano_CosmoForgeI,
+    author = {Galloni, G. and Pagano, L.},
+    title  = {{CosmoForge I}: A unified framework for {QML} power spectrum estimation and pixel-based likelihood analysis},
+    year   = {2026},
+    note   = {in preparation}
+}
+```
+
+This entry will be updated with the arXiv identifier and journal reference once available.
 
 ## References
 

@@ -1,7 +1,7 @@
-cosmocore.harmonic module
+cosmocore.mpi_utils module
 ==========================
 
-.. automodule:: cosmocore.harmonic
+.. automodule:: cosmocore.mpi_utils
    :members:
    :undoc-members:
    :show-inheritance:
