@@ -67,3 +67,10 @@ Specifically:
 - **`apply_normalization()` retained as no-op**: kept for API
   compatibility while downstream callers are audited. Future ADR
   will remove it.
+
+## Update — 2026-05-20
+
+`apply_normalization()` has been removed entirely rather than retained
+as a no-op. A repo-wide search finds no remaining callers in
+``src/``, tests, or scripts; the compatibility shim was not needed
+in practice. New code should not look for it.
