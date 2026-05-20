@@ -343,21 +343,15 @@ Processes    Speed-up
 Run the test suite:
 
 ```bash
-cd src/cosmoforge.picslike
-python -m pytest tests/ -v
+uv run pytest src/cosmoforge.picslike/tests/ -s
 ```
 
 Specific tests:
 
 ```bash
-# Test likelihood result class
-python -m pytest tests/test_likelihood_result.py
-
-# Test parameter grid
-python -m pytest tests/test_parameter_grid.py
-
-# Test full pipeline
-python -m pytest tests/test_picslike.py
+uv run pytest src/cosmoforge.picslike/tests/test_likelihood_result.py -s
+uv run pytest src/cosmoforge.picslike/tests/test_parameter_grid.py -s
+uv run pytest src/cosmoforge.picslike/tests/test_picslike.py -s
 ```
 
 ## Examples

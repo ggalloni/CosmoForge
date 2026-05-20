@@ -344,21 +344,15 @@ Processes    Speed-up (Fisher)    Speed-up (QML)
 Run the test suite:
 
 ```bash
-cd src/cosmoforge.qube
-python -m pytest tests/ -v
+uv run pytest src/cosmoforge.qube/tests/ -s
 ```
 
 Specific tests:
 
 ```bash
-# Test Fisher matrix computation
-python tests/test_fisher.py
-
-# Test QML estimation
-python tests/test_spectra.py
-
-# Test signal covariance
-python tests/test_signal_covmat.py
+uv run pytest src/cosmoforge.qube/tests/test_fisher.py -s
+uv run pytest src/cosmoforge.qube/tests/test_spectra.py -s
+uv run pytest src/cosmoforge.qube/tests/test_signal_covmat.py -s
 ```
 
 ## Examples

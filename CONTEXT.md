@@ -31,7 +31,7 @@ in issue titles, plans, hypotheses, and test names. Do not paraphrase.
 ## Computation basis
 
 - **ComputationBasis** — Abstract base for the basis in which signal/noise are represented. Concrete: `HarmonicBasis`, `PixelBasis`.
-- **basis_manager** — Manages basis state and transforms (replaces the older `compression_manager`).
+- **basis_manager** — Manages basis state and transforms.
 - **HarmonicBasis** — Modes ordered by |m|, not ℓ. SMW kernel path; cost scales as O(n_modes³).
 - **PixelBasis** — Pixel-space algebra. Two internal modes: **direct** (no V; signal matrix and derivatives built via Legendre kernels, selected when no `epsilon` / `mode_fraction` is passed) and **compressed** (V with eigenmode truncation). Direct-mode cost ≈ `(n_bins+1)·n_pix³` per setup.
 - **`method="auto"`** — Default for `setup_computation_basis()`. Cost-based selector (ADR-0003): compares `n_modes³` (harmonic) against `(n_bins+1)·n_pix³` (pixel-direct) and picks the cheaper. `n_pix = n_modes` at fsky ≈ 0.35.
