@@ -131,7 +131,7 @@ class Spectra(Core, MPISharedMemoryMixin):
     --------
     Basic QML power spectrum estimation:
 
-    >>> from cosmoforge.qube import Spectra
+    >>> from qube import Spectra
     >>> spectra = Spectra("config/qml_analysis.yaml")
     >>> spectra.run()
     >>> power_spectra = spectra.get_power_spectra()
@@ -139,7 +139,7 @@ class Spectra(Core, MPISharedMemoryMixin):
 
     Using pre-computed Fisher matrix:
 
-    >>> from cosmoforge.qube import Fisher, Spectra
+    >>> from qube import Fisher, Spectra
     >>> fisher = Fisher("config/fisher_config.yaml")
     >>> fisher.run()
     >>> spectra = Spectra("config/qml_config.yaml", fisher=fisher)

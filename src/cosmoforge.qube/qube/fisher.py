@@ -138,7 +138,7 @@ class Fisher(Core, MPISharedMemoryMixin):
     --------
     Basic Fisher matrix computation:
 
-    >>> from cosmoforge.qube import Fisher
+    >>> from qube import Fisher
     >>> fisher = Fisher("config/fisher_analysis.yaml")
     >>> fisher.run()
     >>> F_matrix = fisher.get_fisher_matrix()

@@ -123,7 +123,7 @@ class PICSLike(Core, MPISharedMemoryMixin):
     --------
     Basic pixel-based likelihood analysis:
 
-    >>> from cosmoforge.picslike import PICSLike
+    >>> from picslike import PICSLike
     >>> picslike = PICSLike("config/pixel_analysis.yaml")
     >>> picslike.setup_parameter_grid(param_ranges, theoretical_spectra)
     >>> picslike.compute_likelihood_grid()

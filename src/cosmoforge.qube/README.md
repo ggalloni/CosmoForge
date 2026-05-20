@@ -341,7 +341,7 @@ Processes    Speed-up (Fisher)    Speed-up (QML)
 
 ## Testing
 
-Run the test suite:
+Run the test suite (from the repository root):
 
 ```bash
 uv run pytest src/cosmoforge.qube/tests/ -s

@@ -34,8 +34,8 @@ Requirements
 * ``dev`` group: ``matplotlib``, ``pytest``, ``pytest-cov``, ``pyyaml``, ``ruff``.
 * ``docs`` group: ``sphinx``, ``sphinx-rtd-theme``, ``myst-parser``,
   ``sphinx-autodoc-typehints``.
-* ``pre-commit`` is declared in each subpackage's own ``dev`` group
-  (e.g. ``src/cosmoforge.cosmocore/pyproject.toml``).
+* ``pre-commit`` is currently only declared in
+  ``src/cosmoforge.cosmocore/pyproject.toml``'s ``dev`` group.
 
 Install from PyPI
 -----------------
