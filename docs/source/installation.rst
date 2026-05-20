@@ -64,16 +64,14 @@ Install from source (development)
 ---------------------------------
 
 The repository is a `uv <https://docs.astral.sh/uv/>`_ workspace. Install
-uv first, then:
+uv first, then clone and set up the minimal dev environment — every
+workspace member installed editable, plus lint/test tooling:
 
 .. code-block:: bash
 
    git clone https://github.com/ggalloni/CosmoForge.git
    cd CosmoForge
-   uv sync --all-packages --all-extras --dev
-
-This creates a ``.venv/`` and installs every workspace member in editable
-mode together with all optional extras and the ``dev`` / ``docs`` groups.
+   uv sync --all-packages --dev
 
 Any subsequent Python command should be run through ``uv``:
 
@@ -81,6 +79,64 @@ Any subsequent Python command should be run through ``uv``:
 
    uv run python -c "import cosmocore"
    uv run pytest src/cosmoforge.cosmocore/tests/ -s
+
+The optional groups below are **opt-in** — add them only when you need
+them. ``--dev`` always pulls in the root ``dev`` group; ``--group docs``
+adds Sphinx + theme; ``--extra mpi`` / ``--extra pcl`` add runtime
+extras on the workspace packages.
+
+MPI parallel runs
+^^^^^^^^^^^^^^^^^
+
+Adds ``mpi4py``. Requires an MPI implementation (OpenMPI or MPICH) on
+the system before running the sync.
+
+.. code-block:: bash
+
+   uv sync --all-packages --extra mpi --dev
+
+Pseudo-Cl comparison (``pymaster``)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``pcl`` extra pulls ``pymaster``, which is a C extension and needs
+``healpix``, ``cfitsio``, and ``fftw`` installed at the system level
+before any ``pip``/``uv`` install can succeed.
+
+System packages first (pick the route that matches your OS):
+
+.. code-block:: bash
+
+   # Debian/Ubuntu
+   sudo apt-get install libcfitsio-dev libhealpix-cxx-dev libfftw3-dev
+
+   # macOS (Homebrew)
+   brew install cfitsio healpix fftw
+
+Then:
+
+.. code-block:: bash
+
+   uv sync --all-packages --extra pcl --dev
+
+Or, if you'd rather sidestep system packages entirely, conda-forge ships
+a pre-built ``pymaster`` with its C dependencies baked in:
+
+.. code-block:: bash
+
+   conda install -c conda-forge pymaster
+   # then the regular uv sync inside the same env
+   uv sync --all-packages --dev
+
+Building docs locally
+^^^^^^^^^^^^^^^^^^^^^
+
+Docs are built and hosted on Read the Docs — both ``master`` and every
+PR get an auto-build. Only install the ``docs`` group if you're
+iterating on the documentation itself:
+
+.. code-block:: bash
+
+   uv sync --all-packages --group docs --dev
    uv run sphinx-build -b html docs/source docs/build/html
 
 Verification
