@@ -6,11 +6,13 @@ This guide will get you started with CosmoForge's main packages quickly.
 CosmoForge Architecture
 -----------------------
 
-CosmoForge is organized as a namespace package with three main components:
+CosmoForge is a uv workspace of three runtime packages plus an umbrella
+metapackage:
 
-* **cosmoforge.cosmocore**: Core mathematical and computational utilities
-* **cosmoforge.qube**: QML estimation and Fisher matrix analysis
-* **cosmoforge.meta**: Metadata and project-wide utilities
+* **CosmoCore** (``cosmocore``) — shared algebra, fields, computation bases, I/O.
+* **QUBE** (``qube``, PyPI name ``qube-qml``) — Fisher and QML estimation.
+* **PICSLike** (``picslike``) — pixel-space likelihood.
+* **CosmoForge** (``cosmoforge``) — umbrella metapackage; depends on the three above.
 
 Getting Started with CosmoCore
 -------------------------------
@@ -22,7 +24,7 @@ CosmoCore uses a centralized parameter system:
 
 .. code-block:: python
 
-   from cosmoforge.cosmocore.cosmocore.settings import InputParams
+   from cosmocore.settings import InputParams
    
    # Create with defaults
    params = InputParams()
@@ -79,18 +81,14 @@ Access optimized mathematical functions:
 
 .. code-block:: python
 
-   from cosmoforge.cosmocore.cosmocore.basics import legendre_00, scalar_prod
-   import numpy as np
-   
-   # Compute Legendre polynomials
-   x = 0.5
+   from cosmocore.basics import legendre_00, legendre_22, legendre_02
+
+   x = 0.5     # cos(theta)
    lmax = 10
-   legendre_values = legendre_00(x, lmax)
-   
-   # Vector operations
-   vec1 = np.array([1.0, 0.0, 0.0])
-   vec2 = np.array([0.0, 1.0, 0.0])
-   dot_product = scalar_prod(vec1, vec2)
+
+   P_l_TT = legendre_00(x, lmax)   # spin-0
+   P_l_EE = legendre_22(x, lmax)   # spin-2 auto
+   P_l_TE = legendre_02(x, lmax)   # spin-0 x spin-2 cross
 
 Getting Started with QUBE
 -------------------------
@@ -100,7 +98,7 @@ Fisher Matrix Analysis
 
 .. code-block:: python
 
-   from cosmoforge.qube import Fisher
+   from qube import Fisher
 
    # Initialize Fisher analysis
    fisher = Fisher("config/fisher_config.yaml")
@@ -114,7 +112,7 @@ QML Power Spectrum Estimation
 
 .. code-block:: python
 
-   from cosmoforge.qube import Spectra
+   from qube import Spectra
 
    # Initialize QML analysis
    spectra = Spectra("config/qml_config.yaml")
@@ -130,6 +128,6 @@ Next Steps
 ----------
 
 * Read the :doc:`tutorials/index` for detailed examples
-* Explore the :doc:`api/cosmocore` reference for CosmoCore functions
+* Explore the :doc:`api/cosmocore` reference for CosmoCore modules
+* See :doc:`api/qube` and :doc:`api/picslike` for the other packages
 * Check the example notebooks in the repository
-* See :doc:`api/qube` and :doc:`api/meta` for other package documentation

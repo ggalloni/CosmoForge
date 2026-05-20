@@ -1,5 +1,5 @@
-CosmoForge.QUBE Package
-=======================
+QUBE Package
+============
 
 .. image:: /_static/logo_qube.png
    :alt: QUBE Logo
@@ -248,6 +248,3 @@ References
    the power spectrum from cosmic microwave background sky maps" 
    *Astrophys. J.* **510**, 551 (1999)
 
-.. [Wandelt2004] Wandelt, B.D., Larson, D.L. & Lakshminarayanan, A. "Global, exact cosmic 
-   microwave background data analysis using Gibbs sampling" 
-   *Phys. Rev. D* **70**, 083511 (2004)
