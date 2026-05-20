@@ -69,10 +69,30 @@ Both methods support:
 
 ## Installation
 
-CosmoCore is automatically installed as part of CosmoForge:
+### Install from PyPI
 
 ```bash
-pip install -e /path/to/CosmoForge
+pip install cosmocore
+```
+
+To enable MPI parallelism (requires a system MPI implementation):
+
+```bash
+pip install cosmocore[mpi]
+```
+
+Or install the full CosmoForge umbrella (cosmocore + qube-qml + picslike):
+
+```bash
+pip install cosmoforge
+```
+
+### Install from source
+
+```bash
+git clone https://github.com/ggalloni/CosmoForge.git
+cd CosmoForge
+uv sync --all-packages --all-extras --dev
 ```
 
 ## Usage

@@ -49,16 +49,30 @@ The approach is particularly useful for handling incomplete sky coverage, non-Ga
 
 ## Installation
 
-PICSLike is part of CosmoForge and installs automatically:
+### Install from PyPI
 
 ```bash
-pip install -e /path/to/CosmoForge
+pip install picslike
 ```
 
-For MPI support:
+To enable MPI parallelism (requires a system MPI implementation):
 
 ```bash
-pip install mpi4py
+pip install picslike[mpi]
+```
+
+Or install the full CosmoForge umbrella (cosmocore + qube-qml + picslike):
+
+```bash
+pip install cosmoforge
+```
+
+### Install from source
+
+```bash
+git clone https://github.com/ggalloni/CosmoForge.git
+cd CosmoForge
+uv sync --all-packages --all-extras --dev
 ```
 
 ## Documentation

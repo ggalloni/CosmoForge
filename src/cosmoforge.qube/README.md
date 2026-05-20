@@ -56,16 +56,32 @@ Both methods support MPI parallelization for large-scale analyses and can handle
 
 ## Installation
 
-QUBE is part of CosmoForge and installs automatically:
+### Install from PyPI
 
 ```bash
-pip install -e /path/to/CosmoForge
+pip install qube-qml
 ```
 
-For MPI support:
+`qube-qml` is the distribution name on PyPI; the package is imported as ``qube``.
+
+To enable MPI parallelism (requires a system MPI implementation):
 
 ```bash
-pip install mpi4py
+pip install qube-qml[mpi]
+```
+
+Or install the full CosmoForge umbrella (cosmocore + qube-qml + picslike):
+
+```bash
+pip install cosmoforge
+```
+
+### Install from source
+
+```bash
+git clone https://github.com/ggalloni/CosmoForge.git
+cd CosmoForge
+uv sync --all-packages --all-extras --dev
 ```
 
 ## Documentation
