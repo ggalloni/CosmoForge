@@ -165,8 +165,8 @@ ordering split:
 Symmetric vs directional EB handling
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-``Fisher`` (and ``Spectra``, which inherits the flag) accept a
-``symmetry_mode`` argument:
+``Fisher`` accepts a ``symmetry_mode`` argument; ``Spectra`` inherits
+the flag from its ``Fisher`` instance and cannot drift apart:
 
 .. code-block:: python
 

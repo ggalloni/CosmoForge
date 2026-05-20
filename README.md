@@ -136,7 +136,7 @@ CosmoForge/
 │   ├── cosmoforge.qube/         # QML and Fisher analysis (published as `qube-qml`, imported as `qube`)
 │   ├── cosmoforge.picslike/     # Pixel-space likelihood (published as `picslike`)
 │   └── cosmoforge.meta/         # Umbrella metapackage (published as `cosmoforge`)
-├── tests/                       # Workspace-level test suite
+├── tests/                       # Workspace-level fixtures (per-package suites under src/cosmoforge.*/tests/)
 └── docs/                        # Sphinx documentation
 ```
 

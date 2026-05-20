@@ -29,10 +29,13 @@ Requirements
   ``qube-qml[mpi]``, ``picslike[mpi]``, ``cosmoforge[mpi]`` all pull this in transitively.
 * ``qube-qml[pcl]`` — adds ``pymaster >= 2.6`` for the pseudo-Cl comparison utilities.
 
-**Development tools** (uv dependency group ``dev``):
+**Development tools** (uv dependency groups in the root ``pyproject.toml``):
 
-* ``matplotlib``, ``pytest``, ``pytest-cov``, ``ruff``, ``pre-commit``,
-  ``sphinx`` (under the ``docs`` group)
+* ``dev`` group: ``matplotlib``, ``pytest``, ``pytest-cov``, ``pyyaml``, ``ruff``.
+* ``docs`` group: ``sphinx``, ``sphinx-rtd-theme``, ``myst-parser``,
+  ``sphinx-autodoc-typehints``.
+* ``pre-commit`` is declared in each subpackage's own ``dev`` group
+  (e.g. ``src/cosmoforge.cosmocore/pyproject.toml``).
 
 Install from PyPI
 -----------------
