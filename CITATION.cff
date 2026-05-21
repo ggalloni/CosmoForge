@@ -26,4 +26,8 @@ preferred-citation:
       given-names: Luca
       orcid: "https://orcid.org/0000-0003-1820-5998"
   year: 2026
-  notes: "in preparation"
+  url: "https://arxiv.org/abs/2605.21149"
+  identifiers:
+    - type: other
+      value: "arXiv:2605.21149"
+      description: "arXiv preprint"

@@ -300,18 +300,18 @@ uv run pytest src/cosmoforge.cosmocore/tests/
 
 If you use CosmoCore (as part of CosmoForge) in your research, please cite:
 
-> Galloni, G. & Pagano, L., *CosmoForge I: A unified framework for QML power spectrum estimation and pixel-based likelihood analysis*, in preparation (2026).
+> Galloni, G. & Pagano, L., *CosmoForge I: A unified framework for QML power spectrum estimation and pixel-based likelihood analysis*, [arXiv:2605.21149](https://arxiv.org/abs/2605.21149) (2026).
 
 ```bibtex
 @article{GalloniPagano_CosmoForgeI,
-    author = {Galloni, G. and Pagano, L.},
-    title  = {{CosmoForge I}: A unified framework for {QML} power spectrum estimation and pixel-based likelihood analysis},
-    year   = {2026},
-    note   = {in preparation}
+    author        = {Galloni, G. and Pagano, L.},
+    title         = {{CosmoForge I}: A unified framework for {QML} power spectrum estimation and pixel-based likelihood analysis},
+    year          = {2026},
+    eprint        = {2605.21149},
+    archivePrefix = {arXiv},
+    primaryClass  = {astro-ph.CO},
 }
 ```
-
-This entry will be updated with the arXiv identifier and journal reference once available.
 
 ## References
 
