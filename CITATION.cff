@@ -13,7 +13,7 @@ authors:
     email: luca.pagano@unife.it
     affiliation: "University of Ferrara"
 repository-code: "https://github.com/ggalloni/CosmoForge"
-url: "https://ggalloni.github.io/CosmoForge/"
+url: "https://cosmoforge.readthedocs.io/en/latest/"
 license: MIT
 preferred-citation:
   type: article
