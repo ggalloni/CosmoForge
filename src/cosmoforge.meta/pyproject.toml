@@ -1,6 +1,6 @@
 [project]
 name = "cosmoforge"
-version = "1.0.0"
+version = "1.0.1"
 description = "CosmoForge: umbrella metapackage installing cosmocore, qube-qml, and picslike."
 readme = "README.md"
 authors = [

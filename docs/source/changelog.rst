@@ -3,6 +3,27 @@ Changelog
 
 All notable changes to CosmoForge will be documented here.
 
+Version 1.0.1 (2026-05-21)
+--------------------------
+
+Documentation-only patch release. Refreshes the long descriptions on PyPI
+for ``cosmocore``, ``qube-qml``, and ``picslike`` so they reflect the
+published companion paper and the current install path.
+
+**Documentation:**
+
+* Paper I (Galloni & Pagano 2026, ``arXiv:2605.21149``) cited in all
+  READMEs and in ``CITATION.cff``. BibTeX entries gained
+  ``eprint``/``archivePrefix``/``primaryClass`` fields; the legacy
+  ``"in preparation"`` notes are removed.
+* ``CITATION.cff`` ``url:`` field migrated from the retired GitHub Pages
+  location to the canonical Read the Docs URL.
+* ``cosmocore``, ``qube-qml``, and ``picslike`` READMEs gained proper
+  PyPI installation instructions (previously instructed users to clone
+  the repository and run ``pip install -e``); the MPI extra is now
+  documented as ``pip install <package>[mpi]`` instead of a bare
+  ``pip install mpi4py``.
+
 Version 1.0.0 (2026-05-20)
 --------------------------
 
