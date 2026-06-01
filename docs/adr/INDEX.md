@@ -33,12 +33,16 @@ agent-facing convention that governs when an ADR should be written.
 - [ADR-0009 — Multipole-range API](0009-multipole-range-api.md). Multipole-range type; accepted 2026-05-07 (implementation tracked as backlog item #4).
 - [ADR-0010 — Per-spectrum multipole windows](0010-per-spectrum-multipole-windows.md). **Proposed (deferred).** Per-spectrum-key multipole bands for heterogeneous joint analyses.
 - [ADR-0011 — SymmetryMode for cross-EB](0011-symmetry-mode-cross-eb.md). `SYMMETRIC` default (GC averaged) vs `DIRECTIONAL` (GC/CG kept separate) for spin-2 × spin-2 cross-component spectra.
+- [ADR-0013 — `SpectrumKey` is the single public identity for spectra](0013-spectrum-key-public-identity.md). Frozen-dataclass `SpectrumKey(comp_i, comp_j, kind, spins=...)` replaces the legacy `(comp_i, comp_j, mode)` triple across all keyed APIs; Numba kernels keep int-mode signatures.
+
+### Packaging and runtime
+- [ADR-0012 — Optional `mpi4py` via stub dispatch](0012-optional-mpi-via-stub-dispatch.md). Single import boundary at `cosmocore._mpi`; `mpi4py` becomes an opt-in `mpi` extra; CI matrix exercises both branches.
 
 ## Status snapshot
 
 | Status | ADRs |
 |---|---|
-| Accepted | 0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008, 0009, 0011 |
+| Accepted | 0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008, 0009, 0011, 0012, 0013 |
 | Proposed / deferred | 0010 |
 | Superseded | — |
 
@@ -46,7 +50,7 @@ No supersession chains in place; all current ADRs are additive.
 
 ## Adding a new ADR
 
-Next number is **0012**. Use the pattern `NNNN-kebab-title.md`.
+Next number is **0014**. Use the pattern `NNNN-kebab-title.md`.
 
 1. First line: `# ADR-NNNN: {title}`.
 2. Sections: **Status** (Accepted / Proposed / Superseded; date and merge target if known), **Context**, **Decision**, **Consequences**. Optional: **References**, **Validation**, **See also** (related memory files and code paths).

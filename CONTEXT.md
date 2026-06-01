@@ -91,5 +91,6 @@ Other renamed vocabulary (use these, not the legacy names):
 
 - **Physical C_ℓ** — Standard CAMB/CLASS values. The `(2ℓ+1)/(4π)` normalisation is absorbed into the Legendre basis functions; `apply_normalization()` is a no-op.
 - **Beam (b²_ℓ)** — Beam smoothing absorbed into derivatives. Fisher and q are beam-smoothed.
+- **`smoothing_type`** — Cosine-window convention used by `coswinbeam`. Two named variants: `cosine_legacy` (ℓ₁=N_side, Aghanim+2019 / Benabed+2009 — the Planck Legacy default; current `InputParams` default) and `cosine_npipe` (ℓ₁=1, Akrami+2020 — recommended to suppress 857-GHz ringing). Bare `cosine` is a deprecated alias for `cosine_legacy` (emits `DeprecationWarning`); the deprecation alias exists because user YAML configs live outside version control we own.
 - **Pixel window (pixwin)** — HEALPix pixel window function; must be applied consistently between sims and theory in MC tests.
 - **Buffer** — High-ℓ buffer beyond the inference window, included so edge bins are unbiased.

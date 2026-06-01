@@ -156,3 +156,27 @@ forms are the same matrix.
   flag. Backlog candidate #8 (`PixelBasis` class-name and
   configuration model) explicitly works on making the implementation
   match this model.
+
+## Update (2026-05-14)
+
+Introducing `cosmocore/basis/harmonic.py` and `cosmocore/basis/pixel.py`
+created a name collision with the pre-existing top-level
+`cosmocore/harmonic.py` and `cosmocore/pixel.py`, neither of which was
+about a basis. PR #30 resolved the collision with a hard pre-1.0 rename
+(no shim), asymmetric in shape because the two top-level files mixed
+concerns differently:
+
+- `cosmocore/harmonic.py` → split into `cosmocore/beam.py` (`BeamManager`,
+  `coswinbeam`) and `cosmocore/spectra_io.py` (`SpectraManager`,
+  `cl_to_vec`, `vec_to_cl`). The split reflects that the original file
+  mixed two unrelated concerns under the "harmonic" label.
+- `cosmocore/pixel.py` → flat-renamed to `cosmocore/signal_kernels.py`
+  (Legendre signal-matrix kernels; content unchanged). A single concern,
+  so no split.
+
+`_spin_pair_mode_to_kind` moved from the old `harmonic.py` to
+`spectrum_key.py` (where its return type lives). The umbrella
+`from cosmocore import ...` API is unchanged. The rename is consistent
+with the no-shim precedent established by the original ADR-0002 break
+and continued by the `SpectrumKey` cut (ADR-0013) and the `PixelBasis`
+cleanup (ADR-0003 update).
