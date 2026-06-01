@@ -37,12 +37,13 @@ agent-facing convention that governs when an ADR should be written.
 
 ### Packaging and runtime
 - [ADR-0012 — Optional `mpi4py` via stub dispatch](0012-optional-mpi-via-stub-dispatch.md). Single import boundary at `cosmocore._mpi`; `mpi4py` becomes an opt-in `mpi` extra; CI matrix exercises both branches.
+- [ADR-0014 — MPI broadcast and shared-memory conventions](0014-mpi-broadcast-and-shared-memory.md). `_shared_array` (read-only, intra-node zero-copy) vs `_bcast_array` (writable or > 2 GB buffer) vs `comm.bcast` (Python objects, ≤ 2 GB); window lifecycle owned by `MPISharedMemoryMixin`.
 
 ## Status snapshot
 
 | Status | ADRs |
 |---|---|
-| Accepted | 0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008, 0009, 0011, 0012, 0013 |
+| Accepted | 0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008, 0009, 0011, 0012, 0013, 0014 |
 | Proposed / deferred | 0010 |
 | Superseded | — |
 
@@ -50,7 +51,7 @@ No supersession chains in place; all current ADRs are additive.
 
 ## Adding a new ADR
 
-Next number is **0014**. Use the pattern `NNNN-kebab-title.md`.
+Next number is **0015**. Use the pattern `NNNN-kebab-title.md`.
 
 1. First line: `# ADR-NNNN: {title}`.
 2. Sections: **Status** (Accepted / Proposed / Superseded; date and merge target if known), **Context**, **Decision**, **Consequences**. Optional: **References**, **Validation**, **See also** (related memory files and code paths).

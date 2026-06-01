@@ -50,3 +50,17 @@ The wrappers stay **thin** — they delegate to the chosen backend with project-
 - Existing precedent: `cosmocore/basics/linalg.py` (already wraps `np.matmul`, `lapack.dpotrf`, `lapack.dpotri`, `lapack.dpotrs`).
 - Motivating refactor: `.claude/plans/2026-04-30-cholesky-refactor.md` (added `cholesky_factor`, `cholesky_solve`).
 - Deferred follow-ups that benefit from the principle: packed symmetric storage; MPI shared-memory `basis_manager`; GPU backend exploration.
+
+## Update (2026-05-02)
+
+The wrappers exist because the project carries factors, not inverses. Made explicit here so future readers do not mistake the asymmetric handling of `N_inv` in the codebase for a bug:
+
+1. **QML hot paths consume `N` only via `cholesky_solve(N_chol, X)`.** The dense `N_inv` is never materialised. At ECLIPSE-class resolutions this is the difference between fitting and OOMing — `N_inv` is roughly the same size as the covariance it inverts (~62 GB at the QU eclipse cell), and materialising it once doubles peak RSS. The Fisher hot path, the `q` quadratic, and every SMW step (ADR-0001) consume `N` through the factor.
+
+2. **The compression-basis sites in `pixel.py` are the deliberate exception.** They keep dense `N_inv` and reconstruct symmetric `N` lazily on demand. Rewriting them onto the factor path requires primitives that do not exist in `basics/linalg.py` yet — `dtrmm`-based one-sided sandwiches, the `sandwich-cho_solve` pattern for `A^T N^{-1} A`, and a per-field factor variant that keeps the cost subadditive in the spin-2 doubling. Catalogued in `project_compression_basis_n_inv_deferred.md`; out of scope until the compression follow-up paper, when the algebraic rewrites have a forcing function.
+
+3. **New code defaults to the factor path.** Reintroducing `N_inv` materialisation in a hot path requires a new ADR Update that explains why the algebra cannot be expressed through `cholesky_solve`. "Convenience" is not a sufficient reason; the precedent set by PR #16 (drop dense `N_inv`, in-place Cholesky over the noise covariance) freed the memory that landing the eclipse-QU cluster runs depended on.
+
+4. **`cholesky_factor` returns a `(L, lower=True)` tuple in scipy's `cho_factor` style.** Call sites pass the tuple to `cholesky_solve` directly; they do not unpack and pass `L` alone, because the lower-flag travels with the factor and rewriting code that drops it on the floor is a class of bug the wrapper exists to prevent (see `feedback_chol_factor_dirty_upper.md`).
+
+The aggregate effect of these four points is that the project's noise-covariance representation in production code is the Cholesky factor; `N_inv` is a vestige in the compression-basis branch only and a candidate for removal once the algebraic rewrites land.
