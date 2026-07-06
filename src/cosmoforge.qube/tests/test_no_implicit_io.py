@@ -73,7 +73,10 @@ def test_fisher_run_writes_nothing_when_out_paths_unset(
 
 
 @pytest.mark.xfail(
-    strict=True, reason="Phase B not implemented: pipeline still writes implicitly"
+    strict=True,
+    reason="B2 not implemented: Spectra still reads the covariance handshake from "
+    "disk (np.fromfile of the now-None outinvcovmatfile1); un-xfail when the live "
+    "fisher= handoff lands.",
 )
 def test_fisher_spectra_leave_workdir_untouched(tmp_path, monkeypatch, nside8_params):
     """Fisher.run + Spectra.run with no out* paths set must not create any file."""
