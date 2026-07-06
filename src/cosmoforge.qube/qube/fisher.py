@@ -612,8 +612,7 @@ class Fisher(Core, MPISharedMemoryMixin):
                 elapsed = time.time() - start_time
                 self.log(f"Total computation time: {elapsed:.2f} seconds", level=3)
 
-            if hasattr(self.params, "outfilefisher"):
-                write_out_matrix(self.params.outfilefisher, self.fisher)
+            write_out_matrix(self.params.outfilefisher, self.fisher)
 
         self.comm.Barrier()
 

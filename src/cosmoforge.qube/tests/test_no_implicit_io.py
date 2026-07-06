@@ -56,6 +56,22 @@ def nside8_params(local_path):
     os.unlink(tmp.name)
 
 
+def test_fisher_run_writes_nothing_when_out_paths_unset(
+    tmp_path, monkeypatch, nside8_params
+):
+    """Fisher.run alone with no out* paths set must not create any file (ADR-0015).
+
+    This is the Fisher half of the clean-workdir guarantee; it is not blocked by
+    the pixel-basis Fisher->Spectra file handshake (that read is Spectra's, gated
+    behind B2), so it can pass at B1.
+    """
+    monkeypatch.chdir(tmp_path)
+    fisher = Fisher(nside8_params)
+    fisher.run()
+    assert fisher.get_fisher_matrix() is not None
+    assert list(tmp_path.rglob("*")) == []
+
+
 @pytest.mark.xfail(
     strict=True, reason="Phase B not implemented: pipeline still writes implicitly"
 )
