@@ -80,6 +80,22 @@ def test_input_params_default_values():
     assert params.ordering == "RING"
 
 
+def test_output_path_defaults_are_none():
+    """Opt-in persistence (ADR-0015): every out* default is None (no implicit writes)."""
+    params = InputParams()
+    for attr in (
+        "outinvcovmatfile1",
+        "outinvcovmatfile2",
+        "outnoisecovmat1",
+        "outnoisecovmat2",
+        "output_geometry_file",
+        "outfilefisher",
+        "outcovmatfile",
+        "outerrfile",
+    ):
+        assert getattr(params, attr) is None, f"{attr} default should be None"
+
+
 def test_input_params_update_method():
     """Test the update method directly."""
     params = InputParams()
