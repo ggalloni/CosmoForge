@@ -248,7 +248,9 @@ def test_full_fortran_validation(local_path, fortran_ref_path):
     # -------------------------------------------------------------------------
     print("\nRunning PICSLike...")
 
-    picslike = PICSLike(temp_config.name)
+    # Reads the traditional pixel-space noise_cov1; opt out of the auto default
+    # (ADR-0018).
+    picslike = PICSLike(temp_config.name, basis=False)
     picslike.run()
 
     python_noise = picslike.noise_cov1

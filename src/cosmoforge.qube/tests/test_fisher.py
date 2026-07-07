@@ -26,10 +26,13 @@ def _run_fisher(
 ) -> tuple[np.ndarray, np.ndarray, Fisher]:
     """Run a Fisher pipeline and return (fisher_matrix, error_bars, instance)."""
     config_file = config_resolver(f"tests/data/nside{nside}/{fields}/{config_type}.yaml")
-    kwargs = {}
+    # No method → the traditional no-basis reference (basis=False); the default
+    # now selects auto, so these reference runs must opt out explicitly (ADR-0018).
     if compression_method is not None:
-        kwargs["compression"] = {"method": compression_method, "epsilon": epsilon}
-    fisher_analyzer = Fisher(config_file, **kwargs)
+        basis = {"method": compression_method, "epsilon": epsilon}
+    else:
+        basis = False
+    fisher_analyzer = Fisher(config_file, basis=basis)
     fisher_analyzer.run()
     fisher_matrix = fisher_analyzer.get_fisher_matrix()
     error_bars = fisher_analyzer.get_error_bars()

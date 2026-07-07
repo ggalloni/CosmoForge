@@ -143,9 +143,9 @@ class Core(ABC):
             )
             basis = compression
         if basis is unset or basis is None:
-            # C1 (rename only): default stays on the traditional path. The auto
-            # flip — `return None if do_cross else {"method": "auto"}` — lands in C2.
-            return None
+            # Default → auto (ADR-0003 selector), except with do_cross: the basis
+            # layer has no second noise covariance, so cross stays traditional.
+            return None if do_cross else {"method": "auto"}
         if basis is False:
             return None
         if isinstance(basis, str):
