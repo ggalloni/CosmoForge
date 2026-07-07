@@ -29,27 +29,36 @@ _OUTPUT_KEYS = {
 }
 
 
-@pytest.fixture
-def nside8_params(local_path):
-    """Path to an nside-8 T config with absolute inputs and no ``out*`` keys.
+def _nside8_config(local_path):
+    """nside-8 T config as a dict with absolute inputs and no ``out*`` keys.
 
     Inputs are made absolute so the run is independent of the (chdir'd) working
     directory; every output key is removed so writes fall back to defaults,
-    which is exactly what opt-in persistence must silence. The config file lives
-    in the system temp dir, not the test's tmp_path, so the workdir stays clean.
+    which is exactly what opt-in persistence must silence.
     """
     src = os.path.join(local_path, "tests/data/nside8/T/config.yaml")
     with open(src) as f:
         config = yaml.safe_load(f)
-
-    for key, value in list(config.items()):
+    resolved = {}
+    for key, value in config.items():
         if key in _OUTPUT_KEYS:
-            del config[key]
-        elif isinstance(value, str) and value.startswith("../"):
-            config[key] = os.path.join(local_path, value[3:])
+            continue
+        if isinstance(value, str) and value.startswith("../"):
+            resolved[key] = os.path.join(local_path, value[3:])
+        else:
+            resolved[key] = value
+    return resolved
 
+
+@pytest.fixture
+def nside8_params(local_path):
+    """Path to a temp YAML of the nside-8 T config (see :func:`_nside8_config`).
+
+    The file lives in the system temp dir, not the test's tmp_path, so the
+    workdir stays clean.
+    """
     tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
-    yaml.dump(config, tmp, default_flow_style=False)
+    yaml.dump(_nside8_config(local_path), tmp, default_flow_style=False)
     tmp.close()
     yield tmp.name
     os.unlink(tmp.name)
@@ -81,22 +90,6 @@ def test_fisher_spectra_leave_workdir_untouched(tmp_path, monkeypatch, nside8_pa
     assert spectra.get_power_spectra(mode="deconvolved") is not None
     # THE acceptance criterion: nothing landed on disk.
     assert list(tmp_path.rglob("*")) == []
-
-
-def _nside8_config(local_path):
-    """nside-8 T config as a dict with absolute inputs and no out* keys."""
-    src = os.path.join(local_path, "tests/data/nside8/T/config.yaml")
-    with open(src) as f:
-        config = yaml.safe_load(f)
-    resolved = {}
-    for key, value in config.items():
-        if key in _OUTPUT_KEYS:
-            continue
-        if isinstance(value, str) and value.startswith("../"):
-            resolved[key] = os.path.join(local_path, value[3:])
-        else:
-            resolved[key] = value
-    return resolved
 
 
 def _write_yaml(config, path):

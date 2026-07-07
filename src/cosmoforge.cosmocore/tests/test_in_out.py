@@ -15,42 +15,28 @@ from cosmocore.in_out import (
     writecl,
 )
 
-
-def _call(helper, path):
-    """Invoke ``helper`` with ``path`` and otherwise-valid minimal arguments."""
-    if helper is write_covmat_reduced:
-        write_covmat_reduced(path, np.eye(3))
-    elif helper is write_out_matrix:
-        write_out_matrix(path, np.eye(3))
-    elif helper is writecl:
-        writecl(path, np.arange(6.0).reshape(3, 2))
-    elif helper is output_geometry:
-        output_geometry(
-            path,
-            [2],
-            [np.zeros((2, 3))],
-            np.array([[0, 1]]),
-        )
-    else:  # pragma: no cover
-        raise AssertionError(helper)
+# Each helper paired with the extra (non-path) args that make it write.
+HELPERS = [
+    (write_covmat_reduced, (np.eye(3),)),
+    (write_out_matrix, (np.eye(3),)),
+    (writecl, (np.arange(6.0).reshape(3, 2),)),
+    (output_geometry, ([2], [np.zeros((2, 3))], np.array([[0, 1]]))),
+]
 
 
-ALL_HELPERS = [write_covmat_reduced, write_out_matrix, writecl, output_geometry]
-
-
-@pytest.mark.parametrize("helper", ALL_HELPERS)
+@pytest.mark.parametrize("helper, args", HELPERS)
 @pytest.mark.parametrize("path", [None, "", "   "])
-def test_helper_noop_on_falsy_path(helper, path, tmp_path, monkeypatch):
+def test_helper_noop_on_falsy_path(helper, args, path, tmp_path, monkeypatch):
     """A None/empty/blank path writes nothing and does not raise."""
     monkeypatch.chdir(tmp_path)
-    _call(helper, path)
+    helper(path, *args)
     assert list(tmp_path.rglob("*")) == []
 
 
-@pytest.mark.parametrize("helper", ALL_HELPERS)
-def test_helper_writes_on_real_path(helper, tmp_path):
+@pytest.mark.parametrize("helper, args", HELPERS)
+def test_helper_writes_on_real_path(helper, args, tmp_path):
     """A real path still produces a non-empty file."""
     target = tmp_path / "artifact.out"
-    _call(helper, str(target))
+    helper(str(target), *args)
     assert target.exists()
     assert target.stat().st_size > 0
