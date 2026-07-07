@@ -137,7 +137,8 @@ Output Products
 Standard Outputs
 ^^^^^^^^^^^^^^^^
 
-The pipeline generates several output files:
+When the corresponding ``out*`` paths are set (persistence is opt-in, ADR-0015),
+the pipeline writes several output files:
 
 1. **Fisher Matrix** (``fisher_matrix.dat``): 
    

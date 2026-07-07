@@ -190,20 +190,22 @@ class InputParams:
 
         self.inputclfile = "inputs/cls.dat"
         self.maskfile = "inputs/mask.fits"
-        self.do_cross = True
+        self.do_cross = False
         self.covmatfile1 = "inputs/NCVM1.bin"
-        self.outinvcovmatfile1 = "outputs/invCOV1.bin"
+        # out* default to None: persistence is opt-in (ADR-0015). A write happens
+        # only when the caller sets the path.
+        self.outinvcovmatfile1 = None
         self.covmatfile2 = "inputs/NCVM2.bin"
-        self.outinvcovmatfile2 = "outputs/invCOV2.bin"
-        self.outnoisecovmat1 = "outputs/reducedNCVM1.bin"
-        self.outnoisecovmat2 = "outputs/reducedNCVM2.bin"
+        self.outinvcovmatfile2 = None
+        self.outnoisecovmat1 = None
+        self.outnoisecovmat2 = None
         self.calibration = 1.0
         self.load_inverted = False
         # When True, noise covariance files are already reduced to active
         # pixels and can be read directly with read_covmat_reduced(), skipping
         # the full-sky extraction step performed by read_covmat().
         self.load_reduced = False
-        self.output_geometry_file = "outputs/geometry.dat"
+        self.output_geometry_file = None
         self.smoothing_type = "cosine_legacy"
         self.apply_pixwin = True
         self.smooth_pol = True
@@ -213,14 +215,14 @@ class InputParams:
         self.delta_ell = 1
         self.bin_lmins = None
         self.bin_lmaxs = None
-        self.outfilefisher = "outputs/fisher.dat"
+        self.outfilefisher = None
         self.ordering = "RING"
 
         self.nsims = None
         self.inputmapfile1 = ""
         self.inputmapfile2 = ""
-        self.outcovmatfile = ""
-        self.outerrfile = ""
+        self.outcovmatfile = None
+        self.outerrfile = None
         self.remove_nb = True
 
         self.input_convention = "Cl"  # "Cl" or "Dl"

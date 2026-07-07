@@ -334,14 +334,13 @@ class Core(ABC):
         # Set pointing vectors in collection
         self.collection.set_pointing_vectors(self.point_vectors)
 
-        # Output geometry if requested
-        if hasattr(self.params, "output_geometry_file"):
-            output_geometry(
-                self.params.output_geometry_file,
-                self.npixs,
-                self.point_vectors,
-                self.pixact,
-            )
+        # Persist geometry only if a path is set (opt-in; helper no-ops on None).
+        output_geometry(
+            self.params.output_geometry_file,
+            self.npixs,
+            self.point_vectors,
+            self.pixact,
+        )
 
         return self.pixact, self.point_vectors
 
@@ -403,11 +402,10 @@ class Core(ABC):
                 * self.params.calibration**2
             )
 
-        if hasattr(self.params, "outnoisecovmat1"):
-            write_covmat_reduced(
-                self.params.outnoisecovmat1,
-                self.noise_cov1,
-            )
+        write_covmat_reduced(
+            self.params.outnoisecovmat1,
+            self.noise_cov1,
+        )
 
         self.noise_cov2 = None
         if self.params.do_cross:
@@ -432,11 +430,10 @@ class Core(ABC):
                     * self.params.calibration**2
                 )
 
-            if hasattr(self.params, "outnoisecovmat2"):
-                write_covmat_reduced(
-                    self.params.outnoisecovmat2,
-                    self.noise_cov2,
-                )
+            write_covmat_reduced(
+                self.params.outnoisecovmat2,
+                self.noise_cov2,
+            )
 
         return self.noise_cov1, self.noise_cov2
 

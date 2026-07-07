@@ -161,7 +161,12 @@ def write_covmat_reduced(outcovmatfile, C):
     -----
     Writes the matrix in binary format using numpy's tofile method.
     The output can be read back using numpy.fromfile with appropriate reshaping.
+
+    A falsy path (``None`` or empty/blank string) is a no-op: persistence is
+    opt-in (ADR-0015).
     """
+    if not (outcovmatfile or "").strip():
+        return
     _ensure_output_directory(outcovmatfile)
 
     with open(outcovmatfile.strip(), "wb") as f:
@@ -219,6 +224,9 @@ def output_geometry(filegeometry, npixs, point_vectors, active):
 
     This format can be used for geometry debugging and external processing.
     """
+    # Falsy path (None/empty/blank) is a no-op: persistence is opt-in (ADR-0015).
+    if not (filegeometry or "").strip():
+        return
     nmaps = len(npixs)
 
     _ensure_output_directory(filegeometry)
@@ -378,8 +386,12 @@ def writecl(filename: str, power_spectra: np.ndarray):
     Uses high precision format (%.16e) to preserve full double precision.
     Could be enhanced to support more sophisticated formats with headers and labels.
     """
+    # Falsy path (None/empty/blank) is a no-op: persistence is opt-in (ADR-0015).
+    if not (filename or "").strip():
+        return
+    _ensure_output_directory(filename)
     # Use high precision format to preserve full double precision
-    np.savetxt(filename, power_spectra, fmt="%.16e")
+    np.savetxt(filename.strip(), power_spectra, fmt="%.16e")
 
 
 def write_out_matrix(outfilematrix, matrix):
@@ -400,11 +412,14 @@ def write_out_matrix(outfilematrix, matrix):
     to be human-readable or imported into other analysis tools.
     The 16 decimal places preserve full double precision.
     """
+    # Falsy path (None/empty/blank) is a no-op: persistence is opt-in (ADR-0015).
+    if not (outfilematrix or "").strip():
+        return
     n = matrix.shape[0]
 
     _ensure_output_directory(outfilematrix)
 
-    with open(outfilematrix, "w") as f:
+    with open(outfilematrix.strip(), "w") as f:
         for i in range(n):
             line = "".join(f"{matrix[i, j]:24.16E}" for j in range(n))
             f.write(line + "\n")

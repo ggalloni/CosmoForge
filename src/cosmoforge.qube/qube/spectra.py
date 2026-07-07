@@ -297,8 +297,6 @@ class Spectra(Core, MPISharedMemoryMixin):
             "npixs",
             "pixact",
             "point_vectors",
-            "noise_cov1",
-            "noise_cov2",
             "signal_matrix",
             "bins",
             "beam_smoothing",
@@ -315,10 +313,47 @@ class Spectra(Core, MPISharedMemoryMixin):
         # Harmonic basis uses SMW formula — pixel-space covariance matrices
         # (inv_cov, noise_cov) are not needed for the compressed QML path.
         if self.basis_manager is None:
+            self._resolve_covariance_matrices()
+
+    def _resolve_covariance_matrices(self):
+        """Obtain inv_cov (C^{-1}) and noise_cov (reduced N) for the traditional path.
+
+        Priority (ADR-0016): (i) alias the live Fisher's in-memory arrays;
+        (ii) read the ``out*`` files (opt-in two-job transport); (iii) raise.
+        After ``run()``, ``fisher.noise_cov1`` is C^{-1} while N lives on
+        ``fisher.reduced_noise_cov1``; both are aliased (read-only downstream).
+        """
+        fisher = self.fisher_instance
+        if getattr(fisher, "reduced_noise_cov1", None) is not None:
+            self.inv_cov1 = fisher.noise_cov1
+            self.noise_cov1 = fisher.reduced_noise_cov1
+            if self.params.do_cross:
+                self.inv_cov2 = fisher.noise_cov2
+                self.noise_cov2 = fisher.reduced_noise_cov2
+            return
+
+        disk_paths = [self.params.outinvcovmatfile1, self.params.outnoisecovmat1]
+        if self.params.do_cross:
+            disk_paths += [self.params.outinvcovmatfile2, self.params.outnoisecovmat2]
+        if all(disk_paths):
             self._load_covariance_matrices()
+            return
+
+        required = (
+            "outinvcovmatfile1/2 and outnoisecovmat1/2"
+            if self.params.do_cross
+            else "outinvcovmatfile1 and outnoisecovmat1"
+        )
+        raise ValueError(
+            "Cannot obtain covariance matrices for the traditional QML path: the "
+            "Fisher instance holds no in-memory covariances (reduced_noise_cov1 is "
+            f"None) and not all disk-adapter paths are set (do_cross="
+            f"{self.params.do_cross} requires {required}). Pass a run() Fisher via "
+            "fisher=, or set those paths to load from a prior job."
+        )
 
     def _load_covariance_matrices(self):
-        """Load noise and inverted covariance matrices from disk files."""
+        """Load noise and inverted covariance matrices from disk files (adapter ii)."""
         ntot = self.collection.total_active_pixels
 
         # Load inverted covariance matrices

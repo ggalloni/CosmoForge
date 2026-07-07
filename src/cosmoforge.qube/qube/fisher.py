@@ -224,6 +224,11 @@ class Fisher(Core, MPISharedMemoryMixin):
         self.signal_matrix = None
         self._lmax_signal = None
 
+        # Original reduced noise N, retained for the in-memory handoff to
+        # Spectra (ADR-0016); populated by prepare_covariance_matrices.
+        self.reduced_noise_cov1 = None
+        self.reduced_noise_cov2 = None
+
         # Ordered list of SpectrumKey instances enumerating the spectra
         # along the Fisher matrix's parameter axis. Populated by
         # ``_build_multi_spectrum_inputs`` once ``compute()`` runs; used
@@ -310,6 +315,12 @@ class Fisher(Core, MPISharedMemoryMixin):
         write_covmat_reduced(self.params.outnoisecovmat1, self.noise_cov1)
         if self.params.do_cross:
             write_covmat_reduced(self.params.outnoisecovmat2, self.noise_cov2)
+
+        # Retain N before the rebind below overwrites noise_cov1 with C^{-1}
+        # (ADR-0016 handoff). Aliases the existing array; no copy.
+        self.reduced_noise_cov1 = self.noise_cov1
+        if self.params.do_cross:
+            self.reduced_noise_cov2 = self.noise_cov2
 
         # Add signal to noise covariance: C = N + S
         self.noise_cov1 = self.noise_cov1 + self.signal_matrix
@@ -612,8 +623,7 @@ class Fisher(Core, MPISharedMemoryMixin):
                 elapsed = time.time() - start_time
                 self.log(f"Total computation time: {elapsed:.2f} seconds", level=3)
 
-            if hasattr(self.params, "outfilefisher"):
-                write_out_matrix(self.params.outfilefisher, self.fisher)
+            write_out_matrix(self.params.outfilefisher, self.fisher)
 
         self.comm.Barrier()
 
