@@ -1,11 +1,9 @@
 """Acceptance tests for opt-in persistence (Phase B of the in-memory pipeline).
 
 The load-bearing assertion is that a Fisher + Spectra run with no ``out*``
-paths set leaves the working directory untouched. It xfails today because the
-pipeline still writes implicitly (out* defaults resolve to ``outputs/*``) and
-Spectra reads Fisher's noise/inverse covariance back from disk. Slice B1 makes
-the write gates real; Slice B2 replaces the file handshake with the live
-``fisher=`` seam and un-xfails this test.
+paths set leaves the working directory untouched: write gates are opt-in
+(ADR-0015) and Spectra takes Fisher's noise/inverse covariance in memory over
+the live ``fisher=`` seam rather than reading it back from disk (ADR-0016).
 """
 
 import os

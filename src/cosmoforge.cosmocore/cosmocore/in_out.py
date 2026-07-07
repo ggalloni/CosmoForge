@@ -389,8 +389,9 @@ def writecl(filename: str, power_spectra: np.ndarray):
     # Falsy path (None/empty/blank) is a no-op: persistence is opt-in (ADR-0015).
     if not (filename or "").strip():
         return
+    _ensure_output_directory(filename)
     # Use high precision format to preserve full double precision
-    np.savetxt(filename, power_spectra, fmt="%.16e")
+    np.savetxt(filename.strip(), power_spectra, fmt="%.16e")
 
 
 def write_out_matrix(outfilematrix, matrix):
@@ -418,7 +419,7 @@ def write_out_matrix(outfilematrix, matrix):
 
     _ensure_output_directory(outfilematrix)
 
-    with open(outfilematrix, "w") as f:
+    with open(outfilematrix.strip(), "w") as f:
         for i in range(n):
             line = "".join(f"{matrix[i, j]:24.16E}" for j in range(n))
             f.write(line + "\n")

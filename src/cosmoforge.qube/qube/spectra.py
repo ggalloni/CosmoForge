@@ -330,16 +330,27 @@ class Spectra(Core, MPISharedMemoryMixin):
             if self.params.do_cross:
                 self.inv_cov2 = fisher.noise_cov2
                 self.noise_cov2 = fisher.reduced_noise_cov2
-        elif self.params.outinvcovmatfile1 and self.params.outnoisecovmat1:
+            return
+
+        disk_paths = [self.params.outinvcovmatfile1, self.params.outnoisecovmat1]
+        if self.params.do_cross:
+            disk_paths += [self.params.outinvcovmatfile2, self.params.outnoisecovmat2]
+        if all(disk_paths):
             self._load_covariance_matrices()
-        else:
-            raise ValueError(
-                "Cannot obtain covariance matrices for the traditional QML path: "
-                "the Fisher instance holds no in-memory covariances (reduced_noise_cov1 "
-                "is None) and no out* paths are set to read them from. Pass a run() "
-                "Fisher via fisher=, or set outinvcovmatfile1/outnoisecovmat1 to load "
-                "from a prior job."
-            )
+            return
+
+        required = (
+            "outinvcovmatfile1/2 and outnoisecovmat1/2"
+            if self.params.do_cross
+            else "outinvcovmatfile1 and outnoisecovmat1"
+        )
+        raise ValueError(
+            "Cannot obtain covariance matrices for the traditional QML path: the "
+            "Fisher instance holds no in-memory covariances (reduced_noise_cov1 is "
+            f"None) and not all disk-adapter paths are set (do_cross="
+            f"{self.params.do_cross} requires {required}). Pass a run() Fisher via "
+            "fisher=, or set those paths to load from a prior job."
+        )
 
     def _load_covariance_matrices(self):
         """Load noise and inverted covariance matrices from disk files (adapter ii)."""
