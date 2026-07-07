@@ -136,3 +136,17 @@ ADR-0002.
 
 See `project_pixelbasis_class_model_design.md` (memory) for the
 design discussion.
+
+## Update (2026-07-07)
+
+The "`method="auto"` is the default for `Core`" decision above was realised
+only at `Core.setup_computation_basis()`; the orchestration classes (`Fisher`,
+`Spectra`, `PICSLike`) skipped basis setup entirely when their `compression`
+kwarg was `None`, so the default run never reached this selector. ADR-0018
+closes that gap: `basis=None` (the renamed kwarg) now resolves to
+`method="auto"`, the traditional no-basis path survives only behind an explicit
+`basis=False`, and `do_cross=True` keeps the default on the traditional path
+(the basis layer has no N₂). The "no second implementation to maintain" claim
+holds value-level for S and C⁻¹ and for derivatives in exact arithmetic; the
+batched binned-derivative kernel reassociates the beam weight, so spin-2
+traditional↔pixel-direct agree to 1 ulp rather than bit-for-bit.

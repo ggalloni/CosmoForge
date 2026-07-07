@@ -152,9 +152,10 @@ class Fisher(Core, MPISharedMemoryMixin):
     def __init__(
         self,
         params_file: str | None = None,
-        compression: dict | None = None,
+        basis=Core._UNSET,
         cache_derivatives: bool = False,
         symmetry_mode: SymmetryMode | str | None = None,
+        compression=Core._UNSET,
         **kwargs,
     ):
         """
@@ -191,8 +192,11 @@ class Fisher(Core, MPISharedMemoryMixin):
         self.rank = self.comm.Get_rank()
         self.size = self.comm.Get_size()
 
-        # Computation basis config
-        self._basis_config = compression
+        # Computation basis config (ADR-0018): resolve the public basis= kwarg
+        # (with the deprecated compression= alias) into the internal sentinel.
+        self._basis_config = self._resolve_basis_config(
+            basis, compression, self.params.do_cross
+        )
 
         # Derivative caching
         self._cache_derivatives = cache_derivatives

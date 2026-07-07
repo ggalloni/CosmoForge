@@ -182,7 +182,8 @@ class Spectra(Core, MPISharedMemoryMixin):
         self,
         params_file: str | None = None,
         fisher: Fisher | None = None,
-        compression: dict | None = None,
+        basis=Core._UNSET,
+        compression=Core._UNSET,
         **kwargs,
     ):
         """
@@ -215,8 +216,10 @@ class Spectra(Core, MPISharedMemoryMixin):
         self.rank = self.comm.Get_rank()
         self.size = self.comm.Get_size()
 
-        # Store computation basis config for Fisher creation
-        self._basis_config = compression
+        # Store computation basis config for Fisher creation (ADR-0018).
+        self._basis_config = self._resolve_basis_config(
+            basis, compression, self.params.do_cross
+        )
 
         # Initialize Fisher matrix or compute it
         if fisher is not None:
@@ -390,7 +393,13 @@ class Spectra(Core, MPISharedMemoryMixin):
 
         start_time = time.time()
 
-        fisher = Fisher(self.params, compression=self._basis_config)
+        # Forward the already-resolved config losslessly: None (traditional) →
+        # basis=False, dict → the dict. Avoids a second resolution flipping the
+        # traditional sentinel back to auto.
+        fisher = Fisher(
+            self.params,
+            basis=(False if self._basis_config is None else self._basis_config),
+        )
         fisher.run()
 
         if self.rank == 0:

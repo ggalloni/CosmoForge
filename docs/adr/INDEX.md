@@ -16,6 +16,7 @@ agent-facing convention that governs when an ADR should be written.
 ### Basis architecture
 - [ADR-0002 — Computation basis abstraction](0002-computation-basis-abstraction.md). `HarmonicBasis` and `PixelBasis` behind a `ComputationBasis` ABC; replaces the legacy "compression" framing.
 - [ADR-0003 — Pixel basis direct mode and `method="auto"`](0003-pixel-basis-direct-mode.md). Direct pixel-space path bypassing V; cost-based selector compares `n_modes³` vs `(n_bins+1)·n_pix³`. fsky ≈ 0.35 crossover.
+- [ADR-0018 — Auto basis is the true default; `compression=` → `basis=`](0018-auto-basis-default-and-kwarg-rename.md). Realises ADR-0003's auto default at the orchestration layer; renames the constructor kwarg; establishes the post-1.0 deprecation-shim policy (retires ADR-0002/0013 no-shim precedent).
 
 ### Numerical stability and linear algebra
 - [ADR-0001 — Stable SMW form](0001-stable-smw-form.md). `M (I + ΛM)⁻¹` replaces the unstable subtractive form `M − M K⁻¹ M` for the projected inverse at high SNR.
@@ -47,7 +48,7 @@ agent-facing convention that governs when an ADR should be written.
 
 | Status | ADRs |
 |---|---|
-| Accepted | 0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008, 0009, 0011, 0012, 0013, 0014, 0015, 0016 |
+| Accepted | 0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008, 0009, 0011, 0012, 0013, 0014, 0015, 0016, 0018 |
 | Proposed / deferred | 0010 |
 | Superseded | — |
 
@@ -55,7 +56,8 @@ No supersession chains in place; all current ADRs are additive.
 
 ## Adding a new ADR
 
-Next number is **0017**. Use the pattern `NNNN-kebab-title.md`.
+Next free number is **0019** (0017 is reserved for Phase A/A1's "file-or-array
+loading seams"; 0018 is Phase D). Use the pattern `NNNN-kebab-title.md`.
 
 1. First line: `# ADR-NNNN: {title}`.
 2. Sections: **Status** (Accepted / Proposed / Superseded; date and merge target if known), **Context**, **Decision**, **Consequences**. Optional: **References**, **Validation**, **See also** (related memory files and code paths).

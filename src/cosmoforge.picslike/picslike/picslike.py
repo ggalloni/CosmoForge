@@ -156,7 +156,8 @@ class PICSLike(Core, MPISharedMemoryMixin):
     def __init__(
         self,
         params_file: str | None = None,
-        compression: dict | None = None,
+        basis=Core._UNSET,
+        compression=Core._UNSET,
         **kwargs: Any,
     ) -> None:
         """
@@ -178,7 +179,9 @@ class PICSLike(Core, MPISharedMemoryMixin):
         self.rank = self.comm.Get_rank()
         self.size = self.comm.Get_size()
 
-        self._basis_config = compression
+        self._basis_config = self._resolve_basis_config(
+            basis, compression, self.params.do_cross
+        )
 
         # Initialize attributes
         self.maps1 = None

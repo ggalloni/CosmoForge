@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — landed in PR #25 (2026-05-12). Companion ADR-0011 covers the `SymmetryMode` sub-decision for spin-2 × spin-2 cross-component pairs. Companion ADR-0009 covers the multipole-range type that is keyed by `SpectrumKey`.
+Accepted — landed in PR #25 (2026-05-12). Companion ADR-0011 covers the `SymmetryMode` sub-decision for spin-2 × spin-2 cross-component pairs. Companion ADR-0009 covers the multipole-range type that is keyed by `SpectrumKey`. The no-shim hard-cut approach used here (pre-1.0 justification) is retired for public changes by ADR-0018 (2026-07-07).
 
 ## Context
 
