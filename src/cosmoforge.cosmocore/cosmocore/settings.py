@@ -190,7 +190,7 @@ class InputParams:
 
         self.inputclfile = "inputs/cls.dat"
         self.maskfile = "inputs/mask.fits"
-        self.do_cross = True
+        self.do_cross = False
         self.covmatfile1 = "inputs/NCVM1.bin"
         # out* default to None: persistence is opt-in (ADR-0015). A write happens
         # only when the caller sets the path.
