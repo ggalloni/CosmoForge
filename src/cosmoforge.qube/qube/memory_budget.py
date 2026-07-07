@@ -13,6 +13,11 @@ Two paths are supported:
   only nullifies ``noise_cov1`` for non-pixel-direct modes) and
   ``basis._N`` (asfortranarray F-order copy).
 
+The no-basis traditional path is not modelled here. Its Fisher->Spectra
+handoff (ADR-0016) aliases the live Fisher's C^{-1} and retained N rather
+than re-reading them from disk, so Spectra's covariance footprint is one
+n_pix² array lighter than the old disk round-trip, not heavier.
+
 For each path the calculator splits stage cost into:
 
 - **Persistent state** at stage exit (audit-backed, ~1% accurate at the
