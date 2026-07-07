@@ -167,8 +167,13 @@ class PICSLike(Core, MPISharedMemoryMixin):
         ----------
         params_file : str, optional
             Path to YAML configuration file.
+        basis : None, False, str or dict, optional
+            Computation basis selection (ADR-0018). ``None`` (default) →
+            ``method="auto"``; ``False`` → traditional pixel-space path;
+            ``"auto"``/``"harmonic"``/``"pixel"`` → ``{"method": …}``; a dict is
+            the only form that requests compression.
         compression : dict, optional
-            Computation basis configuration (method, epsilon, basis, mode_fraction).
+            Deprecated alias for ``basis`` (ADR-0018): warns and is forwarded.
         **kwargs : Any
             Additional arguments passed to Core.
         """

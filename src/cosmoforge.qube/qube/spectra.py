@@ -196,8 +196,13 @@ class Spectra(Core, MPISharedMemoryMixin):
         fisher : Fisher, optional
             Pre-computed Fisher instance. If provided, reuses computed components
             (covariance matrices, geometry, field collections) for efficiency.
+        basis : None, False, str or dict, optional
+            Computation basis selection (ADR-0018). ``None`` (default) →
+            ``method="auto"``; ``False`` → traditional pixel-space path;
+            ``"auto"``/``"harmonic"``/``"pixel"`` → ``{"method": …}``; a dict is
+            the only form that requests compression.
         compression : dict, optional
-            Computation basis configuration (method, epsilon, basis, mode_fraction).
+            Deprecated alias for ``basis`` (ADR-0018): warns and is forwarded.
         **kwargs : dict
             Additional arguments passed to Core.
 
@@ -1640,8 +1645,7 @@ class Spectra(Core, MPISharedMemoryMixin):
 
         Examples
         --------
-        >>> spectra = Spectra("config.yaml", fisher=fisher,
-        ...                   compression={"method": "harmonic"})
+        >>> spectra = Spectra("config.yaml", fisher=fisher, basis="harmonic")
         >>> spectra.set_binning(bins)
         >>> spectra.run()
         >>> cl_th = compute_camb_cl(theta)        # ell=0..lmax

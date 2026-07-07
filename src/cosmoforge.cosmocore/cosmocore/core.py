@@ -559,8 +559,9 @@ class Core(ABC):
 
         Parameters
         ----------
-        method : str, default "harmonic"
+        method : str, default "auto"
             Computation basis to use:
+            - "auto": cost-based selection between harmonic and pixel (ADR-0003)
             - "harmonic": Tegmark-style direct harmonic transformation
             - "pixel": Gjerløw-style pixel-space projector with eigenvalue truncation
         epsilon : float or None, optional
