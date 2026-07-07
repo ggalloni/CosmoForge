@@ -315,6 +315,10 @@ class Spectra(Core):
 
 ## Output Files
 
+Persistence is opt-in (ADR-0015): each file below is written only when its
+corresponding `out*` path is set in the config; with the path unset (the
+default) nothing is written to disk.
+
 ### Fisher Analysis Outputs
 
 - `fisher.dat`: Fisher information matrix
