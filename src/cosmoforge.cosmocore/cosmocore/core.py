@@ -267,6 +267,43 @@ class Core(ABC):
         if lmax is not None and lmax < lmin:
             raise ValueError(f"lmax={lmax} < lmin={lmin}")
 
+    def _resolve_mask(self) -> np.ndarray:
+        """Resolve the analysis mask to an ``(npix, nfields)`` float64 array (ADR-0017).
+
+        Owns dispatch and semantic validation for the mask seam. The file
+        adapter reads ``params.maskfile`` via :func:`read_mask`, honouring
+        ``params.ordering`` so the returned array is pixel-indexed per that
+        ordering. A 1D array is promoted to a single column; any
+        float64-coercible dtype is accepted; values are interpreted binarily
+        downstream (``active = mask > 0.5``, thresholded not enforced).
+
+        Raises
+        ------
+        ValueError
+            If the resolved ``npix`` differs from ``12 * nside**2`` or the
+            column count differs from ``params.nfields``.
+        """
+        nfields = self.params.nfields
+        expected_npix = hp.nside2npix(self.params.nside)
+        nest = self.params.ordering == "NESTED"
+
+        buf = np.empty((nfields, expected_npix), dtype=np.float64)
+        mask = read_mask(self.params.maskfile, buf, nest=nest)
+
+        mask = np.asarray(mask, dtype=np.float64)
+        if mask.ndim == 1:
+            mask = mask[:, np.newaxis]
+
+        npix, ncols = mask.shape
+        if npix != expected_npix:
+            raise ValueError(
+                f"mask has npix={npix}, expected {expected_npix} for "
+                f"nside={self.params.nside}"
+            )
+        if ncols != nfields:
+            raise ValueError(f"mask has {ncols} column(s), expected nfields={nfields}")
+        return mask
+
     def setup_fields(self) -> FieldCollection:
         """
         Set up cosmological fields using the new clean architecture.
@@ -286,12 +323,7 @@ class Core(ABC):
         The field creation uses type-safe factory functions to ensure
         proper initialization based on the spin parameter.
         """
-        npix = hp.nside2npix(self.params.nside)
-        mask = np.empty((self.params.nfields, npix), dtype=np.float64)
-        mask = read_mask(self.params.maskfile, mask)
-
-        if len(mask.shape) == 1:
-            mask = mask[:, np.newaxis]
+        mask = self._resolve_mask()
 
         # Create fields using the new factory function
         fields: list[BaseField] = []

@@ -177,6 +177,41 @@ def test_setup_fields_basic():
         Path(params.maskfile).unlink()
 
 
+def test_resolve_mask_file_branch_returns_promoted_array(tmp_path):
+    """The file adapter routes through _resolve_mask, returning (npix, nfields)."""
+    params = InputParams()
+    params.nside = 8
+    params.nfields = 1
+    npix = 12 * params.nside**2
+    on_disk = np.ones(npix, dtype=np.float64)
+    on_disk[: npix // 2] = 0.0
+    maskfile = tmp_path / "mask.fits"
+    hp.write_map(str(maskfile), on_disk, overwrite=True)
+    params.maskfile = str(maskfile)
+
+    core = ConcreteCore(params)
+    mask = core._resolve_mask()
+
+    assert mask.shape == (npix, 1)
+    assert mask.dtype == np.float64
+    np.testing.assert_array_equal(mask[:, 0], on_disk)
+
+
+def test_resolve_mask_wrong_nside_raises(tmp_path):
+    """A mask file at the wrong nside raises ValueError naming npix/nside."""
+    params = InputParams()
+    params.nside = 8  # expects npix = 768
+    params.nfields = 1
+    wrong = np.ones(12 * 16**2, dtype=np.float64)  # nside=16 → npix=3072
+    maskfile = tmp_path / "wrong.fits"
+    hp.write_map(str(maskfile), wrong, overwrite=True)
+    params.maskfile = str(maskfile)
+
+    core = ConcreteCore(params)
+    with pytest.raises(ValueError, match="npix|nside"):
+        core._resolve_mask()
+
+
 def test_setup_fields_with_polarization():
     """Test field setup with polarization (spin-2) field."""
     params = InputParams()
