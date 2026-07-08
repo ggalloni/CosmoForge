@@ -156,10 +156,10 @@ class Fisher(Core, MPISharedMemoryMixin):
     def __init__(
         self,
         params_file: str | None = None,
-        basis=Core._UNSET,
+        basis: dict | str | bool | None = Core._UNSET,
         cache_derivatives: bool = False,
         symmetry_mode: SymmetryMode | str | None = None,
-        compression=Core._UNSET,
+        compression: dict | str | bool | None = Core._UNSET,
         **kwargs,
     ):
         """

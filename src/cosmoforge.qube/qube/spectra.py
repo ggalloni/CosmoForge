@@ -182,8 +182,8 @@ class Spectra(Core, MPISharedMemoryMixin):
         self,
         params_file: str | None = None,
         fisher: Fisher | None = None,
-        basis=Core._UNSET,
-        compression=Core._UNSET,
+        basis: dict | str | bool | None = Core._UNSET,
+        compression: dict | str | bool | None = Core._UNSET,
         **kwargs,
     ):
         """

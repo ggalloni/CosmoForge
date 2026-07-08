@@ -156,8 +156,8 @@ class PICSLike(Core, MPISharedMemoryMixin):
     def __init__(
         self,
         params_file: str | None = None,
-        basis=Core._UNSET,
-        compression=Core._UNSET,
+        basis: dict | str | bool | None = Core._UNSET,
+        compression: dict | str | bool | None = Core._UNSET,
         **kwargs: Any,
     ) -> None:
         """

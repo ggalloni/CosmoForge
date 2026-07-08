@@ -56,9 +56,10 @@ def test_basis_and_compression_together_is_error(config_resolver):
 
 def test_default_resolves_to_auto(config_resolver):
     # The default (no basis arg) must select method="auto" — and emit no
-    # spurious deprecation warning.
+    # deprecation warning (only DeprecationWarning is escalated so unrelated
+    # dependency warnings don't make this flaky).
     with warnings.catch_warnings():
-        warnings.simplefilter("error")
+        warnings.simplefilter("error", DeprecationWarning)
         f = Fisher(_cfg(config_resolver))
     assert f._basis_config == {"method": "auto"}
 
