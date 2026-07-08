@@ -48,20 +48,53 @@ arrays are never smuggled into the config (option "params fields accept
    high-level class). The injected object is defined as "exactly what the
    reader would have returned" — no new flexibility in accepted forms.
 
-2. **Dispatch lives at the high level.** Only the orchestration class
-   knows both adapters exist. Resolution order: injected object wins;
-   else the params path is read; readers never dispatch and never accept
-   arrays.
+2. **Pure parsers stay pure (hard); dispatch stays out of them
+   (hard); dispatch-location is a default (soft).** The two rules
+   §Decision.2 originally bundled are distinct and only one is load-bearing:
+   - **Hard.** The pure file-parsers (`readcl`, `read_covmat`,
+     `read_covmat_reduced`, `read_mask`, `read_maps`, the beam readers)
+     never dispatch and never accept arrays. They stay ignorant of the
+     injection concept — that is what keeps `in_out`/`beam` importable and
+     testable without the framework.
+   - **Soft.** The dispatch decision (injected wins; else read the path)
+     lives at the orchestration layer *by default*, but may reuse an
+     existing collaborator's dispatch when one already converges both
+     adapters and validates — e.g. `FieldCollection.set_cls` already owns
+     the `None`→`readcl` branch, so `cls_data` reuses it rather than
+     minting a parallel dispatch in Core. A stateful collaborator is not a
+     parser; reusing its dispatch does not violate the hard rule.
 
-3. **Validation split.** Readers only parse (format errors surface
-   naturally from the parser). Semantic validation of the in-memory
-   object (shape/dtype/nside/ordering consistency against the config)
-   happens once at the orchestration layer, on the converged contract —
-   both adapters pass through it. Concretely: one private
-   `Core._resolve_<input>()` method per seam owns dispatch *and*
-   validation (mirroring `_resolve_basis_config`); the `setup_*` methods
-   call it. Note the file path had no semantic validation before this
-   ADR — the file adapter gains it via the shared check.
+   Resolution order is always: injected object wins; else the params path
+   is read.
+
+3. **Single convergence + validation point per seam is the invariant;
+   the `_resolve_<input>()` method is a recommended shape, not a
+   requirement.** What every seam must guarantee:
+   - **(a) Contract identity** — the injected object is exactly what the
+     reader returns (§Decision.1).
+   - **(b) One convergence + validation point** — both adapters meet at a
+     single place and pass through the same semantic check; readers only
+     parse (format errors surface naturally from the parser).
+   - **(c)** the hard rule of §Decision.2.
+
+   These can be satisfied by **either** shape:
+   - a dedicated private `_resolve_<input>()` method on the class that
+     *owns the seam* (not necessarily `Core`: `mask`/`noise_cov` on
+     `Core`, `maps` on `Spectra`), mirroring `_resolve_basis_config`; or
+   - **reuse of an existing low-level collaborator** that already
+     converges both adapters and validates — `cls_data` and
+     `fiducial_cls` converge in `SpectraManager.set_cls`, which validates
+     labels/column-count and (transitively, for `fiducial_cls`, via
+     `_build_fixed_spectra` → `set_cls`) length. No dedicated resolver is
+     added where one already exists.
+
+   Trade-off of the reuse shape: the validation error surfaces from the
+   collaborator (`"Missing power spectrum for TT"`) rather than a crisp
+   injection-site message — accepted, because duplicating a check
+   `set_cls` already performs would be speculative (the A4 grill:
+   "accept what `set_cls` accepts today, do NOT expand"). Note the file
+   path had no semantic validation before this ADR — the file adapter
+   gains it via the shared check.
 
 4. **Seam mechanics: constructor kwargs, named explicitly everywhere.**
    Injected objects enter as constructor kwargs, named in the signatures
@@ -112,3 +145,26 @@ arrays are never smuggled into the config (option "params fields accept
 - Each later A-slice is mechanical: add the injection kwarg, route the
   reader result and the injected object through the same semantic
   validation, test equivalence file-vs-array.
+
+### Amendment (2026-07-08, slices A3–A4): mechanism vs invariant
+
+Slices A3 (`maps`) and A4 (`cls_data`/`fiducial_cls`) did not follow
+§Decision.3's literal "one `Core._resolve_<input>()` per seam" wording.
+Reviewed in a grill-with-docs session; the conclusion was that §Decision.3
+had conflated an *invariant* with a *mechanism*, not that A3/A4 were debt.
+§Decision.2 and §Decision.3 above are rewritten to state the invariant
+((a) contract identity, (b) single convergence + validation point, (c)
+pure parsers stay pure) and demote the named method to one of two valid
+shapes. All four shipped seams are instances of the same rule:
+
+| Seam | Shape | Owner / convergence point | Validation |
+|---|---|---|---|
+| `mask` (A1) | dedicated resolver | `Core._resolve_mask` | shape vs nside/nfields, at resolver |
+| `noise_cov1/2` (A2) | dedicated resolver | `Core._resolve_noise_cov` | shape vs n_active, at resolver |
+| `maps1/2` (A3) | dedicated resolver | `Spectra._resolve_maps` (seam is Spectra-only) | shape vs ntot/nsims, at resolver |
+| `cls_data` (A4) | reuse existing | `FieldCollection.set_cls` → `SpectraManager.set_cls` | labels/column-count, at collaborator |
+| `fiducial_cls` (A4) | reuse existing (inlined dispatch) | `set_cls` after `_build_fixed_spectra` | labels/length, transitive via `set_cls` |
+
+Consequence for A5 (`beam`): either shape is acceptable — pick a
+dedicated resolver if the beam seam has no pre-existing convergence
+point, or reuse one if it does; the invariant is what must hold.
