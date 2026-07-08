@@ -414,7 +414,16 @@ class PICSLike(Core, MPISharedMemoryMixin):
             )
             for i in range(n_point_vectors)
         )
-        self.noise_cov1 = self._shared_array(getattr(self, "noise_cov1", None))
+        # Computation-basis path broadcasts the basis manager; the traditional
+        # path broadcasts the pixel-space noise covariance (mirrors Fisher's
+        # MPI branch — the basis owns/nulls noise_cov1 on rank 0, so workers
+        # must receive the basis manager instead).
+        if self._basis_config is not None:
+            self.basis_manager = self.comm.bcast(
+                self.basis_manager if self.rank == 0 else None, root=0
+            )
+        else:
+            self.noise_cov1 = self._shared_array(getattr(self, "noise_cov1", None))
         self.maps1 = self._shared_array(getattr(self, "maps1", None))
         if self.params.do_cross:
             self.maps2 = self._shared_array(getattr(self, "maps2", None))
