@@ -287,16 +287,16 @@ class Spectra(Core, MPISharedMemoryMixin):
                 or self._injected_noise_cov2 is not None
             ):
                 raise ValueError(
-                    "noise_cov1=/noise_cov2= cannot be used together with fisher= "
-                    "because Spectra reuses the Fisher covariances."
+                    "noise_cov1= or noise_cov2= cannot be used together with "
+                    "fisher= because Spectra reuses the Fisher covariances."
                 )
             if (
                 self._injected_cls_data is not None
                 or self._injected_fiducial_cls is not None
             ):
                 raise ValueError(
-                    "cls_data=/fiducial_cls= cannot be used together with fisher= "
-                    "because Spectra reuses the Fisher spectra setup."
+                    "cls_data= or fiducial_cls= cannot be used together with "
+                    "fisher= because Spectra reuses the Fisher spectra setup."
                 )
             if self._injected_beam is not None:
                 raise ValueError(

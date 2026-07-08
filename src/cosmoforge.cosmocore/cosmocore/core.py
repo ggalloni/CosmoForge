@@ -192,10 +192,12 @@ class Core(ABC):
             :func:`read_covmat`/:func:`read_covmat_reduced` would have returned:
             the *reduced* ``(n_active, n_active)`` float64 matrix, pixel-ordered
             per the concatenated active-pixel index, *before* the uniform
-            ``calibration**2`` multiply (applied to both adapters). Core takes
-            ownership (no defensive copy). When given, each wins over its params
-            path; otherwise the path is read. ``noise_cov2`` is consumed only
-            when ``params.do_cross``.
+            ``calibration**2`` scaling (applied to both adapters). Core takes
+            ownership (no defensive copy) and never mutates the injected array:
+            with ``calibration == 1`` the injected array is used as-is,
+            otherwise a scaled copy is returned. When given, each wins over its
+            params path; otherwise the path is read. ``noise_cov2`` is consumed
+            only when ``params.do_cross``.
         cls_data, fiducial_cls : dict or numpy.ndarray, optional
             In-memory power spectra injected in place of
             ``params.inputclfile``/``params.fiducialfile`` (ADR-0017). Exactly
@@ -546,7 +548,13 @@ class Core(ABC):
         reads ``covmatfile`` via :func:`read_covmat_reduced` (when
         ``params.load_reduced``) or :func:`read_covmat`. Both adapters pass
         through the same shape/dtype validation and the uniform
-        ``calibration**2`` multiply.
+        ``calibration**2`` scaling.
+
+        To keep the "no defensive copy" contract honest at production sizes:
+        the file adapter scales its own fresh buffer *in place*; the injection
+        adapter returns the injected array untouched when ``calibration == 1``
+        and otherwise returns a scaled copy — it never mutates the caller's
+        array.
 
         Raises
         ------
@@ -555,6 +563,7 @@ class Core(ABC):
             the active-pixel count.
         """
         n_active = concatenate_pixact.shape[0]
+        cal2 = self.params.calibration**2
         if injected is not None:
             cov = np.asarray(injected, dtype=np.float64)
             if cov.shape != (n_active, n_active):
@@ -562,15 +571,17 @@ class Core(ABC):
                     f"injected noise covariance has shape {cov.shape}, expected "
                     f"({n_active}, {n_active}) for the active-pixel count"
                 )
+            return cov if cal2 == 1.0 else cov * cal2
+
+        cov = np.empty((n_active, n_active), dtype=np.float64)
+        if self.params.load_reduced:
+            cov = read_covmat_reduced(covmatfile, cov)
         else:
-            cov = np.empty((n_active, n_active), dtype=np.float64)
-            if self.params.load_reduced:
-                cov = read_covmat_reduced(covmatfile, cov)
-            else:
-                cov = read_covmat(
-                    covmatfile, npix, self.params.nfields, concatenate_pixact, cov
-                )
-        return cov * self.params.calibration**2
+            cov = read_covmat(
+                covmatfile, npix, self.params.nfields, concatenate_pixact, cov
+            )
+        cov *= cal2  # own buffer; scale in place to avoid a second allocation
+        return cov
 
     def _resolve_maps(
         self, injected: np.ndarray | None, filename: str, ntot: int

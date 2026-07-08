@@ -55,7 +55,7 @@ def test_spectra_rejects_cls_when_reusing_fisher(config_resolver):
         fisher = Fisher(params)
         fisher.run()
         d = readcl(params.inputclfile, params, lmax=4 * params.nside)
-        with pytest.raises(ValueError, match="cls_data=/fiducial_cls= cannot be used"):
+        with pytest.raises(ValueError, match="cls_data= or fiducial_cls= cannot be used"):
             Spectra(params, fisher=fisher, cls_data=d)
 
 

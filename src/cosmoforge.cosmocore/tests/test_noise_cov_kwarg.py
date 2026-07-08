@@ -82,6 +82,37 @@ def test_injected_noise_cov_applies_calibration():
     np.testing.assert_allclose(core.noise_cov1, A * 4.0)
 
 
+def test_injected_noise_cov_ownership_contract():
+    """No defensive copy and no mutation of the caller's array (ADR-0017).
+
+    With ``calibration == 1`` the injected array is returned as-is (identity);
+    with a scaling calibration a new array is returned and the injected one is
+    left untouched.
+    """
+    # calibration == 1: returned object IS the injected array.
+    params = _params(calibration=1.0)
+    core = ConcreteCore(params)
+    core.setup_fields()
+    core.setup_geometry()
+    n = _n_active(core)
+    A = np.eye(n) * 0.1
+    core._injected_noise_cov1 = A
+    core.setup_covariance_matrices()
+    assert core.noise_cov1 is A  # no copy
+
+    # calibration != 1: injected array is not mutated.
+    params2 = _params(calibration=2.0)
+    core2 = ConcreteCore(params2)
+    core2.setup_fields()
+    core2.setup_geometry()
+    B = np.eye(n) * 0.1
+    B_before = B.copy()
+    core2._injected_noise_cov1 = B
+    core2.setup_covariance_matrices()
+    np.testing.assert_array_equal(B, B_before)  # caller's array untouched
+    assert core2.noise_cov1 is not B
+
+
 def test_injected_noise_cov1_wrong_shape_raises():
     """A mis-sized injected covariance fails loudly at resolution."""
     params = _params()
