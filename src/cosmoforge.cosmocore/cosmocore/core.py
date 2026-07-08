@@ -164,6 +164,8 @@ class Core(ABC):
         params: InputParams | str | dict | None = None,
         *,
         mask: np.ndarray | None = None,
+        noise_cov1: np.ndarray | None = None,
+        noise_cov2: np.ndarray | None = None,
     ):
         """
         Initialize the core analysis framework.
@@ -180,9 +182,21 @@ class Core(ABC):
             ``npix`` must equal ``12 * nside**2`` and the column count
             ``params.nfields``. When given it wins over the params path;
             otherwise the path is read.
+        noise_cov1, noise_cov2 : numpy.ndarray, optional
+            In-memory noise covariances injected in place of
+            ``params.covmatfile1``/``covmatfile2`` (ADR-0017). Exactly what
+            :func:`read_covmat`/:func:`read_covmat_reduced` would have returned:
+            the *reduced* ``(n_active, n_active)`` float64 matrix, pixel-ordered
+            per the concatenated active-pixel index, *before* the uniform
+            ``calibration**2`` multiply (applied to both adapters). Core takes
+            ownership (no defensive copy). When given, each wins over its params
+            path; otherwise the path is read. ``noise_cov2`` is consumed only
+            when ``params.do_cross``.
         """
         self.read_params(params)
         self._injected_mask = mask
+        self._injected_noise_cov1 = noise_cov1
+        self._injected_noise_cov2 = noise_cov2
 
         # Initialize enhanced logger
         from .logger import get_logger_from_params
@@ -477,63 +491,64 @@ class Core(ABC):
             [self.pixact[i] + i * npix for i in range(len(self.pixact))]
         )
 
-        shape = (concatenate_pixact.shape[0], concatenate_pixact.shape[0])
-        self.noise_cov1 = np.empty(shape, dtype=np.float64)
-
-        if self.params.load_reduced:
-            self.noise_cov1 = (
-                read_covmat_reduced(
-                    self.params.covmatfile1,
-                    self.noise_cov1,
-                )
-                * self.params.calibration**2
-            )
-        else:
-            self.noise_cov1 = (
-                read_covmat(
-                    self.params.covmatfile1,
-                    npix,
-                    self.params.nfields,
-                    concatenate_pixact,
-                    self.noise_cov1,
-                )
-                * self.params.calibration**2
-            )
-
-        write_covmat_reduced(
-            self.params.outnoisecovmat1,
-            self.noise_cov1,
+        self.noise_cov1 = self._resolve_noise_cov(
+            self._injected_noise_cov1, self.params.covmatfile1, npix, concatenate_pixact
         )
+        write_covmat_reduced(self.params.outnoisecovmat1, self.noise_cov1)
 
         self.noise_cov2 = None
         if self.params.do_cross:
-            self.noise_cov2 = np.empty(shape, dtype=np.float64)
-            if self.params.load_reduced:
-                self.noise_cov2 = (
-                    read_covmat_reduced(
-                        self.params.covmatfile2,
-                        self.noise_cov2,
-                    )
-                    * self.params.calibration**2
-                )
-            else:
-                self.noise_cov2 = (
-                    read_covmat(
-                        self.params.covmatfile2,
-                        npix,
-                        self.params.nfields,
-                        concatenate_pixact,
-                        self.noise_cov2,
-                    )
-                    * self.params.calibration**2
-                )
-
-            write_covmat_reduced(
-                self.params.outnoisecovmat2,
-                self.noise_cov2,
+            self.noise_cov2 = self._resolve_noise_cov(
+                self._injected_noise_cov2,
+                self.params.covmatfile2,
+                npix,
+                concatenate_pixact,
             )
+            write_covmat_reduced(self.params.outnoisecovmat2, self.noise_cov2)
 
         return self.noise_cov1, self.noise_cov2
+
+    def _resolve_noise_cov(
+        self,
+        injected: np.ndarray | None,
+        covmatfile: str,
+        npix: int,
+        concatenate_pixact: np.ndarray,
+    ) -> np.ndarray:
+        """Resolve one noise covariance to a reduced ``(n_active, n_active)`` array.
+
+        Applies the file-or-array seam convention (ADR-0017).
+
+        Owns dispatch and semantic validation for the noise-covariance seam. An
+        injected array (``Core.__init__``) wins; otherwise the file adapter
+        reads ``covmatfile`` via :func:`read_covmat_reduced` (when
+        ``params.load_reduced``) or :func:`read_covmat`. Both adapters pass
+        through the same shape/dtype validation and the uniform
+        ``calibration**2`` multiply.
+
+        Raises
+        ------
+        ValueError
+            If the resolved matrix is not square ``(n_active, n_active)`` for
+            the active-pixel count.
+        """
+        n_active = concatenate_pixact.shape[0]
+        if injected is not None:
+            cov = np.asarray(injected, dtype=np.float64)
+            if cov.shape != (n_active, n_active):
+                raise ValueError(
+                    f"injected noise covariance has shape {cov.shape}, expected "
+                    f"({n_active}, {n_active}) for the active-pixel count"
+                )
+        else:
+            cov = np.empty((n_active, n_active), dtype=np.float64)
+            if self.params.load_reduced:
+                cov = read_covmat_reduced(covmatfile, cov)
+            else:
+                cov = read_covmat(
+                    covmatfile, npix, self.params.nfields, concatenate_pixact, cov
+                )
+        return cov * self.params.calibration**2
 
     def setup_cls(self, lmax: int | None = None):
         """

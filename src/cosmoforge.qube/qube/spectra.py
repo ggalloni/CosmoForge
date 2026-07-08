@@ -185,6 +185,8 @@ class Spectra(Core, MPISharedMemoryMixin):
         basis: dict | str | bool | None = Core._UNSET,
         compression: dict | str | bool | None = Core._UNSET,
         mask: np.ndarray | None = None,
+        noise_cov1: np.ndarray | None = None,
+        noise_cov2: np.ndarray | None = None,
         **kwargs,
     ):
         """
@@ -207,6 +209,11 @@ class Spectra(Core, MPISharedMemoryMixin):
         mask : numpy.ndarray, optional
             In-memory mask injected in place of ``params.maskfile``; see
             :meth:`Core.__init__` for the contract (ADR-0017).
+        noise_cov1, noise_cov2 : numpy.ndarray, optional
+            In-memory noise covariances injected in place of
+            ``params.covmatfile1``/``covmatfile2``; see :meth:`Core.__init__`
+            for the contract (ADR-0017). Forwarded into the internally-built
+            ``Fisher``; cannot be combined with ``fisher=``.
         **kwargs : dict
             Additional arguments passed to Core.
 
@@ -215,11 +222,18 @@ class Spectra(Core, MPISharedMemoryMixin):
         TypeError
             If fisher is not a Fisher instance.
         ValueError
-            If fisher doesn't contain a valid Fisher matrix, or if ``mask=`` is
-            supplied together with ``fisher=``.
+            If fisher doesn't contain a valid Fisher matrix, or if ``mask=`` /
+            ``noise_cov1=`` / ``noise_cov2=`` is supplied together with
+            ``fisher=``.
         """
         self.params: InputParams = None
-        super().__init__(params=params_file, mask=mask, **kwargs)
+        super().__init__(
+            params=params_file,
+            mask=mask,
+            noise_cov1=noise_cov1,
+            noise_cov2=noise_cov2,
+            **kwargs,
+        )
 
         # MPI setup
         self.comm = MPI.COMM_WORLD
@@ -241,6 +255,14 @@ class Spectra(Core, MPISharedMemoryMixin):
                 raise ValueError(
                     "mask= cannot be used together with fisher= because Spectra "
                     "reuses the Fisher geometry and mask."
+                )
+            if (
+                self._injected_noise_cov1 is not None
+                or self._injected_noise_cov2 is not None
+            ):
+                raise ValueError(
+                    "noise_cov1=/noise_cov2= cannot be used together with fisher= "
+                    "because Spectra reuses the Fisher covariances."
                 )
             self.fisher_instance = fisher
             # Reuse already computed components from Fisher
@@ -415,6 +437,8 @@ class Spectra(Core, MPISharedMemoryMixin):
             self.params,
             basis=(False if self._basis_config is None else self._basis_config),
             mask=self._injected_mask,
+            noise_cov1=self._injected_noise_cov1,
+            noise_cov2=self._injected_noise_cov2,
         )
         fisher.run()
 

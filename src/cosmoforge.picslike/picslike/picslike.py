@@ -159,6 +159,8 @@ class PICSLike(Core, MPISharedMemoryMixin):
         basis: dict | str | bool | None = Core._UNSET,
         compression: dict | str | bool | None = Core._UNSET,
         mask: np.ndarray | None = None,
+        noise_cov1: np.ndarray | None = None,
+        noise_cov2: np.ndarray | None = None,
         **kwargs: Any,
     ) -> None:
         """
@@ -178,11 +180,21 @@ class PICSLike(Core, MPISharedMemoryMixin):
         mask : numpy.ndarray, optional
             In-memory mask injected in place of ``params.maskfile``; see
             :meth:`Core.__init__` for the contract (ADR-0017).
+        noise_cov1, noise_cov2 : numpy.ndarray, optional
+            In-memory noise covariances injected in place of
+            ``params.covmatfile1``/``covmatfile2``; see :meth:`Core.__init__`
+            for the contract (ADR-0017).
         **kwargs : Any
             Additional arguments passed to Core.
         """
         # Initialize parent Core class
-        super().__init__(params=params_file, mask=mask, **kwargs)
+        super().__init__(
+            params=params_file,
+            mask=mask,
+            noise_cov1=noise_cov1,
+            noise_cov2=noise_cov2,
+            **kwargs,
+        )
 
         self.comm = MPI.COMM_WORLD
         self.rank = self.comm.Get_rank()
