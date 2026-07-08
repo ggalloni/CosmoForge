@@ -162,6 +162,8 @@ class Core(ABC):
     def __init__(
         self,
         params: InputParams | str | dict | None = None,
+        *,
+        mask: np.ndarray | None = None,
     ):
         """
         Initialize the core analysis framework.
@@ -170,8 +172,17 @@ class Core(ABC):
         ----------
         params : InputParams or str or dict or None, optional
             Analysis parameters in various formats.
+        mask : numpy.ndarray, optional
+            In-memory mask injected in place of ``params.maskfile`` (ADR-0017).
+            Exactly what :func:`read_mask` would have returned: shape
+            ``(npix,)`` or ``(npix, nfields)`` (1D promoted to a column), any
+            float64-coercible dtype, pixel-indexed per ``params.ordering``.
+            ``npix`` must equal ``12 * nside**2`` and the column count
+            ``params.nfields``. When given it wins over the params path;
+            otherwise the path is read.
         """
         self.read_params(params)
+        self._injected_mask = mask
 
         # Initialize enhanced logger
         from .logger import get_logger_from_params
@@ -270,10 +281,12 @@ class Core(ABC):
     def _resolve_mask(self) -> np.ndarray:
         """Resolve the analysis mask to an ``(npix, nfields)`` float64 array (ADR-0017).
 
-        Owns dispatch and semantic validation for the mask seam. The file
-        adapter reads ``params.maskfile`` via :func:`read_mask`, honouring
+        Owns dispatch and semantic validation for the mask seam. An injected
+        ``mask=`` array (``Core.__init__``) wins; otherwise the file adapter
+        reads ``params.maskfile`` via :func:`read_mask`, honouring
         ``params.ordering`` so the returned array is pixel-indexed per that
-        ordering. A 1D array is promoted to a single column; any
+        ordering. Both adapters pass through the same validation below. A 1D
+        array is promoted to a single column; any
         float64-coercible dtype is accepted; values are interpreted binarily
         downstream (``active = mask > 0.5``, thresholded not enforced).
 
@@ -285,10 +298,13 @@ class Core(ABC):
         """
         nfields = self.params.nfields
         expected_npix = hp.nside2npix(self.params.nside)
-        nest = self.params.ordering == "NESTED"
 
-        buf = np.empty((nfields, expected_npix), dtype=np.float64)
-        mask = read_mask(self.params.maskfile, buf, nest=nest)
+        if self._injected_mask is not None:
+            mask = self._injected_mask
+        else:
+            nest = self.params.ordering == "NESTED"
+            buf = np.empty((nfields, expected_npix), dtype=np.float64)
+            mask = read_mask(self.params.maskfile, buf, nest=nest)
 
         mask = np.asarray(mask, dtype=np.float64)
         if mask.ndim == 1:
