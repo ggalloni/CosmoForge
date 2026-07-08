@@ -69,7 +69,7 @@ def _get_compressed_spectra(
         config_file = config_resolver(f"tests/data/nside4/{fields}/config.yaml")
         qml = Spectra(
             config_file,
-            compression={"method": method, "epsilon": epsilon},
+            basis={"method": method, "epsilon": epsilon},
         )
         qml.run()
         os.unlink(config_file)
@@ -736,7 +736,7 @@ def test_qml_sparse_coo_matches_dense(fields, config_resolver):
     try:
         qml_sparse = Spectra(
             config_file,
-            compression={"method": "harmonic", "epsilon": 1e-10},
+            basis={"method": "harmonic", "epsilon": 1e-10},
         )
         qml_sparse.run()
         assert qml_sparse._qml_path_used == "sparse", (
@@ -749,7 +749,7 @@ def test_qml_sparse_coo_matches_dense(fields, config_resolver):
         # underlying Fisher instance, then re-run QML using the same setup.
         qml_dense = Spectra(
             config_file,
-            compression={"method": "harmonic", "epsilon": 1e-10},
+            basis={"method": "harmonic", "epsilon": 1e-10},
         )
         qml_dense.run()
         qml_dense.fisher_instance._cached_sparse_coo_data = None
@@ -785,7 +785,7 @@ def test_qml_sparse_coo_matches_dense_cross(config_resolver):
     try:
         qml_sparse = Spectra(
             config_file,
-            compression={"method": "harmonic", "epsilon": 1e-10},
+            basis={"method": "harmonic", "epsilon": 1e-10},
         )
         qml_sparse.run()
         assert qml_sparse._qml_path_used == "sparse", (
@@ -795,7 +795,7 @@ def test_qml_sparse_coo_matches_dense_cross(config_resolver):
 
         qml_dense = Spectra(
             config_file,
-            compression={"method": "harmonic", "epsilon": 1e-10},
+            basis={"method": "harmonic", "epsilon": 1e-10},
         )
         qml_dense.run()
         qml_dense.fisher_instance._cached_sparse_coo_data = None

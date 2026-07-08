@@ -113,8 +113,12 @@ class Fisher(Core, MPISharedMemoryMixin):
     ----------
     params_file : str, optional
         Path to YAML parameter file containing analysis configuration.
-    compression : dict, optional
-        Computation basis configuration (method, epsilon, basis, mode_fraction).
+    basis : None, False, str or dict, optional
+        Computation basis selection (ADR-0018). ``None`` (default) selects
+        ``method="auto"``; ``False`` opts out to the traditional pixel-space
+        path; ``"auto"``/``"harmonic"``/``"pixel"`` are shorthand for
+        ``{"method": …}``; a dict (``method``, ``epsilon``, ``mode_fraction``,
+        …) is the only form that requests compression.
     **kwargs : dict
         Additional keyword arguments passed to the Core parent class.
 
@@ -143,18 +147,19 @@ class Fisher(Core, MPISharedMemoryMixin):
     >>> fisher.run()
     >>> F_matrix = fisher.get_fisher_matrix()
 
-    With harmonic basis:
+    With an explicit harmonic basis:
 
-    >>> fisher = Fisher("config.yaml", compression={"method": "harmonic"})
+    >>> fisher = Fisher("config.yaml", basis="harmonic")
     >>> fisher.run()  # Uses harmonic basis transparently
     """
 
     def __init__(
         self,
         params_file: str | None = None,
-        compression: dict | None = None,
+        basis: dict | str | bool | None = Core._UNSET,
         cache_derivatives: bool = False,
         symmetry_mode: SymmetryMode | str | None = None,
+        compression: dict | str | bool | None = Core._UNSET,
         **kwargs,
     ):
         """
@@ -164,14 +169,21 @@ class Fisher(Core, MPISharedMemoryMixin):
         ----------
         params_file : str, optional
             Path to YAML configuration file.
-        compression : dict, optional
-            Computation basis configuration dictionary. Options:
+        basis : None, False, str or dict, optional
+            Computation basis selection (ADR-0018). ``None`` (default) →
+            ``method="auto"``; ``False`` → traditional pixel-space path;
+            ``"auto"``/``"harmonic"``/``"pixel"`` → ``{"method": …}``
+            (uncompressed). A dict is the only form that requests compression:
 
-            - method : str ("harmonic" or "pixel")
+            - method : str ("auto", "harmonic" or "pixel")
             - epsilon : float (eigenvalue threshold for pixel basis)
-            - basis : str (for pixel: "harmonic", "noise_weighted", etc.)
+            - compression_target : str (for pixel: "noise_weighted", etc.)
             - mode_fraction : float (alternative to epsilon)
 
+        compression : dict, optional
+            Deprecated alias for ``basis`` (ADR-0018): emits a
+            ``DeprecationWarning`` and is forwarded; passing both is a
+            ``TypeError``.
         cache_derivatives : bool, optional
             Whether to cache binned derivative matrices for Spectra to
             reuse. Default is False — Spectra recomputes via the
@@ -191,8 +203,11 @@ class Fisher(Core, MPISharedMemoryMixin):
         self.rank = self.comm.Get_rank()
         self.size = self.comm.Get_size()
 
-        # Computation basis config
-        self._basis_config = compression
+        # Computation basis config (ADR-0018): resolve the public basis= kwarg
+        # (with the deprecated compression= alias) into the internal sentinel.
+        self._basis_config = self._resolve_basis_config(
+            basis, compression, self.params.do_cross
+        )
 
         # Derivative caching
         self._cache_derivatives = cache_derivatives
@@ -1132,7 +1147,7 @@ class Fisher(Core, MPISharedMemoryMixin):
         --------
         Standard inference workflow:
 
-        >>> fisher = Fisher("config.yaml", compression={"method": "harmonic"})
+        >>> fisher = Fisher("config.yaml", basis="harmonic")
         >>> fisher.set_binning(bins)
         >>> fisher.run()
         >>> W = fisher.get_bandpower_window_function()

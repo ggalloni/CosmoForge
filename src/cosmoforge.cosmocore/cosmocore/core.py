@@ -21,6 +21,7 @@ be extended by concrete analysis implementations.
 
 from __future__ import annotations
 
+import warnings
 from abc import ABC, abstractmethod
 
 import healpy as hp
@@ -111,6 +112,52 @@ class Core(ABC):
     concrete subclasses that implement the required abstract methods for
     specific analysis tasks.
     """
+
+    #: Sentinel distinguishing "kwarg omitted" from an explicit ``None``/``False``
+    #: value on the ``basis=`` / deprecated ``compression=`` constructor kwargs.
+    _UNSET = object()
+
+    @staticmethod
+    def _resolve_basis_config(basis, compression, do_cross):
+        """Map the public ``basis=`` kwarg to the internal ``_basis_config`` (ADR-0018).
+
+        Returns ``None`` for the traditional no-basis path or a config dict for
+        a computation basis. ``compression=`` is the deprecated alias.
+
+        - ``None`` / omitted → ``method="auto"`` (unless ``do_cross``: the basis
+          layer has no second noise covariance, so cross stays traditional).
+        - ``False`` → traditional path (explicit opt-out).
+        - ``"auto"`` / ``"harmonic"`` / ``"pixel"`` → ``{"method": …}`` (uncompressed).
+        - ``dict`` → used as-is (the only way to request compression).
+        """
+        unset = Core._UNSET
+        if compression is not unset:
+            if basis is not unset:
+                raise TypeError(
+                    "pass only basis=; compression= is the deprecated alias for it"
+                )
+            warnings.warn(
+                "compression= is deprecated; use basis= (ADR-0018)",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+            basis = compression
+        if basis is unset or basis is None:
+            # Default → auto (ADR-0003 selector), except with do_cross: the basis
+            # layer has no second noise covariance, so cross stays traditional.
+            return None if do_cross else {"method": "auto"}
+        if basis is False:
+            return None
+        if isinstance(basis, str):
+            if basis not in ("auto", "harmonic", "pixel"):
+                raise ValueError(
+                    f"unknown basis {basis!r}; expected 'auto'/'harmonic'/'pixel', "
+                    "a dict, False (traditional path), or None (auto)"
+                )
+            return {"method": basis}
+        if isinstance(basis, dict):
+            return dict(basis)
+        raise TypeError(f"basis must be None/False/str/dict, got {type(basis).__name__}")
 
     def __init__(
         self,
@@ -512,8 +559,9 @@ class Core(ABC):
 
         Parameters
         ----------
-        method : str, default "harmonic"
+        method : str, default "auto"
             Computation basis to use:
+            - "auto": cost-based selection between harmonic and pixel (ADR-0003)
             - "harmonic": Tegmark-style direct harmonic transformation
             - "pixel": Gjerløw-style pixel-space projector with eigenvalue truncation
         epsilon : float or None, optional

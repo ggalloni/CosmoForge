@@ -8,8 +8,10 @@ Two galactic-strip configurations (TT only, nside=32, lmax=2*nside=64):
   - high fsky ~ 0.60  (gal cut 24 deg, delta_ell=1, per-ell)
 
 For each configuration:
-  - PCL via NaMaster (deconvolved/decorrelated bandpowers via M^-1)
-  - QML via CosmoForge (deconvolved, decorrelated, convolved modes)
+  - PCL via NaMaster (deconvolved bandpowers via M^-1) on a 5 deg C2-
+    apodised mask, as in standard NaMaster pipelines.
+  - QML via CosmoForge (deconvolved, decorrelated, convolved modes) on
+    the binary mask — apodisation isn't part of the QML algorithm.
   - Sims = CMB signal + diagonal white noise; sigma_pix rescaled from
     a 2 µK·arcmin polarisation sensitivity to the TT-equivalent S/N at
     ell = 50 (i.e. C_TT/C_BB rescaling) so the TT analysis sits in the
@@ -69,6 +71,10 @@ NOISE_SENS_UKARCMIN_POL = 2.0
 NOISE_REF_ELL = 50
 # SIGMA_NOISE is computed in main() once theory is loaded.
 
+# PCL receives an apodised mask; QML receives the binary one. NaMaster C2
+# (Grain 2010) cosine apodisation. The taper is per-case: at fsky~0.10 a
+# 5 deg taper eats too much of the already-thin strip (15 percent effective-
+# sky loss), so the low-fsky case uses 2 deg.
 CASES = [
     {
         "name": "low_fsky",
@@ -79,6 +85,8 @@ CASES = [
         # NaMaster bin weights matched to QUBE's inverse-variance binning,
         # so PCL and QML produce the same bandpower observable.
         "nmt_use_invvar_weights": True,
+        "apo_deg": 2.0,
+        "apo_type": "C2",
     },
     {
         "name": "high_fsky",
@@ -88,6 +96,8 @@ CASES = [
         # Per-ell (no binning): unambiguous apples-to-apples comparison.
         "delta_ell": 1,
         "nmt_use_invvar_weights": False,
+        "apo_deg": 5.0,
+        "apo_type": "C2",
     },
 ]
 
@@ -378,13 +388,13 @@ def run_qml(
         bins = Bins.fromdeltal(2, lmax_science, delta_ell)
 
         t0 = time.perf_counter()
-        fisher = Fisher(config_file, compression=basis_kwargs)
+        fisher = Fisher(config_file, basis=basis_kwargs)
         fisher.set_binning(bins)
         fisher.run()
         t_fisher = time.perf_counter() - t0
 
         t0 = time.perf_counter()
-        spectra = Spectra(config_file, fisher=fisher, compression=basis_kwargs)
+        spectra = Spectra(config_file, fisher=fisher, basis=basis_kwargs)
         spectra.set_binning(bins)
         spectra.run()
         t_spec = time.perf_counter() - t0
@@ -426,7 +436,9 @@ def run_qml(
 
 
 # ---------------------------------------------------------------------------
-# Knox bounds
+# Per-ell variance (Knox formula) — used as inverse-variance weights for
+# NaMaster's bandpower binning, so PCL and QML produce bandpowers that
+# combine per-ell C_ell with matched shape.
 # ---------------------------------------------------------------------------
 def knox_per_ell(cl_tt_full, beam, sigma_noise, npix, lmax_sim, fsky):
     omega_pix = 4.0 * np.pi / npix
@@ -443,36 +455,6 @@ def knox_per_ell(cl_tt_full, beam, sigma_noise, npix, lmax_sim, fsky):
         np.inf,
     )
     return var
-
-
-def knox_per_bin_invvar(var_per_ell, bins, ells_eff):
-    """Inverse-variance combine — the optimal binned Knox, matches QML's
-    binned Fisher at full sky (QUBE uses a flat-Cell P_b = sum_ell, giving
-    inverse-variance-weighted bandpowers).
-    """
-    out = np.zeros(len(ells_eff))
-    for bi, ell_eff in enumerate(ells_eff):
-        bin_idx = int(np.argmin(np.abs(bins.lbin - ell_eff)))
-        lo, hi = int(bins.lmins[bin_idx]), int(bins.lmaxs[bin_idx])
-        inv = np.sum(1.0 / var_per_ell[lo : hi + 1])
-        out[bi] = np.sqrt(1.0 / inv) if inv > 0 else np.inf
-    return out
-
-
-def knox_per_bin_uniform(var_per_ell, bins, ells_eff):
-    """Uniform-weight binning — matches NaMaster's default `from_edges`
-    bandpower convention, which gives Var(C_b) = (1/Delta_ell^2) sum
-    Var(C_ell). Used as the PCL reference; deviates from invvar at low
-    ell where Var(ell) varies fast within a bin.
-    """
-    out = np.zeros(len(ells_eff))
-    for bi, ell_eff in enumerate(ells_eff):
-        bin_idx = int(np.argmin(np.abs(bins.lbin - ell_eff)))
-        lo, hi = int(bins.lmins[bin_idx]), int(bins.lmaxs[bin_idx])
-        delta = hi - lo + 1
-        var_bin = float(np.sum(var_per_ell[lo : hi + 1])) / (delta * delta)
-        out[bi] = np.sqrt(var_bin)
-    return out
 
 
 # ---------------------------------------------------------------------------
@@ -535,15 +517,28 @@ def analyze_case(
         f"\n{'=' * 70}\n  Case: {name} (gal cut {case['gal_cut_deg']} deg, "
         f"delta_ell={delta_ell})\n{'=' * 70}"
     )
-    mask, fsky = make_galactic_strip(nside, case["gal_cut_deg"])
-    print(f"  fsky = {fsky:.3f}")
+    mask_binary, fsky_qml = make_galactic_strip(nside, case["gal_cut_deg"])
+    # PCL receives the apodised mask; QML keeps the binary mask. The
+    # apodisation suppresses mode-coupling ringing that otherwise inflates
+    # PCL bandpower variance — standard NaMaster practice. C2 (Grain 2010)
+    # is the smoother of NaMaster's two cosine apodisations.
+    apo_deg = float(case["apo_deg"])
+    apo_type = case["apo_type"]
+    mask_apo = nmt.mask_apodization(mask_binary, apo_deg, apotype=apo_type)
+    # Hivon f_sky_2: effective sky fraction for the variance of a quadratic
+    # estimator on an apodised mask.
+    fsky_pcl = float(np.mean(mask_apo**2))
+    print(
+        f"  fsky_QML (binary) = {fsky_qml:.3f}  |  "
+        f"fsky_PCL (apo {apo_type} {apo_deg:g} deg, <w^2>) = {fsky_pcl:.3f}"
+    )
 
     use_invvar_bin = case.get("nmt_use_invvar_weights", False)
     var_per_ell_full = knox_per_ell(cl_full["TT"], beam, sigma_noise, npix, lmax_sim, 1.0)
     print("\n--- PCL ---")
     pcl = run_pcl(
         sim_maps,
-        mask,
+        mask_apo,
         beam,
         nside,
         delta_ell,
@@ -564,7 +559,7 @@ def analyze_case(
     print(f"\n--- QML (3 modes, basis={case['basis']}) ---")
     qml = run_qml(
         sim_maps,
-        mask,
+        mask_binary,
         sigma_noise,
         raw_cls,
         nside,
@@ -637,21 +632,8 @@ def analyze_case(
             )
         qml_diag[mode] = d
 
-    # Both methods now produce inverse-variance bandpowers (QML natively;
-    # PCL via custom NaMaster weights when use_invvar_bin=True; or per-ell
-    # when delta_ell=1). Use a single invvar Knox reference, with the
-    # same science-range binning as QML's Fisher.
-    knox_var_part = knox_per_ell(cl_full["TT"], beam, sigma_noise, npix, lmax_sim, fsky)
-    bins = Bins.fromdeltal(2, lmax_science, delta_ell)
-    knox_std_part = knox_per_bin_invvar(knox_var_part, bins, qml_ells)
-    knox_std_full = knox_per_bin_invvar(var_per_ell_full, bins, qml_ells)
-
     n_match = min(nbins_qml, nbins_pcl)
     deconv_std = qml_diag["deconvolved"]["std"]
-    qml_over_knox_part = deconv_std / knox_std_part
-    qml_over_knox_full = deconv_std / knox_std_full
-    pcl_over_knox_part = pcl_std[:n_match] / knox_std_part[:n_match]
-    pcl_over_knox_full = pcl_std[:n_match] / knox_std_full[:n_match]
     pcl_over_qml = pcl_std[:n_match] / deconv_std[:n_match]
 
     print("\n  Recovery (chi^2/dof of the sample mean):")
@@ -670,15 +652,14 @@ def analyze_case(
         f"    offdiag RMS  = {dec['offdiag_rms']:.3f}  "
         f"max|offdiag| = {dec['offdiag_max_abs']:.3f}"
     )
-    print("\n  Variance vs Knox (median over bins):")
-    print(f"    sigma_QML / sigma_Knox(fsky)    = {np.median(qml_over_knox_part):.2f}")
-    print(f"    sigma_QML / sigma_Knox(fullsky) = {np.median(qml_over_knox_full):.2f}")
-    print(f"    sigma_PCL / sigma_Knox(fsky)    = {np.median(pcl_over_knox_part):.2f}")
-    print(f"    sigma_PCL / sigma_Knox(fullsky) = {np.median(pcl_over_knox_full):.2f}")
-    print(f"    sigma_PCL / sigma_QML           = {np.median(pcl_over_qml):.2f}")
+    print(f"\n  sigma_PCL / sigma_QML (median over bins) = {np.median(pcl_over_qml):.2f}")
 
     return {
-        "fsky": fsky,
+        "fsky": fsky_qml,
+        "fsky_qml": fsky_qml,
+        "fsky_pcl": fsky_pcl,
+        "apo_deg": apo_deg,
+        "apo_type": apo_type,
         "gal_cut_deg": case["gal_cut_deg"],
         "label": case["label"],
         "basis": case["basis"],
@@ -696,14 +677,7 @@ def analyze_case(
             "dof": pcl_dof,
             "chi2red_mean": pcl_chi2red,
         },
-        "knox": {"partial_sky": knox_std_part, "full_sky": knox_std_full},
-        "ratios": {
-            "qml_over_knox_partial": qml_over_knox_part,
-            "qml_over_knox_full": qml_over_knox_full,
-            "pcl_over_knox_partial": pcl_over_knox_part,
-            "pcl_over_knox_full": pcl_over_knox_full,
-            "pcl_over_qml": pcl_over_qml,
-        },
+        "ratios": {"pcl_over_qml": pcl_over_qml},
         "timings_s": {
             "pcl": pcl["time_s"],
             "qml_fisher": qml["time_fisher_s"],

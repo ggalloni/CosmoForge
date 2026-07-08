@@ -430,7 +430,7 @@ class TestCompressedLikelihood:
         # Run with compression (spin-2 aware SMW path)
         picslike_compressed = PICSLike(
             params_file=fast_config_path,
-            compression={"method": "harmonic"},
+            basis={"method": "harmonic"},
         )
         picslike_compressed.setup_parameter_grid()
         picslike_compressed.setup_fields()
@@ -500,21 +500,23 @@ class TestCompressedLikelihood:
         """
         rng = np.random.default_rng(20260514)
 
-        def _make_picslike(compression=None):
-            pls = PICSLike(params_file=fast_config_path, compression=compression)
+        def _make_picslike(basis=None):
+            # Basis setup is driven manually below; the constructor kwarg would
+            # be unused here, so the standard case stays on the traditional path.
+            pls = PICSLike(params_file=fast_config_path)
             pls.setup_parameter_grid()
             pls.setup_fields()
             pls.setup_geometry()
             pls.setup_covariance_matrices()
             pls.setup_cls(lmax=pls.lmax_signal)
             pls.setup_beams(lmax=pls.lmax_signal)
-            if compression is not None:
-                pls.setup_computation_basis(method=compression["method"])
+            if basis is not None:
+                pls.setup_computation_basis(method=basis["method"])
             pls.setup_maps()
             return pls
 
-        picslike_standard = _make_picslike(compression=None)
-        picslike_compressed = _make_picslike(compression={"method": "harmonic"})
+        picslike_standard = _make_picslike()
+        picslike_compressed = _make_picslike(basis={"method": "harmonic"})
 
         # Build maps2 = maps1 + small perturbation, identical across the
         # two PICSLike instances so the cross-quadratic has the same
@@ -572,7 +574,7 @@ class TestCompressedLikelihood:
 
         picslike_pixel = PICSLike(
             params_file=fast_config_path,
-            compression={"method": "pixel", "epsilon": 1e-12},
+            basis={"method": "pixel", "epsilon": 1e-12},
         )
         picslike_pixel.setup_parameter_grid()
         picslike_pixel.setup_fields()
@@ -645,7 +647,7 @@ class TestCompressedLikelihood:
         # Run with compression
         picslike_compressed = PICSLike(
             params_file=b_config,
-            compression={"method": "harmonic"},
+            basis={"method": "harmonic"},
         )
         picslike_compressed.setup_parameter_grid()
         picslike_compressed.setup_fields()

@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted — implemented and merged to master 2026-04-19.
+Accepted — implemented and merged to master 2026-04-19. The constructor kwarg
+rename this ADR left undone (`compression=` → `basis=`) landed in ADR-0018
+(2026-07-07); its no-shim precedent (Consequences below) is retired there for
+post-1.0 public changes.
 
 ## Context
 

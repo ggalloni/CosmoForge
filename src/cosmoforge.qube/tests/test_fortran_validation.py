@@ -50,7 +50,10 @@ def config_path(local_path, config_resolver):
 @pytest.fixture
 def python_spectra(config_path):
     """Run Python Spectra computation and return instance."""
-    spectra = Spectra(config_path)
+    # The Fortran validation reads pixel-space attributes (noise_cov1, inv_cov1,
+    # signal_matrix) that only the traditional path exposes; the default now
+    # selects auto, so opt out explicitly (ADR-0018).
+    spectra = Spectra(config_path, basis=False)
     spectra.run()
     return spectra
 

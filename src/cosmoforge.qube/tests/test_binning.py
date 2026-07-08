@@ -46,14 +46,18 @@ def _run_fisher_with_bins(
     fields: str,
     config_resolver,
     bins: Bins | None = None,
-    compression: dict | None = None,
+    basis=False,
     config_overrides: dict | None = None,
 ) -> Fisher:
-    """Run Fisher pipeline with optional binning and compression."""
+    """Run Fisher pipeline with optional binning and computation basis.
+
+    ``basis`` defaults to ``False`` (the traditional path) so these binning
+    linearity checks keep their pre-auto-default behaviour.
+    """
     config_file = _resolve_config_with_overrides(
         fields, config_resolver, config_overrides
     )
-    fisher = Fisher(config_file, compression=compression)
+    fisher = Fisher(config_file, basis=basis)
     if bins is not None:
         fisher.set_binning(bins)
     fisher.run()
@@ -65,12 +69,12 @@ def _run_spectra_with_bins(
     fields: str,
     config_resolver,
     bins: Bins | None = None,
-    compression: dict | None = None,
+    basis=False,
     fisher: Fisher | None = None,
 ) -> Spectra:
-    """Run Spectra pipeline with optional binning and compression."""
+    """Run Spectra pipeline with optional binning and computation basis."""
     config_file = config_resolver(f"tests/data/nside4/{fields}/config.yaml")
-    qml = Spectra(config_file, fisher=fisher, compression=compression)
+    qml = Spectra(config_file, fisher=fisher, basis=basis)
     if bins is not None:
         qml.set_binning(bins)
     qml.run()
@@ -229,12 +233,10 @@ class TestLinearityCompressed:
 
     def test_fisher_linearity_compressed(self, config_resolver, bins, compression):
         """Compressed: F_binned == Q @ F_unbinned @ Q^T."""
-        f_unb = _run_fisher_with_bins("T", config_resolver, compression=compression)
+        f_unb = _run_fisher_with_bins("T", config_resolver, basis=compression)
         F_unbinned = f_unb.get_fisher_matrix()
 
-        f_bin = _run_fisher_with_bins(
-            "T", config_resolver, bins=bins, compression=compression
-        )
+        f_bin = _run_fisher_with_bins("T", config_resolver, bins=bins, basis=compression)
         F_binned = f_bin.get_fisher_matrix()
 
         n_ell = F_unbinned.shape[0]
@@ -250,17 +252,15 @@ class TestLinearityCompressed:
 
     def test_qml_linearity_compressed(self, config_resolver, bins, compression):
         """Compressed: q_binned == Q @ q_unbinned."""
-        f_unb = _run_fisher_with_bins("T", config_resolver, compression=compression)
+        f_unb = _run_fisher_with_bins("T", config_resolver, basis=compression)
         s_unb = _run_spectra_with_bins(
-            "T", config_resolver, compression=compression, fisher=f_unb
+            "T", config_resolver, basis=compression, fisher=f_unb
         )
         q_unbinned = s_unb.qml_results
 
-        f_bin = _run_fisher_with_bins(
-            "T", config_resolver, bins=bins, compression=compression
-        )
+        f_bin = _run_fisher_with_bins("T", config_resolver, bins=bins, basis=compression)
         s_bin = _run_spectra_with_bins(
-            "T", config_resolver, bins=bins, compression=compression, fisher=f_bin
+            "T", config_resolver, bins=bins, basis=compression, fisher=f_bin
         )
         q_binned = s_bin.qml_results
 

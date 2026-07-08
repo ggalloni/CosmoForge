@@ -156,7 +156,8 @@ class PICSLike(Core, MPISharedMemoryMixin):
     def __init__(
         self,
         params_file: str | None = None,
-        compression: dict | None = None,
+        basis: dict | str | bool | None = Core._UNSET,
+        compression: dict | str | bool | None = Core._UNSET,
         **kwargs: Any,
     ) -> None:
         """
@@ -166,8 +167,13 @@ class PICSLike(Core, MPISharedMemoryMixin):
         ----------
         params_file : str, optional
             Path to YAML configuration file.
+        basis : None, False, str or dict, optional
+            Computation basis selection (ADR-0018). ``None`` (default) →
+            ``method="auto"``; ``False`` → traditional pixel-space path;
+            ``"auto"``/``"harmonic"``/``"pixel"`` → ``{"method": …}``; a dict is
+            the only form that requests compression.
         compression : dict, optional
-            Computation basis configuration (method, epsilon, basis, mode_fraction).
+            Deprecated alias for ``basis`` (ADR-0018): warns and is forwarded.
         **kwargs : Any
             Additional arguments passed to Core.
         """
@@ -178,7 +184,9 @@ class PICSLike(Core, MPISharedMemoryMixin):
         self.rank = self.comm.Get_rank()
         self.size = self.comm.Get_size()
 
-        self._basis_config = compression
+        self._basis_config = self._resolve_basis_config(
+            basis, compression, self.params.do_cross
+        )
 
         # Initialize attributes
         self.maps1 = None
@@ -406,7 +414,16 @@ class PICSLike(Core, MPISharedMemoryMixin):
             )
             for i in range(n_point_vectors)
         )
-        self.noise_cov1 = self._shared_array(getattr(self, "noise_cov1", None))
+        # Computation-basis path broadcasts the basis manager; the traditional
+        # path broadcasts the pixel-space noise covariance (mirrors Fisher's
+        # MPI branch — the basis owns/nulls noise_cov1 on rank 0, so workers
+        # must receive the basis manager instead).
+        if self._basis_config is not None:
+            self.basis_manager = self.comm.bcast(
+                self.basis_manager if self.rank == 0 else None, root=0
+            )
+        else:
+            self.noise_cov1 = self._shared_array(getattr(self, "noise_cov1", None))
         self.maps1 = self._shared_array(getattr(self, "maps1", None))
         if self.params.do_cross:
             self.maps2 = self._shared_array(getattr(self, "maps2", None))

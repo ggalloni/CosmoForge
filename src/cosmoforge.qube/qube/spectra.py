@@ -182,7 +182,8 @@ class Spectra(Core, MPISharedMemoryMixin):
         self,
         params_file: str | None = None,
         fisher: Fisher | None = None,
-        compression: dict | None = None,
+        basis: dict | str | bool | None = Core._UNSET,
+        compression: dict | str | bool | None = Core._UNSET,
         **kwargs,
     ):
         """
@@ -195,8 +196,13 @@ class Spectra(Core, MPISharedMemoryMixin):
         fisher : Fisher, optional
             Pre-computed Fisher instance. If provided, reuses computed components
             (covariance matrices, geometry, field collections) for efficiency.
+        basis : None, False, str or dict, optional
+            Computation basis selection (ADR-0018). ``None`` (default) →
+            ``method="auto"``; ``False`` → traditional pixel-space path;
+            ``"auto"``/``"harmonic"``/``"pixel"`` → ``{"method": …}``; a dict is
+            the only form that requests compression.
         compression : dict, optional
-            Computation basis configuration (method, epsilon, basis, mode_fraction).
+            Deprecated alias for ``basis`` (ADR-0018): warns and is forwarded.
         **kwargs : dict
             Additional arguments passed to Core.
 
@@ -215,8 +221,10 @@ class Spectra(Core, MPISharedMemoryMixin):
         self.rank = self.comm.Get_rank()
         self.size = self.comm.Get_size()
 
-        # Store computation basis config for Fisher creation
-        self._basis_config = compression
+        # Store computation basis config for Fisher creation (ADR-0018).
+        self._basis_config = self._resolve_basis_config(
+            basis, compression, self.params.do_cross
+        )
 
         # Initialize Fisher matrix or compute it
         if fisher is not None:
@@ -390,7 +398,13 @@ class Spectra(Core, MPISharedMemoryMixin):
 
         start_time = time.time()
 
-        fisher = Fisher(self.params, compression=self._basis_config)
+        # Forward the already-resolved config losslessly: None (traditional) →
+        # basis=False, dict → the dict. Avoids a second resolution flipping the
+        # traditional sentinel back to auto.
+        fisher = Fisher(
+            self.params,
+            basis=(False if self._basis_config is None else self._basis_config),
+        )
         fisher.run()
 
         if self.rank == 0:
@@ -1631,8 +1645,7 @@ class Spectra(Core, MPISharedMemoryMixin):
 
         Examples
         --------
-        >>> spectra = Spectra("config.yaml", fisher=fisher,
-        ...                   compression={"method": "harmonic"})
+        >>> spectra = Spectra("config.yaml", fisher=fisher, basis="harmonic")
         >>> spectra.set_binning(bins)
         >>> spectra.run()
         >>> cl_th = compute_camb_cl(theta)        # ell=0..lmax
