@@ -16,6 +16,8 @@ in issue titles, plans, hypotheses, and test names. Do not paraphrase.
 - **Spectra** — Evaluates `q_b` per simulation, applies the chosen normalisation (`mode=…`), subtracts noise bias for auto-spectra, supports cross-correlation via independent C₁, C₂ filtering.
 - **PICSLike** — Evaluates the pixel-space Gaussian log-likelihood `−½(dᵀ C⁻¹ d + ln|C|)` over a parameter grid; uses the SMW fast path on harmonic basis and the direct path on pixel basis.
 - **FieldCollection** — Groups one or more `BaseField` instances (`ScalarField`, `PolarizationField`), auto-derives the relevant auto/cross spectra, and carries per-component multipole floors `lmin_signal`.
+- **High-level interface** — The orchestration classes above: config-driven (`InputParams`), own MPI, caching, and the resolution of every pipeline input (from a file path in the config or an injected in-memory object; ADR-0017).
+- **Low-level interface** — The library modules (`in_out`, `beam`, `fields`, `basis`, `basics`): importable functions taking explicit values, independently runnable without the framework. File readers are parsers (path → array), not validators. The `InputParams`-free boundary is being realised incrementally (ADR-0017).
 
 ## QML estimator
 
@@ -95,3 +97,4 @@ Other renamed vocabulary (use these, not the legacy names):
 - **Pixel window (pixwin)** — HEALPix pixel window function; must be applied consistently between sims and theory in MC tests.
 - **Buffer** — High-ℓ buffer beyond the inference window, included so edge bins are unbiased.
 - **Opt-in persistence** (ADR-0015) — No computed quantity (covariances, geometry, Fisher matrix, estimator covariance, error bars) is written to disk unless the caller sets the corresponding `out*` path; an unset path means "do not persist". C_ℓ estimates are additionally writable via the explicit `Spectra.write_power_spectra`.
+- **Input injection** (ADR-0017) — Every pipeline input is loadable through two adapters: a file path in `InputParams` or an in-memory object passed as a constructor kwarg (the injected object wins). Fixed kwarg vocabulary: `mask`, `noise_cov1`/`noise_cov2`, `maps1`/`maps2` (Spectra), `cls_data`, `fiducial_cls`, `beam` — each named after the in-memory object it becomes, not the path it shadows.
