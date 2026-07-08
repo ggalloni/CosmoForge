@@ -67,7 +67,6 @@ from cosmocore import (
     matrix_inverse_symm,
     matrix_mult,
     matrix_trace,
-    read_maps,
     vec_to_cl,
     write_out_matrix,
     writecl,
@@ -189,6 +188,7 @@ class Spectra(Core, MPISharedMemoryMixin):
         noise_cov2: np.ndarray | None = None,
         cls_data: dict | np.ndarray | None = None,
         fiducial_cls: dict | np.ndarray | None = None,
+        beam: np.ndarray | None = None,
         maps1: np.ndarray | None = None,
         maps2: np.ndarray | None = None,
         **kwargs,
@@ -223,6 +223,10 @@ class Spectra(Core, MPISharedMemoryMixin):
             ``params.inputclfile``/``params.fiducialfile``; see
             :meth:`Core.__init__` for the contract (ADR-0017). Forwarded into
             the internally-built ``Fisher``; cannot be combined with ``fisher=``.
+        beam : numpy.ndarray, optional
+            In-memory beam injected in place of ``params.beam_file``; see
+            :meth:`Core.__init__` for the contract (ADR-0017). Forwarded into
+            the internally-built ``Fisher``; cannot be combined with ``fisher=``.
         maps1, maps2 : numpy.ndarray, optional
             In-memory map data injected in place of
             ``params.inputmapfile1``/``inputmapfile2`` (ADR-0017). Exactly what
@@ -253,6 +257,7 @@ class Spectra(Core, MPISharedMemoryMixin):
             noise_cov2=noise_cov2,
             cls_data=cls_data,
             fiducial_cls=fiducial_cls,
+            beam=beam,
             **kwargs,
         )
 
@@ -292,6 +297,11 @@ class Spectra(Core, MPISharedMemoryMixin):
                 raise ValueError(
                     "cls_data=/fiducial_cls= cannot be used together with fisher= "
                     "because Spectra reuses the Fisher spectra setup."
+                )
+            if self._injected_beam is not None:
+                raise ValueError(
+                    "beam= cannot be used together with fisher= because Spectra "
+                    "reuses the Fisher beam setup."
                 )
             self.fisher_instance = fisher
             # Reuse already computed components from Fisher
@@ -474,6 +484,7 @@ class Spectra(Core, MPISharedMemoryMixin):
             noise_cov2=self._injected_noise_cov2,
             cls_data=self._injected_cls_data,
             fiducial_cls=self._injected_fiducial_cls,
+            beam=self._injected_beam,
         )
         fisher.run()
 
@@ -518,42 +529,6 @@ class Spectra(Core, MPISharedMemoryMixin):
                 self.maps2 = self._resolve_maps(
                     self._injected_maps2, self.params.inputmapfile2, ntot
                 )
-
-    def _resolve_maps(
-        self, injected: np.ndarray | None, filename: str, ntot: int
-    ) -> np.ndarray:
-        """Resolve one map stack to a reduced ``(ntot, n_sims)`` float64 array.
-
-        Applies the file-or-array seam convention (ADR-0017). An injected array
-        wins and is used as-is (already calibrated); otherwise the file adapter
-        reads ``filename`` via :func:`read_maps`, which applies
-        ``params.calibration`` on read. Both adapters pass through the same
-        shape/dtype validation.
-
-        Raises
-        ------
-        ValueError
-            If the resolved array is not ``(ntot, params.nsims)``.
-        """
-        nsims = self.params.nsims
-        if injected is not None:
-            maps = np.asarray(injected, dtype=np.float64)
-            if maps.shape != (ntot, nsims):
-                raise ValueError(
-                    f"injected maps have shape {maps.shape}, expected "
-                    f"({ntot}, {nsims}) for the active-pixel count and nsims"
-                )
-            return maps
-
-        maps = np.empty((ntot, nsims), dtype=np.float64)
-        read_maps(
-            maps=maps,
-            filename=filename,
-            pixact=self.pixact,
-            field_labels=self.params.physical_labels,
-            calibration=self.params.calibration,
-        )
-        return maps
 
     def setup_fisher_inversion(self):
         """

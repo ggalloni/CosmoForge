@@ -165,6 +165,7 @@ class Fisher(Core, MPISharedMemoryMixin):
         noise_cov2: np.ndarray | None = None,
         cls_data: dict | np.ndarray | None = None,
         fiducial_cls: dict | np.ndarray | None = None,
+        beam: np.ndarray | None = None,
         **kwargs,
     ):
         """
@@ -209,6 +210,9 @@ class Fisher(Core, MPISharedMemoryMixin):
             In-memory power spectra injected in place of
             ``params.inputclfile``/``params.fiducialfile``; see
             :meth:`Core.__init__` for the contract (ADR-0017).
+        beam : numpy.ndarray, optional
+            In-memory beam injected in place of ``params.beam_file``; see
+            :meth:`Core.__init__` for the contract (ADR-0017).
         **kwargs : dict
             Additional keyword arguments passed to Core.
         """
@@ -219,6 +223,7 @@ class Fisher(Core, MPISharedMemoryMixin):
             noise_cov2=noise_cov2,
             cls_data=cls_data,
             fiducial_cls=fiducial_cls,
+            beam=beam,
             **kwargs,
         )
 

@@ -68,7 +68,6 @@ from cosmocore import (
     compute_signal_matrix,
     matrix_inverse_symm,
     matrix_slogdet_symm,
-    read_maps,
 )
 from cosmocore._mpi import MPI
 
@@ -163,6 +162,9 @@ class PICSLike(Core, MPISharedMemoryMixin):
         noise_cov2: np.ndarray | None = None,
         cls_data: dict | np.ndarray | None = None,
         fiducial_cls: dict | np.ndarray | None = None,
+        beam: np.ndarray | None = None,
+        maps1: np.ndarray | None = None,
+        maps2: np.ndarray | None = None,
         **kwargs: Any,
     ) -> None:
         """
@@ -190,6 +192,15 @@ class PICSLike(Core, MPISharedMemoryMixin):
             In-memory power spectra injected in place of
             ``params.inputclfile``/``params.fiducialfile``; see
             :meth:`Core.__init__` for the contract (ADR-0017).
+        beam : numpy.ndarray, optional
+            In-memory beam injected in place of ``params.beam_file``; see
+            :meth:`Core.__init__` for the contract (ADR-0017).
+        maps1, maps2 : numpy.ndarray, optional
+            In-memory map data injected in place of
+            ``params.inputmapfile1``/``inputmapfile2`` (ADR-0017). Exactly what
+            :func:`read_maps` would have returned: the reduced
+            ``(n_active, n_sims)`` float64 array, already calibrated. ``maps2``
+            is consumed only when ``params.do_cross``.
         **kwargs : Any
             Additional arguments passed to Core.
         """
@@ -201,8 +212,13 @@ class PICSLike(Core, MPISharedMemoryMixin):
             noise_cov2=noise_cov2,
             cls_data=cls_data,
             fiducial_cls=fiducial_cls,
+            beam=beam,
             **kwargs,
         )
+        # Injected map arrays (ADR-0017); consumed by setup_maps. Maps are a
+        # subclass-level seam (Spectra + PICSLike), not on Core/Fisher.
+        self._injected_maps1 = maps1
+        self._injected_maps2 = maps2
 
         self.comm = MPI.COMM_WORLD
         self.rank = self.comm.Get_rank()
@@ -335,28 +351,14 @@ class PICSLike(Core, MPISharedMemoryMixin):
             # are about to be (re)loaded.
             self._smw_data_cache = None
 
-            # Read maps using the core functionality
+            # Injected maps win (ADR-0017); else read from inputmapfile*.
             ntot = sum(self.collection.n_active)
-            self.maps1 = np.empty((ntot, self.params.nsims), dtype=np.float64)
-
-            # Read maps1
-            read_maps(
-                maps=self.maps1,
-                filename=self.params.inputmapfile1,
-                pixact=self.pixact,
-                field_labels=self.params.physical_labels,
-                calibration=self.params.calibration,
+            self.maps1 = self._resolve_maps(
+                self._injected_maps1, self.params.inputmapfile1, ntot
             )
-
-            # Read maps2 if doing cross-correlation
             if self.params.do_cross:
-                self.maps2 = np.empty((ntot, self.params.nsims), dtype=np.float64)
-                read_maps(
-                    maps=self.maps2,
-                    filename=self.params.inputmapfile2,
-                    pixact=self.pixact,
-                    field_labels=self.params.physical_labels,
-                    calibration=self.params.calibration,
+                self.maps2 = self._resolve_maps(
+                    self._injected_maps2, self.params.inputmapfile2, ntot
                 )
 
     def set_simulation_index(self, sim_idx: int) -> None:

@@ -116,7 +116,7 @@ arrays are never smuggled into the config (option "params fields accept
    |---|---|---|---|
    | `mask` | `maskfile` | `mask` in `setup_fields`/`create_field` | A1 |
    | `noise_cov1`, `noise_cov2` | `covmatfile1/2` | `Core.noise_cov1/2` (pre-inversion) | A2 |
-   | `maps1`, `maps2` | `inputmapfile1/2` | `Spectra.maps1/2` (Spectra-only kwargs) | A3 |
+   | `maps1`, `maps2` | `inputmapfile1/2` | `maps1/2` on the maps-reading classes (`Spectra`, `PICSLike`) | A3, A5 |
    | `cls_data` | `inputclfile` | `FieldCollection.set_cls(cls_data=...)` | A4 |
    | `fiducial_cls` | `fiducialfile` | (symmetric with `cls_data`) | A4 |
    | `beam` | `beam_file` (`smoothing_type="file"`) | the b_ℓ window array `hp.read_cl` returns | A5 |
@@ -161,10 +161,15 @@ shapes. All four shipped seams are instances of the same rule:
 |---|---|---|---|
 | `mask` (A1) | dedicated resolver | `Core._resolve_mask` | shape vs nside/nfields, at resolver |
 | `noise_cov1/2` (A2) | dedicated resolver | `Core._resolve_noise_cov` | shape vs n_active, at resolver |
-| `maps1/2` (A3) | dedicated resolver | `Spectra._resolve_maps` (seam is Spectra-only) | shape vs ntot/nsims, at resolver |
+| `maps1/2` (A3, A5) | dedicated resolver | `Core._resolve_maps`, called by `Spectra`/`PICSLike` (both read observed maps) | shape vs ntot/nsims, at resolver |
 | `cls_data` (A4) | reuse existing | `FieldCollection.set_cls` → `SpectraManager.set_cls` | labels/column-count, at collaborator |
 | `fiducial_cls` (A4) | reuse existing (inlined dispatch) | `set_cls` after `_build_fixed_spectra` | labels/length, transitive via `set_cls` |
+| `beam` (A5) | reuse existing (dispatch added) | `BeamManager.compute_beams` (injected wins over `smoothtype`) | ≥3 rows, at `compute_beams` |
 
-Consequence for A5 (`beam`): either shape is acceptable — pick a
-dedicated resolver if the beam seam has no pre-existing convergence
-point, or reuse one if it does; the invariant is what must hold.
+Owner is "the class(es) that read the input," not always `Core`: `maps`
+is read by both `Spectra` and `PICSLike`, so A5 hoisted `_resolve_maps`
+onto `Core` as a shared helper (the `maps1/2` kwargs stay on those two
+subclasses, off `Core`/`Fisher`). The `beam` seam already had a
+convergence point — `compute_beams`, where every `smoothtype` lands as a
+`(3, lmax+1)` beam dict — so A5 added an injected-wins branch there rather
+than a parallel resolver, with `hp.read_cl` staying a pure parser.

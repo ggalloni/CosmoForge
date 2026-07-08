@@ -38,6 +38,7 @@ from .in_out import (
     output_geometry,
     read_covmat,
     read_covmat_reduced,
+    read_maps,
     read_mask,
     readcl,
     write_covmat_reduced,
@@ -168,6 +169,7 @@ class Core(ABC):
         noise_cov2: np.ndarray | None = None,
         cls_data: dict | np.ndarray | None = None,
         fiducial_cls: dict | np.ndarray | None = None,
+        beam: np.ndarray | None = None,
     ):
         """
         Initialize the core analysis framework.
@@ -203,6 +205,12 @@ class Core(ABC):
             injected arrays. ``cls_data`` feeds ``setup_cls``; ``fiducial_cls``
             feeds the S_fixed fiducial re-read in ``setup_computation_basis``.
             When given, each wins over its params path.
+        beam : numpy.ndarray, optional
+            In-memory beam injected in place of ``params.beam_file`` (the
+            ``smoothing_type="file"`` adapter; ADR-0017). Exactly what
+            ``hp.read_cl(beam_file)`` would have returned: a 2D float array with
+            at least 3 rows (T, E, B window functions), pixwin already folded
+            in. When given it wins over ``params.smoothing_type``.
         """
         self.read_params(params)
         self._injected_mask = mask
@@ -210,6 +218,7 @@ class Core(ABC):
         self._injected_noise_cov2 = noise_cov2
         self._injected_cls_data = cls_data
         self._injected_fiducial_cls = fiducial_cls
+        self._injected_beam = beam
 
         # Initialize enhanced logger
         from .logger import get_logger_from_params
@@ -563,6 +572,43 @@ class Core(ABC):
                 )
         return cov * self.params.calibration**2
 
+    def _resolve_maps(
+        self, injected: np.ndarray | None, filename: str, ntot: int
+    ) -> np.ndarray:
+        """Resolve one map stack to a reduced ``(ntot, n_sims)`` float64 array.
+
+        Applies the file-or-array seam convention (ADR-0017). An injected array
+        wins and is used as-is (already calibrated); otherwise the file adapter
+        reads ``filename`` via :func:`read_maps`, which applies
+        ``params.calibration`` on read. Both adapters pass through the same
+        shape/dtype validation. Shared by the maps-reading subclasses
+        (``Spectra`` and ``PICSLike``); not consumed by ``Fisher``.
+
+        Raises
+        ------
+        ValueError
+            If the resolved array is not ``(ntot, params.nsims)``.
+        """
+        nsims = self.params.nsims
+        if injected is not None:
+            maps = np.asarray(injected, dtype=np.float64)
+            if maps.shape != (ntot, nsims):
+                raise ValueError(
+                    f"injected maps have shape {maps.shape}, expected "
+                    f"({ntot}, {nsims}) for the active-pixel count and nsims"
+                )
+            return maps
+
+        maps = np.empty((ntot, nsims), dtype=np.float64)
+        read_maps(
+            maps=maps,
+            filename=filename,
+            pixact=self.pixact,
+            field_labels=self.params.physical_labels,
+            calibration=self.params.calibration,
+        )
+        return maps
+
     def setup_cls(self, lmax: int | None = None):
         """
         Set up power spectra using the new field design.
@@ -611,7 +657,9 @@ class Core(ABC):
         """
         if self.collection is None:
             raise ValueError("Fields must be set up before Cls and beams")
-        self.collection.set_beams(lmax=lmax)
+        # Injected beam wins (ADR-0017); set_beams falls back to the
+        # smoothing_type/beam_file path when this is None.
+        self.collection.set_beams(lmax=lmax, injected_beam=self._injected_beam)
 
     def setup_computation_basis(
         self,
