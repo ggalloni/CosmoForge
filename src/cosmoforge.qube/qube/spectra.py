@@ -184,6 +184,7 @@ class Spectra(Core, MPISharedMemoryMixin):
         fisher: Fisher | None = None,
         basis: dict | str | bool | None = Core._UNSET,
         compression: dict | str | bool | None = Core._UNSET,
+        mask: np.ndarray | None = None,
         **kwargs,
     ):
         """
@@ -203,6 +204,9 @@ class Spectra(Core, MPISharedMemoryMixin):
             the only form that requests compression.
         compression : dict, optional
             Deprecated alias for ``basis`` (ADR-0018): warns and is forwarded.
+        mask : numpy.ndarray, optional
+            In-memory mask injected in place of ``params.maskfile``; see
+            :meth:`Core.__init__` for the contract (ADR-0017).
         **kwargs : dict
             Additional arguments passed to Core.
 
@@ -211,10 +215,11 @@ class Spectra(Core, MPISharedMemoryMixin):
         TypeError
             If fisher is not a Fisher instance.
         ValueError
-            If fisher doesn't contain a valid Fisher matrix.
+            If fisher doesn't contain a valid Fisher matrix, or if ``mask=`` is
+            supplied together with ``fisher=``.
         """
         self.params: InputParams = None
-        super().__init__(params=params_file, **kwargs)
+        super().__init__(params=params_file, mask=mask, **kwargs)
 
         # MPI setup
         self.comm = MPI.COMM_WORLD
@@ -232,6 +237,11 @@ class Spectra(Core, MPISharedMemoryMixin):
                 raise TypeError("fisher must be an instance of Fisher class.")
             if not hasattr(fisher, "fisher") or fisher.fisher is None:
                 raise ValueError("Fisher instance must have a valid fisher matrix.")
+            if self._injected_mask is not None:
+                raise ValueError(
+                    "mask= cannot be used together with fisher= because Spectra "
+                    "reuses the Fisher geometry and mask."
+                )
             self.fisher_instance = fisher
             # Reuse already computed components from Fisher
             self._reuse_fisher_components()
@@ -404,6 +414,7 @@ class Spectra(Core, MPISharedMemoryMixin):
         fisher = Fisher(
             self.params,
             basis=(False if self._basis_config is None else self._basis_config),
+            mask=self._injected_mask,
         )
         fisher.run()
 

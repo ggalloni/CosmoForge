@@ -162,6 +162,8 @@ class Core(ABC):
     def __init__(
         self,
         params: InputParams | str | dict | None = None,
+        *,
+        mask: np.ndarray | None = None,
     ):
         """
         Initialize the core analysis framework.
@@ -170,8 +172,17 @@ class Core(ABC):
         ----------
         params : InputParams or str or dict or None, optional
             Analysis parameters in various formats.
+        mask : numpy.ndarray, optional
+            In-memory mask injected in place of ``params.maskfile`` (ADR-0017).
+            Exactly what :func:`read_mask` would have returned: shape
+            ``(npix,)`` or ``(npix, nfields)`` (1D promoted to a column), any
+            float64-coercible dtype, pixel-indexed per ``params.ordering``.
+            ``npix`` must equal ``12 * nside**2`` and the column count
+            ``params.nfields``. When given it wins over the params path;
+            otherwise the path is read.
         """
         self.read_params(params)
+        self._injected_mask = mask
 
         # Initialize enhanced logger
         from .logger import get_logger_from_params
@@ -267,6 +278,51 @@ class Core(ABC):
         if lmax is not None and lmax < lmin:
             raise ValueError(f"lmax={lmax} < lmin={lmin}")
 
+    def _resolve_mask(self) -> np.ndarray:
+        """Resolve the analysis mask to an ``(npix, nfields)`` float64 array (ADR-0017).
+
+        Owns dispatch and semantic validation for the mask seam. An injected
+        ``mask=`` array (``Core.__init__``) wins; otherwise the file adapter
+        reads ``params.maskfile`` via :func:`read_mask`, honouring
+        ``params.ordering`` so the returned array is pixel-indexed per that
+        ordering. Both adapters pass through the same validation below. A 1D
+        array is promoted to a single column; any
+        float64-coercible dtype is accepted; values are interpreted binarily
+        downstream (``active = mask > 0.5``, thresholded not enforced).
+
+        Raises
+        ------
+        ValueError
+            If the resolved ``npix`` differs from ``12 * nside**2`` or the
+            column count differs from ``params.nfields``.
+        """
+        nfields = self.params.nfields
+        expected_npix = hp.nside2npix(self.params.nside)
+
+        if self._injected_mask is not None:
+            mask = self._injected_mask
+        else:
+            nest = self.params.ordering == "NESTED"
+            # read_mask only reads shape[0] (the field count) off this argument;
+            # a width-0 proxy avoids allocating a throwaway (nfields, npix)
+            # buffer that would be large at high nside.
+            shape_proxy = np.empty((nfields, 0), dtype=np.float64)
+            mask = read_mask(self.params.maskfile, shape_proxy, nest=nest)
+
+        mask = np.asarray(mask, dtype=np.float64)
+        if mask.ndim == 1:
+            mask = mask[:, np.newaxis]
+
+        npix, ncols = mask.shape
+        if npix != expected_npix:
+            raise ValueError(
+                f"mask has npix={npix}, expected {expected_npix} for "
+                f"nside={self.params.nside}"
+            )
+        if ncols != nfields:
+            raise ValueError(f"mask has {ncols} column(s), expected nfields={nfields}")
+        return mask
+
     def setup_fields(self) -> FieldCollection:
         """
         Set up cosmological fields using the new clean architecture.
@@ -286,12 +342,7 @@ class Core(ABC):
         The field creation uses type-safe factory functions to ensure
         proper initialization based on the spin parameter.
         """
-        npix = hp.nside2npix(self.params.nside)
-        mask = np.empty((self.params.nfields, npix), dtype=np.float64)
-        mask = read_mask(self.params.maskfile, mask)
-
-        if len(mask.shape) == 1:
-            mask = mask[:, np.newaxis]
+        mask = self._resolve_mask()
 
         # Create fields using the new factory function
         fields: list[BaseField] = []

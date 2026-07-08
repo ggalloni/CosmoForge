@@ -16,8 +16,8 @@ from cosmocore.spectrum_key import SpectrumKey, SpectrumKind
 class ConcreteCore(Core):
     """Concrete implementation of Core for testing."""
 
-    def __init__(self, params):
-        super().__init__(params)
+    def __init__(self, params=None, **kwargs):
+        super().__init__(params, **kwargs)
         self.compute_called = False
         self.run_called = False
 
@@ -175,6 +175,112 @@ def test_setup_fields_basic():
     finally:
         # Clean up
         Path(params.maskfile).unlink()
+
+
+def test_resolve_mask_file_branch_returns_promoted_array(tmp_path):
+    """The file adapter routes through _resolve_mask, returning (npix, nfields)."""
+    params = InputParams()
+    params.nside = 8
+    params.nfields = 1
+    npix = 12 * params.nside**2
+    on_disk = np.ones(npix, dtype=np.float64)
+    on_disk[: npix // 2] = 0.0
+    maskfile = tmp_path / "mask.fits"
+    hp.write_map(str(maskfile), on_disk, overwrite=True)
+    params.maskfile = str(maskfile)
+
+    core = ConcreteCore(params)
+    mask = core._resolve_mask()
+
+    assert mask.shape == (npix, 1)
+    assert mask.dtype == np.float64
+    np.testing.assert_array_equal(mask[:, 0], on_disk)
+
+
+def test_resolve_mask_wrong_nside_raises(tmp_path):
+    """A mask file at the wrong nside raises ValueError naming npix/nside."""
+    params = InputParams()
+    params.nside = 8  # expects npix = 768
+    params.nfields = 1
+    wrong = np.ones(12 * 16**2, dtype=np.float64)  # nside=16 → npix=3072
+    maskfile = tmp_path / "wrong.fits"
+    hp.write_map(str(maskfile), wrong, overwrite=True)
+    params.maskfile = str(maskfile)
+
+    core = ConcreteCore(params)
+    with pytest.raises(ValueError, match="npix|nside"):
+        core._resolve_mask()
+
+
+def _mask_params(nside=8, nfields=1, spins=(0,), labels=("T",)):
+    params = InputParams()
+    params.nside = nside
+    params.lmax = 2 * nside
+    params.nfields = nfields
+    params.spins = list(spins)
+    params.labels = list(labels)
+    return params
+
+
+def test_injected_mask_setup_fields_without_file():
+    """Core(mask=arr) builds fields with no mask file on disk."""
+    params = _mask_params()  # maskfile left at its nonexistent default
+    npix = 12 * params.nside**2
+    arr = np.ones(npix, dtype=np.float64)
+
+    core = ConcreteCore(params, mask=arr)
+    fields = core.setup_fields()
+
+    assert len(fields.fields) == 1
+    np.testing.assert_array_equal(fields.fields[0].mask, arr)
+
+
+def test_injected_mask_equivalent_to_file(tmp_path):
+    """Fields from an injected array equal fields from the same array via FITS."""
+    npix = 12 * 8**2
+    arr = np.ones((2, npix), dtype=np.float64)
+    arr[0, : npix // 2] = 0.0
+    arr[1, npix // 3 :] = 0.0
+
+    injected = ConcreteCore(
+        _mask_params(nfields=2, spins=(0, 0), labels=("A", "B")), mask=arr.T
+    )
+    inj_fields = injected.setup_fields().fields
+
+    maskfile = tmp_path / "mask.fits"
+    hp.write_map(str(maskfile), arr, overwrite=True)
+    p = _mask_params(nfields=2, spins=(0, 0), labels=("A", "B"))
+    p.maskfile = str(maskfile)
+    file_fields = ConcreteCore(p).setup_fields().fields
+
+    for inj, fil in zip(inj_fields, file_fields):
+        np.testing.assert_array_equal(inj.mask, fil.mask)
+
+
+def test_injected_mask_wrong_npix_raises():
+    params = _mask_params()
+    bad = np.ones(12 * 16**2, dtype=np.float64)  # nside=16 vs params nside=8
+    with pytest.raises(ValueError, match="npix|nside"):
+        ConcreteCore(params, mask=bad).setup_fields()
+
+
+def test_injected_mask_wrong_ncols_raises():
+    params = _mask_params(nfields=1)
+    npix = 12 * params.nside**2
+    bad = np.ones((npix, 2), dtype=np.float64)  # 2 columns, nfields=1
+    with pytest.raises(ValueError, match="column|nfields"):
+        ConcreteCore(params, mask=bad).setup_fields()
+
+
+def test_injected_mask_int_dtype_coerced_and_1d_promoted():
+    params = _mask_params()
+    npix = 12 * params.nside**2
+    arr = np.ones(npix, dtype=np.int32)  # 1D, int dtype
+
+    mask = ConcreteCore(params, mask=arr)._resolve_mask()
+
+    assert mask.shape == (npix, 1)
+    assert mask.dtype == np.float64
 
 
 def test_setup_fields_with_polarization():

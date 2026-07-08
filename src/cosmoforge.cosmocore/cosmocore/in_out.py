@@ -173,7 +173,7 @@ def write_covmat_reduced(outcovmatfile, C):
         C.tofile(f)
 
 
-def read_mask(maskfile, mask):
+def read_mask(maskfile, mask, nest=False):
     """
     Read HEALPix mask from FITS file.
 
@@ -182,7 +182,14 @@ def read_mask(maskfile, mask):
     maskfile : str
         Path to FITS file containing HEALPix mask(s).
     mask : numpy.ndarray
-        Output array of shape (npix, nmaps) to store mask values.
+        Shape proxy: only ``mask.shape[0]`` is read, to decide how many FITS
+        columns (fields) to load. The array is never written to and its second
+        dimension is ignored.
+    nest : bool, optional
+        Requested pixel ordering. When True the returned array is indexed in
+        NESTED order; when False (default) in RING order. ``hp.read_map``
+        reorders the on-disk map to match, so the returned array follows the
+        requested ordering regardless of how the file was written.
 
     Returns
     -------
@@ -197,7 +204,7 @@ def read_mask(maskfile, mask):
     indexing with the analysis framework.
     """
     nmaps, _ = mask.shape
-    m = hp.read_map(maskfile.strip(), field=range(nmaps), dtype=np.float64)
+    m = hp.read_map(maskfile.strip(), field=range(nmaps), dtype=np.float64, nest=nest)
     return np.array(m).T  # transpose to (npix, nmaps)
 
 
