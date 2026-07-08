@@ -215,7 +215,8 @@ class Spectra(Core, MPISharedMemoryMixin):
         TypeError
             If fisher is not a Fisher instance.
         ValueError
-            If fisher doesn't contain a valid Fisher matrix.
+            If fisher doesn't contain a valid Fisher matrix, or if ``mask=`` is
+            supplied together with ``fisher=``.
         """
         self.params: InputParams = None
         super().__init__(params=params_file, mask=mask, **kwargs)
@@ -236,6 +237,11 @@ class Spectra(Core, MPISharedMemoryMixin):
                 raise TypeError("fisher must be an instance of Fisher class.")
             if not hasattr(fisher, "fisher") or fisher.fisher is None:
                 raise ValueError("Fisher instance must have a valid fisher matrix.")
+            if self._injected_mask is not None:
+                raise ValueError(
+                    "mask= cannot be used together with fisher= because Spectra "
+                    "reuses the Fisher geometry and mask."
+                )
             self.fisher_instance = fisher
             # Reuse already computed components from Fisher
             self._reuse_fisher_components()

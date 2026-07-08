@@ -41,3 +41,13 @@ def test_injected_mask_reaches_geometry_without_file(config_resolver, cls):
     obj.setup_fields()
     active, _ = obj.setup_geometry()
     assert active is not None
+
+
+def test_spectra_rejects_mask_when_reusing_fisher(config_resolver):
+    """``Spectra`` cannot override the mask of a supplied ``Fisher`` instance."""
+    params = _params(config_resolver)
+    fisher = Fisher(params, mask=_full_sky_mask(params))
+    fisher.fisher = np.eye(1)
+
+    with pytest.raises(ValueError, match="mask= cannot be used together with fisher="):
+        Spectra(params, fisher=fisher, mask=_full_sky_mask(params))
