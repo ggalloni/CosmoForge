@@ -187,6 +187,8 @@ class Spectra(Core, MPISharedMemoryMixin):
         mask: np.ndarray | None = None,
         noise_cov1: np.ndarray | None = None,
         noise_cov2: np.ndarray | None = None,
+        maps1: np.ndarray | None = None,
+        maps2: np.ndarray | None = None,
         **kwargs,
     ):
         """
@@ -214,6 +216,16 @@ class Spectra(Core, MPISharedMemoryMixin):
             ``params.covmatfile1``/``covmatfile2``; see :meth:`Core.__init__`
             for the contract (ADR-0017). Forwarded into the internally-built
             ``Fisher``; cannot be combined with ``fisher=``.
+        maps1, maps2 : numpy.ndarray, optional
+            In-memory map data injected in place of
+            ``params.inputmapfile1``/``inputmapfile2`` (ADR-0017). Exactly what
+            :func:`read_maps` would have returned: the reduced
+            ``(n_active, n_sims)`` float64 array, pixel-ordered per the
+            concatenated active-pixel index, *already calibrated* (``read_maps``
+            applies ``calibration`` on read, so the injected array is used as-is
+            — calibration is the file adapter's job only). ``maps2`` is consumed
+            only when ``params.do_cross``. Independent of ``fisher=`` (maps are
+            not part of the Fisher reuse), so both may be given together.
         **kwargs : dict
             Additional arguments passed to Core.
 
@@ -280,6 +292,10 @@ class Spectra(Core, MPISharedMemoryMixin):
         # Initialize QML-specific variables
         self.maps1 = None
         self.maps2 = None
+        # Injected map arrays (ADR-0017, A3); consumed by setup_maps. Stored
+        # here rather than forwarded to Core: maps are a Spectra-only seam.
+        self._injected_maps1 = maps1
+        self._injected_maps2 = maps2
         self.qml_results = None
         self.qml_noise_bias = None
         self.invfisher = None
@@ -476,27 +492,49 @@ class Spectra(Core, MPISharedMemoryMixin):
 
             # Read maps using the core functionality
             ntot = sum(self.collection.n_active)
-            self.maps1 = np.empty((ntot, self.params.nsims), dtype=np.float64)
-
-            # Read maps1
-            read_maps(
-                maps=self.maps1,
-                filename=self.params.inputmapfile1,
-                pixact=self.pixact,
-                field_labels=self.params.physical_labels,
-                calibration=self.params.calibration,
+            self.maps1 = self._resolve_maps(
+                self._injected_maps1, self.params.inputmapfile1, ntot
             )
-
-            # Read maps2 if doing cross-correlation
             if self.params.do_cross:
-                self.maps2 = np.empty((ntot, self.params.nsims), dtype=np.float64)
-                read_maps(
-                    maps=self.maps2,
-                    filename=self.params.inputmapfile2,
-                    pixact=self.pixact,
-                    field_labels=self.params.physical_labels,
-                    calibration=self.params.calibration,
+                self.maps2 = self._resolve_maps(
+                    self._injected_maps2, self.params.inputmapfile2, ntot
                 )
+
+    def _resolve_maps(
+        self, injected: np.ndarray | None, filename: str, ntot: int
+    ) -> np.ndarray:
+        """Resolve one map stack to a reduced ``(ntot, n_sims)`` float64 array.
+
+        Applies the file-or-array seam convention (ADR-0017). An injected array
+        wins and is used as-is (already calibrated); otherwise the file adapter
+        reads ``filename`` via :func:`read_maps`, which applies
+        ``params.calibration`` on read. Both adapters pass through the same
+        shape/dtype validation.
+
+        Raises
+        ------
+        ValueError
+            If the resolved array is not ``(ntot, params.nsims)``.
+        """
+        nsims = self.params.nsims
+        if injected is not None:
+            maps = np.asarray(injected, dtype=np.float64)
+            if maps.shape != (ntot, nsims):
+                raise ValueError(
+                    f"injected maps have shape {maps.shape}, expected "
+                    f"({ntot}, {nsims}) for the active-pixel count and nsims"
+                )
+            return maps
+
+        maps = np.empty((ntot, nsims), dtype=np.float64)
+        read_maps(
+            maps=maps,
+            filename=filename,
+            pixact=self.pixact,
+            field_labels=self.params.physical_labels,
+            calibration=self.params.calibration,
+        )
+        return maps
 
     def setup_fisher_inversion(self):
         """
