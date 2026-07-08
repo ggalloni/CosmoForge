@@ -182,7 +182,9 @@ def read_mask(maskfile, mask, nest=False):
     maskfile : str
         Path to FITS file containing HEALPix mask(s).
     mask : numpy.ndarray
-        Output array of shape (npix, nmaps) to store mask values.
+        Shape proxy: only ``mask.shape[0]`` is read, to decide how many FITS
+        columns (fields) to load. The array is never written to and its second
+        dimension is ignored.
     nest : bool, optional
         Requested pixel ordering. When True the returned array is indexed in
         NESTED order; when False (default) in RING order. ``hp.read_map``

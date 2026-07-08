@@ -303,8 +303,11 @@ class Core(ABC):
             mask = self._injected_mask
         else:
             nest = self.params.ordering == "NESTED"
-            buf = np.empty((nfields, expected_npix), dtype=np.float64)
-            mask = read_mask(self.params.maskfile, buf, nest=nest)
+            # read_mask only reads shape[0] (the field count) off this argument;
+            # a width-0 proxy avoids allocating a throwaway (nfields, npix)
+            # buffer that would be large at high nside.
+            shape_proxy = np.empty((nfields, 0), dtype=np.float64)
+            mask = read_mask(self.params.maskfile, shape_proxy, nest=nest)
 
         mask = np.asarray(mask, dtype=np.float64)
         if mask.ndim == 1:
