@@ -166,6 +166,8 @@ class Core(ABC):
         mask: np.ndarray | None = None,
         noise_cov1: np.ndarray | None = None,
         noise_cov2: np.ndarray | None = None,
+        cls_data: dict | np.ndarray | None = None,
+        fiducial_cls: dict | np.ndarray | None = None,
     ):
         """
         Initialize the core analysis framework.
@@ -192,11 +194,22 @@ class Core(ABC):
             ownership (no defensive copy). When given, each wins over its params
             path; otherwise the path is read. ``noise_cov2`` is consumed only
             when ``params.do_cross``.
+        cls_data, fiducial_cls : dict or numpy.ndarray, optional
+            In-memory power spectra injected in place of
+            ``params.inputclfile``/``params.fiducialfile`` (ADR-0017). Exactly
+            what :func:`readcl` would have returned: a ``{label: C_ℓ}`` dict (or
+            pre-formatted array) of *physical* C_ℓ — ``input_convention``
+            conversion (e.g. Dℓ→Cℓ) is applied only on the file path, never to
+            injected arrays. ``cls_data`` feeds ``setup_cls``; ``fiducial_cls``
+            feeds the S_fixed fiducial re-read in ``setup_computation_basis``.
+            When given, each wins over its params path.
         """
         self.read_params(params)
         self._injected_mask = mask
         self._injected_noise_cov1 = noise_cov1
         self._injected_noise_cov2 = noise_cov2
+        self._injected_cls_data = cls_data
+        self._injected_fiducial_cls = fiducial_cls
 
         # Initialize enhanced logger
         from .logger import get_logger_from_params
@@ -572,7 +585,9 @@ class Core(ABC):
         """
         if self.collection is None:
             raise ValueError("Fields must be set up before Cls and beams")
-        self.collection.set_cls(lmax=lmax)
+        # Injected cls_data wins (ADR-0017); set_cls falls back to the
+        # inputclfile path when this is None.
+        self.collection.set_cls(cls_data=self._injected_cls_data, lmax=lmax)
 
     def setup_beams(self, lmax: int | None = None):
         """
@@ -746,12 +761,20 @@ class Core(ABC):
             # than the signal-cov band on either side.
             if lmin_b is not None and (lmin_b > lmin_signal_min or lmax_b < basis_lmax):
                 has_coll = hasattr(self, "collection") and self.collection is not None
-                if fiducial_file is not None and has_coll:
-                    fiducial_spectrum = readcl(
-                        inputclfile=fiducial_file.strip(),
-                        Params=self.params,
-                        lmax=basis_lmax,
-                    )
+                # Injected fiducial_cls wins (ADR-0017); else read the file. The
+                # injected object lets the S_fixed / SMW path run disk-free.
+                have_fiducial = (
+                    self._injected_fiducial_cls is not None or fiducial_file is not None
+                )
+                if have_fiducial and has_coll:
+                    if self._injected_fiducial_cls is not None:
+                        fiducial_spectrum = self._injected_fiducial_cls
+                    else:
+                        fiducial_spectrum = readcl(
+                            inputclfile=fiducial_file.strip(),
+                            Params=self.params,
+                            lmax=basis_lmax,
+                        )
 
                     # ADR 0009 §"S_fixed accumulates both bands": the low
                     # band is [max(lmin_signal[i], lmin_signal[j]), lmin)

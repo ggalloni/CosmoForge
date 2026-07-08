@@ -161,6 +161,8 @@ class PICSLike(Core, MPISharedMemoryMixin):
         mask: np.ndarray | None = None,
         noise_cov1: np.ndarray | None = None,
         noise_cov2: np.ndarray | None = None,
+        cls_data: dict | np.ndarray | None = None,
+        fiducial_cls: dict | np.ndarray | None = None,
         **kwargs: Any,
     ) -> None:
         """
@@ -184,6 +186,10 @@ class PICSLike(Core, MPISharedMemoryMixin):
             In-memory noise covariances injected in place of
             ``params.covmatfile1``/``covmatfile2``; see :meth:`Core.__init__`
             for the contract (ADR-0017).
+        cls_data, fiducial_cls : dict or numpy.ndarray, optional
+            In-memory power spectra injected in place of
+            ``params.inputclfile``/``params.fiducialfile``; see
+            :meth:`Core.__init__` for the contract (ADR-0017).
         **kwargs : Any
             Additional arguments passed to Core.
         """
@@ -193,6 +199,8 @@ class PICSLike(Core, MPISharedMemoryMixin):
             mask=mask,
             noise_cov1=noise_cov1,
             noise_cov2=noise_cov2,
+            cls_data=cls_data,
+            fiducial_cls=fiducial_cls,
             **kwargs,
         )
 

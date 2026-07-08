@@ -187,6 +187,8 @@ class Spectra(Core, MPISharedMemoryMixin):
         mask: np.ndarray | None = None,
         noise_cov1: np.ndarray | None = None,
         noise_cov2: np.ndarray | None = None,
+        cls_data: dict | np.ndarray | None = None,
+        fiducial_cls: dict | np.ndarray | None = None,
         maps1: np.ndarray | None = None,
         maps2: np.ndarray | None = None,
         **kwargs,
@@ -216,6 +218,11 @@ class Spectra(Core, MPISharedMemoryMixin):
             ``params.covmatfile1``/``covmatfile2``; see :meth:`Core.__init__`
             for the contract (ADR-0017). Forwarded into the internally-built
             ``Fisher``; cannot be combined with ``fisher=``.
+        cls_data, fiducial_cls : dict or numpy.ndarray, optional
+            In-memory power spectra injected in place of
+            ``params.inputclfile``/``params.fiducialfile``; see
+            :meth:`Core.__init__` for the contract (ADR-0017). Forwarded into
+            the internally-built ``Fisher``; cannot be combined with ``fisher=``.
         maps1, maps2 : numpy.ndarray, optional
             In-memory map data injected in place of
             ``params.inputmapfile1``/``inputmapfile2`` (ADR-0017). Exactly what
@@ -244,6 +251,8 @@ class Spectra(Core, MPISharedMemoryMixin):
             mask=mask,
             noise_cov1=noise_cov1,
             noise_cov2=noise_cov2,
+            cls_data=cls_data,
+            fiducial_cls=fiducial_cls,
             **kwargs,
         )
 
@@ -275,6 +284,14 @@ class Spectra(Core, MPISharedMemoryMixin):
                 raise ValueError(
                     "noise_cov1=/noise_cov2= cannot be used together with fisher= "
                     "because Spectra reuses the Fisher covariances."
+                )
+            if (
+                self._injected_cls_data is not None
+                or self._injected_fiducial_cls is not None
+            ):
+                raise ValueError(
+                    "cls_data=/fiducial_cls= cannot be used together with fisher= "
+                    "because Spectra reuses the Fisher spectra setup."
                 )
             self.fisher_instance = fisher
             # Reuse already computed components from Fisher
@@ -455,6 +472,8 @@ class Spectra(Core, MPISharedMemoryMixin):
             mask=self._injected_mask,
             noise_cov1=self._injected_noise_cov1,
             noise_cov2=self._injected_noise_cov2,
+            cls_data=self._injected_cls_data,
+            fiducial_cls=self._injected_fiducial_cls,
         )
         fisher.run()
 
