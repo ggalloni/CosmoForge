@@ -160,6 +160,7 @@ class Fisher(Core, MPISharedMemoryMixin):
         cache_derivatives: bool = False,
         symmetry_mode: SymmetryMode | str | None = None,
         compression: dict | str | bool | None = Core._UNSET,
+        mask: np.ndarray | None = None,
         **kwargs,
     ):
         """
@@ -193,10 +194,13 @@ class Fisher(Core, MPISharedMemoryMixin):
             memory (e.g. ~14 GB at QU_nside64 fsky=0.1) but skips the
             recompute. The harmonic-fast path always caches its small
             COO triplets regardless of this flag.
+        mask : numpy.ndarray, optional
+            In-memory mask injected in place of ``params.maskfile``; see
+            :meth:`Core.__init__` for the contract (ADR-0017).
         **kwargs : dict
             Additional keyword arguments passed to Core.
         """
-        super().__init__(params=params_file, **kwargs)
+        super().__init__(params=params_file, mask=mask, **kwargs)
 
         # MPI setup
         self.comm = MPI.COMM_WORLD

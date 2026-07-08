@@ -158,6 +158,7 @@ class PICSLike(Core, MPISharedMemoryMixin):
         params_file: str | None = None,
         basis: dict | str | bool | None = Core._UNSET,
         compression: dict | str | bool | None = Core._UNSET,
+        mask: np.ndarray | None = None,
         **kwargs: Any,
     ) -> None:
         """
@@ -174,11 +175,14 @@ class PICSLike(Core, MPISharedMemoryMixin):
             the only form that requests compression.
         compression : dict, optional
             Deprecated alias for ``basis`` (ADR-0018): warns and is forwarded.
+        mask : numpy.ndarray, optional
+            In-memory mask injected in place of ``params.maskfile``; see
+            :meth:`Core.__init__` for the contract (ADR-0017).
         **kwargs : Any
             Additional arguments passed to Core.
         """
         # Initialize parent Core class
-        super().__init__(params=params_file, **kwargs)
+        super().__init__(params=params_file, mask=mask, **kwargs)
 
         self.comm = MPI.COMM_WORLD
         self.rank = self.comm.Get_rank()
