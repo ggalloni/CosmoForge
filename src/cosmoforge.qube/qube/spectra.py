@@ -67,7 +67,6 @@ from cosmocore import (
     matrix_inverse_symm,
     matrix_mult,
     matrix_trace,
-    read_maps,
     vec_to_cl,
     write_out_matrix,
     writecl,
@@ -185,6 +184,13 @@ class Spectra(Core, MPISharedMemoryMixin):
         basis: dict | str | bool | None = Core._UNSET,
         compression: dict | str | bool | None = Core._UNSET,
         mask: np.ndarray | None = None,
+        noise_cov1: np.ndarray | None = None,
+        noise_cov2: np.ndarray | None = None,
+        cls_data: dict | np.ndarray | None = None,
+        fiducial_cls: dict | np.ndarray | None = None,
+        beam: np.ndarray | None = None,
+        maps1: np.ndarray | None = None,
+        maps2: np.ndarray | None = None,
         **kwargs,
     ):
         """
@@ -207,6 +213,30 @@ class Spectra(Core, MPISharedMemoryMixin):
         mask : numpy.ndarray, optional
             In-memory mask injected in place of ``params.maskfile``; see
             :meth:`Core.__init__` for the contract (ADR-0017).
+        noise_cov1, noise_cov2 : numpy.ndarray, optional
+            In-memory noise covariances injected in place of
+            ``params.covmatfile1``/``covmatfile2``; see :meth:`Core.__init__`
+            for the contract (ADR-0017). Forwarded into the internally-built
+            ``Fisher``; cannot be combined with ``fisher=``.
+        cls_data, fiducial_cls : dict or numpy.ndarray, optional
+            In-memory power spectra injected in place of
+            ``params.inputclfile``/``params.fiducialfile``; see
+            :meth:`Core.__init__` for the contract (ADR-0017). Forwarded into
+            the internally-built ``Fisher``; cannot be combined with ``fisher=``.
+        beam : numpy.ndarray, optional
+            In-memory beam injected in place of ``params.beam_file``; see
+            :meth:`Core.__init__` for the contract (ADR-0017). Forwarded into
+            the internally-built ``Fisher``; cannot be combined with ``fisher=``.
+        maps1, maps2 : numpy.ndarray, optional
+            In-memory map data injected in place of
+            ``params.inputmapfile1``/``inputmapfile2`` (ADR-0017). Exactly what
+            :func:`read_maps` would have returned: the reduced
+            ``(n_active, n_sims)`` float64 array, pixel-ordered per the
+            concatenated active-pixel index, *already calibrated* (``read_maps``
+            applies ``calibration`` on read, so the injected array is used as-is
+            — calibration is the file adapter's job only). ``maps2`` is consumed
+            only when ``params.do_cross``. Independent of ``fisher=`` (maps are
+            not part of the Fisher reuse), so both may be given together.
         **kwargs : dict
             Additional arguments passed to Core.
 
@@ -215,11 +245,21 @@ class Spectra(Core, MPISharedMemoryMixin):
         TypeError
             If fisher is not a Fisher instance.
         ValueError
-            If fisher doesn't contain a valid Fisher matrix, or if ``mask=`` is
-            supplied together with ``fisher=``.
+            If fisher doesn't contain a valid Fisher matrix, or if ``mask=`` /
+            ``noise_cov1=`` / ``noise_cov2=`` is supplied together with
+            ``fisher=``.
         """
         self.params: InputParams = None
-        super().__init__(params=params_file, mask=mask, **kwargs)
+        super().__init__(
+            params=params_file,
+            mask=mask,
+            noise_cov1=noise_cov1,
+            noise_cov2=noise_cov2,
+            cls_data=cls_data,
+            fiducial_cls=fiducial_cls,
+            beam=beam,
+            **kwargs,
+        )
 
         # MPI setup
         self.comm = MPI.COMM_WORLD
@@ -242,6 +282,27 @@ class Spectra(Core, MPISharedMemoryMixin):
                     "mask= cannot be used together with fisher= because Spectra "
                     "reuses the Fisher geometry and mask."
                 )
+            if (
+                self._injected_noise_cov1 is not None
+                or self._injected_noise_cov2 is not None
+            ):
+                raise ValueError(
+                    "noise_cov1= or noise_cov2= cannot be used together with "
+                    "fisher= because Spectra reuses the Fisher covariances."
+                )
+            if (
+                self._injected_cls_data is not None
+                or self._injected_fiducial_cls is not None
+            ):
+                raise ValueError(
+                    "cls_data= or fiducial_cls= cannot be used together with "
+                    "fisher= because Spectra reuses the Fisher spectra setup."
+                )
+            if self._injected_beam is not None:
+                raise ValueError(
+                    "beam= cannot be used together with fisher= because Spectra "
+                    "reuses the Fisher beam setup."
+                )
             self.fisher_instance = fisher
             # Reuse already computed components from Fisher
             self._reuse_fisher_components()
@@ -258,6 +319,10 @@ class Spectra(Core, MPISharedMemoryMixin):
         # Initialize QML-specific variables
         self.maps1 = None
         self.maps2 = None
+        # Injected map arrays (ADR-0017, A3); consumed by setup_maps. Stored
+        # here rather than forwarded to Core: maps are a Spectra-only seam.
+        self._injected_maps1 = maps1
+        self._injected_maps2 = maps2
         self.qml_results = None
         self.qml_noise_bias = None
         self.invfisher = None
@@ -415,6 +480,11 @@ class Spectra(Core, MPISharedMemoryMixin):
             self.params,
             basis=(False if self._basis_config is None else self._basis_config),
             mask=self._injected_mask,
+            noise_cov1=self._injected_noise_cov1,
+            noise_cov2=self._injected_noise_cov2,
+            cls_data=self._injected_cls_data,
+            fiducial_cls=self._injected_fiducial_cls,
+            beam=self._injected_beam,
         )
         fisher.run()
 
@@ -452,26 +522,12 @@ class Spectra(Core, MPISharedMemoryMixin):
 
             # Read maps using the core functionality
             ntot = sum(self.collection.n_active)
-            self.maps1 = np.empty((ntot, self.params.nsims), dtype=np.float64)
-
-            # Read maps1
-            read_maps(
-                maps=self.maps1,
-                filename=self.params.inputmapfile1,
-                pixact=self.pixact,
-                field_labels=self.params.physical_labels,
-                calibration=self.params.calibration,
+            self.maps1 = self._resolve_maps(
+                self._injected_maps1, self.params.inputmapfile1, ntot
             )
-
-            # Read maps2 if doing cross-correlation
             if self.params.do_cross:
-                self.maps2 = np.empty((ntot, self.params.nsims), dtype=np.float64)
-                read_maps(
-                    maps=self.maps2,
-                    filename=self.params.inputmapfile2,
-                    pixact=self.pixact,
-                    field_labels=self.params.physical_labels,
-                    calibration=self.params.calibration,
+                self.maps2 = self._resolve_maps(
+                    self._injected_maps2, self.params.inputmapfile2, ntot
                 )
 
     def setup_fisher_inversion(self):

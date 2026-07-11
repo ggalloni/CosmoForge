@@ -126,7 +126,13 @@ class BeamManager:
         self._beam_dict = {}
 
     def compute_beams(
-        self, lmax: int, nside: int, smoothtype: str, fwhmarcmin: float, beam_file: str
+        self,
+        lmax: int,
+        nside: int,
+        smoothtype: str,
+        fwhmarcmin: float,
+        beam_file: str,
+        injected_beam: np.ndarray | None = None,
     ) -> dict[str, np.ndarray]:
         """
         Compute beam functions based on smoothing type.
@@ -144,6 +150,13 @@ class BeamManager:
             FWHM in arcminutes for Gaussian beam
         beam_file : str
             Path to beam file for smoothtype="file"
+        injected_beam : numpy.ndarray, optional
+            In-memory beam injected in place of ``beam_file`` (ADR-0017).
+            Exactly what ``hp.read_cl(beam_file)`` returns: a 2D float array
+            with at least 3 rows (T, E, B window functions), pixwin already
+            folded in. When given it wins over ``smoothtype`` (explicit
+            injection wins) and takes the same post-processing as the file
+            adapter; otherwise the ``smoothtype`` switch runs unchanged.
 
         Returns:
         --------
@@ -152,7 +165,18 @@ class BeamManager:
         """
         import healpy as hp
 
-        if smoothtype == "none":
+        if injected_beam is not None:
+            # Injection adapter (ADR-0017): the injected array is exactly what
+            # hp.read_cl(beam_file) returns, so it takes the "file" branch's
+            # post-processing and wins over smoothtype.
+            bls = np.asarray(injected_beam, dtype=np.float64)
+            if bls.shape[0] < 3:
+                raise ValueError(
+                    f"injected beam must have at least 3 rows (T, E, B), "
+                    f"got {bls.shape[0]}"
+                )
+            beam = np.column_stack([bls[i][: lmax + 1] for i in range(3)]).T
+        elif smoothtype == "none":
             beam = np.ones((3, lmax + 1), dtype=np.float64)
         elif smoothtype == "gaussian":
             # fwhmarcmin in arcminutes → fwhm_rad. healpy's gauss_beam returns
@@ -195,7 +219,12 @@ class BeamManager:
             "B": beam[2, :],
         }
 
-    def set_beams_from_params(self, params: InputParams, lmax: int | None = None) -> None:
+    def set_beams_from_params(
+        self,
+        params: InputParams,
+        lmax: int | None = None,
+        injected_beam: np.ndarray | None = None,
+    ) -> None:
         """
         Set beams for all fields using parameter configuration.
 
@@ -236,6 +265,7 @@ class BeamManager:
             smoothtype=params.smoothing_type,
             fwhmarcmin=params.fwhmarcmin,
             beam_file=params.beam_file,
+            injected_beam=injected_beam,
         )
 
         # Build internal beam dictionary with field labels

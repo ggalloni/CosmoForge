@@ -949,7 +949,9 @@ class FieldCollection:
         """
         return self.spectra_manager.get_cls(field_i, field_j, mode)
 
-    def set_beams(self, lmax: int | None = None) -> None:
+    def set_beams(
+        self, lmax: int | None = None, injected_beam: np.ndarray | None = None
+    ) -> None:
         """
         Set beam functions for all fields.
 
@@ -958,8 +960,13 @@ class FieldCollection:
         lmax : int, optional
             Maximum multipole to use. If None, uses core_params.lmax.
             This allows computing beams up to a different lmax than the analysis lmax.
+        injected_beam : numpy.ndarray, optional
+            In-memory beam injected in place of ``core_params.beam_file`` (ADR-0017);
+            see :meth:`BeamManager.compute_beams` for the contract.
         """
-        self.beam_manager.set_beams_from_params(self.core_params, lmax=lmax)
+        self.beam_manager.set_beams_from_params(
+            self.core_params, lmax=lmax, injected_beam=injected_beam
+        )
         self.beam_manager.apply_smoothing(self.spectra_manager, lmax=lmax)
 
     @property

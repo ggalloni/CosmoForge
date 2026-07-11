@@ -161,6 +161,11 @@ class Fisher(Core, MPISharedMemoryMixin):
         symmetry_mode: SymmetryMode | str | None = None,
         compression: dict | str | bool | None = Core._UNSET,
         mask: np.ndarray | None = None,
+        noise_cov1: np.ndarray | None = None,
+        noise_cov2: np.ndarray | None = None,
+        cls_data: dict | np.ndarray | None = None,
+        fiducial_cls: dict | np.ndarray | None = None,
+        beam: np.ndarray | None = None,
         **kwargs,
     ):
         """
@@ -197,10 +202,30 @@ class Fisher(Core, MPISharedMemoryMixin):
         mask : numpy.ndarray, optional
             In-memory mask injected in place of ``params.maskfile``; see
             :meth:`Core.__init__` for the contract (ADR-0017).
+        noise_cov1, noise_cov2 : numpy.ndarray, optional
+            In-memory noise covariances injected in place of
+            ``params.covmatfile1``/``covmatfile2``; see :meth:`Core.__init__`
+            for the contract (ADR-0017).
+        cls_data, fiducial_cls : dict or numpy.ndarray, optional
+            In-memory power spectra injected in place of
+            ``params.inputclfile``/``params.fiducialfile``; see
+            :meth:`Core.__init__` for the contract (ADR-0017).
+        beam : numpy.ndarray, optional
+            In-memory beam injected in place of ``params.beam_file``; see
+            :meth:`Core.__init__` for the contract (ADR-0017).
         **kwargs : dict
             Additional keyword arguments passed to Core.
         """
-        super().__init__(params=params_file, mask=mask, **kwargs)
+        super().__init__(
+            params=params_file,
+            mask=mask,
+            noise_cov1=noise_cov1,
+            noise_cov2=noise_cov2,
+            cls_data=cls_data,
+            fiducial_cls=fiducial_cls,
+            beam=beam,
+            **kwargs,
+        )
 
         # MPI setup
         self.comm = MPI.COMM_WORLD

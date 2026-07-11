@@ -38,6 +38,7 @@ from .in_out import (
     output_geometry,
     read_covmat,
     read_covmat_reduced,
+    read_maps,
     read_mask,
     readcl,
     write_covmat_reduced,
@@ -164,6 +165,11 @@ class Core(ABC):
         params: InputParams | str | dict | None = None,
         *,
         mask: np.ndarray | None = None,
+        noise_cov1: np.ndarray | None = None,
+        noise_cov2: np.ndarray | None = None,
+        cls_data: dict | np.ndarray | None = None,
+        fiducial_cls: dict | np.ndarray | None = None,
+        beam: np.ndarray | None = None,
     ):
         """
         Initialize the core analysis framework.
@@ -180,9 +186,41 @@ class Core(ABC):
             ``npix`` must equal ``12 * nside**2`` and the column count
             ``params.nfields``. When given it wins over the params path;
             otherwise the path is read.
+        noise_cov1, noise_cov2 : numpy.ndarray, optional
+            In-memory noise covariances injected in place of
+            ``params.covmatfile1``/``covmatfile2`` (ADR-0017). Exactly what
+            :func:`read_covmat`/:func:`read_covmat_reduced` would have returned:
+            the *reduced* ``(n_active, n_active)`` float64 matrix, pixel-ordered
+            per the concatenated active-pixel index, *before* the uniform
+            ``calibration**2`` scaling (applied to both adapters). Core takes
+            ownership (no defensive copy) and never mutates the injected array:
+            with ``calibration == 1`` the injected array is used as-is,
+            otherwise a scaled copy is returned. When given, each wins over its
+            params path; otherwise the path is read. ``noise_cov2`` is consumed
+            only when ``params.do_cross``.
+        cls_data, fiducial_cls : dict or numpy.ndarray, optional
+            In-memory power spectra injected in place of
+            ``params.inputclfile``/``params.fiducialfile`` (ADR-0017). Exactly
+            what :func:`readcl` would have returned: a ``{label: C_ℓ}`` dict (or
+            pre-formatted array) of *physical* C_ℓ — ``input_convention``
+            conversion (e.g. Dℓ→Cℓ) is applied only on the file path, never to
+            injected arrays. ``cls_data`` feeds ``setup_cls``; ``fiducial_cls``
+            feeds the S_fixed fiducial re-read in ``setup_computation_basis``.
+            When given, each wins over its params path.
+        beam : numpy.ndarray, optional
+            In-memory beam injected in place of ``params.beam_file`` (the
+            ``smoothing_type="file"`` adapter; ADR-0017). Exactly what
+            ``hp.read_cl(beam_file)`` would have returned: a 2D float array with
+            at least 3 rows (T, E, B window functions), pixwin already folded
+            in. When given it wins over ``params.smoothing_type``.
         """
         self.read_params(params)
         self._injected_mask = mask
+        self._injected_noise_cov1 = noise_cov1
+        self._injected_noise_cov2 = noise_cov2
+        self._injected_cls_data = cls_data
+        self._injected_fiducial_cls = fiducial_cls
+        self._injected_beam = beam
 
         # Initialize enhanced logger
         from .logger import get_logger_from_params
@@ -477,63 +515,110 @@ class Core(ABC):
             [self.pixact[i] + i * npix for i in range(len(self.pixact))]
         )
 
-        shape = (concatenate_pixact.shape[0], concatenate_pixact.shape[0])
-        self.noise_cov1 = np.empty(shape, dtype=np.float64)
-
-        if self.params.load_reduced:
-            self.noise_cov1 = (
-                read_covmat_reduced(
-                    self.params.covmatfile1,
-                    self.noise_cov1,
-                )
-                * self.params.calibration**2
-            )
-        else:
-            self.noise_cov1 = (
-                read_covmat(
-                    self.params.covmatfile1,
-                    npix,
-                    self.params.nfields,
-                    concatenate_pixact,
-                    self.noise_cov1,
-                )
-                * self.params.calibration**2
-            )
-
-        write_covmat_reduced(
-            self.params.outnoisecovmat1,
-            self.noise_cov1,
+        self.noise_cov1 = self._resolve_noise_cov(
+            self._injected_noise_cov1, self.params.covmatfile1, npix, concatenate_pixact
         )
+        write_covmat_reduced(self.params.outnoisecovmat1, self.noise_cov1)
 
         self.noise_cov2 = None
         if self.params.do_cross:
-            self.noise_cov2 = np.empty(shape, dtype=np.float64)
-            if self.params.load_reduced:
-                self.noise_cov2 = (
-                    read_covmat_reduced(
-                        self.params.covmatfile2,
-                        self.noise_cov2,
-                    )
-                    * self.params.calibration**2
-                )
-            else:
-                self.noise_cov2 = (
-                    read_covmat(
-                        self.params.covmatfile2,
-                        npix,
-                        self.params.nfields,
-                        concatenate_pixact,
-                        self.noise_cov2,
-                    )
-                    * self.params.calibration**2
-                )
-
-            write_covmat_reduced(
-                self.params.outnoisecovmat2,
-                self.noise_cov2,
+            self.noise_cov2 = self._resolve_noise_cov(
+                self._injected_noise_cov2,
+                self.params.covmatfile2,
+                npix,
+                concatenate_pixact,
             )
+            write_covmat_reduced(self.params.outnoisecovmat2, self.noise_cov2)
 
         return self.noise_cov1, self.noise_cov2
+
+    def _resolve_noise_cov(
+        self,
+        injected: np.ndarray | None,
+        covmatfile: str,
+        npix: int,
+        concatenate_pixact: np.ndarray,
+    ) -> np.ndarray:
+        """Resolve one noise covariance to a reduced ``(n_active, n_active)`` array.
+
+        Applies the file-or-array seam convention (ADR-0017).
+
+        Owns dispatch and semantic validation for the noise-covariance seam. An
+        injected array (``Core.__init__``) wins; otherwise the file adapter
+        reads ``covmatfile`` via :func:`read_covmat_reduced` (when
+        ``params.load_reduced``) or :func:`read_covmat`. Both adapters pass
+        through the same shape/dtype validation and the uniform
+        ``calibration**2`` scaling.
+
+        To keep the "no defensive copy" contract honest at production sizes:
+        the file adapter scales its own fresh buffer *in place*; the injection
+        adapter returns the injected array untouched when ``calibration == 1``
+        and otherwise returns a scaled copy — it never mutates the caller's
+        array.
+
+        Raises
+        ------
+        ValueError
+            If the resolved matrix is not square ``(n_active, n_active)`` for
+            the active-pixel count.
+        """
+        n_active = concatenate_pixact.shape[0]
+        cal2 = self.params.calibration**2
+        if injected is not None:
+            cov = np.asarray(injected, dtype=np.float64)
+            if cov.shape != (n_active, n_active):
+                raise ValueError(
+                    f"injected noise covariance has shape {cov.shape}, expected "
+                    f"({n_active}, {n_active}) for the active-pixel count"
+                )
+            return cov if cal2 == 1.0 else cov * cal2
+
+        cov = np.empty((n_active, n_active), dtype=np.float64)
+        if self.params.load_reduced:
+            cov = read_covmat_reduced(covmatfile, cov)
+        else:
+            cov = read_covmat(
+                covmatfile, npix, self.params.nfields, concatenate_pixact, cov
+            )
+        cov *= cal2  # own buffer; scale in place to avoid a second allocation
+        return cov
+
+    def _resolve_maps(
+        self, injected: np.ndarray | None, filename: str, ntot: int
+    ) -> np.ndarray:
+        """Resolve one map stack to a reduced ``(ntot, n_sims)`` float64 array.
+
+        Applies the file-or-array seam convention (ADR-0017). An injected array
+        wins and is used as-is (already calibrated); otherwise the file adapter
+        reads ``filename`` via :func:`read_maps`, which applies
+        ``params.calibration`` on read. Both adapters pass through the same
+        shape/dtype validation. Shared by the maps-reading subclasses
+        (``Spectra`` and ``PICSLike``); not consumed by ``Fisher``.
+
+        Raises
+        ------
+        ValueError
+            If the resolved array is not ``(ntot, params.nsims)``.
+        """
+        nsims = self.params.nsims
+        if injected is not None:
+            maps = np.asarray(injected, dtype=np.float64)
+            if maps.shape != (ntot, nsims):
+                raise ValueError(
+                    f"injected maps have shape {maps.shape}, expected "
+                    f"({ntot}, {nsims}) for the active-pixel count and nsims"
+                )
+            return maps
+
+        maps = np.empty((ntot, nsims), dtype=np.float64)
+        read_maps(
+            maps=maps,
+            filename=filename,
+            pixact=self.pixact,
+            field_labels=self.params.physical_labels,
+            calibration=self.params.calibration,
+        )
+        return maps
 
     def setup_cls(self, lmax: int | None = None):
         """
@@ -557,7 +642,9 @@ class Core(ABC):
         """
         if self.collection is None:
             raise ValueError("Fields must be set up before Cls and beams")
-        self.collection.set_cls(lmax=lmax)
+        # Injected cls_data wins (ADR-0017); set_cls falls back to the
+        # inputclfile path when this is None.
+        self.collection.set_cls(cls_data=self._injected_cls_data, lmax=lmax)
 
     def setup_beams(self, lmax: int | None = None):
         """
@@ -581,7 +668,9 @@ class Core(ABC):
         """
         if self.collection is None:
             raise ValueError("Fields must be set up before Cls and beams")
-        self.collection.set_beams(lmax=lmax)
+        # Injected beam wins (ADR-0017); set_beams falls back to the
+        # smoothing_type/beam_file path when this is None.
+        self.collection.set_beams(lmax=lmax, injected_beam=self._injected_beam)
 
     def setup_computation_basis(
         self,
@@ -731,12 +820,20 @@ class Core(ABC):
             # than the signal-cov band on either side.
             if lmin_b is not None and (lmin_b > lmin_signal_min or lmax_b < basis_lmax):
                 has_coll = hasattr(self, "collection") and self.collection is not None
-                if fiducial_file is not None and has_coll:
-                    fiducial_spectrum = readcl(
-                        inputclfile=fiducial_file.strip(),
-                        Params=self.params,
-                        lmax=basis_lmax,
-                    )
+                # Injected fiducial_cls wins (ADR-0017); else read the file. The
+                # injected object lets the S_fixed / SMW path run disk-free.
+                have_fiducial = (
+                    self._injected_fiducial_cls is not None or fiducial_file is not None
+                )
+                if have_fiducial and has_coll:
+                    if self._injected_fiducial_cls is not None:
+                        fiducial_spectrum = self._injected_fiducial_cls
+                    else:
+                        fiducial_spectrum = readcl(
+                            inputclfile=fiducial_file.strip(),
+                            Params=self.params,
+                            lmax=basis_lmax,
+                        )
 
                     # ADR 0009 §"S_fixed accumulates both bands": the low
                     # band is [max(lmin_signal[i], lmin_signal[j]), lmin)

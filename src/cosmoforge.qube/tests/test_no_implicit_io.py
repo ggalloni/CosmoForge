@@ -9,10 +9,13 @@ the live ``fisher=`` seam rather than reading it back from disk (ADR-0016).
 import os
 import tempfile
 
+import healpy as hp
 import numpy as np
 import pytest
 import yaml
 
+from cosmocore.in_out import readcl
+from cosmocore.settings import InputParams
 from qube import Fisher, Spectra
 
 # Keys that name output artifacts; stripped so defaults (which, pre-B1, still
@@ -127,3 +130,57 @@ def test_live_alias_and_disk_adapter_agree(tmp_path, local_path):
     ps_disk = s_disk.get_power_spectra(mode="deconvolved")
 
     np.testing.assert_array_equal(ps_live, ps_disk)
+
+
+def test_full_pipeline_from_arrays_only(tmp_path, monkeypatch, config_resolver):
+    """The broom scenario (ADR-0017 A6 acceptance): every input is an in-memory
+    array, no out* paths, and the working directory stays empty — nothing is
+    read from or written to disk.
+
+    Arrays are sourced from the packaged nside4/T assets before the chdir; the
+    run itself points every input path at a nonexistent location, so a passing
+    run proves the injection adapters (mask, noise_cov, cls, fiducial, beam,
+    maps) fully replace the file readers.
+    """
+    cfg = config_resolver("tests/data/nside4/T/config.yaml")
+    params = InputParams.read_parameter_file(cfg)
+    nsims = 3
+    params.nsims = nsims
+    lmax_signal = 4 * params.nside
+
+    # Source the in-memory inputs from the packaged assets (outside tmp_path).
+    beam = hp.read_cl(params.beam_file).astype(np.float64)
+    cls = readcl(params.inputclfile, params, lmax=lmax_signal)
+    mask = np.ones((12 * params.nside**2, params.nfields), dtype=np.float64)
+    probe = Fisher(params, mask=mask, noise_cov1=np.eye(1), beam=beam, cls_data=cls)
+    probe.setup_fields()
+    probe.setup_geometry()
+    n = int(probe.collection.total_active_pixels)
+    noise_cov1 = np.eye(n) * 0.1
+    maps1 = np.random.default_rng(0).standard_normal((n, nsims))
+
+    # Strip every input path and every output artifact key.
+    for key in (
+        "maskfile",
+        "covmatfile1",
+        "covmatfile2",
+        "inputclfile",
+        "fiducialfile",
+        "beam_file",
+        "inputmapfile1",
+        "inputmapfile2",
+    ):
+        setattr(params, key, "/nonexistent/" + key)
+    for key in _OUTPUT_KEYS:
+        setattr(params, key, "")
+
+    monkeypatch.chdir(tmp_path)
+    kw = dict(mask=mask, noise_cov1=noise_cov1, cls_data=cls, fiducial_cls=cls, beam=beam)
+    fisher = Fisher(params, **kw)
+    fisher.run()
+    spectra = Spectra(params, fisher=fisher, maps1=maps1)
+    spectra.run()
+
+    assert spectra.get_power_spectra(mode="deconvolved") is not None
+    # THE acceptance criterion: nothing landed on disk.
+    assert list(tmp_path.rglob("*")) == []
