@@ -12,6 +12,13 @@ docs = [
     "myst-parser>=4.0.1",
     "sphinx-autodoc-typehints>=2.6.1",
 ]
+jupyter = [
+    "jupyter>=1.1.1",
+    "nbconvert>=7.16.4",
+    "nbclient>=0.10.0",
+    "ipykernel>=6.29.5",
+    "matplotlib>=3.10.5",
+]
 
 [tool.uv.workspace]
 members = [
