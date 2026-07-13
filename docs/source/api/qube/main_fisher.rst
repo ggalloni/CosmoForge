@@ -47,8 +47,8 @@ Command Line Interface
    # MPI parallel execution  
    mpirun -n 8 python main_fisher.py
 
-   # With custom configuration
-   python main_fisher.py --config custom_config.yaml
+   # With a custom configuration (optional positional argument)
+   python main_fisher.py custom_config.yaml
 
 Script Workflow
 ^^^^^^^^^^^^^^^
@@ -200,7 +200,7 @@ Basic Fisher Analysis
        yaml.dump(config, f)
    
    # Run Fisher analysis
-   subprocess.run(['python', 'main_fisher.py', '--config', 'fisher_config.yaml'])
+   subprocess.run(['python', 'main_fisher.py', 'fisher_config.yaml'])
 
 Cross-Survey Analysis
 ^^^^^^^^^^^^^^^^^^^^^
@@ -210,13 +210,13 @@ Cross-Survey Analysis
    # Compare different survey configurations
    
    # Current generation (Planck-like)
-   python main_fisher.py --config configs/current_survey.yaml
+   python main_fisher.py configs/current_survey.yaml
    
    # Next generation (LiteBIRD/CMB-S4)  
-   mpirun -n 16 python main_fisher.py --config configs/future_survey.yaml
+   mpirun -n 16 python main_fisher.py configs/future_survey.yaml
    
    # Ultimate precision (post-CMB-S4)
-   mpirun -n 32 python main_fisher.py --config configs/ultimate_survey.yaml
+   mpirun -n 32 python main_fisher.py configs/ultimate_survey.yaml
 
 Systematic Studies
 ^^^^^^^^^^^^^^^^^^
@@ -241,8 +241,8 @@ Systematic Studies
        with open(f'config_lmax{lmax}.yaml', 'w') as f:
            yaml.dump(config, f)
        
-       subprocess.run(['mpirun', '-n', '8', 'python', 'main_fisher.py', 
-                      '--config', f'config_lmax{lmax}.yaml'])
+       subprocess.run(['mpirun', '-n', '8', 'python', 'main_fisher.py',
+                      f'config_lmax{lmax}.yaml'])
 
 Performance Guidelines
 ----------------------

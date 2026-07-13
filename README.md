@@ -127,6 +127,51 @@ qml = Spectra("config/qml_config.yaml", fisher=fisher)
 qml.run()
 ```
 
+### In-Memory Inputs
+
+Every pipeline input can be handed over as an **in-memory array** instead of a file path.
+This is for callers that already hold their maps, mask and noise covariance — an upstream
+component pipeline, or a notebook — and should not have to round-trip them through disk.
+
+The config still supplies the scalars (`nside`, `lmax`, …); an injected object simply wins
+over the corresponding path.
+
+```python
+from qube import Fisher, Spectra
+
+fisher = Fisher(
+    params,
+    mask=mask,             # (npix, nfields)
+    noise_cov1=noise_cov,  # reduced (n_active, n_active), *pre*-calibration
+    cls_data=cls,          # {label: C_ell}, physical C_ell
+    fiducial_cls=cls,
+    beam=beam,             # (>=3, lmax+1) T/E/B window functions
+)
+fisher.run()
+
+# maps are a Spectra / PICSLike seam — Fisher never reads them
+spectra = Spectra(params, fisher=fisher, maps1=maps)
+spectra.run()
+power_spectra = spectra.get_power_spectra(mode="deconvolved")
+```
+
+Combine this with opt-in persistence (leave the `out*` paths unset) and the whole run
+touches no disk at all. The same kwargs exist on `PICSLike`.
+
+The full vocabulary: `mask`, `noise_cov1`/`noise_cov2`, `maps1`/`maps2`, `cls_data`,
+`fiducial_cls`, `beam`. Each injected object is defined as *exactly what the corresponding
+reader would have returned* — two contracts are worth calling out, because they mirror what
+each reader does rather than being symmetric:
+
+| kwarg | contract |
+|---|---|
+| `noise_cov1` | reduced to active pixels, **pre-calibration** (the framework applies `calibration**2`) |
+| `maps1` | reduced to active pixels, **already calibrated** (`read_maps` applies it on read) |
+
+Worked example: [`in_memory_inputs.ipynb`](src/cosmoforge.qube/notebooks/in_memory_inputs.ipynb),
+which drives both adapters over the same data and asserts they agree bit-for-bit. Design
+rationale: [ADR-0017](docs/adr/0017-file-or-array-loading-seams.md).
+
 ## Package Structure
 
 ```text

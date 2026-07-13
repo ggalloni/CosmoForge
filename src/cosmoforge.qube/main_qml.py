@@ -23,11 +23,14 @@ Features:
 - Integration with Fisher matrix error propagation
 
 Usage:
-    # Serial execution
+    # Serial execution (packaged default config)
     python main_qml.py
 
+    # Explicit configuration
+    python main_qml.py path/to/config.yaml
+
     # MPI parallel execution
-    mpirun -n 8 python main_qml.py
+    mpirun -n 8 python main_qml.py path/to/config.yaml
 
 Configuration:
     Analysis parameters are read from the YAML configuration file specified
@@ -71,7 +74,28 @@ References:
        Astrophys. J. 510, 551 (1999)
 """
 
+import argparse
+from pathlib import Path
+
 from qube.spectra import Spectra
+
+#: Packaged config used when no path is given on the command line. Resolved
+#: relative to this file so the script works from any working directory.
+DEFAULT_CONFIG = Path(__file__).parent / "qube" / "TEB_defaults.yaml"
+
+
+def parse_args():
+    """Parse the command line: an optional path to the YAML configuration."""
+    parser = argparse.ArgumentParser(
+        description="Estimate QML power spectra from a CosmoForge YAML configuration."
+    )
+    parser.add_argument(
+        "config",
+        nargs="?",
+        default=str(DEFAULT_CONFIG),
+        help=f"Path to the YAML configuration (default: {DEFAULT_CONFIG.name}).",
+    )
+    return parser.parse_args()
 
 
 def main():
@@ -107,24 +131,24 @@ def main():
         MPIError: If MPI communication fails during parallel computation
 
     Notes:
-        The function uses a hardcoded configuration file path. For production
-        use, consider making this configurable via command line arguments.
+        The configuration path is taken from the command line; with no argument
+        the packaged ``TEB_defaults.yaml`` is used.
 
         Memory usage scales with map resolution and number of simulations.
         The computation requires substantial memory for covariance matrix
         storage and manipulation.
 
     Examples:
-        Serial execution:
-        >>> main()  # Uses default configuration file
+        Serial execution, packaged default config:
+        $ python main_qml.py
 
-        MPI execution (from command line):
-        $ mpirun -n 8 python main_qml.py
+        Explicit configuration, under MPI:
+        $ mpirun -n 8 python main_qml.py path/to/config.yaml
     """
-    # Initialize QML power spectrum estimation with configuration file
-    # TODO: Consider making config file path configurable via command line
-    qml_analyzer = Spectra("src/cosmoforge.qube/qube/TEB_defaults.yaml")
+    args = parse_args()
+    qml_analyzer = Spectra(args.config)
     logger = qml_analyzer.logger
+    logger.info(f"Configuration: {args.config}")
 
     logger.info("Initializing QML power spectrum estimation...")
 

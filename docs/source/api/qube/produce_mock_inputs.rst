@@ -56,19 +56,26 @@ Usage
 Command Line Interface
 ^^^^^^^^^^^^^^^^^^^^^^
 
+The script takes three positional arguments and one optional flag:
+
+.. code-block:: text
+
+   produce_mock_inputs.py <compute_case> <output_path> <config_file> [--mask]
+
+``compute_case`` is one of ``T``, ``QU``, ``TQU`` or ``TEB``; ``output_path`` is
+the directory the mock products are written to; ``config_file`` is the YAML
+parameter file. ``--mask`` applies a ±30° Galactic plane cut.
+
 .. code-block:: bash
 
-   # Generate mock data with default parameters
-   python produce_mock_inputs.py
+   # Full-sky temperature mocks
+   python produce_mock_inputs.py T /data/mocks config.yaml
 
-   # Use custom configuration file
-   python produce_mock_inputs.py --config mock_config.yaml
+   # Cut-sky temperature + polarization mocks
+   python produce_mock_inputs.py TQU /data/mocks config.yaml --mask
 
-   # Generate multiple realizations
-   python produce_mock_inputs.py --nrealizations 100
-
-   # Specify output directory
-   python produce_mock_inputs.py --output-dir simulation_outputs/
+The number of realizations is not a command-line option: it is taken from
+``nsims`` in the configuration file.
 
 Script Workflow
 ^^^^^^^^^^^^^^^
@@ -87,51 +94,23 @@ The generation process follows these stages:
 Configuration Parameters
 ------------------------
 
-The script accepts comprehensive configuration through YAML files:
+The config file is a standard :class:`~cosmocore.InputParams` YAML — the same one
+the Fisher and QML runs consume. Of its keys, the script reads only:
 
 .. code-block:: yaml
 
-   # Mock Data Generation Configuration
-   
-   # HEALPix parameters
-   nside: 512
-   
-   # Multipole range
-   lmin: 2
-   lmax: 3000
-   
-   # Field configuration  
-   nfields: 3  # T, Q, U
-   physical_labels: ["T", "Q", "U"]
-   
-   # Cosmological model
-   fiducial_spectra: "inputs/planck2018_base_plikHM_TTTEEE_lowl_lowE.txt"
-   
-   # Instrumental specifications
-   beam_fwhm: 7.0  # arcminutes
-   noise_levels:
-     T: 10.0  # μK-arcmin
-     P: 14.1  # μK-arcmin (Q, U)
-   
-   # Sky cuts and masking
-   galactic_mask: "GAL070"  # Standard galactic mask
-   point_source_mask: true
-   custom_mask_file: null  # Optional custom mask
-   
-   # Systematic effects
-   include_foregrounds: false
-   calibration_uncertainty: 0.002  # Fractional
-   polarization_efficiency: 0.99
-   
-   # Output configuration
-   output_directory: "mock_inputs/"
-   file_prefix: "mock_"
-   save_intermediate: false  # Save intermediate products
-   
-   # Generation options
-   random_seed: 12345
-   nrealizations: 1
-   generate_cross_data: false  # For cross-correlation tests
+   nside: 8                              # HEALPix resolution of the mocks
+   labels: ["T", "E", "B"]               # fixes the number of fields
+   lmax: 32                              # band-limit of the simulated alms
+   nsims: 100                            # number of Monte Carlo realizations
+   covmatfile1: 'inputs/TQU_NCVM1.bin'   # noise covariance to draw noise from
+   covmatfile2: 'inputs/TQU_NCVM2.bin'   # second covariance (cross runs)
+
+See ``src/cosmoforge.qube/qube/TQU_defaults.yaml`` for a complete working config.
+
+The random seed is fixed (``master_seed = 123456789``) so that runs are
+reproducible; it is not configurable. The beam is read from the packaged
+``beam_440TP_pixwin16.fits`` rather than from ``beam_file``.
 
 Generated Products
 ------------------
@@ -239,73 +218,11 @@ Examples
 Basic Mock Generation
 ^^^^^^^^^^^^^^^^^^^^^
 
-.. code-block:: python
-
-   """
-   Example: Generate basic mock data for testing
-   """
-   import subprocess
-   import yaml
-   
-   # Configure mock generation
-   config = {
-       'nside': 256,
-       'lmax': 2000,
-       'beam_fwhm': 10.0,  # arcmin
-       'noise_levels': {'T': 20.0, 'P': 28.3},  # μK-arcmin
-       'galactic_mask': 'GAL060',
-       'output_directory': 'test_mocks/',
-       'nrealizations': 5
-   }
-   
-   with open('mock_config.yaml', 'w') as f:
-       yaml.dump(config, f)
-   
-   # Generate mock data
-   subprocess.run(['python', 'produce_mock_inputs.py', 
-                  '--config', 'mock_config.yaml'])
-
-Systematic Studies
-^^^^^^^^^^^^^^^^^^
-
-.. code-block:: python
-
-   """
-   Example: Generate mocks for systematic error studies
-   """
-   
-   # Test different noise levels
-   noise_levels = [
-       {'T': 10.0, 'P': 14.1},  # Optimistic
-       {'T': 20.0, 'P': 28.3},  # Realistic  
-       {'T': 40.0, 'P': 56.6}   # Conservative
-   ]
-   
-   for i, noise in enumerate(noise_levels):
-       config = base_config.copy()
-       config['noise_levels'] = noise
-       config['output_directory'] = f'systematic_study/noise_case_{i}/'
-       
-       with open(f'mock_config_noise_{i}.yaml', 'w') as f:
-           yaml.dump(config, f)
-       
-       subprocess.run(['python', 'produce_mock_inputs.py',
-                      '--config', f'mock_config_noise_{i}.yaml'])
-
-Cross-Correlation Testing
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
 .. code-block:: bash
 
-   # Generate independent datasets for cross-correlation
-   
-   # Dataset 1
-   python produce_mock_inputs.py --config cross_config.yaml \
-     --output-dir cross_test/dataset1/ --random-seed 12345
-   
-   # Dataset 2 (independent realization)
-   python produce_mock_inputs.py --config cross_config.yaml \
-     --output-dir cross_test/dataset2/ --random-seed 67890
+   # Write nside, lmax, nsims, beam and noise settings into the YAML first,
+   # then generate the mocks for the case you want to analyse.
+   python produce_mock_inputs.py TQU /data/mocks config.yaml --mask
 
 Pipeline Integration
 ^^^^^^^^^^^^^^^^^^^^
@@ -313,15 +230,15 @@ Pipeline Integration
 .. code-block:: bash
 
    # Complete analysis pipeline with mock data
-   
+
    # 1. Generate mock inputs
-   python produce_mock_inputs.py --config analysis_config.yaml
-   
+   python produce_mock_inputs.py TQU /data/mocks analysis_config.yaml
+
    # 2. Run Fisher analysis
-   mpirun -n 8 python main_fisher.py --config analysis_config.yaml
-   
-   # 3. Run QML analysis  
-   mpirun -n 16 python main_qml.py --config analysis_config.yaml
+   mpirun -n 8 python main_fisher.py analysis_config.yaml
+
+   # 3. Run QML analysis
+   mpirun -n 16 python main_qml.py analysis_config.yaml
    
    # 4. Compare results with known input
 

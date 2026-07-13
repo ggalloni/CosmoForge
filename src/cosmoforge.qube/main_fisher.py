@@ -22,11 +22,14 @@ Features:
 - Output of Fisher matrices and parameter error forecasts
 
 Usage:
-    # Serial execution
+    # Serial execution (packaged default config)
     python main_fisher.py
 
+    # Explicit configuration
+    python main_fisher.py path/to/config.yaml
+
     # MPI parallel execution
-    mpirun -n 8 python main_fisher.py
+    mpirun -n 8 python main_fisher.py path/to/config.yaml
 
 Configuration:
     Analysis parameters are read from the YAML configuration file specified
@@ -59,7 +62,28 @@ References:
        Cosmic Microwave Background Anisotropies" Astrophys. J. 469, 437 (1996)
 """
 
+import argparse
+from pathlib import Path
+
 from qube.fisher import Fisher
+
+#: Packaged config used when no path is given on the command line. Resolved
+#: relative to this file so the script works from any working directory.
+DEFAULT_CONFIG = Path(__file__).parent / "qube" / "TEB_defaults.yaml"
+
+
+def parse_args():
+    """Parse the command line: an optional path to the YAML configuration."""
+    parser = argparse.ArgumentParser(
+        description="Compute a Fisher matrix from a CosmoForge YAML configuration."
+    )
+    parser.add_argument(
+        "config",
+        nargs="?",
+        default=str(DEFAULT_CONFIG),
+        help=f"Path to the YAML configuration (default: {DEFAULT_CONFIG.name}).",
+    )
+    return parser.parse_args()
 
 
 def main():
@@ -90,21 +114,23 @@ def main():
         MPIError: If MPI communication fails during parallel computation
 
     Notes:
-        The function uses a hardcoded configuration file path. For production
-        use, consider making this configurable via command line arguments.
+        The configuration path is taken from the command line; with no argument
+        the packaged ``TEB_defaults.yaml`` is used.
 
         Memory usage scales with HEALPix resolution and number of fields.
-        Monitor available memory for high-resolution analyses.    Examples:
-        Serial execution:
-        >>> main()  # Uses default configuration file
+        Monitor available memory for high-resolution analyses.
 
-        MPI execution (from command line):
-        $ mpirun -n 4 python main_fisher.py
+    Examples:
+        Serial execution, packaged default config:
+        $ python main_fisher.py
+
+        Explicit configuration, under MPI:
+        $ mpirun -n 4 python main_fisher.py path/to/config.yaml
     """
-    # Initialize Fisher matrix computation with configuration file
-    # TODO: Consider making config file path configurable via command line
-    fisher_analyzer = Fisher("src/cosmoforge.qube/qube/TEB_defaults.yaml")
+    args = parse_args()
+    fisher_analyzer = Fisher(args.config)
     logger = fisher_analyzer.logger
+    logger.info(f"Configuration: {args.config}")
 
     logger.info("Initializing Fisher matrix computation...")
 

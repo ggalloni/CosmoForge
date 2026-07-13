@@ -31,31 +31,10 @@ References
 
 from __future__ import annotations
 
-import os
 import time
-from contextlib import contextmanager, nullcontext
+from contextlib import nullcontext
 
 import numpy as np
-
-from cosmocore._mpi import MPI
-
-try:
-    from threadpoolctl import threadpool_limits as _threadpool_limits
-except ImportError:  # pragma: no cover
-    # Graceful degradation: setup just runs at OMP_NUM_THREADS.
-    _threadpool_limits = None
-
-
-@contextmanager
-def _wide_threadpool():
-    """Widen BLAS threads to the visible CPU set for rank-0 setup work."""
-    if _threadpool_limits is None:  # pragma: no cover
-        yield
-        return
-    n_visible = len(os.sched_getaffinity(0))
-    with _threadpool_limits(limits=n_visible):
-        yield
-
 
 from cosmocore import (
     Bins,
@@ -75,6 +54,7 @@ from cosmocore import (
     write_covmat_reduced,
     write_out_matrix,
 )
+from cosmocore._mpi import MPI
 
 _WEIGHT_ZERO_THRESHOLD = 1e-30  # Skip derivative terms with negligible weight
 
@@ -677,9 +657,10 @@ class Fisher(Core, MPISharedMemoryMixin):
 
         A computation basis can be enabled via the compression parameter.
         """
-        # Setup phase (rank 0 only). Wrap the BLAS-heavy LAPACK work in a
-        # widened threadpool so rank 0 can use the full visible CPU set
-        # while ranks 1..N-1 idle on the subsequent broadcast.
+        # Setup phase (rank 0 only). BLAS runs at whatever thread count the
+        # launcher set: OpenBLAS sizes its thread pool at library-init time and
+        # raising the limit past that (threadpoolctl) segfaults when it
+        # initialised single-threaded, i.e. under the usual OMP_NUM_THREADS=1.
         if self.rank == 0:
             if self.params is None:
                 raise ValueError("Parameters must be set before running analysis")
@@ -694,8 +675,7 @@ class Fisher(Core, MPISharedMemoryMixin):
                 self.log("Geometry setup completed", level=3)
 
             with self._stage("fisher.covariance_setup"):
-                with _wide_threadpool():
-                    self.setup_covariance_matrices()
+                self.setup_covariance_matrices()
                 self.log("Covariance matrices setup completed", level=3)
 
             with self._stage("fisher.setup_cls_beams"):
@@ -727,8 +707,7 @@ class Fisher(Core, MPISharedMemoryMixin):
                     if k in self._basis_config
                 }
                 with self._stage("fisher.basis_setup"):
-                    with _wide_threadpool():
-                        self.setup_computation_basis(**kwargs)
+                    self.setup_computation_basis(**kwargs)
                 bm = self.basis_manager
                 path_label = _basis_path_label(bm)
                 if bm.method == "harmonic":
@@ -753,8 +732,7 @@ class Fisher(Core, MPISharedMemoryMixin):
             else:
                 # Traditional: prepare covariance matrices (signal + inverse)
                 with self._stage("fisher.prepare_covariance"):
-                    with _wide_threadpool():
-                        self.prepare_covariance_matrices()
+                    self.prepare_covariance_matrices()
                 self.log("Signal matrix and covariance preparation completed", level=3)
 
         # Synchronize and broadcast shared variables to worker processes.

@@ -21,7 +21,6 @@ Requirements
 * ``healpy >= 1.18.1``
 * ``numba >= 0.61.2``
 * ``psutil >= 5.9``
-* ``threadpoolctl >= 3.0``
 
 **Optional extras:**
 
@@ -34,6 +33,17 @@ Requirements
 * ``dev`` group: ``matplotlib``, ``pytest``, ``pytest-cov``, ``pyyaml``, ``ruff``.
 * ``docs`` group: ``sphinx``, ``sphinx-rtd-theme``, ``myst-parser``,
   ``sphinx-autodoc-typehints``.
+* ``jupyter`` group: ``nbclient``, ``nbformat``, ``ipykernel`` — needed to run
+  the demo notebooks under ``src/cosmoforge.*/notebooks/``. The notebooks also
+  plot, which needs ``matplotlib`` from the ``dev`` group (installed by
+  default). The notebook tests
+  (``tests/test_notebooks.py``) execute every demo headless and are skipped
+  unless this group is installed:
+
+  .. code-block:: bash
+
+     uv sync --group jupyter
+     uv run --group jupyter pytest src/cosmoforge.qube/tests/test_notebooks.py
 * ``pre-commit`` is currently only declared in
   ``src/cosmoforge.cosmocore/pyproject.toml``'s ``dev`` group.
 
