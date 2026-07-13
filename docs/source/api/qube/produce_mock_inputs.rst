@@ -318,10 +318,10 @@ Pipeline Integration
    python produce_mock_inputs.py --config analysis_config.yaml
    
    # 2. Run Fisher analysis
-   mpirun -n 8 python main_fisher.py --config analysis_config.yaml
+   mpirun -n 8 python main_fisher.py analysis_config.yaml
    
    # 3. Run QML analysis  
-   mpirun -n 16 python main_qml.py --config analysis_config.yaml
+   mpirun -n 16 python main_qml.py analysis_config.yaml
    
    # 4. Compare results with known input
 

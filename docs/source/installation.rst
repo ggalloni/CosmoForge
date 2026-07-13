@@ -34,6 +34,16 @@ Requirements
 * ``dev`` group: ``matplotlib``, ``pytest``, ``pytest-cov``, ``pyyaml``, ``ruff``.
 * ``docs`` group: ``sphinx``, ``sphinx-rtd-theme``, ``myst-parser``,
   ``sphinx-autodoc-typehints``.
+* ``jupyter`` group: ``jupyter``, ``nbconvert``, ``nbclient``, ``ipykernel``,
+  ``matplotlib`` — needed to run the demo notebooks under
+  ``src/cosmoforge.*/notebooks/``. The notebook tests
+  (``tests/test_notebooks.py``) execute every demo headless and are skipped
+  unless this group is installed:
+
+  .. code-block:: bash
+
+     uv sync --group jupyter
+     uv run --group jupyter pytest src/cosmoforge.qube/tests/test_notebooks.py
 * ``pre-commit`` is currently only declared in
   ``src/cosmoforge.cosmocore/pyproject.toml``'s ``dev`` group.
 

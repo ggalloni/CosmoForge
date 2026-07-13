@@ -67,7 +67,7 @@ Command Line Interface
    mpirun -n 16 python main_qml.py
 
    # With custom configuration file
-   python main_qml.py --config qml_analysis.yaml
+   python main_qml.py qml_analysis.yaml
 
 Script Workflow
 ^^^^^^^^^^^^^^^
@@ -246,7 +246,7 @@ Standard Auto-Correlation Analysis
        yaml.dump(config, f)
    
    subprocess.run(['mpirun', '-n', '16', 'python', 'main_qml.py', 
-                  '--config', 'qml_config.yaml'])
+                  'qml_config.yaml'])
 
 Cross-Correlation Analysis
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -280,13 +280,13 @@ Multi-Scale Analysis Pipeline
    # Progressive resolution analysis
    
    # Low-resolution initial estimate
-   python main_qml.py --config configs/qml_nside256.yaml
+   python main_qml.py configs/qml_nside256.yaml
    
    # Medium resolution
-   mpirun -n 8 python main_qml.py --config configs/qml_nside512.yaml
+   mpirun -n 8 python main_qml.py configs/qml_nside512.yaml
    
    # High resolution (production)
-   mpirun -n 32 python main_qml.py --config configs/qml_nside1024.yaml
+   mpirun -n 32 python main_qml.py configs/qml_nside1024.yaml
 
 Systematic Error Studies
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -309,7 +309,7 @@ Systematic Error Studies
            yaml.dump(config, f)
        
        subprocess.run(['mpirun', '-n', '16', 'python', 'main_qml.py',
-                      '--config', f'config_lmax{lmax}.yaml'])
+                      f'config_lmax{lmax}.yaml'])
 
 Performance Guidelines
 ----------------------
