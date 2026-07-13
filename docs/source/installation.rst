@@ -34,9 +34,10 @@ Requirements
 * ``dev`` group: ``matplotlib``, ``pytest``, ``pytest-cov``, ``pyyaml``, ``ruff``.
 * ``docs`` group: ``sphinx``, ``sphinx-rtd-theme``, ``myst-parser``,
   ``sphinx-autodoc-typehints``.
-* ``jupyter`` group: ``jupyter``, ``nbconvert``, ``nbclient``, ``ipykernel``,
-  ``matplotlib`` — needed to run the demo notebooks under
-  ``src/cosmoforge.*/notebooks/``. The notebook tests
+* ``jupyter`` group: ``nbclient``, ``nbformat``, ``ipykernel`` — needed to run
+  the demo notebooks under ``src/cosmoforge.*/notebooks/``. The notebooks also
+  plot, which needs ``matplotlib`` from the ``dev`` group (installed by
+  default). The notebook tests
   (``tests/test_notebooks.py``) execute every demo headless and are skipped
   unless this group is installed:
 

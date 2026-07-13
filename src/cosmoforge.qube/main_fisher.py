@@ -72,7 +72,7 @@ from qube.fisher import Fisher
 DEFAULT_CONFIG = Path(__file__).parent / "qube" / "TEB_defaults.yaml"
 
 
-def parse_args(argv=None):
+def parse_args():
     """Parse the command line: an optional path to the YAML configuration."""
     parser = argparse.ArgumentParser(
         description="Compute a Fisher matrix from a CosmoForge YAML configuration."
@@ -83,7 +83,7 @@ def parse_args(argv=None):
         default=str(DEFAULT_CONFIG),
         help=f"Path to the YAML configuration (default: {DEFAULT_CONFIG.name}).",
     )
-    return parser.parse_args(argv)
+    return parser.parse_args()
 
 
 def main():
