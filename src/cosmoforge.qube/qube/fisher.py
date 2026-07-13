@@ -364,9 +364,7 @@ class Fisher(Core, MPISharedMemoryMixin):
         """Build pixel-space derivative matrix dC/dC_ell."""
         dC = np.zeros_like(self.noise_cov1, dtype=np.float64)
         dC = np.asfortranarray(dC)
-        do_derivative_step(
-            dC, spectrum_idx, self.npixs, self.params.spins, ell, self.collection
-        )
+        do_derivative_step(dC, spectrum_idx, current_ell=ell, fields=self.collection)
         return dC
 
     def _build_multi_spectrum_inputs(self):

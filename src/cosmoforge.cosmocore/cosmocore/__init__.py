@@ -76,6 +76,7 @@ from .fields import (
     ScalarField,
     create_field,
 )
+from .geometry import active_pixel_index, active_pixels
 from .in_out import (
     convert_spectra_normalization,
     output_geometry,
@@ -161,6 +162,8 @@ __all__ = [
     # fields
     "BaseField",
     "FieldCollection",
+    "active_pixel_index",
+    "active_pixels",
     "FieldConfig",
     "PolarizationField",
     "ScalarField",

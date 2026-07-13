@@ -756,9 +756,7 @@ class Spectra(Core, MPISharedMemoryMixin):
         """Build pixel-space derivative matrix dC/dC_ell (no-basis fallback)."""
         ntot = sum(self.collection.n_active)
         dC = np.zeros((ntot, ntot), dtype=np.float64, order="F")
-        do_derivative_step(
-            dC, spectrum_idx, self.npixs, self.params.spins, ell, self.collection
-        )
+        do_derivative_step(dC, spectrum_idx, current_ell=ell, fields=self.collection)
         return dC
 
     def _get_binned_derivative(self, bin_idx: int, spectrum_idx: int = 0) -> np.ndarray:

@@ -54,6 +54,8 @@ References
    Phys. Rev. D 62, 123002 (2000)
 """
 
+import warnings
+
 import healpy as hp
 import numpy as np
 from numba import njit, prange
@@ -118,8 +120,9 @@ def compute_pointings(
     phi_vectors : tuple of numpy.ndarray
         Tuple of arrays to store phi unit vectors for each field.
         Each array has shape (n_active).
-    active : numpy.ndarray or tuple
-        Active pixel indices for each field.
+    active : sequence of numpy.ndarray
+        Active pixel indices for each field (one array per field, not per
+        component: a spin-2 field has a single pixel set shared by Q and U).
     ordering : str
         HEALPix pixel ordering: ``"RING"`` or ``"NESTED"``.
 
@@ -141,7 +144,7 @@ def compute_pointings(
 
         for i in range(ntemp):
             theta, phi = hp.pix2ang(
-                nside, active[field_idx, i], nest=(ordering == "NESTED")
+                nside, active[field_idx][i], nest=(ordering == "NESTED")
             )
             x = np.sin(theta) * np.cos(phi)
             y = np.sin(theta) * np.sin(phi)
@@ -677,10 +680,10 @@ def derivative_step_22(S_slice, vec1, vec2, current_ell, mode, legendre, f1, f2)
 def do_derivative_step(
     S,
     spectrum,
-    npixs,
-    spins,
-    current_ell,
-    fields: FieldCollection,
+    npixs=None,
+    spins=None,
+    current_ell=None,
+    fields: FieldCollection = None,
 ):
     """
     Execute derivative step for Fisher matrix calculations.
@@ -691,10 +694,12 @@ def do_derivative_step(
         2D signal matrix to fill with derivative contributions.
     spectrum : int
         Index of the power spectrum being differentiated.
-    npixs : list of int
-        Number of active pixels for each field (deprecated, use fields.n_active).
-    spins : list of int
-        Spin values for each field (deprecated, use fields.spin).
+    npixs : list of int, optional
+        Deprecated and ignored; taken from ``fields.n_active``. Passing it emits
+        a ``DeprecationWarning`` and it will be removed in the next release.
+    spins : list of int, optional
+        Deprecated and ignored; taken from ``fields.spin``. Passing it emits a
+        ``DeprecationWarning`` and it will be removed in the next release.
     current_ell : int
         Current multipole moment for the derivative calculation.
     fields : FieldCollection
@@ -708,7 +713,23 @@ def do_derivative_step(
 
     Used in Fisher matrix calculations to compute parameter sensitivities.
     The function handles different field types and cross-correlations automatically.
+
+    ``npixs`` and ``spins`` were always overwritten from ``fields`` on entry, so
+    they never affected the result. They are kept for one release as a
+    warn-and-forward shim (ADR-0018); call with ``current_ell=`` and ``fields=``
+    as keywords.
     """
+    if npixs is not None or spins is not None:
+        warnings.warn(
+            "do_derivative_step(npixs=..., spins=...) is deprecated and ignored; "
+            "both are taken from `fields`. Pass current_ell= and fields= as "
+            "keywords. The parameters will be removed in the next release.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    if fields is None:
+        raise TypeError("do_derivative_step() requires `fields`")
+
     spins = fields.spin
     npixs = fields.n_active
     label = fields.spectra_labels[spectrum]

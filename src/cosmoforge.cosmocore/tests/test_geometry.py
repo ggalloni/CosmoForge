@@ -1,0 +1,109 @@
+"""The active-pixel index (ADR-0017): the published ordering IS the ordering."""
+
+import healpy as hp
+import numpy as np
+import pytest
+
+from cosmocore import active_pixel_index, active_pixels
+from cosmocore.core import Core
+from cosmocore.settings import InputParams
+
+
+class ConcreteCore(Core):
+    def compute(self):
+        return None
+
+    def run(self):
+        return None
+
+
+def _params(nside, spins, labels):
+    params = InputParams()
+    params.nside = nside
+    params.lmax = 8
+    params.lmax_signal = 16
+    params.spins = spins
+    params.labels = labels
+    params.nfields = len(labels)
+    params.ordering = "RING"
+    return params
+
+
+def test_active_pixels_per_component():
+    mask = np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
+    per_component = active_pixels(mask)
+
+    assert len(per_component) == 2
+    np.testing.assert_array_equal(per_component[0], [0, 2])
+    np.testing.assert_array_equal(per_component[1], [1, 2])
+
+
+def test_active_pixel_index_offsets_each_component_by_npix():
+    mask = np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
+    # npix = 3, so component 1's pixels land at 3 + [1, 2] = [4, 5].
+    np.testing.assert_array_equal(active_pixel_index(mask), [0, 2, 4, 5])
+    assert active_pixel_index(mask).dtype == np.intp
+
+
+def test_active_pixels_thresholds_at_half():
+    mask = np.array([[0.0], [0.5], [0.51], [1.0]])
+    np.testing.assert_array_equal(active_pixels(mask)[0], [2, 3])
+
+
+def test_published_index_matches_the_frameworks_ordering():
+    """The whole point of ADR-0017: a caller reducing with the public index gets
+    exactly the ordering Core builds internally."""
+    nside = 8
+    npix = hp.nside2npix(nside)
+
+    rng = np.random.default_rng(0)
+    mask_temp = (rng.random(npix) > 0.4).astype(np.float64)
+    mask_pol = (rng.random(npix) > 0.6).astype(np.float64)
+    mask = np.column_stack([mask_temp, mask_pol, mask_pol])
+
+    core = ConcreteCore(_params(nside, [0, 2], ["T", "Q", "U"]), mask=mask)
+    core.setup_fields()
+    core.setup_geometry()
+
+    framework = np.concatenate(
+        [core.pixact[i] + i * npix for i in range(len(core.pixact))]
+    )
+    np.testing.assert_array_equal(active_pixel_index(mask), framework)
+
+
+def test_different_temperature_and_polarisation_masks_are_supported():
+    """Different T and P masks (the standard configuration) must not go ragged."""
+    nside = 8
+    npix = hp.nside2npix(nside)
+
+    mask_temp = np.zeros(npix)
+    mask_temp[: int(0.6 * npix)] = 1.0
+    mask_pol = np.zeros(npix)
+    mask_pol[: int(0.4 * npix)] = 1.0
+    mask = np.column_stack([mask_temp, mask_pol, mask_pol])
+
+    core = ConcreteCore(_params(nside, [0, 2], ["T", "Q", "U"]), mask=mask)
+    core.setup_fields()
+    pixact, point_vectors = core.setup_geometry()
+
+    assert [len(p) for p in pixact] == [
+        int(0.6 * npix),
+        int(0.4 * npix),
+        int(0.4 * npix),
+    ]
+    assert core.npixs == [int(0.6 * npix), int(0.4 * npix)]  # per FIELD
+    assert len(point_vectors) == 2  # per FIELD
+
+
+def test_spin2_mask_columns_must_agree():
+    nside = 8
+    npix = hp.nside2npix(nside)
+
+    mask_q = np.ones(npix)
+    mask_u = np.ones(npix)
+    mask_u[0] = 0.0  # one pixel of difference is enough
+    mask = np.column_stack([np.ones(npix), mask_q, mask_u])
+
+    core = ConcreteCore(_params(nside, [0, 2], ["T", "Q", "U"]), mask=mask)
+    with pytest.raises(ValueError, match="two components of one spin-2 field"):
+        core.setup_fields()
