@@ -8,6 +8,7 @@ files anywhere under the package tree — the notebooks strip every ``out*`` pat
 so the in-memory pipeline leaves the working tree untouched (ADR-0015/0017).
 """
 
+import os
 import pathlib
 
 import pytest
@@ -42,6 +43,16 @@ def test_notebook_runs_disk_free(nb_path):
     )
 
     before = _snapshot(PKG_ROOT)
-    client.execute()  # raises CellExecutionError on any failing cell
+    # The kernel is spawned as a subprocess and inherits this process's env.
+    # conftest sets NUMBA_DISABLE_JIT=1 for the unit tests; leaking that into
+    # the notebook kernel makes every JIT kernel fall back to pure Python and
+    # inflates a ~15 s notebook to ~5 min. Notebooks run as users run them.
+    jit = os.environ.pop("NUMBA_DISABLE_JIT", None)
+    try:
+        client.execute()  # raises CellExecutionError on any failing cell
+    finally:
+        if jit is not None:
+            os.environ["NUMBA_DISABLE_JIT"] = jit
+
     new_files = _snapshot(PKG_ROOT) - before
     assert not new_files, f"{nb_path.name} wrote files to disk: {sorted(new_files)}"
