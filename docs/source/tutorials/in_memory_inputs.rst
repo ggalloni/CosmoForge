@@ -91,20 +91,37 @@ That matters in one place: ``cls_data``/``fiducial_cls`` must be **physical** C_
 ``input_convention`` normalisation (e.g. D_ell → C_ell) is applied only on the file path,
 never to an injected array. Convert before you inject.
 
-The active-pixel ordering
--------------------------
+The active-pixel index
+----------------------
 
 ``noise_cov1``/``noise_cov2`` and ``maps1``/``maps2`` are **reduced** — restricted to the
-active (unmasked) pixels, concatenated across fields:
+active (unmasked) pixels and ordered by the *active-pixel index*. QML works on active
+pixels, so this is the domain, not an implementation detail: a full-sky noise covariance
+is ``(npix * nfields)²``, which is 72 GiB for QU at nside 64 against 0.72 GiB reduced at
+fsky 0.1.
+
+You do not need a ``Fisher`` (or any framework object) to learn the ordering. It is a pure
+function of the mask:
 
 .. code-block:: python
 
-   concat_pixact = np.concatenate([pixact[i] + i * npix for i in range(len(pixact))])
+   from cosmocore import active_pixel_index
 
-So a caller must know the active-pixel ordering before it can build them, which means the
-geometry has to be set up first. Every other kwarg takes a geometry-independent object;
-these two do not. If you are integrating an existing pipeline that already holds its own
-noise covariance, this is the one seam that needs care.
+   index = active_pixel_index(mask)          # mask: (npix, nfields)
+
+   maps = maps_full.reshape(nfields * npix, nsims)[index]   # (n_active, nsims)
+   cov = cov_full[np.ix_(index, index)]                     # (n_active, n_active)
+
+Each entry of ``index`` gives that reduced row's position in the flattened full-pixel
+``(nfields * npix,)`` vector. This is the same function the framework itself uses, so the
+published ordering *is* the ordering (ADR-0017).
+
+You are free to build the reduced covariance any way you like — the one-liner above is a
+convenience, not a requirement. A caller that can produce it directly (from a noise model,
+block by block, or streamed) never has to materialise the full matrix at all.
+
+``cosmocore.active_pixels(mask)`` returns the per-component index arrays if you need them
+individually.
 
 Worked example
 --------------

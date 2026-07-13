@@ -168,6 +168,17 @@ each reader does rather than being symmetric:
 | `noise_cov1` | reduced to active pixels |
 | `maps1` | reduced to active pixels |
 
+"Reduced" means restricted to the active (unmasked) pixels and ordered by the
+**active-pixel index** — a pure function of the mask, so no `Fisher` is needed to learn it:
+
+```python
+from cosmocore import active_pixel_index
+
+index = active_pixel_index(mask)
+maps = maps_full.reshape(nfields * npix, nsims)[index]
+cov = cov_full[np.ix_(index, index)]
+```
+
 Worked example: [`in_memory_inputs.ipynb`](src/cosmoforge.qube/notebooks/in_memory_inputs.ipynb),
 which drives both adapters over the same data and asserts they agree bit-for-bit. Design
 rationale: [ADR-0017](docs/adr/0017-file-or-array-loading-seams.md).
