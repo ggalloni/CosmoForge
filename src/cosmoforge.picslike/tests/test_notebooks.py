@@ -4,8 +4,10 @@ Gated on the ``jupyter`` dependency group: ``importorskip`` makes a plain
 ``uv run pytest`` skip these, while a notebook CI job that installs the group
 (``uv sync --group jupyter``) runs them. Each notebook is executed with its own
 directory as cwd (their ``ROOT = getcwd()/..`` path logic) and must write no new
-files anywhere under the package tree — the notebooks strip every ``out*`` path
-so the in-memory pipeline leaves the working tree untouched (ADR-0015/0017).
+analysis or output files anywhere under the package tree — the notebooks strip
+every ``out*`` path so the in-memory pipeline leaves the working tree untouched
+(ADR-0015/0017). Incidental interpreter artefacts (``__pycache__``,
+``.ipynb_checkpoints``) are excluded from the comparison via ``_IGNORE``.
 """
 
 import os
