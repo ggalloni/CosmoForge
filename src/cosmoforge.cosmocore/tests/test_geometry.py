@@ -45,6 +45,19 @@ def test_active_pixel_index_offsets_each_component_by_npix():
     assert active_pixel_index(mask).dtype == np.intp
 
 
+def test_1d_mask_is_treated_as_a_single_component():
+    mask_1d = np.array([1.0, 0.0, 1.0])
+
+    per_component = active_pixels(mask_1d)
+    assert len(per_component) == 1
+    np.testing.assert_array_equal(per_component[0], [0, 2])
+    # A single component means no offset is applied.
+    np.testing.assert_array_equal(active_pixel_index(mask_1d), [0, 2])
+    np.testing.assert_array_equal(
+        active_pixel_index(mask_1d), active_pixel_index(mask_1d[:, np.newaxis])
+    )
+
+
 def test_active_pixels_thresholds_at_half():
     mask = np.array([[0.0], [0.5], [0.51], [1.0]])
     np.testing.assert_array_equal(active_pixels(mask)[0], [2, 3])

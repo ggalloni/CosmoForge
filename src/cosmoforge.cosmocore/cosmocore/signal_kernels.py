@@ -727,6 +727,10 @@ def do_derivative_step(
             DeprecationWarning,
             stacklevel=2,
         )
+    # current_ell/fields only carry defaults because the deprecated npixs/spins sit
+    # ahead of them in the signature; both are required.
+    if current_ell is None:
+        raise TypeError("do_derivative_step() requires `current_ell`")
     if fields is None:
         raise TypeError("do_derivative_step() requires `fields`")
 

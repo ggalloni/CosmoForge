@@ -606,3 +606,10 @@ def test_do_derivative_step_deprecated_npixs_spins_warn():
         )
 
     np.testing.assert_allclose(S_legacy, S_new)
+
+    # current_ell/fields only carry defaults because the deprecated params sit ahead
+    # of them; omitting either must fail fast, not deep inside the kernels.
+    with pytest.raises(TypeError, match="requires `current_ell`"):
+        do_derivative_step(S=S_new, spectrum=0, fields=collection)
+    with pytest.raises(TypeError, match="requires `fields`"):
+        do_derivative_step(S=S_new, spectrum=0, current_ell=3)
