@@ -21,7 +21,6 @@ Requirements
 * ``healpy >= 1.18.1``
 * ``numba >= 0.61.2``
 * ``psutil >= 5.9``
-* ``threadpoolctl >= 3.0``
 
 **Optional extras:**
 

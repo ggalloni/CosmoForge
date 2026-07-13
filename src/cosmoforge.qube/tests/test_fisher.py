@@ -1,4 +1,6 @@
 import os
+import subprocess
+import sys
 import time
 from unittest.mock import MagicMock, patch
 
@@ -437,6 +439,38 @@ def test_teb_nside8_compression_vs_reference(local_path, config_resolver):
         atol=1e-2,
         rtol=0.01,
         err_msg="Compressed nside8 TEB Fisher should match Fortran reference",
+    )
+
+
+def test_run_survives_single_threaded_blas(config_resolver):
+    """Fisher.run() must not segfault when BLAS is pinned to one thread.
+
+    OpenBLAS sizes its thread pool at library-init time from
+    OPENBLAS_NUM_THREADS. Raising the limit above that at runtime (e.g. via
+    threadpoolctl) spawns workers whose packing buffers were never allocated,
+    and a single-threaded pool segfaults on the first parallel BLAS call.
+    OMP_NUM_THREADS=1 is the standard per-rank setting for MPI runs, so the
+    pipeline has to survive it. Runs in a subprocess: the pool size is fixed
+    when OpenBLAS loads, so it cannot be set from inside the test process.
+    """
+    config_file = config_resolver("tests/data/nside4/T/config.yaml")
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from qube import Fisher; Fisher(%r, basis=False).run()" % config_file,
+            ],
+            env={**os.environ, "OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1"},
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        os.unlink(config_file)
+
+    assert result.returncode == 0, (
+        f"Fisher.run() died at OPENBLAS_NUM_THREADS=1 (returncode="
+        f"{result.returncode}; -11 is SIGSEGV).\nstderr:\n{result.stderr[-2000:]}"
     )
 
 

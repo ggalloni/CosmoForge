@@ -26,7 +26,6 @@ dependencies = [
     "numpy>=2.2.6",
     "psutil>=5.9",
     "scipy>=1.16.1",
-    "threadpoolctl>=3.0",
 ]
 
 [project.optional-dependencies]
