@@ -7,6 +7,7 @@ Learn how to use CosmoForge through detailed tutorials and examples.
    :maxdepth: 2
 
    basic_usage
+   in_memory_inputs
 
 .. note::
    Additional tutorials are planned for future releases:

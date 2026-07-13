@@ -1,0 +1,127 @@
+In-Memory Inputs
+================
+
+Every pipeline input can be handed to CosmoForge as an **in-memory array** instead of a
+file path. This is for callers that already hold their data — an upstream component
+pipeline, or an interactive session — and should not have to round-trip it through disk
+just to run an analysis.
+
+The design is recorded in ADR-0017 (*file-or-array loading seams*), under ``docs/adr/``.
+
+Two adapters, one contract
+--------------------------
+
+Every input is loadable through exactly two adapters, converging on a single in-memory
+contract:
+
+* the **file adapter** — a path in ``InputParams``, parsed by a low-level reader;
+* the **injection adapter** — the object handed straight to the high-level class.
+
+An injected object always wins over the corresponding path. The configuration still
+supplies the scalars (``nside``, ``lmax``, ``nsims``, …); only the *data* moves.
+
+The injected object is defined as **exactly what the reader would have returned** — the
+injection adapter adds no new accepted forms.
+
+The kwarg vocabulary
+--------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 26 52
+
+   * - Kwarg
+     - Shadows
+     - In-memory contract
+   * - ``mask``
+     - ``maskfile``
+     - ``(npix,)`` or ``(npix, nfields)``, pixel-indexed per ``params.ordering``
+   * - ``noise_cov1``, ``noise_cov2``
+     - ``covmatfile1/2``
+     - **reduced** ``(n_active, n_active)``, **pre-calibration**
+   * - ``maps1``, ``maps2``
+     - ``inputmapfile1/2``
+     - **reduced** ``(n_active, n_sims)``, **already calibrated**
+   * - ``cls_data``
+     - ``inputclfile``
+     - ``{label: C_ell}`` dict of **physical** C_ell
+   * - ``fiducial_cls``
+     - ``fiducialfile``
+     - as ``cls_data``
+   * - ``beam``
+     - ``beam_file``
+     - 2-D, ≥3 rows (T/E/B window functions)
+
+``mask``, ``cls_data``, ``fiducial_cls`` and ``beam`` live on ``Core``, so they are
+accepted by ``Fisher``, ``Spectra`` and ``PICSLike`` alike. ``maps1``/``maps2`` are a
+``Spectra``/``PICSLike`` seam — ``Fisher`` never reads maps.
+
+A disk-free run
+---------------
+
+.. code-block:: python
+
+   from qube import Fisher, Spectra
+
+   fisher = Fisher(
+       params,
+       mask=mask,
+       noise_cov1=noise_cov,
+       cls_data=cls,
+       fiducial_cls=cls,
+       beam=beam,
+   )
+   fisher.run()
+
+   spectra = Spectra(params, fisher=fisher, maps1=maps)
+   spectra.run()
+   power_spectra = spectra.get_power_spectra(mode="deconvolved")
+
+Combine this with opt-in persistence — leave every ``out*`` path unset — and the run reads
+nothing and writes nothing. The working directory is untouched from end to end.
+
+Two contracts worth reading twice
+---------------------------------
+
+The covariance and the maps are treated asymmetrically. This is not arbitrary: each seam
+faithfully mirrors what *its own reader* does.
+
+* ``noise_cov1`` is **pre-calibration**. ``read_covmat`` does not apply
+  ``calibration``, so the framework applies ``calibration**2`` to whatever it is given —
+  file-read or injected alike.
+* ``maps1`` is **already calibrated**. ``read_maps`` applies ``calibration`` on read,
+  so the framework does *not* re-apply it to an injected array.
+
+Similarly, ``cls_data``/``fiducial_cls`` are **physical** C_ell: the ``input_convention``
+normalisation (e.g. D_ell → C_ell) is applied only on the file path, never to injected
+arrays.
+
+The active-pixel ordering
+-------------------------
+
+``noise_cov1``/``noise_cov2`` and ``maps1``/``maps2`` are **reduced** — restricted to the
+active (unmasked) pixels, concatenated across fields:
+
+.. code-block:: python
+
+   concat_pixact = np.concatenate([pixact[i] + i * npix for i in range(len(pixact))])
+
+So a caller must know the active-pixel ordering before it can build them, which means the
+geometry has to be set up first. Every other kwarg takes a geometry-independent object;
+these two do not. If you are integrating an existing pipeline that already holds its own
+noise covariance, this is the one seam that needs care.
+
+Worked example
+--------------
+
+``src/cosmoforge.qube/notebooks/in_memory_inputs.ipynb`` drives **both** adapters over the
+same data — reading each input with its low-level reader, then handing the arrays in with
+every input path pointed at a nonexistent location — and asserts the two agree bit-for-bit
+(identical Fisher matrix and identical power spectra).
+
+Run it with the ``jupyter`` dependency group:
+
+.. code-block:: bash
+
+   uv sync --group jupyter
+   uv run --group jupyter jupyter lab src/cosmoforge.qube/notebooks/in_memory_inputs.ipynb

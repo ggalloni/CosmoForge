@@ -145,6 +145,48 @@ mean_result = picslike.get_mean_likelihood_result()
 summary = mean_result.get_summary_statistics()
 ```
 
+### In-Memory Inputs (no files)
+
+Every input can be handed over as an array instead of a file path — for callers that
+already hold their maps, mask and noise covariance and should not have to round-trip
+them through disk. The config still supplies the scalars; an injected object wins over
+the corresponding path.
+
+```python
+from picslike import PICSLike
+
+like = PICSLike(
+    params,
+    mask=mask,             # (npix, nfields)
+    noise_cov1=noise_cov,  # reduced (n_active, n_active), *pre*-calibration
+    cls_data=cls,          # {label: C_ell}, physical C_ell
+    fiducial_cls=cls,
+    beam=beam,             # (>=3, lmax+1) T/E/B window functions
+    maps1=maps,            # reduced (n_active, n_sims), *already* calibrated
+)
+like.run()
+
+log_likelihood = like.get_log_likelihood()
+```
+
+Leave the `out*` paths unset and the run touches no disk at all.
+
+Kwargs: `mask`, `noise_cov1`/`noise_cov2`, `maps1`/`maps2`, `cls_data`, `fiducial_cls`,
+`beam` — the same vocabulary as `Fisher`/`Spectra` in QUBE. Each injected object is
+*exactly what the corresponding reader would have returned*. Two contracts are
+asymmetric, because each mirrors what its reader does:
+
+| kwarg | contract |
+|---|---|
+| `noise_cov1` | reduced to active pixels, **pre-calibration** (the framework applies `calibration**2`) |
+| `maps1` | reduced to active pixels, **already calibrated** (`read_maps` applies it on read) |
+
+`noise_cov1`/`maps1` are *reduced* to the active (unmasked) pixels, concatenated across
+fields — so the active-pixel ordering has to be known before they can be built.
+
+Worked example (QUBE, same seams):
+`src/cosmoforge.qube/notebooks/in_memory_inputs.ipynb`. Rationale: ADR-0017.
+
 ## Configuration
 
 PICSLike uses YAML configuration files:
