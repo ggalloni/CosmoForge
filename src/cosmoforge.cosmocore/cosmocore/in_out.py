@@ -432,7 +432,7 @@ def write_out_matrix(outfilematrix, matrix):
             f.write(line + "\n")
 
 
-def read_maps(maps, filename, pixact, field_labels, calibration: float = 1.0):
+def read_maps(maps, filename, pixact, field_labels):
     """
     Read map data from files.
 
@@ -456,9 +456,6 @@ def read_maps(maps, filename, pixact, field_labels, calibration: float = 1.0):
         These should be individual field names (e.g., ["T", "Q", "U"]).
         For numpy format, the first ``len(field_labels)`` entries in the
         file are assumed to match this ordering exactly.
-    calibration : float, optional
-        Calibration factor to multiply all map values. Default is 1.0.
-
     Raises
     ------
     AssertionError
@@ -480,8 +477,6 @@ def read_maps(maps, filename, pixact, field_labels, calibration: float = 1.0):
     For simple HEALPix format (nsims=1):
     - Reads directly using healpy
     - Field mapping: T=0, Q=1, U=2, E=1, B=2
-
-    Applies calibration factor to all loaded data.
     """
     assert maps.shape[0] == sum(len(p) for p in pixact), "maps array has incorrect shape"
     nsims = maps.shape[1]
@@ -496,8 +491,6 @@ def read_maps(maps, filename, pixact, field_labels, calibration: float = 1.0):
         _read_maps_numpy(maps, filename, pixact, nsims)
     else:
         _read_maps_fits(maps, filename, pixact, field_labels, nsims)
-
-    maps *= calibration
 
 
 def _read_maps_numpy(maps, filename, pixact, nsims):

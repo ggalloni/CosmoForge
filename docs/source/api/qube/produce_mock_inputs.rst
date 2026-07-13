@@ -318,56 +318,12 @@ Typical resource needs for different configurations:
      - ~8
      - High-resolution studies
 
-Advanced Features
------------------
+Scope
+-----
 
-Foreground Modeling
-^^^^^^^^^^^^^^^^^^^
-
-Optional foreground contamination modeling:
-
-.. code-block:: yaml
-
-   # Foreground configuration
-   include_foregrounds: true
-   foreground_models:
-     synchrotron: 
-       amplitude: 20.0  # μK at 408 MHz
-       spectral_index: -3.0
-     thermal_dust:
-       amplitude: 50.0  # μK at 545 GHz  
-       spectral_index: 1.6
-       temperature: 20.0  # K
-
-Systematic Templates
-^^^^^^^^^^^^^^^^^^^^
-
-User-defined systematic contamination:
-
-.. code-block:: yaml
-
-   # Systematic effects
-   systematic_templates:
-     - name: "gain_variation"
-       amplitude: 0.01  # Fractional
-       template_file: "gain_template.fits"
-     - name: "pointing_error"  
-       amplitude: 2.0   # arcsec RMS
-       correlation_length: 10.0  # degrees
-
-Calibration Uncertainties
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Realistic calibration error modeling:
-
-.. code-block:: yaml
-
-   # Calibration parameters
-   calibration:
-     gain_uncertainty: 0.002      # Fractional
-     polarization_angle: 0.5      # degrees  
-     polarization_efficiency: 0.99
-     beam_uncertainty: 0.01       # Fractional FWHM
+The script generates Gaussian CMB realizations, convolves them with the beam, and adds
+noise drawn from the pixel noise covariance. It models **no** foregrounds, systematic
+templates, or gain/pointing errors — there is no configuration for them.
 
 See Also
 --------

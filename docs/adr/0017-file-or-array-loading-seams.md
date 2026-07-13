@@ -173,3 +173,31 @@ subclasses, off `Core`/`Fisher`). The `beam` seam already had a
 convergence point — `compute_beams`, where every `smoothtype` lands as a
 `(3, lmax+1)` beam dict — so A5 added an injected-wins branch there rather
 than a parallel resolver, with `hp.read_cl` staying a pure parser.
+
+### Amendment (2026-07-13, calibration removal): both reduced seams take "the reduced array"
+
+`calibration` has been removed (see the amendment to
+[ADR-0018](0018-auto-basis-default-and-kwarg-rename.md) for the deprecation mechanics).
+It was the sole cause of the one genuinely confusing asymmetry in this ADR's contract:
+
+| kwarg | was | now |
+|---|---|---|
+| `noise_cov1/2` | reduced `(n_active, n_active)`, **pre**-calibration (the framework applied `calibration**2`) | reduced `(n_active, n_active)` |
+| `maps1/2` | reduced `(n_active, n_sims)`, **already** calibrated (`read_maps` applied it on read) | reduced `(n_active, n_sims)` |
+
+The split was never arbitrary — each seam faithfully mirrored what *its own reader* did,
+which is exactly what §Decision.1 requires. But it meant the two reduced seams, which look
+alike and sit side by side in every call, carried opposite calibration conventions. It was
+the thing an integration was most likely to get wrong, and it cost a paragraph of caveats in
+the ADR, both docstrings, three READMEs, the tutorial and the notebook. All of that is gone.
+
+`_resolve_noise_cov` is correspondingly simpler: with no scaling, the injected array is
+*always* returned as-is (never a defensive copy, never a scaled copy), and the file adapter
+needs no in-place multiply on its own buffer. The "Core takes ownership and never mutates
+the caller's array" contract — which came out of a Copilot review — survives, and is now
+trivially true rather than true by careful construction.
+
+**One asymmetry remains, and it is not calibration's.** `cls_data`/`fiducial_cls` must be
+**physical** C_ell: the `input_convention` normalisation (D_ell → C_ell) is applied only on
+the file path, never to an injected array. This is the same §Decision.1 rule — the injected
+object is what the *reader* returns, and `readcl` returns physical C_ell — so it stays.

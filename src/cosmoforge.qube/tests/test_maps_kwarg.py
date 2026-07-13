@@ -3,8 +3,7 @@
 Maps are a Spectra-only seam (Fisher never reads them), so dispatch + validation
 live on ``Spectra._resolve_maps``. The injected object is "exactly what
 :func:`read_maps` would have returned": the reduced ``(n_active, n_sims)`` float64
-array, *already calibrated* (``read_maps`` applies ``calibration`` internally, so
-the injected array is taken as-is — calibration is the file adapter's job only).
+array. The injected array is taken as-is.
 """
 
 import inspect
@@ -64,25 +63,6 @@ def test_injected_maps1_matches_file_path(config_resolver):
         inj.setup_maps()
 
         np.testing.assert_array_equal(inj.maps1, ref_maps1)
-
-
-def test_injected_maps_taken_as_is_no_recalibration(config_resolver):
-    """Injected maps are used verbatim; ``calibration`` is NOT re-applied
-    (it is the file adapter's job — the injected array is already calibrated)."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        params = _params(config_resolver, tmpdir)
-        params.calibration = 2.0
-        fisher = Fisher(params)
-        fisher.run()
-
-        spec = Spectra(params, fisher=fisher)
-        spec.setup_fields()
-        spec.setup_geometry()
-        n = int(spec.collection.total_active_pixels)
-        arr = np.arange(n * params.nsims, dtype=np.float64).reshape(n, params.nsims)
-        spec._injected_maps1 = arr.copy()
-        spec.setup_maps()
-        np.testing.assert_array_equal(spec.maps1, arr)  # unchanged, not *2
 
 
 def test_injected_maps1_wrong_shape_raises(config_resolver):

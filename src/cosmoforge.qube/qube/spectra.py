@@ -232,9 +232,7 @@ class Spectra(Core, MPISharedMemoryMixin):
             ``params.inputmapfile1``/``inputmapfile2`` (ADR-0017). Exactly what
             :func:`read_maps` would have returned: the reduced
             ``(n_active, n_sims)`` float64 array, pixel-ordered per the
-            concatenated active-pixel index, *already calibrated* (``read_maps``
-            applies ``calibration`` on read, so the injected array is used as-is
-            — calibration is the file adapter's job only). ``maps2`` is consumed
+            concatenated active-pixel index. Used as-is. ``maps2`` is consumed
             only when ``params.do_cross``. Independent of ``fisher=`` (maps are
             not part of the Fisher reuse), so both may be given together.
         **kwargs : dict
@@ -500,7 +498,7 @@ class Spectra(Core, MPISharedMemoryMixin):
         """
         Read observational map data from FITS files.
 
-        Loads maps with proper pixel selection, field extraction, and calibration.
+        Loads maps with proper pixel selection and field extraction.
         For cross-correlation (do_cross=True), loads both primary and secondary maps.
         Output shape: (n_active_pixels, n_simulations).
 

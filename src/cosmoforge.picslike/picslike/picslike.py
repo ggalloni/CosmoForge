@@ -327,7 +327,7 @@ class PICSLike(Core, MPISharedMemoryMixin):
         """
         Read observational map data from FITS files.
 
-        Loads maps with proper pixel selection, field extraction, and calibration.
+        Loads maps with proper pixel selection and field extraction.
         For cross-correlation (do_cross=True), loads both primary and secondary maps.
         Output shape: (n_active_pixels, n_simulations).
 

@@ -82,10 +82,6 @@ class InputParams:
         Beam FWHM in arcminutes for Gaussian beam approximation.
     apply_pixwin : bool
         Whether to apply HEALPix pixel window functions.
-    smooth_pol : bool
-        Whether to apply smoothing to polarization fields.
-    calibration : float
-        Overall calibration factor for maps.
     load_reduced : bool
         If True, read noise covariance matrices that have already been reduced
         to active pixels (via ``read_covmat_reduced``) instead of extracting
@@ -199,7 +195,6 @@ class InputParams:
         self.outinvcovmatfile2 = None
         self.outnoisecovmat1 = None
         self.outnoisecovmat2 = None
-        self.calibration = 1.0
         self.load_inverted = False
         # When True, noise covariance files are already reduced to active
         # pixels and can be read directly with read_covmat_reduced(), skipping
@@ -208,7 +203,6 @@ class InputParams:
         self.output_geometry_file = None
         self.smoothing_type = "cosine_legacy"
         self.apply_pixwin = True
-        self.smooth_pol = True
         self.fwhmarcmin = 440.0
         self.beam_file = "inputs/beam.fits"
         self.lmax = 64
@@ -303,6 +297,42 @@ class InputParams:
             )
             return "NESTED" if int(value) == 1 else "RING"
         raise TypeError(f"ordering must be str or int, got {type(value).__name__}")
+
+    @staticmethod
+    def _reject_calibration(value):
+        """Accept a legacy ``calibration: 1.0``; refuse any other value.
+
+        ``calibration`` scaled the maps by ``c`` and the noise covariance by
+        ``c**2`` to carry inputs from instrument units into theory units. It was
+        ``1.0`` in every config that ever shipped, and being a single global
+        scalar it could never express the one case that needs a gain — ``do_cross``
+        with two experiments. It was removed rather than reshaped.
+
+        Since ``update()`` ignores unrecognised keys, simply deleting the
+        attribute would turn a non-unit ``calibration`` into a silent no-op —
+        wrong numbers, no warning. Hence the refusal.
+
+        Unity is recognised numerically, so a legacy ``calibration: "1.0"``
+        (quoted in YAML, hence a ``str``) is still accepted. ``bool`` is excluded
+        deliberately: ``True == 1.0`` is true in Python, and silently reading
+        ``calibration: true`` as unity is exactly the kind of quiet mis-parse this
+        guard exists to prevent. Anything not numerically unity — including a
+        value that cannot be read as a number at all — raises.
+        """
+        try:
+            is_unity = not isinstance(value, bool) and float(value) == 1.0
+        except (TypeError, ValueError):
+            is_unity = False
+
+        if not is_unity:
+            raise ValueError(
+                f"calibration={value!r} is no longer supported: the parameter has "
+                "been removed. It only ever rescaled the inputs, so apply it "
+                "yourself before handing them over — multiply the maps by the "
+                "calibration and the noise covariance by its square. Passing the "
+                "arrays in directly (ADR-0017) makes this a one-liner, and unlike "
+                "the old global scalar it lets map1 and map2 carry different gains."
+            )
 
     @staticmethod
     def _normalize_smoothing_type(value):
@@ -423,6 +453,12 @@ class InputParams:
         Non-existent attributes are silently ignored.
         """
         for key, value in config_dict.items():
+            # Checked before the hasattr gate below: the attribute no longer
+            # exists, so a branch inside that gate would never run and the key
+            # would be silently dropped — exactly the failure this guards.
+            if key == "calibration":
+                self._reject_calibration(value)
+                continue
             if hasattr(self, key):
                 # Apply field expansion for field label parameters
                 if key in ("labels", "physical_labels") and isinstance(value, list):

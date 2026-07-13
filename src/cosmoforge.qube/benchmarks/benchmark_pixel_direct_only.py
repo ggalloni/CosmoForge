@@ -170,7 +170,6 @@ def write_temp_config(
         # avoids materialising the full 12*nside^2 noise matrix in memory.
         "load_reduced": True,
         "load_inverted": True,
-        "calibration": 1.0,
         "smoothing_type": "gaussian",
         "fwhmarcmin": fwhmarcmin,
         "apply_pixwin": False,

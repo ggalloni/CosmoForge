@@ -15,7 +15,6 @@ covmatfile2: '../tests/data/nside8/B/NCVM2.bin'
 lmax: 32
 
 load_inverted: false
-calibration: 1.0
 
 smoothing_type: gaussian
 fwhmarcmin: 440.0
@@ -46,4 +45,3 @@ outfilefisher: '../tests/data/nside8/B/fisher.dat'
 
 # QML options
 remove_nb: true
-nspectra: 1

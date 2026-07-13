@@ -17,7 +17,6 @@ covmatfile2: '../tests/data/nside4/TQU/NCVM2.bin'
 lmax: 16
 
 load_inverted: false
-calibration: 1.0
 
 smoothing_type: file
 fwhmarcmin: 440.0
@@ -52,4 +51,3 @@ root_filename: 'dls'
 
 # QML options
 remove_nb: true
-nspectra: 6

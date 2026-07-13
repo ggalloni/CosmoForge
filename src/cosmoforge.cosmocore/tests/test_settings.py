@@ -22,7 +22,6 @@ def test_input_params_yaml_reading(tmp_path):
         "covmatfile1": "data/noise1.bin",
         "beam_file": "data/beam.fits",
         "fwhmarcmin": 5.0,
-        "calibration": 1.2,
         "feedback": 2,
         "apply_pixwin": False,
         "ordering": "RING",
@@ -50,7 +49,6 @@ def test_input_params_yaml_reading(tmp_path):
 
     # Verify numerical parameters
     assert params.fwhmarcmin == 5.0
-    assert params.calibration == 1.2
     assert params.feedback == 2
     assert params.apply_pixwin is False
     assert params.ordering == "RING"
@@ -74,7 +72,6 @@ def test_input_params_default_values():
 
     # Test numerical defaults
     assert params.feedback == 1
-    assert params.calibration == 1.0
     assert params.fwhmarcmin == 440.0
     assert params.apply_pixwin is True
     assert params.ordering == "RING"
@@ -105,7 +102,7 @@ def test_input_params_update_method():
     orig_lmax = params.lmax
 
     # Update with new values
-    updates = {"nside": 64, "lmax": 128, "feedback": 0, "calibration": 2.0}
+    updates = {"nside": 64, "lmax": 128, "feedback": 0}
 
     params.update(updates)
 
@@ -113,7 +110,6 @@ def test_input_params_update_method():
     assert params.nside == 64
     assert params.lmax == 128
     assert params.feedback == 0
-    assert params.calibration == 2.0
 
     # Verify derived parameters are recomputed
     assert params.nside != orig_nside
@@ -314,3 +310,70 @@ class TestNormalizeSmoothingType:
             params.update({"smoothing_type": "cosine"})
             assert params.smoothing_type == "cosine_legacy"
             assert any(issubclass(rec.category, DeprecationWarning) for rec in w)
+
+
+def test_calibration_removed_from_public_surface():
+    """``calibration`` and ``smooth_pol`` are gone from InputParams."""
+    params = InputParams()
+    assert not hasattr(params, "calibration")
+    assert not hasattr(params, "smooth_pol")
+
+
+def test_calibration_unity_is_accepted_and_ignored():
+    """A legacy ``calibration: 1.0`` key still loads, silently.
+
+    Every config that ever shipped set it to 1.0, so those users see nothing.
+    """
+    params = InputParams()
+    params.update({"nside": 32, "calibration": 1.0})
+    assert params.nside == 32
+    assert not hasattr(params, "calibration")
+
+
+def test_calibration_non_unity_raises():
+    """A non-unit ``calibration`` raises rather than being silently dropped.
+
+    ``update()`` ignores unknown keys, so a plain removal would turn a real
+    numerical setting into a no-op with no diagnostics — the one outcome that
+    could corrupt results unnoticed. The key is therefore still recognised,
+    purely so it can refuse.
+    """
+    params = InputParams()
+    with pytest.raises(ValueError, match="calibration"):
+        params.update({"calibration": 2.0})
+
+
+def test_calibration_non_unity_raises_from_yaml(tmp_path):
+    """The guard fires through ``read_parameter_file`` too, not just update()."""
+    config_file = tmp_path / "cal.yaml"
+    with open(config_file, "w") as f:
+        yaml.dump({"nside": 16, "calibration": 0.98}, f)
+    with pytest.raises(ValueError, match="calibration"):
+        InputParams.read_parameter_file(str(config_file))
+
+
+def test_calibration_unity_accepted_however_it_is_spelled():
+    """A quoted ``calibration: "1.0"`` is still unity, and still accepted."""
+    for spelling in (1.0, 1, "1.0", "1"):
+        params = InputParams()
+        params.update({"calibration": spelling})  # must not raise
+        assert not hasattr(params, "calibration")
+
+
+def test_calibration_bool_is_refused_not_read_as_unity():
+    """``calibration: true`` must raise, not be silently read as 1.0.
+
+    ``True == 1.0`` in Python, so a naive equality check would quietly accept a
+    boolean as unity — the exact class of silent mis-parse this guard exists to
+    prevent.
+    """
+    params = InputParams()
+    with pytest.raises(ValueError, match="calibration"):
+        params.update({"calibration": True})
+
+
+def test_calibration_garbage_raises_the_removal_error():
+    """A non-numeric value raises the removal message, not a stray TypeError."""
+    params = InputParams()
+    with pytest.raises(ValueError, match="no longer supported"):
+        params.update({"calibration": "not-a-number"})

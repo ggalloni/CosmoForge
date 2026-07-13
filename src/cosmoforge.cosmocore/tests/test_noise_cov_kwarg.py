@@ -3,7 +3,7 @@
 ``Core`` owns dispatch + semantic validation of the noise-covariance seam via
 ``_resolve_noise_cov``. The injected object is "exactly what the reader would
 have returned": the reduced ``(n_active, n_active)`` covariance, pixel-ordered
-per ``concatenate_pixact``, *before* the uniform calibration multiply.
+per ``concatenate_pixact``.
 """
 
 import tempfile
@@ -18,7 +18,7 @@ from cosmocore.settings import InputParams
 from .test_core import ConcreteCore
 
 
-def _params(nside=4, do_cross=False, calibration=1.0):
+def _params(nside=4, do_cross=False):
     params = InputParams()
     params.nside = nside
     params.lmax = 4 * nside
@@ -26,7 +26,6 @@ def _params(nside=4, do_cross=False, calibration=1.0):
     params.spins = [0]
     params.labels = ["T"]
     params.ordering = "RING"
-    params.calibration = calibration
     params.do_cross = do_cross
     params.covmatfile1 = "/nonexistent/ncvm1.bin"
     params.covmatfile2 = "/nonexistent/ncvm2.bin"
@@ -69,48 +68,25 @@ def test_injected_noise_cov1_matches_file_path():
     np.testing.assert_array_equal(inj.noise_cov1, ref.noise_cov1)
 
 
-def test_injected_noise_cov_applies_calibration():
-    """Calibration multiplies the injected array uniformly (calibration**2)."""
-    params = _params(calibration=2.0)
-    core = ConcreteCore(params, noise_cov1=None)
-    core.setup_fields()
-    core.setup_geometry()
-    n = _n_active(core)
-    A = np.eye(n) * 0.1
-    core._injected_noise_cov1 = A.copy()
-    core.setup_covariance_matrices()
-    np.testing.assert_allclose(core.noise_cov1, A * 4.0)
-
-
 def test_injected_noise_cov_ownership_contract():
-    """No defensive copy and no mutation of the caller's array (ADR-0017).
+    """The injected array is used as-is and never mutated (ADR-0017).
 
-    With ``calibration == 1`` the injected array is returned as-is (identity);
-    with a scaling calibration a new array is returned and the injected one is
-    left untouched.
+    No defensive copy on the way in, and no scaling on the way out: the seam
+    takes "the reduced array" and nothing else, so the resolved covariance is
+    the very object the caller handed over.
     """
-    # calibration == 1: returned object IS the injected array.
-    params = _params(calibration=1.0)
+    params = _params()
     core = ConcreteCore(params)
     core.setup_fields()
     core.setup_geometry()
     n = _n_active(core)
     A = np.eye(n) * 0.1
+    A_before = A.copy()
     core._injected_noise_cov1 = A
     core.setup_covariance_matrices()
-    assert core.noise_cov1 is A  # no copy
 
-    # calibration != 1: injected array is not mutated.
-    params2 = _params(calibration=2.0)
-    core2 = ConcreteCore(params2)
-    core2.setup_fields()
-    core2.setup_geometry()
-    B = np.eye(n) * 0.1
-    B_before = B.copy()
-    core2._injected_noise_cov1 = B
-    core2.setup_covariance_matrices()
-    np.testing.assert_array_equal(B, B_before)  # caller's array untouched
-    assert core2.noise_cov1 is not B
+    assert core.noise_cov1 is A  # no defensive copy
+    np.testing.assert_array_equal(A, A_before)  # caller's array untouched
 
 
 def test_injected_noise_cov1_wrong_shape_raises():

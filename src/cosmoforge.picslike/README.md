@@ -158,7 +158,7 @@ from picslike import PICSLike
 like = PICSLike(
     params,
     mask=mask,             # (npix, nfields)
-    noise_cov1=noise_cov,  # reduced (n_active, n_active), *pre*-calibration
+    noise_cov1=noise_cov,  # reduced (n_active, n_active)
     cls_data=cls,          # {label: C_ell}, physical C_ell
     fiducial_cls=cls,
     beam=beam,             # (>=3, lmax+1) T/E/B window functions
@@ -178,8 +178,8 @@ asymmetric, because each mirrors what its reader does:
 
 | kwarg | contract |
 |---|---|
-| `noise_cov1` | reduced to active pixels, **pre-calibration** (the framework applies `calibration**2`) |
-| `maps1` | reduced to active pixels, **already calibrated** (`read_maps` applies it on read) |
+| `noise_cov1` | reduced to active pixels |
+| `maps1` | reduced to active pixels |
 
 `noise_cov1`/`maps1` are *reduced* to the active (unmasked) pixels, concatenated across
 fields — so the active-pixel ordering has to be known before they can be built.
@@ -207,7 +207,6 @@ covmatfile2: "data/noise_cov2.bin"  # for cross-correlation
 
 # Analysis parameters
 do_cross: false
-calibration: 1.0
 nsims: 100
 ```
 
@@ -238,7 +237,6 @@ smoothing_type: gaussian  # none, gaussian, cosine_legacy, cosine_npipe, file
 fwhmarcmin: 5.0
 beam_file: "data/beam.fits"
 apply_pixwin: true
-smooth_pol: true
 ```
 
 ## MPI Usage
