@@ -426,7 +426,11 @@ jobs:
       # the notebooks plot with) comes from the dev group. Without the group,
       # test_notebooks.py importorskips — which is exactly why these tests never
       # ran in CI before.
+      # `matrix` is not available in a job-level `if`, so the per-package gate
+      # lives on the steps: without it the matrix would run BOTH notebook suites
+      # whenever EITHER package is affected.
       - name: Install workspace dependencies
+        if: needs.detect-changes.outputs[format('test-{0}', matrix.package)] == 'true'
         run: |
           uv sync --dev --group jupyter
 
@@ -434,6 +438,7 @@ jobs:
       # pyproject, and `uv run --group` resolves groups against the pyproject of
       # the directory it runs in — from inside the package it errors out.
       - name: Execute notebooks headless
+        if: needs.detect-changes.outputs[format('test-{0}', matrix.package)] == 'true'
         run: |
           uv run --group jupyter pytest \
             src/cosmoforge.${{ matrix.package }}/tests/test_notebooks.py -v

@@ -311,8 +311,20 @@ class InputParams:
         Since ``update()`` ignores unrecognised keys, simply deleting the
         attribute would turn a non-unit ``calibration`` into a silent no-op —
         wrong numbers, no warning. Hence the refusal.
+
+        Unity is recognised numerically, so a legacy ``calibration: "1.0"``
+        (quoted in YAML, hence a ``str``) is still accepted. ``bool`` is excluded
+        deliberately: ``True == 1.0`` is true in Python, and silently reading
+        ``calibration: true`` as unity is exactly the kind of quiet mis-parse this
+        guard exists to prevent. Anything not numerically unity — including a
+        value that cannot be read as a number at all — raises.
         """
-        if value != 1.0:
+        try:
+            is_unity = not isinstance(value, bool) and float(value) == 1.0
+        except (TypeError, ValueError):
+            is_unity = False
+
+        if not is_unity:
             raise ValueError(
                 f"calibration={value!r} is no longer supported: the parameter has "
                 "been removed. It only ever rescaled the inputs, so apply it "

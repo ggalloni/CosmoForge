@@ -57,17 +57,24 @@ def _write_inputs(tmpdir: str) -> str:
             f.write(f"{ell:d}  {cl_input[ell]:.16e}\n")
 
     rng = np.random.default_rng(SEED)
+    sim_maps = np.empty((1, npix, NSIMS), dtype=np.float64)
+
     # hp.synfast draws from numpy's *global* legacy RNG, not from `rng` — so the
     # signal realisations were unseeded and every run drew a fresh sky. That made
     # the 3-sigma gate below a dice roll: it passed ~99.7% of the time and flaked
-    # the rest. Seeding the global RNG pins the signal too.
+    # the rest. Seed the global RNG to pin the signal, and restore the previous
+    # state afterwards so this test cannot perturb any other.
+    entry_state = np.random.get_state()
     np.random.seed(SEED)
-    sim_maps = np.empty((1, npix, NSIMS), dtype=np.float64)
-    for s in range(NSIMS):
-        signal_map = hp.synfast(cl_input, NSIDE, lmax=LMAX_SIGNAL, new=True)
-        # Independent white noise per pixel (matches cov_reduced).
-        noise_map = rng.normal(0.0, np.sqrt(NOISE_VAR), size=npix)
-        sim_maps[0, :, s] = signal_map + noise_map
+    try:
+        for s in range(NSIMS):
+            signal_map = hp.synfast(cl_input, NSIDE, lmax=LMAX_SIGNAL, new=True)
+            # Independent white noise per pixel (matches cov_reduced).
+            noise_map = rng.normal(0.0, np.sqrt(NOISE_VAR), size=npix)
+            sim_maps[0, :, s] = signal_map + noise_map
+    finally:
+        np.random.set_state(entry_state)
+
     sim_path = os.path.join(tmpdir, "sims.npy")
     np.save(sim_path, sim_maps)
 

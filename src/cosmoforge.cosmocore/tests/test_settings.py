@@ -350,3 +350,30 @@ def test_calibration_non_unity_raises_from_yaml(tmp_path):
         yaml.dump({"nside": 16, "calibration": 0.98}, f)
     with pytest.raises(ValueError, match="calibration"):
         InputParams.read_parameter_file(str(config_file))
+
+
+def test_calibration_unity_accepted_however_it_is_spelled():
+    """A quoted ``calibration: "1.0"`` is still unity, and still accepted."""
+    for spelling in (1.0, 1, "1.0", "1"):
+        params = InputParams()
+        params.update({"calibration": spelling})  # must not raise
+        assert not hasattr(params, "calibration")
+
+
+def test_calibration_bool_is_refused_not_read_as_unity():
+    """``calibration: true`` must raise, not be silently read as 1.0.
+
+    ``True == 1.0`` in Python, so a naive equality check would quietly accept a
+    boolean as unity — the exact class of silent mis-parse this guard exists to
+    prevent.
+    """
+    params = InputParams()
+    with pytest.raises(ValueError, match="calibration"):
+        params.update({"calibration": True})
+
+
+def test_calibration_garbage_raises_the_removal_error():
+    """A non-numeric value raises the removal message, not a stray TypeError."""
+    params = InputParams()
+    with pytest.raises(ValueError, match="no longer supported"):
+        params.update({"calibration": "not-a-number"})
