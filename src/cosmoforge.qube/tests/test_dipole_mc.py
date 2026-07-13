@@ -10,9 +10,11 @@ This is the only smoke test that exercises the lifted ``_lmin_smw`` floor
 end-to-end; if it fails the lift in PR2 has reintroduced an off-by-one
 somewhere on the V-fill / Lambda / derivative path.
 
-Stability: pass-verified across seeds {12345, 1, 42, 99, 31415} at the
-default tolerances (3σ_mean recovery, std ratio in [0.7, 1.3]). NSIMS=200
-gives σ_mean ≈ σ/14, so the 3σ window is comfortable but not loose.
+Determinism: the signal is drawn by ``hp.synfast``, which uses numpy's *global*
+legacy RNG — not the ``default_rng(SEED)`` generator, which seeds only the noise.
+Both are pinned, so the realisations are fixed and the tolerances below are a real
+gate rather than a dice roll. At NSIMS=200, σ_mean ≈ σ/14; the pinned draw lands at
+0.66 σ_mean, well inside the 3σ window.
 """
 
 from __future__ import annotations
@@ -55,6 +57,11 @@ def _write_inputs(tmpdir: str) -> str:
             f.write(f"{ell:d}  {cl_input[ell]:.16e}\n")
 
     rng = np.random.default_rng(SEED)
+    # hp.synfast draws from numpy's *global* legacy RNG, not from `rng` — so the
+    # signal realisations were unseeded and every run drew a fresh sky. That made
+    # the 3-sigma gate below a dice roll: it passed ~99.7% of the time and flaked
+    # the rest. Seeding the global RNG pins the signal too.
+    np.random.seed(SEED)
     sim_maps = np.empty((1, npix, NSIMS), dtype=np.float64)
     for s in range(NSIMS):
         signal_map = hp.synfast(cl_input, NSIDE, lmax=LMAX_SIGNAL, new=True)

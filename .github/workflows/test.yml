@@ -395,11 +395,54 @@ jobs:
         run: |
           uv run pytest tests/ -v
 
+  test-notebooks:
+    name: Test Notebooks (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: detect-changes
+    # The demo notebooks are single-process — they exercise no MPI — so they do
+    # not belong in either leg of the package matrices. A dedicated job also runs
+    # in parallel with them, keeping the workflow's critical path unchanged.
+    if: |
+      needs.detect-changes.outputs.test-qube == 'true' ||
+      needs.detect-changes.outputs.test-picslike == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [qube, picslike]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v2
+
+      # The jupyter group supplies nbclient/nbformat/ipykernel; matplotlib (which
+      # the notebooks plot with) comes from the dev group. Without the group,
+      # test_notebooks.py importorskips — which is exactly why these tests never
+      # ran in CI before.
+      - name: Install workspace dependencies
+        run: |
+          uv sync --dev --group jupyter
+
+      # Run from the workspace root: the `jupyter` group is declared in the root
+      # pyproject, and `uv run --group` resolves groups against the pyproject of
+      # the directory it runs in — from inside the package it errors out.
+      - name: Execute notebooks headless
+        run: |
+          uv run --group jupyter pytest \
+            src/cosmoforge.${{ matrix.package }}/tests/test_notebooks.py -v
+
   summary:
     name: Test Summary
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [detect-changes, test-cosmocore, test-qube, test-picslike, test-meta]
+    needs: [detect-changes, test-cosmocore, test-qube, test-picslike, test-meta, test-notebooks]
     if: always()
     steps:
       - name: Print test strategy
@@ -414,6 +457,7 @@ jobs:
           echo "- QUBE: ${{ needs.test-qube.result }} (strategy: ${{ needs.detect-changes.outputs.qube-strategy }})"
           echo "- PICSLike: ${{ needs.test-picslike.result }} (strategy: ${{ needs.detect-changes.outputs.picslike-strategy }})"
           echo "- Meta: ${{ needs.test-meta.result }} (strategy: ${{ needs.detect-changes.outputs.meta-strategy }})"
+          echo "- Notebooks: ${{ needs.test-notebooks.result }}"
           echo ""
           echo "## Coverage Notes"
           if [[ "${{ needs.detect-changes.outputs.test-cosmocore }}" == "false" ]]; then
