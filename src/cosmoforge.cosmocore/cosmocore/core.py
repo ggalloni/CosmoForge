@@ -191,13 +191,10 @@ class Core(ABC):
             ``params.covmatfile1``/``covmatfile2`` (ADR-0017). Exactly what
             :func:`read_covmat`/:func:`read_covmat_reduced` would have returned:
             the *reduced* ``(n_active, n_active)`` float64 matrix, pixel-ordered
-            per the concatenated active-pixel index, *before* the uniform
-            ``calibration**2`` scaling (applied to both adapters). Core takes
-            ownership (no defensive copy) and never mutates the injected array:
-            with ``calibration == 1`` the injected array is used as-is,
-            otherwise a scaled copy is returned. When given, each wins over its
-            params path; otherwise the path is read. ``noise_cov2`` is consumed
-            only when ``params.do_cross``.
+            per the concatenated active-pixel index. Core takes ownership (no
+            defensive copy), uses the array as-is, and never mutates it. When
+            given, each wins over its params path; otherwise the path is read.
+            ``noise_cov2`` is consumed only when ``params.do_cross``.
         cls_data, fiducial_cls : dict or numpy.ndarray, optional
             In-memory power spectra injected in place of
             ``params.inputclfile``/``params.fiducialfile`` (ADR-0017). Exactly
@@ -499,10 +496,9 @@ class Core(ABC):
         Notes
         -----
         This method:
-        1. Reads noise covariance matrices from file
-        2. Applies calibration corrections
-        3. Optionally outputs reduced covariance matrices
-        4. Sets up secondary covariance for cross-correlation analysis if enabled
+        1. Resolves the noise covariances (injected array, or read from file)
+        2. Optionally outputs reduced covariance matrices
+        3. Sets up secondary covariance for cross-correlation analysis if enabled
 
         The covariance matrices are essential for proper weighting in maximum
         likelihood and Fisher matrix calculations.
@@ -547,14 +543,10 @@ class Core(ABC):
         injected array (``Core.__init__``) wins; otherwise the file adapter
         reads ``covmatfile`` via :func:`read_covmat_reduced` (when
         ``params.load_reduced``) or :func:`read_covmat`. Both adapters pass
-        through the same shape/dtype validation and the uniform
-        ``calibration**2`` scaling.
+        through the same shape/dtype validation.
 
-        To keep the "no defensive copy" contract honest at production sizes:
-        the file adapter scales its own fresh buffer *in place*; the injection
-        adapter returns the injected array untouched when ``calibration == 1``
-        and otherwise returns a scaled copy — it never mutates the caller's
-        array.
+        The injected array is used as-is: no defensive copy on the way in, no
+        rescaling on the way out, and the caller's array is never mutated.
 
         Raises
         ------
@@ -563,7 +555,6 @@ class Core(ABC):
             the active-pixel count.
         """
         n_active = concatenate_pixact.shape[0]
-        cal2 = self.params.calibration**2
         if injected is not None:
             cov = np.asarray(injected, dtype=np.float64)
             if cov.shape != (n_active, n_active):
@@ -571,7 +562,7 @@ class Core(ABC):
                     f"injected noise covariance has shape {cov.shape}, expected "
                     f"({n_active}, {n_active}) for the active-pixel count"
                 )
-            return cov if cal2 == 1.0 else cov * cal2
+            return cov
 
         cov = np.empty((n_active, n_active), dtype=np.float64)
         if self.params.load_reduced:
@@ -580,7 +571,6 @@ class Core(ABC):
             cov = read_covmat(
                 covmatfile, npix, self.params.nfields, concatenate_pixact, cov
             )
-        cov *= cal2  # own buffer; scale in place to avoid a second allocation
         return cov
 
     def _resolve_maps(
@@ -589,11 +579,10 @@ class Core(ABC):
         """Resolve one map stack to a reduced ``(ntot, n_sims)`` float64 array.
 
         Applies the file-or-array seam convention (ADR-0017). An injected array
-        wins and is used as-is (already calibrated); otherwise the file adapter
-        reads ``filename`` via :func:`read_maps`, which applies
-        ``params.calibration`` on read. Both adapters pass through the same
-        shape/dtype validation. Shared by the maps-reading subclasses
-        (``Spectra`` and ``PICSLike``); not consumed by ``Fisher``.
+        wins and is used as-is; otherwise the file adapter reads ``filename``
+        via :func:`read_maps`. Both adapters pass through the same shape/dtype
+        validation. Shared by the maps-reading subclasses (``Spectra`` and
+        ``PICSLike``); not consumed by ``Fisher``.
 
         Raises
         ------
@@ -616,7 +605,6 @@ class Core(ABC):
             filename=filename,
             pixact=self.pixact,
             field_labels=self.params.physical_labels,
-            calibration=self.params.calibration,
         )
         return maps
 

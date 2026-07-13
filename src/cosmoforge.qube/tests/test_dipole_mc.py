@@ -84,7 +84,6 @@ def _write_inputs(tmpdir: str) -> str:
         "lmin_signal": [1],
         "load_reduced": True,
         "load_inverted": False,
-        "calibration": 1.0,
         "smoothing_type": "none",
         "fwhmarcmin": 0.0,
         "apply_pixwin": False,

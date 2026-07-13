@@ -15,7 +15,6 @@ covmatfile2: 'inputs/QU_NCVM2.bin'
 lmax: 32
 
 load_inverted: false
-calibration: 1.0
 
 smoothing_type: file
 fwhmarcmin: [440.0]

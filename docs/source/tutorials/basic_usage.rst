@@ -253,8 +253,6 @@ Create a configuration file for your analysis:
    # Instrument parameters
    fwhmarcmin: 5.0
    apply_pixwin: true
-   smooth_pol: true
-   calibration: 1.0
    
    # Input/output files
    inputclfile: "inputs/cls_theory.dat"

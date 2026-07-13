@@ -61,7 +61,6 @@ def _make_params(tmpdir, *, nside, lmax, do_cross=False, params_lmax=None):
     params.spins = [0]
     params.labels = ["T"]
     params.ordering = "RING"
-    params.calibration = 1.0
     params.do_cross = do_cross
     params.smoothing_type = "gaussian"
     params.fwhmarcmin = 60.0

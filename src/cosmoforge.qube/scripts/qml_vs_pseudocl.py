@@ -362,7 +362,6 @@ def run_qml(
             "covmatfile1": os.path.join(tmpdir, "ncvm.bin"),
             "covmatfile2": os.path.join(tmpdir, "ncvm.bin"),
             "lmax": lmax_science,
-            "calibration": 1.0,
             "smoothing_type": "gaussian",
             "fwhmarcmin": fwhm_arcmin,
             "apply_pixwin": False,

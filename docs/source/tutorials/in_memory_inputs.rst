@@ -38,10 +38,10 @@ The kwarg vocabulary
      - ``(npix,)`` or ``(npix, nfields)``, pixel-indexed per ``params.ordering``
    * - ``noise_cov1``, ``noise_cov2``
      - ``covmatfile1/2``
-     - **reduced** ``(n_active, n_active)``, **pre-calibration**
+     - **reduced** ``(n_active, n_active)``
    * - ``maps1``, ``maps2``
      - ``inputmapfile1/2``
-     - **reduced** ``(n_active, n_sims)``, **already calibrated**
+     - **reduced** ``(n_active, n_sims)``
    * - ``cls_data``
      - ``inputclfile``
      - ``{label: C_ell}`` dict of **physical** C_ell
@@ -80,21 +80,16 @@ A disk-free run
 Combine this with opt-in persistence — leave every ``out*`` path unset — and the run reads
 nothing and writes nothing. The working directory is untouched from end to end.
 
-Two contracts worth reading twice
----------------------------------
+One contract worth reading twice
+--------------------------------
 
-The covariance and the maps are treated asymmetrically. This is not arbitrary: each seam
-faithfully mirrors what *its own reader* does.
+Every seam takes *exactly what its own reader would have returned* — so an injected array is
+used verbatim, and any conversion the file path performs on the way in has already happened
+by the time the reader returns.
 
-* ``noise_cov1`` is **pre-calibration**. ``read_covmat`` does not apply
-  ``calibration``, so the framework applies ``calibration**2`` to whatever it is given —
-  file-read or injected alike.
-* ``maps1`` is **already calibrated**. ``read_maps`` applies ``calibration`` on read,
-  so the framework does *not* re-apply it to an injected array.
-
-Similarly, ``cls_data``/``fiducial_cls`` are **physical** C_ell: the ``input_convention``
-normalisation (e.g. D_ell → C_ell) is applied only on the file path, never to injected
-arrays.
+That matters in one place: ``cls_data``/``fiducial_cls`` must be **physical** C_ell. The
+``input_convention`` normalisation (e.g. D_ell → C_ell) is applied only on the file path,
+never to an injected array. Convert before you inject.
 
 The active-pixel ordering
 -------------------------

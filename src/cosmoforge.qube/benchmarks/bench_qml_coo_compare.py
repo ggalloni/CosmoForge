@@ -100,7 +100,6 @@ def _build_fixture(tmpdir, nside, lmax, nsims):
         "covmatfile2": os.path.join(tmpdir, "ncvm.bin"),
         "lmax": lmax,
         "load_inverted": True,
-        "calibration": 1.0,
         "smoothing_type": "gaussian",
         "fwhmarcmin": fwhm_arcmin,
         "apply_pixwin": False,

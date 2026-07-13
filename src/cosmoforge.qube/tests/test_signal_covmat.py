@@ -78,16 +78,12 @@ def get_signal_covmat(fields, config_resolver, local_path):
             (concatenate_pixact.shape[0], concatenate_pixact.shape[0]), dtype=np.float64
         )
 
-    noise_cov1 = (
-        read_covmat(Par.covmatfile1, npix, Par.nfields, concatenate_pixact, noise_cov1)
-        * Par.calibration**2
+    noise_cov1 = read_covmat(
+        Par.covmatfile1, npix, Par.nfields, concatenate_pixact, noise_cov1
     )
     if Par.do_cross:
-        noise_cov2 = (
-            read_covmat(
-                Par.covmatfile2, npix, Par.nfields, concatenate_pixact, noise_cov2
-            )
-            * Par.calibration**2
+        noise_cov2 = read_covmat(
+            Par.covmatfile2, npix, Par.nfields, concatenate_pixact, noise_cov2
         )
 
     collection.set_cls()

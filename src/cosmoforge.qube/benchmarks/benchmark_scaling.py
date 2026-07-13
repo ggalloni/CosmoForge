@@ -140,7 +140,6 @@ def write_temp_config(
         "covmatfile2": cov_file,
         "lmax": lmax,
         "load_inverted": True,
-        "calibration": 1.0,
         "smoothing_type": "gaussian",
         "fwhmarcmin": fwhmarcmin,
         "apply_pixwin": False,

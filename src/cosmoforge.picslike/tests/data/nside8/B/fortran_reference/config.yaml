@@ -18,7 +18,6 @@ lmax: 16
 fiducialfile: '../tests/data/nside8/B/fortran_reference/fiducial_dls.txt'
 
 load_inverted: false
-calibration: 1.0
 
 smoothing_type: file
 beam_file: '../tests/data/nside8/B/fortran_reference/beam.fits'
@@ -40,7 +39,6 @@ outerrfile: '../tests/data/nside8/B/fortran_reference/output_errors.dat'
 
 # Options
 remove_nb: true
-nspectra: 1
 
 # Theory spectra location (relative to picslike package)
 root_dir: '../tests/data/nside8/B/fortran_reference/theory_spectra'

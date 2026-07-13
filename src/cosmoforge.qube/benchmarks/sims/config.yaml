@@ -18,11 +18,10 @@ covmatfile2: 'data/NCVM2.bin'
 lmax: 32
 
 load_inverted: true
-calibration: 1.0
 
 # cache_derivatives: false
 
-smoothing_type: cosine
+smoothing_type: cosine_legacy
 fwhmarcmin: 440.0
 apply_pixwin: false
 beam_file: 'data/beam_coswin_pixwin16.fits'
@@ -51,5 +50,4 @@ outfilefisher: 'sims/fisher.dat'
 
 # QML options
 remove_nb: true
-nspectra: 3
 

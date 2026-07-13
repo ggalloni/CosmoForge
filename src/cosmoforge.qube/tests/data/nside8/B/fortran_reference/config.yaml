@@ -16,7 +16,6 @@ covmatfile1: 'tests/data/nside8/B/fortran_reference/input_ncov.bin'
 lmax: 24
 
 load_inverted: false
-calibration: 1.0
 
 smoothing_type: file
 beam_file: 'tests/data/nside8/B/fortran_reference/beam.fits'
@@ -38,4 +37,3 @@ outerrfile: 'tests/data/nside8/B/fortran_reference/output_errors.dat'
 
 # QML options
 remove_nb: true
-nspectra: 1

@@ -362,7 +362,6 @@ def test_setup_covariance_matrices():
     params.spins = [0]
     params.labels = ["T"]
     params.ordering = "RING"
-    params.calibration = 1.0
     params.do_cross = False
 
     # Create FITS mask file
@@ -576,7 +575,6 @@ def test_setup_covariance_matrices_with_cross():
     params.spins = [0]
     params.labels = ["T"]
     params.ordering = "RING"
-    params.calibration = 1.0
     params.do_cross = True
 
     # Create FITS mask file
@@ -623,7 +621,6 @@ def test_core_workflow_integration():
     params.spins = [0]
     params.labels = ["T"]
     params.ordering = "RING"
-    params.calibration = 1.0
     params.do_cross = False
     params.feedback = 1
 
@@ -721,7 +718,6 @@ def test_setup_covariance_matrices_with_output():
     params.spins = [0]
     params.labels = ["T"]
     params.ordering = "RING"
-    params.calibration = 1.0
     params.do_cross = True
     # Add optional output parameters
     params.outnoisecovmat1 = "output1.dat"
@@ -851,7 +847,7 @@ def test_setup_computation_basis_validation():
 
 
 def test_setup_covariance_matrices_load_reduced():
-    """Test that load_reduced=True uses read_covmat_reduced and applies calibration."""
+    """Test that load_reduced=True uses read_covmat_reduced, not read_covmat."""
     params = InputParams()
     params.nside = 32
     params.lmax = 64
@@ -859,7 +855,6 @@ def test_setup_covariance_matrices_load_reduced():
     params.spins = [0]
     params.labels = ["T"]
     params.ordering = "RING"
-    params.calibration = 2.0
     params.do_cross = False
     params.load_reduced = True
 
@@ -890,7 +885,7 @@ def test_setup_covariance_matrices_load_reduced():
             mock_read_reduced.assert_called_once()
             mock_read_full.assert_not_called()
 
-            # Calibration should be applied (calibration=2.0 -> factor 4.0)
-            np.testing.assert_allclose(np.diag(ncov1), 0.1 * 4.0, rtol=1e-12)
+            # The reader's array is passed through unscaled.
+            np.testing.assert_allclose(np.diag(ncov1), 0.1, rtol=1e-12)
         finally:
             Path(params.maskfile).unlink()

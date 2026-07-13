@@ -155,7 +155,6 @@ def test_read_maps(tmp_path):
         str(maps_file),
         pixact,
         ["T1", "T2", "T3"],  # Use multi-character field labels
-        1.0,
     )
 
     for sim_idx in range(n_sims):
@@ -189,7 +188,7 @@ def test_read_maps_simple_healpix_format():
     pixact = [np.arange(n_active)]
     maps_output = np.empty((n_active, 1))
 
-    read_maps(maps_output, mapfile, pixact, ["T"], calibration=1.0)
+    read_maps(maps_output, mapfile, pixact, ["T"])
 
     np.testing.assert_allclose(maps_output[:, 0], reference[0, :n_active], rtol=1e-12)
 
@@ -197,7 +196,7 @@ def test_read_maps_simple_healpix_format():
     pixact_qu = [np.arange(n_active), np.arange(n_active)]
     maps_output_qu = np.empty((2 * n_active, 1))
 
-    read_maps(maps_output_qu, mapfile, pixact_qu, ["Q", "U"], calibration=1.0)
+    read_maps(maps_output_qu, mapfile, pixact_qu, ["Q", "U"])
 
     np.testing.assert_allclose(
         maps_output_qu[:n_active, 0], reference[1, :n_active], rtol=1e-12

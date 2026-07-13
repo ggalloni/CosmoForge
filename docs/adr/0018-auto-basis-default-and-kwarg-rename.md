@@ -117,3 +117,44 @@ supersedes the no-shim precedent of ADR-0002 and ADR-0013.
 - [ADR-0003](0003-pixel-basis-direct-mode.md) — the cost-based selector and the `auto` default this ADR realises.
 - [ADR-0013](0013-spectrum-key-public-identity.md), [ADR-0016](0016-fisher-spectra-handoff-transport.md) — no-shim precedent (retired) and the disk adapter interaction.
 - `project_post_1_0_deprecation_policy` (memory) — the standing policy.
+
+## Amendment (2026-07-13, calibration removal): §4 is about silence, not shims
+
+§4 above says breaking public-API changes "ship a one-release deprecation shim, not a hard
+cut", and the `compression=` → `basis=` migration implemented that as *warn-and-forward*.
+Read literally, that prescribes a warning shim for every removal. Removing `calibration`
+showed the rule is really about something narrower.
+
+**The policy is: no silent breakage. The mechanism required to deliver it depends on how the
+language fails.**
+
+| seam | what happens to a stale reference | shim needed? |
+|---|---|---|
+| **YAML key** (`InputParams.update()`) | `update()` is `if hasattr(self, key): setattr(...)` — an unrecognised key is **silently dropped**. A removed key that a user still sets becomes a no-op with **zero diagnostics**. | **Yes.** The key must stay recognised purely so it can refuse. |
+| **Python kwarg** | The interpreter raises `TypeError: … got an unexpected keyword argument 'x'` — loud, immediate, and it names the symbol. | **No.** A shim would only convert a good error into a worse one. |
+
+So `calibration` was removed with two different mechanisms serving one policy:
+
+- **`InputParams`** keeps `calibration` as a *recognised* key for one release. `1.0` is
+  accepted and ignored — every config that ever shipped set it to `1.0`, so those users see
+  nothing at all, and no `DeprecationWarning` noise is emitted for the 99% case. Any other
+  value **raises `ValueError`** naming the replacement. Silently ignoring a non-unit
+  calibration is the one outcome that could corrupt a user's results without them noticing,
+  and it is strictly worse than either warning or failing. The guard sits *ahead of* the
+  `hasattr` gate in `update()` — inside it, the attribute is gone, so the branch would never
+  fire and the key would be silently dropped: the very failure it guards against.
+- **`read_maps(..., calibration=)`** (public, in `cosmocore.__all__`) is **hard-cut**. Python
+  already delivers the policy for free.
+
+**Why `calibration` was removed rather than fixed.** It was not broken: the semantics were
+coherent (`maps *= c`, `noise_cov *= c**2` carries inputs from instrument units into theory
+units, and `S` from theory C_ell is correctly left alone, so `C = S + c²·N_file` really does
+equal `cov(c·d_file)`). The defect was *shape*: a single global scalar in a two-map pipeline
+(`covmatfile1/2`, `inputmapfile1/2`), so it could never express the one case that actually
+needs a gain — `do_cross` with two experiments at different calibrations. That is very
+likely why it was `1.0` in every config for its entire life. Deleting it forecloses nothing:
+a real gain feature would have to be per-map, and pre-scaling the inputs (trivial via the
+ADR-0017 array seams) can already do what the scalar did *and* what it could not.
+
+This amendment governs future removals: reach for a shim where the language is silent, and
+let the language do the work where it already shouts.

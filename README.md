@@ -142,7 +142,7 @@ from qube import Fisher, Spectra
 fisher = Fisher(
     params,
     mask=mask,             # (npix, nfields)
-    noise_cov1=noise_cov,  # reduced (n_active, n_active), *pre*-calibration
+    noise_cov1=noise_cov,  # reduced (n_active, n_active)
     cls_data=cls,          # {label: C_ell}, physical C_ell
     fiducial_cls=cls,
     beam=beam,             # (>=3, lmax+1) T/E/B window functions
@@ -165,8 +165,8 @@ each reader does rather than being symmetric:
 
 | kwarg | contract |
 |---|---|
-| `noise_cov1` | reduced to active pixels, **pre-calibration** (the framework applies `calibration**2`) |
-| `maps1` | reduced to active pixels, **already calibrated** (`read_maps` applies it on read) |
+| `noise_cov1` | reduced to active pixels |
+| `maps1` | reduced to active pixels |
 
 Worked example: [`in_memory_inputs.ipynb`](src/cosmoforge.qube/notebooks/in_memory_inputs.ipynb),
 which drives both adapters over the same data and asserts they agree bit-for-bit. Design
