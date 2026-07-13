@@ -44,9 +44,10 @@ def test_notebook_runs_disk_free(nb_path):
 
     before = _snapshot(PKG_ROOT)
     # The kernel is spawned as a subprocess and inherits this process's env.
-    # conftest sets NUMBA_DISABLE_JIT=1 for the unit tests; leaking that into
-    # the notebook kernel makes every JIT kernel fall back to pure Python and
-    # inflates a ~15 s notebook to ~5 min. Notebooks run as users run them.
+    # Notebooks must run the way users run them (JIT on): if anything in the
+    # test environment ever sets NUMBA_DISABLE_JIT, leaking it into the kernel
+    # drops every Numba kernel to pure Python and inflates a ~15 s notebook to
+    # ~5 min. Cheap insurance — this footgun has bitten once already.
     jit = os.environ.pop("NUMBA_DISABLE_JIT", None)
     try:
         client.execute()  # raises CellExecutionError on any failing cell

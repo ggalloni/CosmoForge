@@ -3,13 +3,15 @@ Test configuration for PICSLike package.
 
 This module provides shared test fixtures and configuration for the
 PICSLike test suite.
+
+The suite runs with Numba JIT enabled, like production and like the qube and
+cosmocore suites. (This module used to force ``NUMBA_DISABLE_JIT=1`` — a
+leftover from when the kernels were decorated with ``cache=True``; that is no
+longer needed, and disabling JIT made the suite both slower and unlike the code
+users actually run.)
 """
 
-# Disable JIT compilation for testing - MUST be set before any imports
 import os
-
-os.environ["NUMBA_DISABLE_JIT"] = "1"
-
 import tempfile
 from pathlib import Path
 
