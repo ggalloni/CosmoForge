@@ -447,6 +447,47 @@ jobs:
         run: |
           uv run pytest tests/ -v
 
+  coverage-not-applicable:
+    name: Coverage Not Applicable
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: detect-changes
+    # Codecov only posts a status when it receives an upload. On a PR that
+    # changes no package source, every test job is skipped, nothing is
+    # uploaded, and the required `codecov/project` check is ABSENT rather than
+    # failing -- so a docs-only or config-only PR can never satisfy it and can
+    # never merge.
+    #
+    # An empty upload is Codecov's purpose-built answer: it tells them there is
+    # no coverage-relevant change, and they emit the configured statuses as
+    # passing. `--force` skips their own changed-file scan, which is safe here
+    # because this job only runs when the same detect-changes gate that skips
+    # the test jobs has already concluded no package source moved.
+    if: |
+      !contains(needs.detect-changes.outputs.cosmocore-strategy, 'test') &&
+      !contains(needs.detect-changes.outputs.qube-strategy, 'test') &&
+      !contains(needs.detect-changes.outputs.picslike-strategy, 'test')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Report no coverage-relevant changes to Codecov
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          pip install --quiet codecov-cli
+          codecovcli empty-upload --force \
+            --token "$CODECOV_TOKEN" \
+            --sha "$SHA" \
+            --slug ggalloni/CosmoForge \
+            --fail-on-error
+
   test-notebooks:
     name: Test Notebooks (${{ matrix.package }})
     runs-on: ubuntu-latest
