@@ -585,6 +585,53 @@ class TestHarmonicBasisBeam:
         assert_allclose(C_bar_no_beam, C_bar_unit_beam, rtol=1e-10)
 
 
+class TestReleasePixelProjector:
+    """The documented post-release contract must fail loudly, not opaquely."""
+
+    @staticmethod
+    def _released_basis(setup):
+        from cosmocore.basis import HarmonicBasis
+
+        hc = HarmonicBasis(
+            N=setup["N"],
+            theta=setup["theta"],
+            phi=setup["phi"],
+            lmax_signal=setup["lmax"],
+        )
+        hc.setup()
+        hc.release_pixel_projector()
+        return hc
+
+    @pytest.mark.parametrize(
+        "call",
+        [
+            pytest.param(lambda hc, C_ell: hc.get_covariance(C_ell), id="get_covariance"),
+            pytest.param(lambda hc, C_ell: hc.get_inverse(C_ell), id="get_inverse"),
+            pytest.param(lambda hc, C_ell: hc.to_basis(np.ones(hc.n_pix)), id="to_basis"),
+            pytest.param(lambda hc, C_ell: hc.projector, id="projector"),
+        ],
+    )
+    def test_v_consumers_raise_contract_error(self, uniform_sky_setup, call):
+        """Every V consumer names the contract instead of failing in numpy."""
+        setup = uniform_sky_setup
+        hc = self._released_basis(setup)
+        C_ell = np.ones(setup["lmax"] + 1) * 1e-6
+
+        with pytest.raises(RuntimeError, match="release_pixel_projector"):
+            call(hc, C_ell)
+
+    def test_v_free_consumers_survive_release(self, uniform_sky_setup):
+        """The QML hot path reads only the SMW intermediates, so it still works."""
+        setup = uniform_sky_setup
+        hc = self._released_basis(setup)
+        C_ell = np.ones(setup["lmax"] + 1) * 1e-6
+
+        assert hc.get_projected_inverse(C_ell).shape == (hc.n_modes, hc.n_modes)
+        assert hc.get_weighted_data(np.ones(hc.n_pix), C_ell).shape == (hc.n_modes,)
+        assert hc.get_full_inverse(C_ell).shape == (hc.n_pix, hc.n_pix)
+        assert np.isfinite(hc.get_full_logdet(C_ell))
+
+
 # =============================================================================
 # Coverage-focused tests for untested HarmonicBasis operations
 # =============================================================================
