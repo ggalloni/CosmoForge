@@ -13,6 +13,7 @@ import tempfile
 import numpy as np
 import pytest
 
+from cosmocore import active_pixel_index
 from cosmocore.settings import InputParams
 from qube import Fisher, Spectra
 
@@ -109,10 +110,7 @@ def test_spectra_runs_fully_in_memory(config_resolver):
         params = _params(config_resolver, tmpdir)
         mask = np.ones((12 * params.nside**2, params.nfields), dtype=np.float64)
 
-        probe = Fisher(params, mask=mask, noise_cov1=np.eye(1))
-        probe.setup_fields()
-        probe.setup_geometry()
-        n = int(probe.collection.total_active_pixels)
+        n = len(active_pixel_index(mask))
 
         rng = np.random.default_rng(1)
         noise_cov1 = np.eye(n) * 0.1

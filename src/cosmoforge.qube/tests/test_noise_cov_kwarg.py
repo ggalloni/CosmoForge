@@ -10,6 +10,7 @@ import inspect
 import numpy as np
 import pytest
 
+from cosmocore import active_pixel_index
 from cosmocore.settings import InputParams
 from qube import Fisher, Spectra
 
@@ -37,11 +38,10 @@ def test_injected_noise_cov_reaches_covariance_without_file(config_resolver):
     """Fisher runs covariance setup from an injected array, no file present."""
     params = _params(config_resolver)
     mask = _full_sky_mask(params)
-    core = Fisher(params, mask=mask, noise_cov1=np.eye(1))
+    n = len(active_pixel_index(mask))
+    core = Fisher(params, mask=mask, noise_cov1=np.eye(n) * 0.1)
     core.setup_fields()
     core.setup_geometry()
-    n = int(core.collection.total_active_pixels)
-    core._injected_noise_cov1 = np.eye(n) * 0.1
     ncov1, _ = core.setup_covariance_matrices()
     assert ncov1.shape == (n, n)
 
@@ -50,11 +50,8 @@ def test_spectra_forwards_noise_cov_to_internal_fisher(config_resolver):
     """Injected noise_cov1 flows into the Fisher that Spectra builds internally."""
     params = _params(config_resolver)
     mask = _full_sky_mask(params)
-    # Size the injected covariance to the active-pixel count for this geometry.
-    probe = Fisher(params, mask=mask, noise_cov1=np.eye(1))
-    probe.setup_fields()
-    probe.setup_geometry()
-    n = int(probe.collection.total_active_pixels)
+    # The active-pixel count comes straight off the mask (ADR-0017).
+    n = len(active_pixel_index(mask))
 
     spec = Spectra(params, mask=mask, noise_cov1=np.eye(n) * 0.1)
     assert spec.fisher_instance._injected_noise_cov1 is not None
@@ -65,10 +62,7 @@ def test_fisher_runs_fully_in_memory(config_resolver):
     with neither a mask nor a covariance file on disk."""
     params = _params(config_resolver)
     mask = _full_sky_mask(params)
-    probe = Fisher(params, mask=mask, noise_cov1=np.eye(1))
-    probe.setup_fields()
-    probe.setup_geometry()
-    n = int(probe.collection.total_active_pixels)
+    n = len(active_pixel_index(mask))
 
     noise_cov1 = np.eye(n) * 0.1
     fisher = Fisher(params, mask=mask, noise_cov1=noise_cov1)
