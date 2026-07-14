@@ -323,6 +323,19 @@ class PICSLike(Core, MPISharedMemoryMixin):
         self.inv_cov = matrix_inverse_symm(self.total_cov)
         self.log("Computed inverse of primary covariance matrix", level=4)
 
+    def setup_computation_basis(self, *args, **kwargs):
+        """
+        Build the computation basis, dropping any cached SMW data first.
+
+        Thin wrapper over :meth:`cosmocore.Core.setup_computation_basis` — see
+        there for the parameters. The cached ``(projected1, projected2, term1)``
+        are derived from the basis's noise factorisation, so they belong to a
+        single basis lifetime: a rebuild on a live instance must not leave the
+        next evaluation pairing a stale projection with the new kernel.
+        """
+        self._smw_data_cache = None
+        return super().setup_computation_basis(*args, **kwargs)
+
     def setup_maps(self):
         """
         Read observational map data from FITS files.
@@ -419,6 +432,12 @@ class PICSLike(Core, MPISharedMemoryMixin):
 
     def _broadcast_variables(self):
         """Broadcast essential data from master to all MPI worker processes."""
+        # Workers never run setup_maps / setup_computation_basis (both are
+        # rank-0 only in run()), so this is their only invalidation point: the
+        # basis and maps they are about to receive replace exactly what the
+        # cached projections were derived from.
+        self._smw_data_cache = None
+
         # Python objects (small, serialization is fine)
         self.params = self.comm.bcast(self.params if self.rank == 0 else None, root=0)
         self.collection: FieldCollection = self.comm.bcast(

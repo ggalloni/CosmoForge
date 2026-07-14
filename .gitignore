@@ -36,7 +36,7 @@ src/graphify-out/
 
 run_*.py
 /src/*/.library
-/.claude
+/.claude/*
 /papers
 /sync_to_cluster.sh
 
@@ -68,3 +68,10 @@ src/cosmoforge.qube/scripts/qml_vs_pcl_results.json
 .worktrees/
 /src/cosmoforge.qube/benchmarks/results
 /src/cosmoforge.qube/benchmarks/sbatch
+
+# Agent guardrails are shared repo rules and must survive a fresh clone, so they
+# are re-included here -- after the blanket `*.json` above, since gitignore lets
+# the LAST matching rule win. Everything else under .claude/ stays local:
+# settings.local.json (personal permissions), CLAUDE.md, plans/.
+!/.claude/settings.json
+!/.claude/hooks/
