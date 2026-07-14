@@ -432,6 +432,12 @@ class PICSLike(Core, MPISharedMemoryMixin):
 
     def _broadcast_variables(self):
         """Broadcast essential data from master to all MPI worker processes."""
+        # Workers never run setup_maps / setup_computation_basis (both are
+        # rank-0 only in run()), so this is their only invalidation point: the
+        # basis and maps they are about to receive replace exactly what the
+        # cached projections were derived from.
+        self._smw_data_cache = None
+
         # Python objects (small, serialization is fine)
         self.params = self.comm.bcast(self.params if self.rank == 0 else None, root=0)
         self.collection: FieldCollection = self.comm.bcast(
