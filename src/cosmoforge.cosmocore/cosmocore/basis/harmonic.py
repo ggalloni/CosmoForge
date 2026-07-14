@@ -137,7 +137,7 @@ class HarmonicBasis(ComputationBasis):
         return "harmonic"
 
     @property
-    def _V(self):
+    def _V(self) -> np.ndarray:
         if self._V_released:
             raise RuntimeError(
                 "The pixel projector V was dropped by release_pixel_projector(); "
