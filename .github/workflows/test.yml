@@ -126,17 +126,16 @@ jobs:
       github.event_name == 'pull_request' &&
       !contains(github.event.pull_request.labels.*.name, 'skip-changelog')
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
+      # No checkout: the API already knows which files the PR touches, so we
+      # skip cloning the history (notebooks with executed outputs make that a
+      # slow clone to buy nothing but a filename list).
       - name: Require a changelog entry when package source changes
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
         run: |
-          changed=$(git diff --name-only "$BASE" "$HEAD")
+          changed=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[].filename')
 
           # Importable package source only: src/cosmoforge.<pkg>/<pkg>/**.py.
           # tests/, benchmarks/, scripts/ and notebooks/ are siblings of the inner
@@ -154,16 +153,18 @@ jobs:
             exit 0
           fi
 
-          echo "❌ This PR changes package source but does not update the changelog."
-          echo ""
-          echo "Add an entry under the 'Unreleased' heading in docs/source/changelog.rst"
-          echo "describing the change in terms of the public surface a user touches:"
-          echo "new/renamed/removed kwargs, changed defaults, new behaviour."
-          echo ""
-          echo "If the change genuinely has no user-visible surface (a pure internal"
-          echo "refactor), apply the 'skip-changelog' label to this PR."
-          echo ""
-          echo "Package source files changed:"
+          cat <<'MSG'
+          ❌ This PR changes package source but does not update the changelog.
+
+          Add an entry under the 'Unreleased' heading in docs/source/changelog.rst
+          describing the change in terms of the public surface a user touches:
+          new/renamed/removed kwargs, changed defaults, new behaviour.
+
+          If the change genuinely has no user-visible surface (a pure internal
+          refactor), apply the 'skip-changelog' label to this PR.
+
+          Package source files changed:
+          MSG
           echo "$changed" | grep -E "$SRC" | sed 's/^/  /'
           exit 1
 

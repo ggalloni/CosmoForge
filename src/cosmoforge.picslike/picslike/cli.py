@@ -1,17 +1,12 @@
 """Command-line entry point for the PICSLike pixel-space likelihood.
 
-Installs ``picslike-run``, which evaluates the Gaussian pixel-space
-log-likelihood over the parameter grid declared in the configuration. It runs
-unchanged under MPI, since a console script is an executable on ``PATH``::
-
-    picslike-run config.yaml
-    mpirun -n 8 picslike-run config.yaml
-
-Grid points are partitioned across ranks. Unlike QUBE there is no packaged
-default configuration, so the path is required.
+``picslike-run`` evaluates the Gaussian pixel-space log-likelihood over the
+parameter grid declared in the configuration, partitioning grid points across
+MPI ranks. Unlike QUBE there is no packaged default config, so the path is
+required.
 
 Persistence is opt-in (ADR-0015): without ``--out`` the grid is evaluated and
-the result discarded. The entry point says so rather than exiting quietly.
+the result discarded, so the entry point warns rather than exit quietly.
 """
 
 import argparse
@@ -45,11 +40,7 @@ def main() -> None:
     if likelihood.rank != 0:
         return
 
-    chi2 = likelihood.get_chi_squared()
-    log.info(f"Grid evaluated: {chi2.size} points")
-    log.info(f"Minimum chi2: {chi2.min():.4f}")
-    for name, value in likelihood.get_best_fit().items():
-        log.info(f"  best fit {name}: {value:.6g}")
+    log.info(f"Best fit: {likelihood.get_best_fit()}")
 
     if args.out:
         likelihood.save_results(args.out)

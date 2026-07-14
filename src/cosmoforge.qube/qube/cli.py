@@ -1,25 +1,11 @@
 """Command-line entry points for the QUBE pipeline.
 
-Two console scripts are installed with the package:
+``qube-fisher-run`` builds the Fisher matrix and stops; ``qube-spectra-run``
+(alias ``qube-run``) estimates QML power spectra end to end, building its own
+Fisher. Both run unmodified under MPI.
 
-``qube-fisher-run``
-    Build the Fisher matrix and stop. Use this for the two-job cluster
-    workflow, where one job computes F and a later job reuses it through the
-    ``out*`` files, and whenever a single Fisher serves many map sets.
-
-``qube-spectra-run`` (alias ``qube-run``)
-    Estimate QML power spectra end to end. ``Spectra`` builds its own Fisher,
-    so this is the whole pipeline in one command.
-
-Both run unchanged under MPI, since a console script is an executable on
-``PATH``::
-
-    qube-run config.yaml
-    mpirun -n 8 qube-spectra-run config.yaml
-
-Persistence is opt-in (ADR-0015): a run whose output path is unset computes
-the result and discards it. Both entry points say so rather than exiting
-quietly.
+Persistence is opt-in (ADR-0015): a run whose output path is unset computes the
+result and discards it, so both entry points warn rather than exit quietly.
 """
 
 import argparse
@@ -31,9 +17,6 @@ from qube.spectra import Spectra
 #: Packaged config used when no path is given on the command line. Resolved
 #: relative to this file so the entry points work from any working directory.
 DEFAULT_CONFIG = Path(__file__).parent / "TEB_defaults.yaml"
-
-#: Normalisation conventions accepted by ``Spectra.get_power_spectra``.
-MODES = ("deconvolved", "decorrelated", "convolved")
 
 
 def _base_parser(description: str) -> argparse.ArgumentParser:
@@ -64,11 +47,6 @@ def fisher_main() -> None:
 
     matrix = fisher.get_fisher_matrix()
     log.info(f"Fisher matrix: {matrix.shape[0]} x {matrix.shape[1]}")
-    for label, sigma in fisher.get_error_bars(as_dict=True).items():
-        log.info(
-            f"  {label}: {sigma.size} bandpowers, "
-            f"sigma in [{sigma.min():.3e}, {sigma.max():.3e}]"
-        )
 
     if not fisher.params.outfilefisher:
         log.warning(
@@ -84,7 +62,7 @@ def spectra_main() -> None:
     )
     parser.add_argument(
         "--mode",
-        choices=MODES,
+        choices=("deconvolved", "decorrelated", "convolved"),
         default="deconvolved",
         help="Normalisation of the estimates (default: deconvolved).",
     )
@@ -103,14 +81,6 @@ def spectra_main() -> None:
 
     if spectra.rank != 0:
         return
-
-    result = spectra.get_power_spectra(mode=args.mode, as_dict=True)
-    # Convolved mode returns (estimates, window_matrix, convolve_fn); the other
-    # two return the estimates alone.
-    estimates = result[0] if args.mode == "convolved" else result
-    log.info(f"Power spectra ({args.mode}):")
-    for label, values in estimates.items():
-        log.info(f"  {label}: {values.shape}")
 
     if args.out:
         spectra.write_power_spectra(mode=args.mode, filename=args.out)

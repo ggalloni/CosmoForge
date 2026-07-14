@@ -184,6 +184,60 @@ def local_path():
     return os.path.dirname(test_dir)
 
 
+#: Config keys that name output artifacts. Strip them all and opt-in persistence
+#: (ADR-0015) means the run writes nothing at all — which lets a test assert on
+#: the filesystem rather than mock the writers.
+OUTPUT_KEYS = {
+    "output_geometry_file",
+    "outnoisecovmat1",
+    "outnoisecovmat2",
+    "outinvcovmatfile1",
+    "outinvcovmatfile2",
+    "outfilefisher",
+    "outcovmatfile",
+    "outerrfile",
+}
+
+
+@pytest.fixture
+def sandboxed_config(local_path):
+    """Resolve a config to absolute inputs and strip every ``out*`` key.
+
+    The shipped fixture configs point their ``out*`` keys back into
+    ``tests/data/``, so a run driven by one writes artifacts into the fixture
+    tree. A run driven by *this* config reads the same inputs and writes
+    nothing, so the caller can chdir into a tmp_path and assert it stays empty.
+    """
+    written = []
+
+    def resolve(config_path):
+        with open(os.path.join(local_path, config_path)) as f:
+            config = yaml.safe_load(f)
+
+        resolved = {}
+        for key, value in config.items():
+            if key in OUTPUT_KEYS:
+                continue
+            # Inputs live under several prefixes (tests/, scripts/), so key off
+            # the separator rather than a whitelist: every path value contains
+            # one, while the scalar values ("RING", "Dl", "dls") do not.
+            if isinstance(value, str) and "/" in value and not os.path.isabs(value):
+                resolved[key] = os.path.join(local_path, value)
+            else:
+                resolved[key] = value
+
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
+        yaml.dump(resolved, tmp, default_flow_style=False)
+        tmp.close()
+        written.append(tmp.name)
+        return tmp.name
+
+    yield resolve
+
+    for path in written:
+        os.unlink(path)
+
+
 @pytest.fixture
 def data_resolver(local_path):
     """
