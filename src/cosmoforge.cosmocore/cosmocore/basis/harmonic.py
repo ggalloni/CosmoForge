@@ -117,6 +117,7 @@ class HarmonicBasis(ComputationBasis):
         self.dim = self.n_modes_total
         self._compress = compress
         self._delta_m = delta_m
+        self._V_released = False
 
         if self._compress:
             # Multi-field + compress not yet supported
@@ -136,6 +137,18 @@ class HarmonicBasis(ComputationBasis):
         return "harmonic"
 
     @property
+    def _V(self) -> np.ndarray:
+        if self._V_released:
+            raise RuntimeError(
+                "The pixel projector V was dropped by release_pixel_projector(); "
+                "get_covariance, get_inverse, to_basis, the projector property, "
+                "m-block compression and PICSLike do_cross all read V and are "
+                "unsupported afterwards. Skip release_pixel_projector() if any "
+                "of them are needed downstream."
+            )
+        return self._harmonic_basis._V
+
+    @property
     def projector(self) -> np.ndarray:
         """Projection matrix V (n_modes × n_pix)."""
         return self._V
@@ -147,7 +160,8 @@ class HarmonicBasis(ComputationBasis):
         ``_V_N_inv`` and ``_V_Ninv_VT``. The remaining V consumers —
         ``get_covariance``/``get_inverse``,
         ``to_basis``, m-block compression, and PICSLike ``do_cross``
-        with the harmonic basis — must not be invoked after this call.
+        with the harmonic basis — raise :exc:`RuntimeError` after this
+        call. Release is one-way.
         Raises if m-block compression was requested at construction.
         """
         if self._compress:
@@ -155,6 +169,10 @@ class HarmonicBasis(ComputationBasis):
                 "release_pixel_projector incompatible with m-block compression"
             )
         self._harmonic_basis._V = None
+        # V N V^T is lazy; drop any materialised copy so get_covariance fails
+        # the contract check rather than silently serving a primed cache.
+        self.__dict__.pop("_V_N_VT", None)
+        self._V_released = True
 
     def setup(self) -> None:
         """
