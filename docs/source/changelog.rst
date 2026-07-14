@@ -123,7 +123,9 @@ array instead of a file path, and nothing is written to disk unless asked.
   through the *previous* basis and kept using it against the new one — silently,
   with no error. ``setup_computation_basis()`` now drops that cache, so the
   documented ``setup_computation_basis → setup_maps → compute`` order is no
-  longer the only safe one.
+  longer the only safe one. The same staleness hit the MPI worker ranks on a
+  second pipeline pass, where the cache outlived the broadcast that replaced the
+  basis it came from; rank 0 stayed correct, so the disagreement was invisible.
 
 Version 1.0.1 (2026-05-21)
 --------------------------
