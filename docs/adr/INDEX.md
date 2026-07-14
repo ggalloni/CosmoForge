@@ -28,6 +28,7 @@ agent-facing convention that governs when an ADR should be written.
 ### Bandpower / binning / inference
 - [ADR-0005 — Bandpower window matrix](0005-bandpower-window-matrix.md). Window matrix exposed for parameter-level inference; downstream likelihoods can convolve theory consistently.
 - [ADR-0007 — `Bins` class attribution](0007-bins-attribution.md). Implementation adapted from xQML (Vanneste+ 2018, GPLv3). Includes the Bond/Jaffe/Knox initial-binning vs rebinning distinction.
+- [ADR-0019 — The bandpower shape function lives in the binning operator](0019-bandpower-shape-function.md). The binning weights `w_ℓ` declare the in-bin spectrum shape; `output_convention` selects it and is therefore an *estimator* setting (`Dl` estimates `D_b` natively, no post-hoc scalar — a scalar on a collapsed bin cannot be exact). The effective multipole is the centroid of the realised window, computed on `Fisher`, never the bin midpoint.
 
 ### Conventions and APIs
 - [ADR-0006 — Physical C_ℓ inputs](0006-physical-cl-convention.md). Standard CAMB/CLASS-style C_ℓ; the `(2ℓ+1)/(4π)` factor is absorbed into the Legendre basis functions, not pre-multiplied onto inputs.
@@ -50,7 +51,7 @@ agent-facing convention that governs when an ADR should be written.
 | Status | ADRs |
 |---|---|
 | Accepted | 0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008, 0009, 0011, 0012, 0013, 0014, 0015, 0016, 0017, 0018 |
-| Proposed / deferred | 0010 |
+| Proposed / deferred | 0010, 0019 |
 | Superseded | — |
 
 No supersession chains in place; all current ADRs are additive.
