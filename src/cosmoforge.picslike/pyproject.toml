@@ -28,6 +28,9 @@ dependencies = [
 [project.optional-dependencies]
 mpi = ["cosmocore[mpi]"]
 
+[project.scripts]
+picslike-run = "picslike.cli:main"
+
 [tool.uv.sources]
 cosmocore = { workspace = true }
 

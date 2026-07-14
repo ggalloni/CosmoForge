@@ -235,10 +235,10 @@ Pipeline Integration
    python produce_mock_inputs.py TQU /data/mocks analysis_config.yaml
 
    # 2. Run Fisher analysis
-   mpirun -n 8 python main_fisher.py analysis_config.yaml
+   mpirun -n 8 qube-fisher-run analysis_config.yaml
 
    # 3. Run QML analysis
-   mpirun -n 16 python main_qml.py analysis_config.yaml
+   mpirun -n 16 qube-spectra-run analysis_config.yaml
    
    # 4. Compare results with known input
 
@@ -328,7 +328,6 @@ templates, or gain/pointing errors — there is no configuration for them.
 See Also
 --------
 
-* :doc:`main_fisher` : Fisher matrix analysis using mock data
-* :doc:`main_qml` : QML analysis pipeline
+* :doc:`cli` : Command-line entry points
 * :mod:`cosmoforge.cosmocore.pixel` : HEALPix utilities for map generation
 * :mod:`cosmoforge.cosmocore.harmonic` : Spherical harmonic operations

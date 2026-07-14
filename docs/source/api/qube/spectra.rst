@@ -393,5 +393,5 @@ See Also
 
 * :class:`qube.fisher.Fisher` : Fisher information matrix computation
 * :mod:`cosmocore.harmonic` : Spherical harmonic transformations
-* :doc:`main_qml` : Main execution script for QML analysis
+* :doc:`cli` : Command-line entry points (``qube-run``)
 * :doc:`produce_mock_inputs` : Mock data generation for testing

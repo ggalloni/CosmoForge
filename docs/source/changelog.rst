@@ -40,6 +40,13 @@ array instead of a file path, and nothing is written to disk unless asked.
 * ``threadpoolctl`` dropped as a cosmocore dependency, along with the
   ``_wide_threadpool()`` context manager: raising OpenBLAS's thread limit
   past its init-time size segfaults under the usual ``OMP_NUM_THREADS=1``.
+* The ``main_fisher.py``, ``main_qml.py`` and ``main_picslike.py`` scripts are
+  removed, superseded by the console scripts below. They were never installed —
+  only reachable from a repository checkout — and ``main_picslike.py`` had
+  drifted out of sync with ``PICSLike`` to the point of calling three methods
+  that no longer exist. Replace ``python main_qml.py cfg.yaml`` with
+  ``qube-run cfg.yaml``, ``main_fisher.py`` with ``qube-fisher-run``, and
+  ``main_picslike.py`` with ``picslike-run``.
 
 **Added:**
 
@@ -57,9 +64,15 @@ array instead of a file path, and nothing is written to disk unless asked.
 * **In-memory Fisher → Spectra handoff** (ADR-0016). ``Spectra(fisher=…)``
   aliases the live Fisher's covariances instead of round-tripping N and C⁻¹
   through ``np.fromfile``. The ``out*`` files remain a dormant read adapter.
-* ``main_fisher.py`` and ``main_qml.py`` take an optional positional config
-  path, defaulting to the packaged ``TEB_defaults.yaml``. Previously the path
-  was hardcoded relative to the repo root and only worked from there.
+* **Console scripts.** The pipelines are now installed entry points, on
+  ``PATH`` after a plain ``pip install`` with no repository checkout:
+  ``qube-fisher-run`` (Fisher matrix only), ``qube-spectra-run`` (QML spectra
+  end to end) with the alias ``qube-run``, and ``picslike-run`` (pixel
+  likelihood over the grid). They run unmodified under MPI, e.g.
+  ``mpirun -n 8 qube-run config.yaml``. The QUBE commands take an optional
+  config path and fall back to the packaged ``TEB_defaults.yaml``;
+  ``picslike-run`` requires one. Each warns when it finishes a run whose result
+  is not being persisted, rather than exiting quietly (ADR-0015).
 * ``in_memory_inputs.ipynb`` notebook and tutorial page, driving the file and
   array adapters over the same data and asserting they agree.
 * The demo notebooks now execute in CI (``test-notebooks`` job, matrix over

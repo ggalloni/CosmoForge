@@ -207,4 +207,4 @@ See Also
 
 * :class:`qube.spectra.Spectra` : QML power spectrum estimation using Fisher results
 * :mod:`cosmocore` : Underlying computational infrastructure
-* :doc:`main_fisher` : Main execution script for Fisher analysis
+* :doc:`cli` : Command-line entry points (``qube-fisher-run``)
