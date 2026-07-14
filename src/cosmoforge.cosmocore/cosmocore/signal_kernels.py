@@ -54,8 +54,6 @@ References
    Phys. Rev. D 62, 123002 (2000)
 """
 
-import warnings
-
 import healpy as hp
 import numpy as np
 from numba import njit, prange
@@ -677,14 +675,7 @@ def derivative_step_22(S_slice, vec1, vec2, current_ell, mode, legendre, f1, f2)
             S_slice[i, j] = S_slice[j, i]
 
 
-def do_derivative_step(
-    S,
-    spectrum,
-    npixs=None,
-    spins=None,
-    current_ell=None,
-    fields: FieldCollection = None,
-):
+def do_derivative_step(S, spectrum, current_ell, fields: FieldCollection):
     """
     Execute derivative step for Fisher matrix calculations.
 
@@ -694,12 +685,6 @@ def do_derivative_step(
         2D signal matrix to fill with derivative contributions.
     spectrum : int
         Index of the power spectrum being differentiated.
-    npixs : list of int, optional
-        Deprecated and ignored; taken from ``fields.n_active``. Passing it emits
-        a ``DeprecationWarning`` and it will be removed in the next release.
-    spins : list of int, optional
-        Deprecated and ignored; taken from ``fields.spin``. Passing it emits a
-        ``DeprecationWarning`` and it will be removed in the next release.
     current_ell : int
         Current multipole moment for the derivative calculation.
     fields : FieldCollection
@@ -714,26 +699,12 @@ def do_derivative_step(
     Used in Fisher matrix calculations to compute parameter sensitivities.
     The function handles different field types and cross-correlations automatically.
 
+    The legacy signature was ``(S, spectrum, npixs, spins, current_ell, fields)``.
     ``npixs`` and ``spins`` were always overwritten from ``fields`` on entry, so
-    they never affected the result. They are kept for one release as a
-    warn-and-forward shim (ADR-0018); call with ``current_ell=`` and ``fields=``
-    as keywords.
+    they never affected the result; they are **removed, not deprecated**. A stale
+    call raises ``TypeError`` naming the arity — the language delivers the
+    no-silent-breakage policy for free (ADR-0018).
     """
-    if npixs is not None or spins is not None:
-        warnings.warn(
-            "do_derivative_step(npixs=..., spins=...) is deprecated and ignored; "
-            "both are taken from `fields`. Pass current_ell= and fields= as "
-            "keywords. The parameters will be removed in the next release.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-    # current_ell/fields only carry defaults because the deprecated npixs/spins sit
-    # ahead of them in the signature; both are required.
-    if current_ell is None:
-        raise TypeError("do_derivative_step() requires `current_ell`")
-    if fields is None:
-        raise TypeError("do_derivative_step() requires `fields`")
-
     spins = fields.spin
     npixs = fields.n_active
     label = fields.spectra_labels[spectrum]

@@ -550,8 +550,15 @@ def test_derivative_step_consistency():
     os.remove(mock_config_dict["maskfile"])
 
 
-def test_do_derivative_step_deprecated_npixs_spins_warn():
-    """npixs/spins are ignored; passing them warns (ADR-0018 shim)."""
+def test_do_derivative_step_rejects_the_legacy_signature():
+    """npixs/spins are removed, not deprecated (ADR-0018 bright line).
+
+    They were always overwritten from ``fields``, so a stale call cannot produce
+    wrong numbers — it produces a loud ``TypeError`` on arity, which is a better
+    diagnostic than any shim could give. A shim here would also have to sit
+    *ahead of* the required arguments, forcing defaults onto them and silently
+    misbinding new-style positional calls.
+    """
     nside = 4
     Par = InputParams()
     Par.update(
@@ -590,26 +597,18 @@ def test_do_derivative_step_deprecated_npixs_spins_warn():
     collection.set_pointing_vectors(point_vectors)
 
     ntot = collection.total_active_pixels
+    S = np.zeros((ntot, ntot), dtype=np.float64)
 
-    S_new = np.zeros((ntot, ntot), dtype=np.float64)
-    do_derivative_step(S=S_new, spectrum=0, current_ell=3, fields=collection)
+    # The current signature: positional and keyword forms both work.
+    do_derivative_step(S, 0, 3, collection)
+    do_derivative_step(S=S, spectrum=0, current_ell=3, fields=collection)
 
-    S_legacy = np.zeros((ntot, ntot), dtype=np.float64)
-    with pytest.warns(DeprecationWarning, match="deprecated and ignored"):
+    # The legacy positional form is refused on arity — the language names it.
+    with pytest.raises(TypeError, match="positional argument"):
+        do_derivative_step(S, 0, [999], [7], 3, collection)
+
+    # The legacy keyword form is refused by name.
+    with pytest.raises(TypeError, match="npixs"):
         do_derivative_step(
-            S=S_legacy,
-            spectrum=0,
-            npixs=[999],  # nonsense on purpose: proves it is ignored
-            spins=[7],
-            current_ell=3,
-            fields=collection,
+            S=S, spectrum=0, npixs=[999], spins=[7], current_ell=3, fields=collection
         )
-
-    np.testing.assert_allclose(S_legacy, S_new)
-
-    # current_ell/fields only carry defaults because the deprecated params sit ahead
-    # of them; omitting either must fail fast, not deep inside the kernels.
-    with pytest.raises(TypeError, match="requires `current_ell`"):
-        do_derivative_step(S=S_new, spectrum=0, fields=collection)
-    with pytest.raises(TypeError, match="requires `fields`"):
-        do_derivative_step(S=S_new, spectrum=0, current_ell=3)
