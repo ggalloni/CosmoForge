@@ -90,7 +90,7 @@ For detailed API documentation and examples:
 
 - **[Fisher Analysis](https://cosmoforge.readthedocs.io/en/latest/api/qube/fisher.html)** - Fisher matrix computation and parameter forecasting
 - **[Spectra Analysis](https://cosmoforge.readthedocs.io/en/latest/api/qube/spectra.html)** - QML power spectrum estimation
-- **[Main Scripts](https://cosmoforge.readthedocs.io/en/latest/api/qube/main_fisher.html)** - Command-line interfaces for analysis
+- **[Command-Line Interface](https://cosmoforge.readthedocs.io/en/latest/api/qube/cli.html)** - `qube-run`, `qube-spectra-run`, `qube-fisher-run`
 - **[Mock Data Generation](https://cosmoforge.readthedocs.io/en/latest/api/qube/produce_mock_inputs.html)** - Mock data generation utilities
 
 ## Quick Start

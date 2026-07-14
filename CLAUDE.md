@@ -12,6 +12,22 @@ Canonical label vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `re
 
 Single-context: one `CONTEXT.md` at repo root, ADRs under `docs/adr/`. See `docs/agents/domain.md`.
 
+## Changelog
+
+Every PR that touches package source (`src/cosmoforge.*/<pkg>/**.py`) must add an
+entry under the **Unreleased** heading in `docs/source/changelog.rst`. CI enforces
+this (the `changelog` job); the only escape is the `skip-changelog` label, for
+changes with genuinely no user-visible surface.
+
+Write the entry in terms of what a *user* touches — new, renamed or removed
+kwargs; changed defaults; new or removed config keys; new behaviour — not in terms
+of the internals you moved. Group under `**Breaking changes:**`, `**Added:**`,
+`**Fixed:**`. Cite the ADR when one governs the change.
+
+A changed default is a breaking change even when no signature moves. The
+`do_cross` flip and the `basis=None` meaning change both shipped without a
+changelog line, and both silently alter what existing scripts compute.
+
 ## Documentation drift
 
 At the end of every feature implementation that touches public surface — renamed/added/removed modules, changed signatures or kwargs, new or removed behaviour — do a quick doc-drift sweep before declaring the work done:

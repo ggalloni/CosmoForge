@@ -86,6 +86,7 @@ Core Analysis Classes
    picslike/picslike
    picslike/parameter_grid
    picslike/likelihood_result
+   picslike/cli
 
 Quick Reference
 ^^^^^^^^^^^^^^^

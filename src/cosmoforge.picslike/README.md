@@ -260,8 +260,8 @@ picslike = PICSLike('config.yaml')
 picslike.run()
 "
 
-# Full analysis with result saving
-mpirun -n 8 python main_picslike.py config/pixel_analysis.yaml
+# Full analysis with result saving, via the installed console script
+mpirun -n 8 picslike-run config/pixel_analysis.yaml --out results.npz
 ```
 
 ## Analysis Pipeline

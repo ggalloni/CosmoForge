@@ -103,14 +103,13 @@ Core Analysis Classes
    qube/spectra
    qube/memory_budget
 
-Main Execution Scripts
+Command-Line Interface
 ^^^^^^^^^^^^^^^^^^^^^^
 
 .. toctree::
    :maxdepth: 2
 
-   qube/main_fisher
-   qube/main_qml
+   qube/cli
 
 Utility Scripts
 ^^^^^^^^^^^^^^^
@@ -195,10 +194,10 @@ MPI Parallel Execution
 .. code-block:: bash
 
    # Run Fisher matrix analysis with 8 processes
-   mpirun -n 8 python main_fisher.py
-   
-   # Run QML estimation with 16 processes  
-   mpirun -n 16 python main_qml.py
+   mpirun -n 8 qube-fisher-run config.yaml
+
+   # Run QML estimation with 16 processes
+   mpirun -n 16 qube-spectra-run config.yaml --out spectra.txt
 
 Mock Data Generation
 ^^^^^^^^^^^^^^^^^^^^

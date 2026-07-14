@@ -31,6 +31,9 @@ mpi = ["cosmocore[mpi]"]
 
 [project.scripts]
 qube-memory-budget = "qube.memory_budget:_main"
+qube-fisher-run = "qube.cli:fisher_main"
+qube-spectra-run = "qube.cli:spectra_main"
+qube-run = "qube.cli:spectra_main"
 
 [tool.uv.sources]
 cosmocore = { workspace = true }
