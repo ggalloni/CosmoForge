@@ -51,3 +51,29 @@ def test_injected_cls_data_matches_file_path():
         assert ref_cls.keys() == inj_cls.keys()
         for label in ref_cls:
             np.testing.assert_array_equal(inj_cls[label], ref_cls[label])
+
+
+def test_beam_smoothing_does_not_mutate_the_caller_spectra():
+    """``set_cls`` takes ownership of its input: the caller's arrays stay put.
+
+    Beam smoothing multiplies the stored spectra in place. A shallow copy of the
+    input dict would let that reach back into the caller's arrays — re-smoothing
+    them on every subsequent ``set_cls`` with the same source.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        params = _make_params(tmpdir, nside=4, lmax=8)
+
+        core = ConcreteCore(params)
+        core.setup_fields()
+
+        caller_cls = readcl(params.inputclfile, params, lmax=8)
+        pristine = {label: arr.copy() for label, arr in caller_cls.items()}
+
+        core.collection.set_cls(caller_cls, lmax=8)
+        core.setup_beams(lmax=8)
+        core.collection.beam_manager.apply_smoothing(
+            core.collection.spectra_manager, lmax=8
+        )
+
+        for label in pristine:
+            np.testing.assert_array_equal(caller_cls[label], pristine[label])

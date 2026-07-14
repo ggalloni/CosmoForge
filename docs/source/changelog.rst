@@ -112,6 +112,18 @@ array instead of a file path, and nothing is written to disk unless asked.
   and with no error. Pointing vectors are now built per field.
 * A transposed ``(ncomponents, npix)`` mask is refused instead of silently
   reducing every array to the wrong pixels.
+* Evaluating the same parameter point twice on one ``PICSLike`` instance no
+  longer drifts. Beam smoothing multiplied the theory spectra in place, so each
+  evaluation re-smoothed the parameter grid's own arrays and chi-squared grew
+  with every pass. Spectra handed to ``set_cls`` are now copied, which also
+  means an injected ``cls_data=`` array is no longer modified by the run that
+  consumes it.
+* Rebuilding the computation basis on a live ``PICSLike`` instance no longer
+  produces wrong chi-squared. The compressed-SMW path cached data projected
+  through the *previous* basis and kept using it against the new one — silently,
+  with no error. ``setup_computation_basis()`` now drops that cache, so the
+  documented ``setup_computation_basis → setup_maps → compute`` order is no
+  longer the only safe one.
 
 Version 1.0.1 (2026-05-21)
 --------------------------

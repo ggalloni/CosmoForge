@@ -273,7 +273,11 @@ class SpectraManager:
         effective_lmax = lmax if lmax is not None else self.fields[0].lmax
         n_ell = effective_lmax + 1
         if isinstance(cls_data, dict):
-            self._cls_dict = cls_data.copy()
+            # Copy the values, not just the dict: apply_smoothing multiplies the
+            # stored spectra in place, so sharing the arrays would reach back
+            # into the caller's — re-smoothing a parameter grid's theory spectra
+            # on every evaluation, or an injected ``cls_data`` on every use.
+            self._cls_dict = {label: arr.copy() for label, arr in cls_data.items()}
             # Build matrix from dictionary
             self._cls_matrix = np.zeros((n_ell, self.n_spectra))
             for idx, label in enumerate(self._spectra_labels):
