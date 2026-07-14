@@ -118,8 +118,9 @@ def compute_pointings(
     phi_vectors : tuple of numpy.ndarray
         Tuple of arrays to store phi unit vectors for each field.
         Each array has shape (n_active).
-    active : numpy.ndarray or tuple
-        Active pixel indices for each field.
+    active : sequence of numpy.ndarray
+        Active pixel indices for each field (one array per field, not per
+        component: a spin-2 field has a single pixel set shared by Q and U).
     ordering : str
         HEALPix pixel ordering: ``"RING"`` or ``"NESTED"``.
 
@@ -136,12 +137,21 @@ def compute_pointings(
     """
     nmaps = len(npixs)
 
+    # `active` must be per FIELD, like `npixs`. Handing over the per-COMPONENT
+    # pixact instead is the mistake that silently gives one field another's sky
+    # positions (rows line up by luck for [T, QU], not for [QU, T]).
+    if len(active) != nmaps:
+        raise ValueError(
+            f"active has {len(active)} entries but npixs has {nmaps}: both must be "
+            "per field. Did you pass the per-component active pixels (pixact)?"
+        )
+
     for field_idx in range(nmaps):
         ntemp = npixs[field_idx]
 
         for i in range(ntemp):
             theta, phi = hp.pix2ang(
-                nside, active[field_idx, i], nest=(ordering == "NESTED")
+                nside, active[field_idx][i], nest=(ordering == "NESTED")
             )
             x = np.sin(theta) * np.cos(phi)
             y = np.sin(theta) * np.sin(phi)
@@ -674,14 +684,7 @@ def derivative_step_22(S_slice, vec1, vec2, current_ell, mode, legendre, f1, f2)
             S_slice[i, j] = S_slice[j, i]
 
 
-def do_derivative_step(
-    S,
-    spectrum,
-    npixs,
-    spins,
-    current_ell,
-    fields: FieldCollection,
-):
+def do_derivative_step(S, spectrum, current_ell, fields: FieldCollection):
     """
     Execute derivative step for Fisher matrix calculations.
 
@@ -691,10 +694,6 @@ def do_derivative_step(
         2D signal matrix to fill with derivative contributions.
     spectrum : int
         Index of the power spectrum being differentiated.
-    npixs : list of int
-        Number of active pixels for each field (deprecated, use fields.n_active).
-    spins : list of int
-        Spin values for each field (deprecated, use fields.spin).
     current_ell : int
         Current multipole moment for the derivative calculation.
     fields : FieldCollection
@@ -708,6 +707,12 @@ def do_derivative_step(
 
     Used in Fisher matrix calculations to compute parameter sensitivities.
     The function handles different field types and cross-correlations automatically.
+
+    The legacy signature was ``(S, spectrum, npixs, spins, current_ell, fields)``.
+    ``npixs`` and ``spins`` were always overwritten from ``fields`` on entry, so
+    they never affected the result; they are **removed, not deprecated**. A stale
+    call raises ``TypeError`` naming the arity — the language delivers the
+    no-silent-breakage policy for free (ADR-0018).
     """
     spins = fields.spin
     npixs = fields.n_active

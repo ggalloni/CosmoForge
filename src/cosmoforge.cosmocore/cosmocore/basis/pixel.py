@@ -751,14 +751,7 @@ class PixelBasis(ComputationBasis):
 
         dS = self._direct_buffer()
         dS.fill(0.0)
-        do_derivative_step(
-            dS,
-            spectrum_idx,
-            self._fields.n_active,
-            self._fields.spin,
-            ell,
-            self._fields,
-        )
+        do_derivative_step(dS, spectrum_idx, current_ell=ell, fields=self._fields)
         return dS
 
     def get_binned_derivative_direct(

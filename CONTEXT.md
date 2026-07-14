@@ -89,6 +89,13 @@ Other renamed vocabulary (use these, not the legacy names):
 - **Fiducial blending** — Outside the inference window `[lmin, lmax]` the covariance uses the fiducial spectrum (not the test point's). Stabilises the inversion at high ℓ and lets foreground/template components live in `S_fixed`.
 - **LikelihoodResult** — Stores χ², log-L, best-fit, marginalised likelihoods, confidence intervals; serialisable.
 
+## Sky geometry
+
+- **Component vs field** — A **component** is one map (T, Q, U): it is what the mask columns, the noise-covariance blocks, the map rows and the active-pixel index are indexed by. A **field** is what carries a spin and its own pointing vectors (T is one field; QU is *one* field with two components). For `spins=[0, 2]` there are 2 fields and 3 components. `FieldCollection.n_active` is per-component; `Core.npixs` is per-field. Never use one where the other is meant.
+- **Active pixels** — Per component, the pixel indices where that component's mask exceeds 0.5, sorted ascending. The two components of a spin-2 field always share one set (a Q-only mask is not physically meaningful and is rejected).
+- **Active-pixel index** — The concatenated `intp` array `[active_pixels[i] + i·npix for i]`, mapping each row of a reduced array to its position in the flattened full-pixel `(nfields·npix)` vector. This *is* the ordering; it is a pure function of the mask and is public.
+- **Reduced** — An array restricted to the active pixels and ordered by the active-pixel index. `noise_cov1`/`noise_cov2` are reduced `(n_active, n_active)`; `maps1`/`maps2` are reduced `(n_active, nsims)`. A reduced array is meaningless without the mask that produced it; keeping the two together is the caller's responsibility.
+
 ## Inputs and conventions
 
 - **Physical C_ℓ** — Standard CAMB/CLASS values. The `(2ℓ+1)/(4π)` normalisation is absorbed into the Legendre basis functions; `apply_normalization()` is a no-op.

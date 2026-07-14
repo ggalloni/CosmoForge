@@ -201,3 +201,67 @@ trivially true rather than true by careful construction.
 **physical** C_ell: the `input_convention` normalisation (D_ell → C_ell) is applied only on
 the file path, never to an injected array. This is the same §Decision.1 rule — the injected
 object is what the *reader* returns, and `readcl` returns physical C_ell — so it stays.
+### Amendment (2026-07-13, active-pixel index): the reduced seams keep their contract, and the ordering becomes public
+
+Sibling of the calibration amendment above. That one removed the *asymmetry*
+between the two reduced seams; this one removes the *circularity* they shared.
+
+`noise_cov1/2` and `maps1/2` are the only seams whose injected object is
+*reduced* — restricted to the active pixels and ordered by the
+concatenated index. A caller therefore had to know that ordering, and the
+only way to learn it was to build a `Fisher` and read `.pixact` off it.
+That circularity is what this amendment removes. With both amendments landed,
+the injected contract for these two seams is simply "the reduced array", with
+the ordering a published function of the mask.
+
+**Decision.** The injected contract for both seams stays *reduced*
+(§Decision.1 is unchanged: the injected object is what the reader
+returns). What changes is that the ordering stops being an emergent
+private detail and becomes a **public, framework-free function of the
+mask** — `active_pixels(mask)` and `active_pixel_index(mask)` in
+`cosmocore`. `Core` and the readers route through the same functions, so
+the published ordering *is* the ordering, by construction rather than by
+documentation. See CONTEXT.md ("Sky geometry") for the vocabulary.
+
+**Rejected: let `noise_cov1/2` accept a full-pixel array and reduce it
+internally.** This was the friendliest-looking option ("hand over what you
+already have") and it is what the *file* adapter does when
+`load_reduced=False`. It loses on three counts:
+
+- It is **dominated**. With the index public, reducing either object is a
+  one-liner off the same array — `cov_full[np.ix_(index, index)]`,
+  `maps_full.reshape(nfields * npix, nsims)[index]`. Accepting a
+  full-pixel array buys the caller nothing they cannot already do, while
+  *forcing* the full matrix to exist: a caller who could build the reduced
+  covariance directly (from a noise model, block by block, streamed) would
+  be compelled to materialise the full one. Strictly less capable.
+- The **size** is not academic. A full-pixel covariance is
+  `(npix·nfields)²`: 72 GiB for QU at nside 64, against 0.72 GiB reduced at
+  fsky 0.1. (Note the argument is *not* that `read_covmat` avoids this —
+  it does not; `np.fromfile` materialises the whole matrix, and its blocked
+  loop only avoids a second `n_active²` temporary. `load_reduced` exists
+  precisely because that path is unusable at production sizes, and at those
+  sizes the reduction happens offline, outside CosmoForge.)
+- It would make `noise_cov` the **only seam accepting two in-memory
+  forms**, and the failure mode of such a two-tier contract is: works in
+  the notebook, OOMs on the cluster.
+
+`maps1/2` keeps the reduced contract too, for uniformity: there is no
+memory argument for maps (`read_maps` already loads the full-sky stack),
+but with the index public there is no *ergonomic* argument either, and one
+rule beats two.
+
+**Also rejected: a `SkyGeometry` type.** A class earns its keep by carrying
+state that is expensive to recompute or an invariant that must travel with
+the data. Neither applies: the index is `O(npix)` from `np.where`, and the
+pairing of a reduced array with its mask is the caller's responsibility
+(reduced `.bin` files carry no provenance and never have). Two pure
+functions suffice. Revisit only if the cross-experiment work (per-component
+nside/pixelisation) supplies a real forcing function.
+
+**Narrowing (§Decision.6).** A spin-2 field's two mask columns must be
+identical. Masking Q differently from U is not physically meaningful — the
+spin-2 machinery (the V operator, the 2×2 Λ blocks) assumes one pixel set
+per spin-2 field — and the previous code silently used the *second* column
+of the pair for both. This is now rejected at `_resolve_mask` rather than
+mishandled downstream.

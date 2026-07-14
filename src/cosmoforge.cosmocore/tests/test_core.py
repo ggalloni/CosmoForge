@@ -182,6 +182,8 @@ def test_resolve_mask_file_branch_returns_promoted_array(tmp_path):
     params = InputParams()
     params.nside = 8
     params.nfields = 1
+    params.spins = [0]
+    params.labels = ["T"]
     npix = 12 * params.nside**2
     on_disk = np.ones(npix, dtype=np.float64)
     on_disk[: npix // 2] = 0.0
@@ -342,6 +344,47 @@ def test_setup_geometry():
 
     finally:
         Path(params.maskfile).unlink()
+
+
+def test_setup_geometry_pointings_follow_fields_not_components():
+    """Pointing vectors must be built from each FIELD's own active pixels.
+
+    ``compute_pointings`` iterates over fields, but ``pixact`` is indexed by
+    component (T, Q, U). With ``spins=[2, 0]`` the temperature field is field 1,
+    whose component row is U — so a component-indexed lookup silently gives the
+    T field the polarisation mask's sky positions.
+    """
+    nside = 8
+    npix = hp.nside2npix(nside)
+    n = 200
+
+    # Equal active counts (so nothing goes ragged) but disjoint pixel sets.
+    mask_pol = np.zeros(npix)
+    mask_pol[:n] = 1.0
+    mask_temp = np.zeros(npix)
+    mask_temp[400 : 400 + n] = 1.0
+
+    params = InputParams()
+    params.nside = nside
+    params.lmax = 8
+    params.lmax_signal = 16
+    params.spins = [2, 0]
+    params.labels = ["Q", "U", "T"]
+    params.nfields = 3
+    params.ordering = "RING"
+
+    core = ConcreteCore(params, mask=np.column_stack([mask_pol, mask_pol, mask_temp]))
+    core.setup_fields()
+    core.setup_geometry()
+
+    # Field 1 is the temperature field; its pointing vectors must sit on the
+    # temperature mask, not on the polarisation one.
+    theta_field_1 = np.arccos(core.point_vectors[1][:, 2])
+    theta_temp, _ = hp.pix2ang(nside, np.asarray(core.pixact[2], dtype=int))
+    theta_pol, _ = hp.pix2ang(nside, np.asarray(core.pixact[0], dtype=int))
+
+    assert np.allclose(theta_field_1, theta_temp)
+    assert not np.allclose(theta_field_1, theta_pol)
 
 
 def test_setup_geometry_without_fields():

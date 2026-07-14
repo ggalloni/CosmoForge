@@ -34,6 +34,7 @@ from .fields import (
     FieldCollection,
     create_field,
 )
+from .geometry import ACTIVE_THRESHOLD, active_pixel_index
 from .in_out import (
     output_geometry,
     read_covmat,
@@ -356,6 +357,32 @@ class Core(ABC):
             )
         if ncols != nfields:
             raise ValueError(f"mask has {ncols} column(s), expected nfields={nfields}")
+
+        n_components = sum(1 if spin == 0 else 2 for spin in self.params.spins)
+        if n_components != ncols:
+            raise ValueError(
+                f"spins={self.params.spins} describe {n_components} component(s) but "
+                f"the mask has {ncols} column(s)"
+            )
+
+        # A spin-2 field has one pixel set shared by its two components: the V
+        # operator and the 2x2 Lambda blocks assume it. Masking Q differently
+        # from U is not representable, so reject it rather than silently adopting
+        # one of the two columns.
+        col = 0
+        for spin in self.params.spins:
+            if spin != 0:
+                if not np.array_equal(
+                    mask[:, col] > ACTIVE_THRESHOLD, mask[:, col + 1] > ACTIVE_THRESHOLD
+                ):
+                    raise ValueError(
+                        f"mask columns {col} and {col + 1} differ, but they are the "
+                        "two components of one spin-2 field and must share a single "
+                        "pixel set"
+                    )
+                col += 2
+            else:
+                col += 1
         return mask
 
     def setup_fields(self) -> FieldCollection:
@@ -377,7 +404,7 @@ class Core(ABC):
         The field creation uses type-safe factory functions to ensure
         proper initialization based on the spin parameter.
         """
-        mask = self._resolve_mask()
+        mask = self.mask = self._resolve_mask()
 
         # Create fields using the new factory function
         fields: list[BaseField] = []
@@ -436,20 +463,15 @@ class Core(ABC):
         if self.collection is None:
             raise ValueError("Fields must be set up before geometry")
 
-        # Get active pixels
-        self.npixs = []
-        for lf in self.collection.fields:
-            self.npixs += lf.n_active
+        # Pointing vectors are per FIELD (one sky geometry per spin), while pixact
+        # is per COMPONENT (T, Q, U). Feed the pointing machinery the field-level
+        # active pixels, never a component row.
+        field_actives = [field.active_pixels for field in self.collection.fields]
+        self.npixs = [len(active) for active in field_actives]
 
-        self.point_vectors = tuple(
-            np.empty((self.npixs[i], 3), dtype=np.float64) for i in range(len(self.npixs))
-        )
-        self.theta_vectors = tuple(
-            np.empty((self.npixs[i]), dtype=np.float64) for i in range(len(self.npixs))
-        )
-        self.phi_vectors = tuple(
-            np.empty((self.npixs[i]), dtype=np.float64) for i in range(len(self.npixs))
-        )
+        self.point_vectors = tuple(np.empty((n, 3), dtype=np.float64) for n in self.npixs)
+        self.theta_vectors = tuple(np.empty(n, dtype=np.float64) for n in self.npixs)
+        self.phi_vectors = tuple(np.empty(n, dtype=np.float64) for n in self.npixs)
 
         self.pixact = self.collection.get_active_pixels()
 
@@ -460,7 +482,7 @@ class Core(ABC):
             self.point_vectors,
             self.theta_vectors,
             self.phi_vectors,
-            self.pixact,
+            field_actives,
             self.params.ordering,
         )
 
@@ -472,7 +494,7 @@ class Core(ABC):
             self.params.output_geometry_file,
             self.npixs,
             self.point_vectors,
-            self.pixact,
+            field_actives,
         )
 
         return self.pixact, self.point_vectors
@@ -507,9 +529,7 @@ class Core(ABC):
             raise ValueError("Geometry must be set up before covariance matrices")
 
         npix = hp.nside2npix(self.params.nside)
-        concatenate_pixact = np.concatenate(
-            [self.pixact[i] + i * npix for i in range(len(self.pixact))]
-        )
+        concatenate_pixact = active_pixel_index(self.mask)
 
         self.noise_cov1 = self._resolve_noise_cov(
             self._injected_noise_cov1, self.params.covmatfile1, npix, concatenate_pixact

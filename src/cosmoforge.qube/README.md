@@ -204,8 +204,17 @@ reader does:
 | `noise_cov1` | reduced to active pixels |
 | `maps1` | reduced to active pixels |
 
-`noise_cov1`/`maps1` are *reduced* to the active (unmasked) pixels, concatenated across
-fields — so the active-pixel ordering has to be known before they can be built.
+`noise_cov1`/`maps1` are *reduced* to the active (unmasked) pixels and ordered by the
+**active-pixel index**. You do not need a `Fisher` to learn that ordering — it is a pure
+function of the mask:
+
+```python
+from cosmocore import active_pixel_index
+
+index = active_pixel_index(mask)
+maps = maps_full.reshape(nfields * npix, nsims)[index]
+cov = cov_full[np.ix_(index, index)]
+```
 
 Worked example: [`notebooks/in_memory_inputs.ipynb`](notebooks/in_memory_inputs.ipynb),
 which drives the file adapter and the injection adapter over the same data and asserts

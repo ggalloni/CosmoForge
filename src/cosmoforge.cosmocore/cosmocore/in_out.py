@@ -220,8 +220,9 @@ def output_geometry(filegeometry, npixs, point_vectors, active):
         Number of active pixels for each field.
     point_vectors : tuple of numpy.ndarray
         Pointing vectors for each field, each array shape (n_active, 3).
-    active : numpy.ndarray or tuple
-        Active pixel indices for each field.
+    active : sequence of numpy.ndarray
+        Active pixel indices for each field (one array per field, not per
+        component).
 
     Notes
     -----
@@ -235,6 +236,11 @@ def output_geometry(filegeometry, npixs, point_vectors, active):
     if not (filegeometry or "").strip():
         return
     nmaps = len(npixs)
+    if len(active) != nmaps:
+        raise ValueError(
+            f"active has {len(active)} entries but npixs has {nmaps}: both must be "
+            "per field. Did you pass the per-component active pixels (pixact)?"
+        )
 
     _ensure_output_directory(filegeometry)
 
@@ -243,7 +249,7 @@ def output_geometry(filegeometry, npixs, point_vectors, active):
             ntemp = npixs[field_idx]
             f.write(f"{field_idx + 1:6d}{ntemp:6d}{0:6d}{0:6d}\n")
             for i in range(ntemp):
-                idx = active[field_idx, i]
+                idx = active[field_idx][i]
                 vec = point_vectors[field_idx][i, :]
                 f.write(f"{idx:6d}{vec[0]:24.16e}{vec[1]:24.16e}{vec[2]:24.16e}\n")
 
