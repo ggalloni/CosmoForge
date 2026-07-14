@@ -14,8 +14,6 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 . "$DIR/lib.sh"
 
-REMINDER="PR checkpoint: unless you already ran it on the current diff this session, run the ponytail-review skill on the full PR diff before this command completes. It hunts over-engineering, which CI and Copilot do not. Report what it finds; do not skip silently."
-
 is_pr_completion() {
   runs "$1" 'gh[[:space:]]+pr[[:space:]]+(create|merge)([[:space:]]|$)'
 }
@@ -48,7 +46,7 @@ fi
 COMMAND=$(jq -r '.tool_input.command')
 
 if is_pr_completion "$COMMAND"; then
-  printf '%s' "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"$REMINDER\"}}"
+  printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"PR checkpoint: unless you already ran it on the current diff this session, run the ponytail-review skill on the full PR diff before this command completes. It hunts over-engineering, which CI and Copilot do not. Report what it finds; do not skip silently."}}'
 fi
 
 exit 0

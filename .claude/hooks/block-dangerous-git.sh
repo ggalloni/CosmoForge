@@ -1,22 +1,14 @@
 #!/bin/bash
 # Block git commands that destroy work irrecoverably.
 #
-# Scope: only the commands whose damage cannot be undone. Plain `git push`,
-# `git commit` and `gh pr create` are NOT blocked here -- they are recoverable,
-# and already gated by `ask` permission rules.
+# Scope: only what cannot be undone. Plain `git push` and `git commit` are NOT
+# blocked -- they are recoverable, and already gated by `ask` permission rules.
+# Blocking them would only train us to bypass the hook.
 #
-# Two matching subtleties, both learned the hard way:
+# Matching is delegated to lib.sh; see its header for why a prefix match (what
+# `permissions.deny` does) is not enough, and why prose must not trigger.
 #
-#   1. Match the WHOLE command string, not a prefix. A `permissions.deny` rule
-#      matches the prefix only, so `cd /repo && git reset --hard` sails past it.
-#
-#   2. But a command that merely *mentions* a dangerous git command is not an
-#      attempt to run it. This script blocked its own commit, because the commit
-#      message documented what it blocks. So: strip heredoc bodies, and require
-#      `git` to sit at a command position (start of line, or after ; && || |)
-#      rather than mid-sentence.
-#
-# Run the self-check with:  .claude/hooks/block-dangerous-git.sh --test
+# Self-check:  .claude/hooks/block-dangerous-git.sh --test
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
@@ -44,7 +36,7 @@ is_dangerous() {
 
   # git restore: --staged alone only unstages (safe). Anything touching the
   # worktree discards changes.
-  if check "$cmd" "" 'git[[:space:]]+restore([[:space:]]|$)'; then
+  if runs "$cmd" 'git[[:space:]]+restore([[:space:]]|$)'; then
     if has_flag "$cmd" '--staged' && ! has_flag "$cmd" '--worktree'; then
       : # `git restore --staged <file>` unstages without touching the worktree.
     else
@@ -64,7 +56,7 @@ is_dangerous() {
 
   # Force push. The flag can precede or follow the refspec, so check it
   # separately from the `git push` match rather than in one anchored regex.
-  if check "$cmd" "" 'git[[:space:]]+push([[:space:]]|$)'; then
+  if runs "$cmd" 'git[[:space:]]+push([[:space:]]|$)'; then
     if has_flag "$cmd" '(^|[[:space:]])(--force-with-lease|--force|-f)([[:space:]]|=|$)'; then
       REASON="A force push rewrites published history and can destroy others' commits."
       return 0

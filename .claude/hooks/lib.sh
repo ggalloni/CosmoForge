@@ -25,10 +25,18 @@ strip_heredocs() {
   '
 }
 
-# A command position: the start of the string, a new line, or just after a
-# shell separator. Prose mentions ("run `git reset --hard`") sit mid-line and
-# so do not match.
-_AT_CMD='(^|[;&|]|[[:space:]]&&[[:space:]]|[[:space:]]\|\|[[:space:]])[[:space:]]*'
+# A command position: the start of a line, or just after a shell separator.
+# Prose mentions ("run `git reset --hard`") sit mid-line and so do not match.
+#
+# [;&|] covers `&&` and `||` for free -- the second `&` / `|` is itself a match,
+# with the separator's own characters consumed by the class. No extra alternative
+# is needed, and one here would be dead regex.
+#
+# Known limitation: a dangerous command quoted inside another command
+# ("echo 'git reset --hard'") still sits at a command position and will match.
+# Heredocs are stripped; general quote awareness would mean parsing shell in
+# regex. The failure direction is safe -- it blocks, and you run it yourself.
+_AT_CMD='(^|[;&|])[[:space:]]*'
 
 # runs <command-string> <extended-regex>
 # True when the command actually invokes something matching the regex.
