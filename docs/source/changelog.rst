@@ -112,6 +112,11 @@ array instead of a file path, and nothing is written to disk unless asked.
   and with no error. Pointing vectors are now built per field.
 * A transposed ``(ncomponents, npix)`` mask is refused instead of silently
   reducing every array to the wrong pixels.
+* On a harmonic basis, the consumers that need the pixel projector
+  (``get_covariance``, ``get_inverse``, ``to_basis``, ``projector``, m-block
+  compression and PICSLike ``do_cross``) now raise a ``RuntimeError`` naming
+  the contract when called after ``release_pixel_projector()``, instead of an
+  opaque ``ValueError`` from numpy.
 
 Version 1.0.1 (2026-05-21)
 --------------------------
