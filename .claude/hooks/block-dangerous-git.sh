@@ -18,28 +18,13 @@
 #
 # Run the self-check with:  .claude/hooks/block-dangerous-git.sh --test
 
-# Strip heredoc bodies (commit messages, inline scripts) before matching.
-strip_heredocs() {
-  awk '
-    !inside && match($0, /<<-?[[:space:]]*'\''?[A-Za-z_][A-Za-z0-9_]*'\''?/) {
-      d = substr($0, RSTART, RLENGTH)
-      sub(/^<<-?[[:space:]]*'\''?/, "", d)
-      sub(/'\''$/, "", d)
-      delim = d; inside = 1; print; next
-    }
-    inside && $0 ~ "^[[:space:]]*" delim "[[:space:]]*$" { inside = 0; next }
-    inside { next }
-    { print }
-  '
-}
-
-# A dangerous pattern only counts at a command position: the start of the
-# string, a new line, or after a shell separator.
-AT_CMD='(^|[;&|]|[[:space:]]&&[[:space:]]|[[:space:]]\|\|[[:space:]])[[:space:]]*'
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib.sh
+. "$DIR/lib.sh"
 
 check() {
   local cmd="$1" reason="$2" pattern="$3"
-  if printf '%s\n' "$cmd" | strip_heredocs | grep -qE "$AT_CMD$pattern"; then
+  if runs "$cmd" "$pattern"; then
     REASON="$reason"
     return 0
   fi
@@ -60,10 +45,7 @@ is_dangerous() {
   # git restore: --staged alone only unstages (safe). Anything touching the
   # worktree discards changes.
   if check "$cmd" "" 'git[[:space:]]+restore([[:space:]]|$)'; then
-    local stripped
-    stripped=$(printf '%s\n' "$cmd" | strip_heredocs)
-    if printf '%s' "$stripped" | grep -qE -- '--staged' \
-       && ! printf '%s' "$stripped" | grep -qE -- '--worktree'; then
+    if has_flag "$cmd" '--staged' && ! has_flag "$cmd" '--worktree'; then
       : # `git restore --staged <file>` unstages without touching the worktree.
     else
       REASON="git restore <file> discards uncommitted changes. Only --staged (unstage) is allowed."
@@ -83,8 +65,7 @@ is_dangerous() {
   # Force push. The flag can precede or follow the refspec, so check it
   # separately from the `git push` match rather than in one anchored regex.
   if check "$cmd" "" 'git[[:space:]]+push([[:space:]]|$)'; then
-    if printf '%s\n' "$cmd" | strip_heredocs \
-       | grep -qE '(^|[[:space:]])(--force-with-lease|--force|-f)([[:space:]]|=|$)'; then
+    if has_flag "$cmd" '(^|[[:space:]])(--force-with-lease|--force|-f)([[:space:]]|=|$)'; then
       REASON="A force push rewrites published history and can destroy others' commits."
       return 0
     fi

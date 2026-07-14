@@ -12,7 +12,7 @@
           },
           {
             "type": "command",
-            "command": "jq -r \".tool_input.command\" | grep -qE \"gh pr (create|merge)\" && printf \"%s\" \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"additionalContext\\\":\\\"PR checkpoint: unless you already ran it on the current diff this session, run the ponytail-review skill on the full PR diff before this command completes. It hunts over-engineering, which CI and Copilot do not. Report what it finds; do not skip silently.\\\"}}\" || true",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pr-checkpoint.sh",
             "statusMessage": "PR checkpoint"
           }
         ]
