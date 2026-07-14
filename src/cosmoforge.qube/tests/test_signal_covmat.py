@@ -7,6 +7,7 @@ import pytest
 from cosmocore import (
     FieldCollection,
     InputParams,
+    active_pixel_index,
     compute_pointings,
     compute_signal_matrix,
     create_field,
@@ -49,27 +50,26 @@ def get_signal_covmat(fields, config_resolver, local_path):
     # Create collection using new design
     collection = FieldCollection(Par, fields)
 
-    npixs = []
-    for field in fields:
-        npixs += field.n_active if field.spin == 0 else field.n_active * 2
+    field_actives = [field.active_pixels for field in fields]
+    npixs = [len(active) for active in field_actives]
 
-    point_vectors = tuple(
-        np.empty((npixs[i], 3), dtype=np.float64) for i in range(len(npixs))
-    )
-    theta_vectors = tuple(np.empty(npixs[i], dtype=np.float64) for i in range(len(npixs)))
-    phi_vectors = tuple(np.empty(npixs[i], dtype=np.float64) for i in range(len(npixs)))
-
-    pixact = collection.get_active_pixels()
+    point_vectors = tuple(np.empty((n, 3), dtype=np.float64) for n in npixs)
+    theta_vectors = tuple(np.empty(n, dtype=np.float64) for n in npixs)
+    phi_vectors = tuple(np.empty(n, dtype=np.float64) for n in npixs)
 
     point_vectors, theta_vectors, phi_vectors = compute_pointings(
-        Par.nside, npixs, point_vectors, theta_vectors, phi_vectors, pixact, Par.ordering
+        Par.nside,
+        npixs,
+        point_vectors,
+        theta_vectors,
+        phi_vectors,
+        field_actives,
+        Par.ordering,
     )
 
     collection.set_pointing_vectors(point_vectors)
 
-    concatenate_pixact = np.concatenate(
-        [pixact[i] + i * npix for i in range(len(pixact))]
-    )
+    concatenate_pixact = active_pixel_index(mask)
     noise_cov1 = np.empty(
         (concatenate_pixact.shape[0], concatenate_pixact.shape[0]), dtype=np.float64
     )

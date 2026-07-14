@@ -30,6 +30,7 @@ import healpy as hp
 import numpy as np
 
 from cosmocore.beam import BeamManager
+from cosmocore.geometry import ACTIVE_THRESHOLD
 from cosmocore.in_out import readcl
 from cosmocore.settings import InputParams
 from cosmocore.spectra_io import SpectraManager
@@ -257,11 +258,11 @@ class BaseField(ABC):
         Returns
         -------
         numpy.ndarray
-            1D array containing pixel indices where mask > 0.5.
-            Computed lazily and cached for efficiency.
+            1D array of pixel indices where the mask exceeds
+            ``geometry.ACTIVE_THRESHOLD``. Computed lazily and cached.
         """
         if self._active_pixels is None:
-            self._active_pixels = np.where(self.mask > 0.5)[0]
+            self._active_pixels = np.flatnonzero(self.mask > ACTIVE_THRESHOLD)
         return self._active_pixels
 
     @property
@@ -849,28 +850,29 @@ class FieldCollection:
         """
         return sum(self.n_active)
 
-    def get_active_pixels(self) -> np.ndarray:
+    def get_active_pixels(self) -> list[np.ndarray]:
         """
-        Get active pixels for each field component (backward compatible format).
+        Get the active pixels of each component (T, Q, U), in order.
 
         Returns
         -------
-        numpy.ndarray
-            Object array containing active pixel arrays for each component.
-            For scalar fields: one array per field.
-            For polarization fields: two arrays per field (same pixels for Q and U).
+        list of numpy.ndarray
+            One index array per *component*: scalar fields contribute one,
+            polarization fields two (Q and U share a single pixel set).
 
         Notes
         -----
-        This method provides backward compatibility with legacy code that
-        expects active pixels in object array format.
+        A plain list, not an object array: ``np.array(..., dtype=object)``
+        silently collapses to 2-D when every component has the same
+        ``n_active`` and stays 1-D ragged otherwise, so its rank depended on
+        the mask. Consumers index it as ``active[i][j]``.
         """
         active_list = []
         for field in self.fields:
             active_list.append(field.active_pixels)
             if field.spin == 2:
                 active_list.append(field.active_pixels)  # Same for Q and U
-        return np.array(active_list, dtype=object)
+        return active_list
 
     def set_pointing_vectors(self, point_vectors: list[np.ndarray]) -> None:
         """

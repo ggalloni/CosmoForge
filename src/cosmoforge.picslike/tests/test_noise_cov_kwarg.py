@@ -9,6 +9,7 @@ import inspect
 
 import numpy as np
 
+from cosmocore import active_pixel_index
 from cosmocore.settings import InputParams
 from picslike import PICSLike
 
@@ -32,10 +33,10 @@ def test_injected_noise_cov_reaches_covariance_without_file(config_resolver):
     """PICSLike runs covariance setup from an injected array, no file present."""
     params = _params(config_resolver)
     mask = np.ones((12 * params.nside**2, params.nfields), dtype=np.float64)
-    like = PICSLike(params, mask=mask, noise_cov1=np.eye(1))
+    n = len(active_pixel_index(mask))
+    like = PICSLike(params, mask=mask, noise_cov1=np.eye(n) * 0.1)
     like.setup_fields()
     like.setup_geometry()
-    n = int(like.collection.total_active_pixels)
     like._injected_noise_cov1 = np.eye(n) * 0.1
     ncov1, _ = like.setup_covariance_matrices()
     assert ncov1.shape == (n, n)

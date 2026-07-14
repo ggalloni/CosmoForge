@@ -88,6 +88,12 @@ accepted on all three constructors, emits `DeprecationWarning`, and forwards to
 `basis`. Passing both `basis=` and `compression=` is a `TypeError`. This
 supersedes the no-shim precedent of ADR-0002 and ADR-0013.
 
+> **Read the amendments below before applying this.** Taken literally, §4 says
+> "always shim", and that reading has now misled twice. The policy is *no silent
+> breakage*; a shim is one way to deliver it, and where the language already
+> shouts (a Python parameter) a hard cut delivers it better. The 2026-07-14
+> amendment states the bright line at which a shim must be abandoned.
+
 ## Consequences
 
 - **Default path changes for every default-constructed run.** For the existing
@@ -158,3 +164,71 @@ ADR-0017 array seams) can already do what the scalar did *and* what it could not
 
 This amendment governs future removals: reach for a shim where the language is silent, and
 let the language do the work where it already shouts.
+
+## Amendment (2026-07-14, `do_derivative_step`): the shim is a means, and a complex shim is a warning
+
+The amendment above was written for *keyword* arguments and got the principle right, but
+§4's literal "ship a one-release deprecation shim, not a hard cut" is still the first thing
+a reader meets — and it misled one. Removing the dead `npixs`/`spins` parameters from
+`do_derivative_step` (they were overwritten from `fields` on the first two lines of the
+body and never affected the result), the reflex was to shim them. That shim was *worse than
+the break*, in a way the two-row table above does not anticipate:
+
+**A shim for a positional parameter must sit where the parameter sat.** Giving `npixs` and
+`spins` defaults forced defaults onto the required `current_ell` and `fields` behind them.
+The natural new-style call then misbound:
+
+```python
+do_derivative_step(S, 0, ell, collection)   # ell → npixs, collection → spins
+# DeprecationWarning: npixs/spins deprecated   ← the caller passed neither
+# TypeError: requires `current_ell`            ← the caller did pass it
+```
+
+Both messages are false. The shim manufactured a failure mode the hard cut does not have,
+in the hottest function in the package. Rescuing it needed `*args` and arity dispatch —
+and *that* is the tell.
+
+### The rule
+
+The invariant is unchanged: **no silent breakage.** A shim remains the **default**. But a
+shim is a *means*, not the goal, and the following now applies.
+
+**The bright line.** A shim that cannot be expressed as *a `DeprecationWarning` plus a
+straight forward of arguments* is not a shim. If it needs `*args`, arity dispatch, type
+sniffing, or defaults on parameters that are actually required — **stop, and hard-cut
+instead.** The complexity is not a problem to solve; it is the design telling you the shim
+is wrong.
+
+**A hard cut is permitted only when all of these hold:**
+
+1. **The language shouts.** Removal raises immediately at the caller's site and names the
+   symbol or the arity. If the removal can be *silently absorbed* — a YAML key
+   (`update()` drops it), a positional slot another argument can slide into, or a
+   same-signature behaviour change — this clause **fails** and a guard is mandatory.
+2. **No numerical risk.** The removed thing could not alter results: it was already ignored,
+   or its absence cannot be mistaken for a valid value.
+3. **The fix is mechanical**, and the error message or the release note states it.
+4. **The shim would cross the bright line above**, or land in a hot path.
+
+**Never hard-cut a semantic change.** Same signature, different behaviour is *always*
+silent. It gets a shim or a rename — no exceptions. Clause 1 already forbids it; it is
+stated separately because it is the clause people will try to wriggle through.
+
+### Anti-abuse
+
+- **Name the clauses.** Every hard cut records, in its ADR or in the CHANGELOG, which
+  criteria licensed it. If you cannot name them, you ship the shim.
+- **The exception must be argued, never preferred.** "It's cleaner without the shim" is not
+  an argument; clauses 1–4 are.
+- **When it is genuinely unclear, `ponytail` is the judge.** Put the proposed shim in front
+  of a ponytail review: if it comes back as `yagni`/`shrink`/`delete` — if the shim is more
+  code than the thing it preserves, or exists for a caller nobody can name — hard-cut it.
+  A shim is code, and code with no user is exactly what ponytail exists to find.
+
+### Applying it here
+
+`do_derivative_step(npixs=, spins=)` meets all four clauses: removal raises `TypeError` on
+arity (1); the values were always overwritten, so no result can change (2); the fix is
+deleting two arguments (3); the shim needed `*args` and forced defaults onto required
+parameters (4). It was **hard-cut**, not deprecated. `read_maps(..., calibration=)` in the
+amendment above is the same judgement reached the same way.
