@@ -77,3 +77,35 @@ def test_beam_smoothing_does_not_mutate_the_caller_spectra():
 
         for label in pristine:
             np.testing.assert_array_equal(caller_cls[label], pristine[label])
+
+
+def test_cls_longer_than_lmax_is_truncated():
+    """A C_ℓ longer than the analysis ``lmax`` keeps only the part that is used.
+
+    Handing in a full CAMB run and analysing a few multipoles of it is the
+    normal case. The stored spectra have to be truncated to ``lmax + 1`` like
+    the array branch already does, or beam smoothing — which pairs them with
+    ℓ-indexed factors of that length — cannot broadcast.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        params = _make_params(tmpdir, nside=4, lmax=8)
+
+        core = ConcreteCore(params)
+        core.setup_fields()
+
+        cls = readcl(params.inputclfile, params, lmax=8)
+        overlong = {
+            label: np.concatenate([arr, np.ones(20)]) for label, arr in cls.items()
+        }
+
+        core.collection.set_cls(overlong, lmax=8)
+        core.setup_beams(lmax=8)
+        core.collection.beam_manager.apply_smoothing(
+            core.collection.spectra_manager, lmax=8
+        )
+
+        stored = _cls_dict(core)
+        matrix = core.collection.spectra_manager._cls_matrix
+        for label in stored:
+            assert stored[label].shape == (9,)
+        assert matrix.shape[0] == 9

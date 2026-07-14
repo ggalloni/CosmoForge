@@ -277,7 +277,14 @@ class SpectraManager:
             # stored spectra in place, so sharing the arrays would reach back
             # into the caller's — re-smoothing a parameter grid's theory spectra
             # on every evaluation, or an injected ``cls_data`` on every use.
-            self._cls_dict = {label: arr.copy() for label, arr in cls_data.items()}
+            # Truncate like the array branch below: apply_smoothing pairs these
+            # against ℓ-indexed factors of length n_ell and writes them back into
+            # _cls_matrix, so an over-long C_ℓ (a full CAMB run against a small
+            # analysis lmax) has to lose its tail here or fail to broadcast there.
+            self._cls_dict = {
+                label: np.asarray(arr, dtype=np.float64)[:n_ell].copy()
+                for label, arr in cls_data.items()
+            }
             # Build matrix from dictionary
             self._cls_matrix = np.zeros((n_ell, self.n_spectra))
             for idx, label in enumerate(self._spectra_labels):
