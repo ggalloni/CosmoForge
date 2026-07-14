@@ -116,6 +116,57 @@ jobs:
           echo "$strategy" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+  changelog:
+    name: Changelog Updated
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Only PRs: a direct push to master has no base to diff against, and the
+    # release commits legitimately touch nothing but version strings.
+    if: >
+      github.event_name == 'pull_request' &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-changelog')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require a changelog entry when package source changes
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          changed=$(git diff --name-only "$BASE" "$HEAD")
+
+          # Importable package source only: src/cosmoforge.<pkg>/<pkg>/**.py.
+          # tests/, benchmarks/, scripts/ and notebooks/ are siblings of the inner
+          # package dir, so they never match — they move without a user-visible
+          # change and must not trip this.
+          SRC='^src/cosmoforge\.(cosmocore|qube|picslike)/(cosmocore|qube|picslike)/.*\.py$'
+
+          if ! echo "$changed" | grep -qE "$SRC"; then
+            echo "✅ No package source touched — changelog entry not required."
+            exit 0
+          fi
+
+          if echo "$changed" | grep -q '^docs/source/changelog.rst$'; then
+            echo "✅ docs/source/changelog.rst updated."
+            exit 0
+          fi
+
+          echo "❌ This PR changes package source but does not update the changelog."
+          echo ""
+          echo "Add an entry under the 'Unreleased' heading in docs/source/changelog.rst"
+          echo "describing the change in terms of the public surface a user touches:"
+          echo "new/renamed/removed kwargs, changed defaults, new behaviour."
+          echo ""
+          echo "If the change genuinely has no user-visible surface (a pure internal"
+          echo "refactor), apply the 'skip-changelog' label to this PR."
+          echo ""
+          echo "Package source files changed:"
+          echo "$changed" | grep -E "$SRC" | sed 's/^/  /'
+          exit 1
+
   test-cosmocore:
     name: Test CosmoCore
     runs-on: ubuntu-latest
