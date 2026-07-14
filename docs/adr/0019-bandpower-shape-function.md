@@ -2,8 +2,7 @@
 
 ## Status
 
-Proposed — to be implemented in `cosmocore/bins.py`, `cosmocore/core.py`,
-`qube/fisher.py` and `qube/spectra.py`.
+Proposed — implementation tracked in issues 49, 50 and 20.
 
 ## Context
 
@@ -163,13 +162,10 @@ and needs no analytic stand-in.
   this. This is why the multi-spectrum bandpower window (lifting the
   `nspectra > 1` guard on `get_bandpower_window_function`) is a
   prerequisite rather than a follow-up.
-- **`Bins` shrinks.** The P/Q operator machinery (`_bin_operators`,
-  `bin_spectra`, `bin_covariance`, `bins()`) has no production caller and
-  is removed; see the amendment to ADR-0007. `bin_spectra` in particular
-  was a trap: it returned a *flat* bin average while the estimator returns
-  a *Fisher-weighted* one, so binning a theory curve with it and comparing
-  to a QUBE bandpower compared two different quantities with no warning.
-  `convolve_theory_for_inference` is the correct path and already exists.
+- **`Bins` loses its P/Q operator machinery**, which has no production
+  caller and encodes a *flat* bin average the estimator does not use.
+  ADR-0007's rationale cites those methods and must be amended; the xQML
+  attribution and the GPLv3 obligation are unaffected.
 
 ## References
 
