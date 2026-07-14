@@ -3,6 +3,46 @@ Changelog
 
 All notable changes to CosmoForge will be documented here.
 
+Unreleased
+----------
+
+**Breaking changes:**
+
+* ``do_derivative_step`` loses its ``npixs`` and ``spins`` parameters: the
+  signature is now ``(S, spectrum, current_ell, fields)``. Both values were
+  always overwritten from ``fields`` on entry, so no result changes — but a
+  stale call raises ``TypeError`` rather than being silently accepted. Removed
+  outright rather than deprecated: they sat *ahead* of the required arguments,
+  so any shim would have forced defaults onto ``current_ell``/``fields`` and
+  silently misbound new-style positional calls (ADR-0018).
+* A spin-2 field's two mask columns must now be identical. Masking Q
+  differently from U is not representable — the V operator and the 2x2 Lambda
+  blocks assume one pixel set per spin-2 field — and the previous code silently
+  used the *second* column of the pair for both. ``ValueError`` at mask
+  resolution (ADR-0017).
+
+**Added:**
+
+* ``cosmocore.active_pixel_index(mask)`` and ``cosmocore.active_pixels(mask)``:
+  the ordering of every *reduced* array (``noise_cov1/2``, ``maps1/2``), as a
+  pure function of the mask. Callers injecting those arrays no longer need to
+  build a ``Fisher`` to learn the active-pixel ordering (ADR-0017)::
+
+      index = active_pixel_index(mask)
+      maps = maps_full.reshape(nfields * npix, nsims)[index]
+      cov = cov_full[np.ix_(index, index)]
+
+**Fixed:**
+
+* Different temperature and polarisation masks no longer crash. Unequal active
+  pixel counts across components raised ``IndexError`` during geometry setup —
+  the standard configuration for a CMB analysis.
+* With ``spins=[2, 0]`` (polarisation declared before temperature), the
+  temperature field was given the *polarisation* mask's sky positions, silently
+  and with no error. Pointing vectors are now built per field.
+* A transposed ``(ncomponents, npix)`` mask is refused instead of silently
+  reducing every array to the wrong pixels.
+
 Version 1.0.1 (2026-05-21)
 --------------------------
 

@@ -137,6 +137,15 @@ def compute_pointings(
     """
     nmaps = len(npixs)
 
+    # `active` must be per FIELD, like `npixs`. Handing over the per-COMPONENT
+    # pixact instead is the mistake that silently gives one field another's sky
+    # positions (rows line up by luck for [T, QU], not for [QU, T]).
+    if len(active) != nmaps:
+        raise ValueError(
+            f"active has {len(active)} entries but npixs has {nmaps}: both must be "
+            "per field. Did you pass the per-component active pixels (pixact)?"
+        )
+
     for field_idx in range(nmaps):
         ntemp = npixs[field_idx]
 

@@ -236,6 +236,11 @@ def output_geometry(filegeometry, npixs, point_vectors, active):
     if not (filegeometry or "").strip():
         return
     nmaps = len(npixs)
+    if len(active) != nmaps:
+        raise ValueError(
+            f"active has {len(active)} entries but npixs has {nmaps}: both must be "
+            "per field. Did you pass the per-component active pixels (pixact)?"
+        )
 
     _ensure_output_directory(filegeometry)
 

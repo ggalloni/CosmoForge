@@ -4,7 +4,7 @@ import healpy as hp
 import numpy as np
 import pytest
 
-from cosmocore import active_pixel_index, active_pixels
+from cosmocore import active_pixel_index, active_pixels, compute_pointings
 from cosmocore.core import Core
 from cosmocore.settings import InputParams
 
@@ -127,6 +127,31 @@ def test_different_temperature_and_polarisation_masks_are_supported():
     ]
     assert core.npixs == [int(0.6 * npix), int(0.4 * npix)]  # per FIELD
     assert len(point_vectors) == 2  # per FIELD
+
+
+def test_compute_pointings_refuses_per_component_actives():
+    """The original bug's input, now unrepresentable.
+
+    ``compute_pointings`` loops over fields but indexes ``active``, so handing it
+    the per-component ``pixact`` gives one field another's sky positions — right
+    by luck for ``[T, QU]``, silently wrong for ``[QU, T]``. Lengths disagree, so
+    say so.
+    """
+    nside = 8
+    npix = hp.nside2npix(nside)
+    mask = np.column_stack([np.ones(npix)] * 3)  # T, Q, U
+
+    core = ConcreteCore(_params(nside, [0, 2], ["T", "Q", "U"]), mask=mask)
+    core.setup_fields()
+    core.setup_geometry()
+
+    per_component = core.pixact  # 3 entries
+    npixs = core.npixs  # 2 entries (per field)
+    buffers = tuple(np.empty((n, 3), dtype=np.float64) for n in npixs)
+    scalars = tuple(np.empty(n, dtype=np.float64) for n in npixs)
+
+    with pytest.raises(ValueError, match="per field|per-component"):
+        compute_pointings(nside, npixs, buffers, scalars, scalars, per_component, "RING")
 
 
 def test_spin2_mask_columns_must_agree():
