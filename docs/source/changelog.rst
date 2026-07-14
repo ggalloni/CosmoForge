@@ -117,6 +117,24 @@ array instead of a file path, and nothing is written to disk unless asked.
   compression and PICSLike ``do_cross``) now raise a ``RuntimeError`` naming
   the contract when called after ``release_pixel_projector()``, instead of an
   opaque ``ValueError`` from numpy.
+* Evaluating the same parameter point twice on one ``PICSLike`` instance no
+  longer drifts. Beam smoothing multiplied the theory spectra in place, so each
+  evaluation re-smoothed the parameter grid's own arrays and chi-squared grew
+  with every pass. Spectra handed to ``set_cls`` are now copied, which also
+  means an injected ``cls_data=`` array is no longer modified by the run that
+  consumes it.
+* A C_ℓ longer than the analysis ``lmax`` is truncated on the way in rather
+  than failing to broadcast inside beam smoothing. Handing a full CAMB run to a
+  small-``lmax`` analysis is the normal case; only the dict form of ``cls_data``
+  was affected, the array form already truncated.
+* Rebuilding the computation basis on a live ``PICSLike`` instance no longer
+  produces wrong chi-squared. The compressed-SMW path cached data projected
+  through the *previous* basis and kept using it against the new one — silently,
+  with no error. ``setup_computation_basis()`` now drops that cache, so the
+  documented ``setup_computation_basis → setup_maps → compute`` order is no
+  longer the only safe one. The same staleness hit the MPI worker ranks on a
+  second pipeline pass, where the cache outlived the broadcast that replaced the
+  basis it came from; rank 0 stayed correct, so the disagreement was invisible.
 
 Version 1.0.1 (2026-05-21)
 --------------------------
