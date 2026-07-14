@@ -29,9 +29,16 @@ def _params(nside, spins, labels):
     return params
 
 
+def _toy_mask():
+    """nside=1 (npix=12): component 0 active at [0, 2], component 1 at [1, 2]."""
+    mask = np.zeros((12, 2))
+    mask[[0, 2], 0] = 1.0
+    mask[[1, 2], 1] = 1.0
+    return mask
+
+
 def test_active_pixels_per_component():
-    mask = np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
-    per_component = active_pixels(mask)
+    per_component = active_pixels(_toy_mask())
 
     assert len(per_component) == 2
     np.testing.assert_array_equal(per_component[0], [0, 2])
@@ -39,14 +46,27 @@ def test_active_pixels_per_component():
 
 
 def test_active_pixel_index_offsets_each_component_by_npix():
-    mask = np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
-    # npix = 3, so component 1's pixels land at 3 + [1, 2] = [4, 5].
-    np.testing.assert_array_equal(active_pixel_index(mask), [0, 2, 4, 5])
-    assert active_pixel_index(mask).dtype == np.intp
+    # npix = 12, so component 1's pixels land at 12 + [1, 2] = [13, 14].
+    index = active_pixel_index(_toy_mask())
+    np.testing.assert_array_equal(index, [0, 2, 13, 14])
+    assert index.dtype == np.intp
+
+
+def test_transposed_mask_is_refused():
+    """A (ncomponents, npix) mask would silently reduce to the wrong pixels: it
+    yields an index of the same length with plausible values, so no downstream
+    shape check catches it. The row count must be a valid HEALPix npix."""
+    transposed = _toy_mask().T  # (2, 12)
+
+    with pytest.raises(ValueError, match="not a valid HEALPix npix|transposed"):
+        active_pixel_index(transposed)
+    with pytest.raises(ValueError, match="not a valid HEALPix npix|transposed"):
+        active_pixels(transposed)
 
 
 def test_1d_mask_is_treated_as_a_single_component():
-    mask_1d = np.array([1.0, 0.0, 1.0])
+    mask_1d = np.zeros(12)  # nside=1
+    mask_1d[[0, 2]] = 1.0
 
     per_component = active_pixels(mask_1d)
     assert len(per_component) == 1
@@ -59,8 +79,9 @@ def test_1d_mask_is_treated_as_a_single_component():
 
 
 def test_active_pixels_thresholds_at_half():
-    mask = np.array([[0.0], [0.5], [0.51], [1.0]])
-    np.testing.assert_array_equal(active_pixels(mask)[0], [2, 3])
+    mask = np.zeros(12)  # nside=1
+    mask[[4, 5, 6]] = [0.5, 0.51, 1.0]  # 0.5 is NOT active (strict >)
+    np.testing.assert_array_equal(active_pixels(mask)[0], [5, 6])
 
 
 def test_published_index_matches_the_frameworks_ordering():
