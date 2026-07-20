@@ -218,11 +218,15 @@ avoids the ordering question entirely:
    # output convention internally — feeding the wrong convention yields
    # silently-wrong predictions.
 
-The single-spectrum convenience ``Spectra.convolve_theory_for_inference``
-(which takes a per-ℓ theory and returns binned bandpowers) is
-single-spectrum-only today; for multi-spectrum likelihoods, use the
-convolved-mode callable above. Multi-spectrum extension of
-``convolve_theory_for_inference`` is tracked as a follow-up.
+The convenience ``Spectra.convolve_theory_for_inference`` takes a **per-ℓ**
+theory (rather than pre-binned bandpowers) and returns the expected binned
+bandpowers via the bandpower window function. It accepts either a flat
+``(nspectra·n_ell,)`` array (spectrum-major, matching
+``Fisher.get_bandpower_slices``) or a label-keyed dict
+``{"TT": …, "EE": …}`` of per-ℓ theory, and works for both single- and
+multi-spectrum runs. Unlike the convolved-mode callable above — which assumes
+a constant spectrum within each bin — the bandpower window resolves theory
+curvature inside wide bins, so it is the correct path when bins are wide.
 
 Configuration Files
 -------------------

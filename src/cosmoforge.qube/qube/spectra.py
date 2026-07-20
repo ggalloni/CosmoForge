@@ -1499,6 +1499,24 @@ class Spectra(Core, MPISharedMemoryMixin):
             convolve_theory_dl = self._make_convolve_theory(W_dl)
             return (y * d[np.newaxis, :], W_dl, convolve_theory_dl)
 
+    def _spectrum_labels(self) -> list[str] | None:
+        """Physical spectrum labels in flat spectrum-major order.
+
+        Returns ``None`` when ``spectra_list`` is unavailable (i.e. before
+        ``fisher.run()``), so dict-keyed inputs cannot be assembled.
+        """
+        from cosmocore.conventions.cmb import spectrum_key_to_label
+
+        spectra_list = self.fisher_instance.spectra_list
+        if spectra_list is None:
+            return None
+        labels_per_slot = list(self.params.labels)
+        spins = tuple(self.params.spins)
+        return [
+            spectrum_key_to_label(k, labels=labels_per_slot, spins=spins)
+            for k in spectra_list
+        ]
+
     def _make_convolve_theory(self, W: np.ndarray):
         """Build a ``convolve_theory`` callable that accepts either a flat
         ``cl_theory`` of length ``n_params`` or a label-keyed dict mapping
@@ -1515,22 +1533,10 @@ class Spectra(Core, MPISharedMemoryMixin):
         pass D_ℓ-binned theory; otherwise pass C_ℓ-binned theory.
         Mixing conventions yields silently-wrong predictions.
         """
-        from cosmocore.conventions.cmb import spectrum_key_to_label
-
-        labels_per_slot = list(self.params.labels)
-        spins = tuple(self.params.spins)
-        spectra_list = self.fisher_instance.spectra_list
-
         # Pre-compute the spectrum order in physical labels so dict inputs
         # can be assembled into the flat vector without re-deriving labels
         # on every call.
-        if spectra_list is not None:
-            spectrum_labels = [
-                spectrum_key_to_label(k, labels=labels_per_slot, spins=spins)
-                for k in spectra_list
-            ]
-        else:
-            spectrum_labels = None
+        spectrum_labels = self._spectrum_labels()
 
         def convolve_theory(cl_theory) -> np.ndarray:
             if isinstance(cl_theory, dict):
@@ -1661,7 +1667,9 @@ class Spectra(Core, MPISharedMemoryMixin):
             return noise_bias
         return None
 
-    def convolve_theory_for_inference(self, cl_theory: np.ndarray) -> np.ndarray | None:
+    def convolve_theory_for_inference(
+        self, cl_theory: np.ndarray | dict
+    ) -> np.ndarray | None:
         """
         Apply the QML bandpower window to a per-ℓ theory spectrum.
 
@@ -1674,19 +1682,26 @@ class Spectra(Core, MPISharedMemoryMixin):
 
         Parameters
         ----------
-        cl_theory : np.ndarray
-            Per-ℓ theory C_ℓ. Two formats accepted:
+        cl_theory : np.ndarray or dict
+            Per-ℓ theory C_ℓ. Accepted formats:
 
-            - shape ``(n_ell,)`` for ℓ=lmin..lmax (length lmax-lmin+1)
+            - shape ``(n_ell,)`` for ℓ=lmin..lmax (length lmax-lmin+1),
+              single-spectrum only.
             - shape ``(lmax+1,)`` starting at ℓ=0 (entries below ``lmin``
-              are ignored)
+              ignored), single-spectrum only.
+            - shape ``(nspectra·n_ell,)`` block-ordered spectrum-major
+              (matching :meth:`Fisher.get_bandpower_slices`), for a
+              multi-spectrum run.
+            - a label-keyed dict ``{"TT": [...], "EE": [...], ...}`` of
+              per-ℓ arrays (each ``n_ell`` or ``lmax+1`` long), which
+              bypasses the ordering question entirely.
 
             Must be **unbeamed** physical C_ℓ — beam² is already absorbed
             into the window.
 
         Returns
         -------
-        cl_binned : np.ndarray of shape (n_bins,), or None
+        cl_binned : np.ndarray of shape (nspectra·n_bins,), or None
             Expected binned bandpower for the given theory. If the
             output convention is "Dl", the result is converted to D_ℓ
             using the bin effective ells. Returns None on worker
@@ -1698,13 +1713,8 @@ class Spectra(Core, MPISharedMemoryMixin):
         on the underlying Fisher instance. The first call triggers a
         per-ℓ Fisher computation (cached for subsequent calls).
 
-        **Scope**: single-spectrum only. For multi-spectrum likelihoods,
-        use :meth:`get_power_spectra` (``mode="convolved"``) — the
-        returned ``convolve_theory_func`` accepts a label-keyed dict
-        and handles the full ``n_spectra * n_bins`` window matrix.
-
         See :meth:`Fisher.get_bandpower_window_function` for details on
-        the buffer approach and the multi-spectrum limitation.
+        the buffer approach and the multi-spectrum window.
 
         Examples
         --------
@@ -1738,19 +1748,57 @@ class Spectra(Core, MPISharedMemoryMixin):
             )
 
         lmin = self.params.lmin
-        n_ell = self.params.lmax - lmin + 1
-        cl = np.asarray(cl_theory, dtype=np.float64)
-        if cl.ndim != 1:
-            raise ValueError(f"cl_theory must be 1D, got shape {cl.shape}")
-        if cl.size == n_ell:
-            cl_vec = cl
-        elif cl.size >= self.params.lmax + 1:
-            cl_vec = cl[lmin : self.params.lmax + 1]
-        else:
+        lmax = self.params.lmax
+        n_ell = lmax - lmin + 1
+        nspectra = self.params.nspectra
+
+        def _to_perell(arr: np.ndarray, what: str) -> np.ndarray:
+            """Trim one per-ℓ array to ℓ=lmin..lmax (accepts n_ell or lmax+1)."""
+            if arr.ndim != 1:
+                raise ValueError(f"{what} must be 1D, got shape {arr.shape}")
+            if arr.size == n_ell:
+                return arr
+            if arr.size >= lmax + 1:
+                return arr[lmin : lmax + 1]
             raise ValueError(
-                f"cl_theory length {cl.size} does not match expected "
-                f"{n_ell} (ℓ=lmin..lmax) or {self.params.lmax + 1} (ℓ=0..lmax)"
+                f"{what} length {arr.size} does not match expected "
+                f"{n_ell} (ℓ=lmin..lmax) or {lmax + 1} (ℓ=0..lmax)"
             )
+
+        if isinstance(cl_theory, dict):
+            labels = self._spectrum_labels()
+            if labels is None:
+                raise RuntimeError(
+                    "cl_theory dict input requires spectra_list "
+                    "(call fisher.run() first)."
+                )
+            missing = [lab for lab in labels if lab not in cl_theory]
+            if missing:
+                raise KeyError(
+                    f"cl_theory dict missing entries for: {missing}. "
+                    f"Expected keys: {labels}"
+                )
+            cl_vec = np.concatenate(
+                [
+                    _to_perell(np.asarray(cl_theory[lab], dtype=np.float64), lab)
+                    for lab in labels
+                ]
+            )
+        else:
+            cl = np.asarray(cl_theory, dtype=np.float64)
+            if cl.ndim != 1:
+                raise ValueError(f"cl_theory must be 1D, got shape {cl.shape}")
+            if nspectra > 1:
+                if cl.size != nspectra * n_ell:
+                    raise ValueError(
+                        f"cl_theory length {cl.size} does not match expected "
+                        f"{nspectra * n_ell} (nspectra·n_ell, spectrum-major) "
+                        f"for a {nspectra}-spectrum run; or pass a label-keyed "
+                        f"dict."
+                    )
+                cl_vec = cl
+            else:
+                cl_vec = _to_perell(cl, "cl_theory")
 
         W = self.fisher_instance.get_bandpower_window_function()
         if W is None:
