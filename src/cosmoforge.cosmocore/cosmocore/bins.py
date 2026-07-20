@@ -43,9 +43,9 @@ class Bins:
     Attributes
     ----------
     lmins : np.ndarray
-        Lower bounds after filtering (ell >= 2).
+        Lower bounds after filtering (bins below ``lmin_floor`` dropped).
     lmaxs : np.ndarray
-        Upper bounds after filtering (ell >= 2).
+        Upper bounds after filtering (bins below ``lmin_floor`` dropped).
     nbins : int
         Number of bins.
     lmid : np.ndarray

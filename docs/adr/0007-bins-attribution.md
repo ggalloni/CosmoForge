@@ -6,6 +6,10 @@ Accepted — implemented in `cosmocore/bins.py`.
 
 ## Context
 
+> **Historical.** This section describes `Bins` as first adapted. Several
+> members named below (the P/Q operators, `cutfirst`, `bin_spectra`, `lbin`)
+> were later removed or renamed; see the 2026-07 amendment at the end.
+
 CosmoForge's bandpower binning is implemented via a `Bins` class
 (`fromdeltal` classmethod, `cutfirst` filter, P/Q bin operators,
 `bin_spectra` method, attributes `lmins`, `lmaxs`, `nbins`, `lbin`,
