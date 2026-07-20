@@ -1113,9 +1113,12 @@ class Fisher(Core, MPISharedMemoryMixin):
 
         Returns
         -------
-        W : np.ndarray of shape (n_bins, n_ell), or None
-            Bandpower window matrix. Rows correspond to bin indices,
-            columns to multipoles ℓ=2..lmax. Returns None on worker
+        W : np.ndarray, or None
+            Bandpower window matrix of shape
+            ``(nspectra·n_bins, nspectra·n_ell)``. For ``nspectra == 1``
+            this is ``(n_bins, n_ell)``. Rows and columns are block-ordered
+            spectrum-major (all bins/ℓ of spectrum 0, then spectrum 1, ...),
+            matching ``Fisher.get_bandpower_slices``. Returns None on worker
             processes (rank != 0).
 
         Notes
@@ -1138,15 +1141,13 @@ class Fisher(Core, MPISharedMemoryMixin):
         absorbs mode coupling from ℓ > lmax_science into discarded
         buffer bins.
 
-        **Scope**: currently supports single-spectrum analysis only —
-        calling it on a multi-spectrum Fisher (``nspectra > 1``) raises
-        ``NotImplementedError``. For multi-spectrum likelihoods today,
-        use :meth:`get_window_matrix` together with the
-        ``convolve_theory_func`` returned by
-        :meth:`Spectra.get_power_spectra` (``mode="convolved"``); that
-        path accepts label-keyed dict input and applies the multi-
-        spectrum window matrix. Multi-spectrum extension of this
-        per-ℓ window function is planned.
+        **Multi-spectrum.** For ``nspectra > 1`` the window is
+        block-diagonal in the sum-over-ℓ operator but the per-ℓ Fisher
+        ``F_perell`` carries the full inter-spectrum coupling, so the
+        returned ``W`` correctly maps a per-spectrum per-ℓ theory to the
+        expected per-spectrum bandpowers. ``F_perell`` scales as
+        ``(nspectra·n_ell)²`` — a TQU run at high lmax is expensive; use
+        the buffer approach above to bound it.
 
         Examples
         --------
@@ -1176,15 +1177,6 @@ class Fisher(Core, MPISharedMemoryMixin):
                 )
             return None
 
-        if self.params.nspectra > 1:
-            if self.rank == 0:
-                raise NotImplementedError(
-                    "Bandpower window function currently supports "
-                    "single-spectrum analysis only. "
-                    "Multi-spectrum extension is planned."
-                )
-            return None
-
         # Broadcast rank 0's decisions so all ranks branch identically.
         cached = getattr(self, "_bandpower_window", None)
         provided = bool(self.comm.bcast(per_ell_fisher is not None, root=0))
@@ -1200,12 +1192,17 @@ class Fisher(Core, MPISharedMemoryMixin):
         if self.rank != 0 or self.fisher is None:
             return None
 
-        # Build Q (sum-over-ℓ-in-bin operator)
+        # Build Q (sum-over-ℓ-in-bin operator). For nspectra > 1 both F_b and
+        # F_perell are block-ordered spectrum-major (all bins/ℓ of spectrum 0,
+        # then spectrum 1, ...), so Q is block-diagonal with the same
+        # single-spectrum block per spectrum. np.kron reduces to the plain
+        # block when nspectra == 1, keeping that path bit-identical.
         lmin = self.params.lmin
         n_ell = self.params.lmax - lmin + 1  # ell indices lmin..lmax
-        Q = np.zeros((self.bins.nbins, n_ell), dtype=np.float64)
+        Q_block = np.zeros((self.bins.nbins, n_ell), dtype=np.float64)
         for b, (lo, hi) in enumerate(zip(self.bins.lmins, self.bins.lmaxs)):
-            Q[b, lo - lmin : hi - lmin + 1] = 1.0
+            Q_block[b, lo - lmin : hi - lmin + 1] = 1.0
+        Q = np.kron(np.eye(self.params.nspectra), Q_block)
 
         # W = F_b^{-1} @ Q @ F_perell
         W = cholesky_solve(cholesky_factor(self.fisher), Q @ per_ell_fisher)

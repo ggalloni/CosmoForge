@@ -480,6 +480,75 @@ class TestBandpowerWindow:
         with pytest.raises(ValueError, match="length"):
             s.convolve_theory_for_inference(np.ones(3))
 
+
+class TestBandpowerWindowMultiSpectrum:
+    """Bandpower window for multi-spectrum (TQU) runs — the nspectra>1 lift."""
+
+    @pytest.fixture
+    def setup(self, config_resolver):
+        bins = Bins.fromdeltal(2, 8, 2)
+        f = _run_fisher_with_bins("TQU", config_resolver, bins=bins)
+        s = _run_spectra_with_bins("TQU", config_resolver, bins=bins, fisher=f)
+        return f, s, bins
+
+    @staticmethod
+    def _block_Q(f, bins):
+        """Block-diagonal sum-over-ℓ operator, spectrum-major."""
+        nspectra = f.params.nspectra
+        n_ell = f.params.lmax - f.params.lmin + 1
+        block = np.zeros((bins.nbins, n_ell))
+        for b, (lo, hi) in enumerate(zip(bins.lmins, bins.lmaxs)):
+            block[b, lo - f.params.lmin : hi - f.params.lmin + 1] = 1.0
+        return np.kron(np.eye(nspectra), block)
+
+    def test_window_shape(self, setup):
+        f, _, bins = setup
+        W = f.get_bandpower_window_function()
+        nspectra = f.params.nspectra
+        n_ell = f.params.lmax - f.params.lmin + 1
+        assert W.shape == (nspectra * bins.nbins, nspectra * n_ell)
+
+    def test_window_consistency_with_perell_fisher(self, setup):
+        """W = F_b^-1 @ Q @ F_perell with block-diagonal Q."""
+        f, _, bins = setup
+        W = f.get_bandpower_window_function()
+        F_b = f.get_fisher_matrix()
+        F_pe = f._compute_per_ell_fisher()
+        Q = self._block_Q(f, bins)
+        np.testing.assert_allclose(W, np.linalg.solve(F_b, Q @ F_pe), rtol=1e-10)
+
+    def test_window_normalization_identity(self, setup):
+        """ADR-0019: W · Qᵀ = I in the estimated quantity's own space.
+
+        This rests on the linearity F_b = Q · F_perell · Qᵀ and on
+        row-normalisation Σ_ℓ W̃[b,ℓ] = 1 (the diagonal of W · Qᵀ). The TQU
+        Fisher spans ~15 orders of magnitude on this near-singular nside4
+        fixture, so linearity is checked norm-relative rather than
+        element-wise, and the diagonal is the meaningful normalisation.
+        """
+        f, _, bins = setup
+        W = f.get_bandpower_window_function()
+        Q = self._block_Q(f, bins)
+        F_b = f.get_fisher_matrix()
+        F_pe = f._compute_per_ell_fisher()
+        # Linearity is the exact invariant the identity is built on.
+        resid = np.linalg.norm(F_b - Q @ F_pe @ Q.T) / np.linalg.norm(F_b)
+        assert resid < 1e-10, f"linearity residual {resid:.2e}"
+        # Row-normalisation: each window sums to 1 in its own quantity's space.
+        np.testing.assert_allclose(np.diag(W @ Q.T), 1.0, atol=1e-9)
+
+    def test_convolve_theory_dict_matches_flat(self, setup):
+        """Label-keyed dict input equals the flat spectrum-major vector."""
+        f, s, _ = setup
+        labels = list(f.get_bandpower_slices().keys())
+        rng = np.arange(2.0, f.params.lmax + 1) ** -2
+        flat = np.tile(rng, len(labels))
+        theory_dict = {lab: rng.copy() for lab in labels}
+        mu_flat = s.convolve_theory_for_inference(flat)
+        mu_dict = s.convolve_theory_for_inference(theory_dict)
+        assert mu_flat.shape == (len(labels) * f.bins.nbins,)
+        np.testing.assert_allclose(mu_dict, mu_flat, rtol=1e-12)
+
     def test_window_default_delta_ell_one_is_identity(self, config_resolver):
         """Without explicit binning (delta_ell=1 default) W is identity."""
         f = _run_fisher_with_bins("T", config_resolver)

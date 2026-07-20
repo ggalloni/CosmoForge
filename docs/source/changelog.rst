@@ -98,6 +98,14 @@ array instead of a file path, and nothing is written to disk unless asked.
 * The demo notebooks now execute in CI (``test-notebooks`` job, matrix over
   qube and picslike), asserting no files land on disk — the ADR-0015/0017
   acceptance test.
+* **Multi-spectrum bandpower window.**
+  ``Fisher.get_bandpower_window_function()`` no longer raises for
+  ``nspectra > 1``; it returns the block-structured window of shape
+  ``(nspectra·n_bins, nspectra·n_ell)`` so TEB/TQU runs can convolve per-ℓ
+  theory into expected bandpowers. ``Spectra.convolve_theory_for_inference()``
+  now accepts either a flat ``(nspectra·n_ell,)`` per-ℓ array (spectrum-major,
+  matching ``get_bandpower_slices``) or a label-keyed dict
+  ``{"TT": …, "EE": …}``. Single-spectrum output is numerically unchanged.
 
 **Fixed:**
 
