@@ -549,6 +549,16 @@ class TestBandpowerWindowMultiSpectrum:
         assert mu_flat.shape == (len(labels) * f.bins.nbins,)
         np.testing.assert_allclose(mu_dict, mu_flat, rtol=1e-12)
 
+    def test_convolve_theory_dict_rejects_2d_entry(self, setup):
+        """A 2D per-ℓ dict entry whose size matches must still raise, not slip."""
+        f, s, _ = setup
+        labels = list(f.get_bandpower_slices().keys())
+        rng = np.arange(2.0, f.params.lmax + 1) ** -2
+        bad = {lab: rng.copy() for lab in labels}
+        bad[labels[0]] = rng.reshape(-1, 1)  # (n_ell, 1): size matches, ndim=2
+        with pytest.raises(ValueError, match="1D"):
+            s.convolve_theory_for_inference(bad)
+
     def test_window_default_delta_ell_one_is_identity(self, config_resolver):
         """Without explicit binning (delta_ell=1 default) W is identity."""
         f = _run_fisher_with_bins("T", config_resolver)

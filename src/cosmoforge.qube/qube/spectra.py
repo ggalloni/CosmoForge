@@ -1667,7 +1667,9 @@ class Spectra(Core, MPISharedMemoryMixin):
             return noise_bias
         return None
 
-    def convolve_theory_for_inference(self, cl_theory: np.ndarray) -> np.ndarray | None:
+    def convolve_theory_for_inference(
+        self, cl_theory: np.ndarray | dict
+    ) -> np.ndarray | None:
         """
         Apply the QML bandpower window to a per-ℓ theory spectrum.
 
@@ -1752,6 +1754,8 @@ class Spectra(Core, MPISharedMemoryMixin):
 
         def _to_perell(arr: np.ndarray, what: str) -> np.ndarray:
             """Trim one per-ℓ array to ℓ=lmin..lmax (accepts n_ell or lmax+1)."""
+            if arr.ndim != 1:
+                raise ValueError(f"{what} must be 1D, got shape {arr.shape}")
             if arr.size == n_ell:
                 return arr
             if arr.size >= lmax + 1:
