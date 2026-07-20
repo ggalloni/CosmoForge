@@ -300,3 +300,26 @@ def test_binned_derivative_dl_monopole_bin_raises():
         ss_key = SpectrumKey(0, 0, SpectrumKind.SS, spins=(0,))
         with pytest.raises(ValueError, match="monopole"):
             core.get_binned_derivative_matrix(bin_idx=0, key=ss_key)
+
+
+def test_binned_derivative_dl_dipole_bin_guard_ok():
+    """The Dl shape guard the derivative invokes must *accept* ℓ=1 (the dipole,
+    w=π) — the live case the monopole guard must not over-reject (ADR-0019).
+
+    Only ℓ=0 is special (w diverges); ℓ=1 flows through the same code as any
+    other multipole, so the guard passing here is what makes it work. A full
+    numerical ℓ=1 derivative additionally needs a dipole-configured signal
+    basis, which is the lmin/dipole-refactor scope, not this change.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        params = _make_params(tmpdir, nside=8, lmax=16)
+        core, _ = _setup_through_basis(
+            params, basis_lmax=16, method="harmonic", use_smw_optimization=False
+        )
+        core.params.output_convention = "Dl"
+        core.params.lmin = 1
+        core.set_binning(Bins([1], [3], lmin_floor=1))
+        # This is exactly the call get_binned_derivative_matrix makes at entry;
+        # it must yield w[1] = 2π/(1·2) = π and not raise the monopole error.
+        w = core.bins.shape_weights(core.params.output_convention)
+        assert w[1] == pytest.approx(np.pi)

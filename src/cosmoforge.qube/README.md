@@ -162,7 +162,8 @@ qml = Spectra("config/params.yaml", fisher=fisher)
 qml.run()
 
 cl_binned = qml.get_power_spectra()      # (nsims, nbins)
-ell_eff = qml.get_effective_ells()        # bin midpoints
+ell_eff = qml.get_effective_ells()        # inverse-variance window centroid
+# ell_eff = qml.get_effective_ells(use_midpoint=True)  # cheap bin midpoint
 errors = qml.get_error_bars()             # (nbins,)
 ```
 

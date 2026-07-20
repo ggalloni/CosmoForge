@@ -596,6 +596,33 @@ class TestEffectiveElls:
         assert np.all(ell_eff >= bins.lmins - 1e-9)
         assert np.all(ell_eff <= bins.lmaxs + 1e-9)
 
+    def test_effective_ells_match_window_centroid(self, config_resolver):
+        """ℓ_eff equals the row-normalised bandpower-window centroid (ADR-0019),
+        and is *not* the bin midpoint — a midpoint fallback would fail this."""
+        bins = Bins.fromdeltal(2, 8, 3)
+        f = _run_fisher_with_bins("T", config_resolver, bins=bins)
+        W = f.get_bandpower_window_function()
+        ells = np.arange(f.params.lmin, f.params.lmax + 1, dtype=float)
+        expected = (W @ ells) / W.sum(axis=1)
+        np.testing.assert_allclose(f.get_effective_ells(), expected, rtol=1e-10)
+        # The inverse-variance centroid differs from the midpoint by ~0.5 here.
+        assert not np.allclose(f.get_effective_ells(), bins.lmid, atol=0.1)
+
+    def test_effective_ells_differ_between_cl_and_dl(self, config_resolver):
+        """The centroid is reported in the active convention, so the shape
+        weight shifts it: Cl and Dl effective ells differ (ADR-0019)."""
+        bins = Bins.fromdeltal(2, 8, 3)
+        f_cl = _run_fisher_with_bins("T", config_resolver, bins=bins)
+        f_dl = _run_fisher_with_bins(
+            "T",
+            config_resolver,
+            bins=bins,
+            config_overrides={"output_convention": "Dl"},
+        )
+        assert not np.allclose(
+            f_cl.get_effective_ells(), f_dl.get_effective_ells(), atol=0.05
+        )
+
     def test_effective_ells_raise_before_run(self, config_resolver):
         """Calling before a completed Fisher run raises."""
         config_file = _resolve_config_with_overrides("T", config_resolver, None)
