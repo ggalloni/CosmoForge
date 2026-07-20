@@ -90,3 +90,27 @@ def test_bandpower_window_collective(comm, config_resolver):
         assert np.all(np.isfinite(W))
     else:
         assert W is None
+
+
+def test_effective_ells_collective(comm, config_resolver):
+    """get_effective_ells must enter the collective per-ℓ Fisher on every rank.
+
+    A ``if rank != 0: return`` in front of the collective would hang the
+    workers inside _compute_per_ell_fisher (ADR-0019). Calling it on all ranks
+    must complete; rank 0 returns the centroid, workers return None.
+    """
+    from cosmocore import Bins
+
+    config_file = config_resolver("tests/data/nside4/T/config.yaml")
+    fisher = Fisher(config_file)
+    fisher.set_binning(Bins.fromdeltal(2, 8, 3))
+    fisher.run()
+    os.unlink(config_file)
+
+    ell_eff = fisher.get_effective_ells()
+
+    if comm.Get_rank() == 0:
+        assert ell_eff is not None
+        assert np.all(np.isfinite(ell_eff))
+    else:
+        assert ell_eff is None

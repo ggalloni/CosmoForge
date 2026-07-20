@@ -296,7 +296,7 @@ def run_qml(
         spectra.run()
         t_spec = time.perf_counter() - t0
 
-        ells_bin = spectra.get_effective_ells()
+        ells_bin = spectra.get_effective_ells(use_midpoint=True)
         deconv = spectra.get_power_spectra(mode="deconvolved")
         cov_pred_full = spectra.get_covariance(mode="deconvolved")
         spec_labels = list(fisher.collection.spectra_manager.labels)

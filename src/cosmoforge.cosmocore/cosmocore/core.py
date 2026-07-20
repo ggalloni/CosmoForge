@@ -1183,6 +1183,13 @@ class Core(ABC):
             Forwarded to the per-ℓ derivative builder. None keeps the
             SYMMETRIC default.
         """
+        # Bandpower shape weight w_ℓ (ADR-0019): 1 for the flat-C_ℓ shape
+        # ("Cl"), 2π/(ℓ(ℓ+1)) for the flat-D_ℓ shape ("Dl"). It multiplies the
+        # per-ℓ contribution just like the beam, so the binned derivative reads
+        # dC^b = Σ_{ℓ∈bin} w_ℓ · b²_ℓ · dC^ℓ. "Cl" returns all-ones, leaving the
+        # Cl path bit-identical. Raises here if "Dl" meets an ℓ=0 bin.
+        shape_w = self.bins.shape_weights(getattr(self.params, "output_convention", "Cl"))
+
         # Fast path: pixel-direct mode has a batched binned derivative that
         # avoids the per-ℓ Legendre/Wigner pass when bin width is large.
         bm = getattr(self, "basis_manager", None)
@@ -1205,7 +1212,7 @@ class Core(ABC):
             )
             if not direct_unsupported:
                 return bm.get_binned_derivative_direct(
-                    bin_idx, self.bins, beam_smoothing, key
+                    bin_idx, self.bins, beam_smoothing, key, shape_weights=shape_w
                 )
 
         lmin_b = self.bins.lmins[bin_idx]
@@ -1213,11 +1220,11 @@ class Core(ABC):
         dC_b = None
         for ell in range(lmin_b, lmax_b + 1):
             dC_ell = self.get_derivative_matrix(ell, key, symmetry_mode=symmetry_mode)
-            weight = 1.0
+            weight = shape_w[ell]
             if beam_smoothing is not None:
                 # beam_smoothing is the inference-range slice (ell=lmin..lmax,
                 # offset-from-lmin; ADR 0009).
-                weight = beam_smoothing[ell - self.params.lmin]
+                weight *= beam_smoothing[ell - self.params.lmin]
             if dC_b is None:
                 dC_b = weight * dC_ell
             else:

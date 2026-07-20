@@ -214,9 +214,10 @@ avoids the ordering question entirely:
 
    # Important: the input values must be in the active output convention.
    # If params.output_convention == "Dl", pass D_ell-binned theory;
-   # otherwise C_ell-binned. The window matrix is rotated to match the
-   # output convention internally — feeding the wrong convention yields
-   # silently-wrong predictions.
+   # otherwise C_ell-binned. In Dl mode the window is built from the
+   # shape-weighted derivative (ADR-0019), so it already maps D_ell theory to
+   # the D_b estimate — feeding the wrong convention yields silently-wrong
+   # predictions.
 
 The convenience ``Spectra.convolve_theory_for_inference`` takes a **per-ℓ**
 theory (rather than pre-binned bandpowers) and returns the expected binned

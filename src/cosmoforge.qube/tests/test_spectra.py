@@ -348,41 +348,11 @@ def test_normalization_modes(fields, local_path, config_resolver):
         f"Window matrix should be ({n_params}, {n_params})"
     )
 
-    # Test output_convention="Dl" scales results by ell*(ell+1)/(2*pi)
-    ell = np.arange(2, qml_analyzer.params.lmax + 1, dtype=np.float64)
-    factor = np.tile(ell * (ell + 1) / (2 * np.pi), qml_analyzer.params.nspectra)
-
-    # Get Cl covariances for comparison
-    cov_deconv = qml_analyzer.get_covariance(mode="deconvolved")
-    cov_conv = qml_analyzer.get_covariance(mode="convolved")
-    err_deconv = qml_analyzer.get_error_bars(mode="deconvolved")
-
-    qml_analyzer.params.output_convention = "Dl"
-    try:
-        dl_deconv = qml_analyzer.get_power_spectra(mode="deconvolved")
-        dl_decorr = qml_analyzer.get_power_spectra(mode="decorrelated")
-        dl_y, dl_W, _ = qml_analyzer.get_power_spectra(mode="convolved")
-        dl_cov_deconv = qml_analyzer.get_covariance(mode="deconvolved")
-        dl_cov_conv = qml_analyzer.get_covariance(mode="convolved")
-        dl_err_deconv = qml_analyzer.get_error_bars(mode="deconvolved")
-    finally:
-        qml_analyzer.params.output_convention = "Cl"
-
-    # Spectra: Dl = factor * Cl
-    np.testing.assert_allclose(dl_deconv, cl_deconv * factor[np.newaxis, :], rtol=1e-14)
-    np.testing.assert_allclose(dl_decorr, cl_decorr * factor[np.newaxis, :], rtol=1e-14)
-    np.testing.assert_allclose(dl_y, y * factor[np.newaxis, :], rtol=1e-14)
-    # W_Dl = D @ W_Cl @ D^{-1}
-    np.testing.assert_allclose(dl_W, W * np.outer(factor, 1.0 / factor), rtol=1e-14)
-    # Cov_Dl = D @ Cov_Cl @ D
-    np.testing.assert_allclose(
-        dl_cov_deconv, cov_deconv * np.outer(factor, factor), rtol=1e-14
-    )
-    np.testing.assert_allclose(
-        dl_cov_conv, cov_conv * np.outer(factor, factor), rtol=1e-14
-    )
-    # Error bars: sigma_Dl = factor * sigma_Cl
-    np.testing.assert_allclose(dl_err_deconv, err_deconv * factor, rtol=1e-14)
+    # output_convention="Dl" is an estimator setting fixed before the run
+    # (ADR-0019): the shape weight enters the binned derivative, so the D_ℓ
+    # semantics are exercised by proper separate Cl/Dl runs in
+    # test_binning.py::TestDlShapeWeightedEstimator, not by flipping the flag
+    # on an already-run analyzer (which is inert by design).
 
     # Test invalid mode
     with pytest.raises(ValueError, match="mode must be one of"):

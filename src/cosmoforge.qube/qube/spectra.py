@@ -1384,9 +1384,13 @@ class Spectra(Core, MPISharedMemoryMixin):
 
         **Output Convention:**
         When ``output_convention`` is set to ``"Dl"`` in the configuration,
-        all returned spectra are converted from C_ℓ to D_ℓ = ℓ(ℓ+1)/(2π) C_ℓ.
-        In convolved mode, the window matrix is also transformed so that
-        the returned ``convolve_theory_func`` expects D_ℓ input.
+        the estimator itself works in D_ℓ = ℓ(ℓ+1)/(2π) C_ℓ (ADR-0019): the
+        bandpower shape weight enters the binned derivative, so the returned
+        spectra, covariance and window are D_ℓ quantities natively — there is
+        no post-hoc scalar. In convolved mode the returned
+        ``convolve_theory_func`` therefore expects D_ℓ input. ``Dl`` and ``Cl``
+        estimate genuinely different observables (``D_output ≠ scalar · C_output``
+        for wide bins); it must be fixed before ``run()``.
 
         Examples
         --------
@@ -1441,9 +1445,6 @@ class Spectra(Core, MPISharedMemoryMixin):
         else:  # convolved
             result = self._get_convolved()
 
-        if self._output_is_dl() and result is not None:
-            result = self._apply_output_convention(result, mode)
-
         if as_dict and result is not None:
             from cosmocore.conventions.cmb import to_label_dict
 
@@ -1470,34 +1471,6 @@ class Spectra(Core, MPISharedMemoryMixin):
             )
 
         return result
-
-    def _output_is_dl(self) -> bool:
-        """Check if output convention is Dl (case-insensitive)."""
-        value = getattr(self.params, "output_convention", "Cl")
-        key = value.strip().lower()
-        if key not in ("cl", "dl"):
-            raise ValueError(
-                f"Unknown spectra convention '{value}'. Must be 'Cl' or 'Dl'."
-            )
-        return key == "dl"
-
-    def _dl_factor(self) -> np.ndarray:
-        """Return the Cl->Dl factor tiled over all spectra."""
-        ell = self.bins.lmid.astype(np.float64)
-        return np.tile(ell * (ell + 1) / (2 * np.pi), self.params.nspectra)
-
-    def _apply_output_convention(self, result, mode):
-        """Apply Cl->Dl conversion to output power spectra."""
-        d = self._dl_factor()
-
-        if mode in ("deconvolved", "decorrelated"):
-            return result * d[np.newaxis, :]
-        else:  # convolved
-            y, W, convolve_cl = result
-            # W_Dl = D @ W_Cl @ D^{-1} so that <y_Dl> = W_Dl @ C_Dl
-            W_dl = W * np.outer(d, 1.0 / d)
-            convolve_theory_dl = self._make_convolve_theory(W_dl)
-            return (y * d[np.newaxis, :], W_dl, convolve_theory_dl)
 
     def _spectrum_labels(self) -> list[str] | None:
         """Physical spectrum labels in flat spectrum-major order.
@@ -1528,10 +1501,10 @@ class Spectra(Core, MPISharedMemoryMixin):
         Convention
         ----------
         The input values must be in the configuration's active output
-        convention. If ``params.output_convention == "Dl"`` the window
-        matrix wraps ``W_dl = D · W_cl · D^{-1}`` and the user must
-        pass D_ℓ-binned theory; otherwise pass C_ℓ-binned theory.
-        Mixing conventions yields silently-wrong predictions.
+        convention. In ``Dl`` mode the window ``W`` is itself built from the
+        shape-weighted derivative (ADR-0019), so it already maps D_ℓ theory to
+        the D_b estimate — pass D_ℓ-binned theory; in ``Cl`` mode pass
+        C_ℓ-binned theory. Mixing conventions yields silently-wrong predictions.
         """
         # Pre-compute the spectrum order in physical labels so dict inputs
         # can be assembled into the flat vector without re-deriving labels
@@ -1630,21 +1603,32 @@ class Spectra(Core, MPISharedMemoryMixin):
 
         return (y, W, self._make_convolve_theory(W))
 
-    def get_effective_ells(self) -> np.ndarray | None:
+    def get_effective_ells(self, use_midpoint: bool = False) -> np.ndarray | None:
         """
-        Return effective multipole for each bin.
+        Return the effective multipole for each bin.
 
-        For unbinned (delta_ell=1), returns integer ells from 2 to lmax.
-        For binned, returns bin midpoints.
+        By default this is the inverse-variance-weighted window centroid
+        (ADR-0019), delegated to :meth:`Fisher.get_effective_ells` — it needs a
+        completed Fisher run and differs per spectrum. Pass ``use_midpoint=True``
+        for the cheap opt-in that returns the bin midpoint (``Bins.lmid``) with
+        no Fisher run.
+
+        Parameters
+        ----------
+        use_midpoint : bool, optional
+            If True, return the bin midpoint instead of the window centroid.
 
         Returns
         -------
         np.ndarray or None
-            Effective multipoles, shape (nbins,). None for workers.
+            Effective multipoles. Shape ``(nspectra·nbins,)`` for the window
+            centroid, ``(nbins,)`` for the midpoint. None for workers.
         """
-        if self.rank != 0:
-            return None
-        return self.bins.lmid
+        if use_midpoint:
+            return self.bins.lmid if self.rank == 0 else None
+        # Delegate on every rank — Fisher.get_effective_ells is collective and
+        # must not be fronted by a worker early-return (ADR-0019 MPI note).
+        return self.fisher_instance.get_effective_ells()
 
     def get_noise_bias(self) -> np.ndarray | None:
         """
@@ -1661,10 +1645,11 @@ class Spectra(Core, MPISharedMemoryMixin):
         Noise bias: (1/2) * Tr[N * E_l]. Cross-correlations are bias-free.
         """
         if self.rank == 0 and self.qml_noise_bias is not None:
-            noise_bias = self._normalize_spectra(self.qml_noise_bias)
-            if self._output_is_dl():
-                noise_bias = noise_bias * self._dl_factor()
-            return noise_bias
+            # The noise bias is built from the binned derivative E_b, which
+            # already carries the bandpower shape weight in Dl mode (ADR-0019),
+            # so it comes out in the estimated quantity's own space — no
+            # post-hoc scalar.
+            return self._normalize_spectra(self.qml_noise_bias)
         return None
 
     def convolve_theory_for_inference(
@@ -1804,12 +1789,9 @@ class Spectra(Core, MPISharedMemoryMixin):
         if W is None:
             return None
 
-        cl_binned = W @ cl_vec
-
-        if self._output_is_dl():
-            cl_binned = cl_binned * self._dl_factor()
-
-        return cl_binned
+        # In Dl mode the window W already maps per-ℓ theory to D_b (its
+        # derivatives carry the shape weight; ADR-0019), so no post-hoc scalar.
+        return W @ cl_vec
 
     def get_covariance(self, mode: str = "deconvolved") -> np.ndarray | None:
         """
@@ -1899,9 +1881,9 @@ class Spectra(Core, MPISharedMemoryMixin):
                 return None
             cov = self.fisher_normalized.copy()
 
-        if self._output_is_dl():
-            d = self._dl_factor()
-            cov = cov * np.outer(d, d)
+        # F_b (hence F_b⁻¹ and the normalised Fisher) is built from the
+        # shape-weighted derivative in Dl mode, so the covariance is already in
+        # the estimated quantity's own space (ADR-0019) — no post-hoc scalar.
         return cov
 
     def get_error_bars(self, mode: str = "deconvolved") -> np.ndarray | None:
@@ -2003,8 +1985,9 @@ class Spectra(Core, MPISharedMemoryMixin):
         <y> = W @ C_true
 
         where y are the raw QML estimates and W is the window matrix.
-        When ``output_convention="Dl"``, the window matrix is internally
-        transformed so the input and output are both in D_ℓ convention.
+        When ``output_convention="Dl"``, the window is built from the
+        shape-weighted derivative (ADR-0019), so it already maps D_ℓ theory to
+        the D_ℓ estimate — pass D_ℓ input; there is no separate transform.
 
         Examples
         --------
@@ -2025,10 +2008,8 @@ class Spectra(Core, MPISharedMemoryMixin):
         if W is None:
             return None
 
-        if self._output_is_dl():
-            d = self._dl_factor()
-            return d * (W @ (cl_theory / d))
-
+        # In Dl mode the window is built from the shape-weighted derivative, so
+        # it already maps D_ℓ theory to <y> in D-space (ADR-0019) — no scalar.
         return W @ cl_theory
 
     def write_power_spectra(

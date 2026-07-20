@@ -219,3 +219,84 @@ def test_setup_computation_basis_smw_lswitch():
         cls = np.ones(basis_lmax + 1, dtype=np.float64) * 1e-3
         logdet = core.get_covariance_logdet(cls)
         assert np.isfinite(logdet)
+
+
+# =========================================================================
+# 3. output_convention="Dl" folds the bandpower shape weight into the
+#    binned derivative (ADR-0019).
+# =========================================================================
+
+
+@pytest.mark.parametrize(
+    "method,nside,basis_lmax",
+    [
+        ("harmonic", 8, 16),  # exercises the Core per-ℓ summed fallback
+        ("auto", 4, 16),  # exercises the pixel-direct batched kernel
+    ],
+)
+def test_binned_derivative_dl_shape_weight(method, nside, basis_lmax):
+    """Dl convention weights dC^ℓ by w_ℓ = 2π/(ℓ(ℓ+1)) inside the bin.
+
+    Independent of the derivative kernel: builds the per-ℓ Cl derivatives via
+    delta_ell=1 bins, sums them with the closed-form shape weight, and checks
+    that a wide Dl bin reproduces Σ_{ℓ∈bin} w_ℓ · dC^ℓ. Cl (default) must be
+    the plain unit-weight sum.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        params = _make_params(tmpdir, nside=nside, lmax=basis_lmax)
+        core, cm = _setup_through_basis(
+            params,
+            basis_lmax=basis_lmax,
+            method=method,
+            use_smw_optimization=False,
+        )
+        ss_key = SpectrumKey(0, 0, SpectrumKind.SS, spins=(0,))
+        beam = np.ones(basis_lmax + 1, dtype=np.float64)
+
+        # Per-ℓ Cl derivatives dC^ℓ (each delta_ell=1 bin is a single ℓ).
+        core.params.output_convention = "Cl"
+        core.set_binning(Bins.fromdeltal(2, basis_lmax, 1))
+        dC_ell = {
+            int(core.bins.lmins[i]): core.get_binned_derivative_matrix(
+                bin_idx=i, key=ss_key, beam_smoothing=beam
+            )
+            for i in range(core.bins.nbins)
+        }
+
+        wide = Bins.fromdeltal(2, basis_lmax, 4)
+        w = wide.shape_weights("Dl")
+        bin_idx = 1
+        lo, hi = int(wide.lmins[bin_idx]), int(wide.lmaxs[bin_idx])
+        expected = sum(w[ell] * dC_ell[ell] for ell in range(lo, hi + 1))
+
+        core.params.output_convention = "Dl"
+        core.set_binning(wide)
+        actual = core.get_binned_derivative_matrix(
+            bin_idx=bin_idx, key=ss_key, beam_smoothing=beam
+        )
+        np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
+
+        # Cl mode stays the plain unit-weight sum.
+        core.params.output_convention = "Cl"
+        expected_cl = sum(dC_ell[ell] for ell in range(lo, hi + 1))
+        actual_cl = core.get_binned_derivative_matrix(
+            bin_idx=bin_idx, key=ss_key, beam_smoothing=beam
+        )
+        np.testing.assert_allclose(actual_cl, expected_cl, rtol=1e-10, atol=1e-12)
+
+
+def test_binned_derivative_dl_monopole_bin_raises():
+    """A Dl bin including ℓ=0 surfaces the shape-weight guard through the
+    derivative wiring (ADR-0019): D_ℓ diverges at the monopole. ℓ=0 is only
+    reachable via lmin_floor=0 (foreground/template work)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        params = _make_params(tmpdir, nside=8, lmax=16)
+        core, _ = _setup_through_basis(
+            params, basis_lmax=16, method="harmonic", use_smw_optimization=False
+        )
+        core.params.output_convention = "Dl"
+        core.params.lmin = 0  # binning floor must match the inference floor
+        core.set_binning(Bins([0], [3], lmin_floor=0))
+        ss_key = SpectrumKey(0, 0, SpectrumKind.SS, spins=(0,))
+        with pytest.raises(ValueError, match="monopole"):
+            core.get_binned_derivative_matrix(bin_idx=0, key=ss_key)

@@ -71,6 +71,26 @@ array instead of a file path, and nothing is written to disk unless asked.
   bandpower the QML estimator produces — use
   ``Spectra.convolve_theory_for_inference()`` to bin theory (ADR-0007
   amendment, ADR-0019).
+* **``output_convention="Dl"`` is now an estimator setting, not a
+  presentation one** (ADR-0019). The flat-D_ℓ shape weight
+  ``w_ℓ = 2π/(ℓ(ℓ+1))`` enters the binned QML derivative, so the estimated
+  bandpower, its covariance and the Fisher matrix come out as ``D_b``
+  natively; the post-hoc ``ℓ(ℓ+1)/2π`` scalar evaluated at the bin midpoint is
+  **deleted**. Existing ``Dl`` runs now return different ``D_ℓ``, covariance
+  and Fisher — varying bin to bin, largest where bins are wide and ℓ is low —
+  with no call site changed and, by design, **no runtime warning**; pin the
+  previous release to reproduce prior numbers. ``Cl`` output is unchanged.
+  ``Dl`` and ``Cl`` now estimate genuinely different observables
+  (``D_output ≠ scalar · C_output`` for wide bins), so ``output_convention``
+  must be fixed *before* ``run()`` — flipping it on an already-run instance no
+  longer rescales the output.
+* **``Spectra.get_effective_ells()`` no longer returns the bin midpoint by
+  default.** It now returns the inverse-variance-weighted window centroid
+  (delegated to ``Fisher.get_effective_ells()``), which requires a completed
+  Fisher run and differs per spectrum. Pass ``use_midpoint=True`` for the old
+  behaviour (the bin midpoint, no Fisher run). For a multi-spectrum run the
+  default result is now shape ``(nspectra·nbins,)`` (spectrum-major), not
+  ``(nbins,)`` (ADR-0019).
 
 **Added:**
 
@@ -122,8 +142,15 @@ array instead of a file path, and nothing is written to disk unless asked.
   weight ``w_ℓ`` that declares the in-bin spectrum shape: ``1`` for the
   flat-C_ℓ shape (``"Cl"``), ``2π/(ℓ(ℓ+1))`` for the flat-D_ℓ shape
   (``"Dl"``). Requesting ``"Dl"`` when a bin includes ℓ = 0 raises, since
-  D_ℓ is undefined at the monopole. Not yet wired into the estimator — that
-  is the ADR-0019 follow-up; this only adds the accessor.
+  D_ℓ is undefined at the monopole. This weight now feeds the binned QML
+  derivative (see the ``output_convention`` breaking change above).
+* ``Fisher.get_effective_ells()``: the effective multipole per bin as the
+  inverse-variance-weighted bandpower-window centroid, reported in the active
+  ``output_convention`` and per spectrum. Returns shape ``(nspectra·nbins,)``
+  on rank 0, ``None`` on workers; it enters the collective per-ℓ Fisher on
+  every rank (no worker early-return) and raises before a completed Fisher run
+  (ADR-0019). ``Spectra.get_effective_ells(use_midpoint=False)`` delegates to
+  it, with ``use_midpoint=True`` for the bin midpoint.
 
 **Fixed:**
 
