@@ -41,11 +41,13 @@ about *where* it appears, not *whether*.
   (2018), extended with…"*). Bond, Jaffe & Knox 1998 is also cited
   for the underlying P/Q formalism.
 - The implementation lists the **CosmoForge additions on top of
-  xQML**: input validation (overlap checks, sorting), `lmin`
-  zero-padding in `bin_spectra`, `Dl` weighting, `bin_covariance`,
-  type annotations, docstrings. Future contributors should preserve
-  the distinction between xQML-derived parts and CosmoForge
-  additions, so the lineage stays auditable.
+  xQML**: input validation (overlap checks, sorting), a configurable
+  `lmin_floor` for monopole/dipole-aware analyses, the `shape_weights`
+  accessor (ADR-0019), type annotations, docstrings. Future contributors
+  should preserve the distinction between xQML-derived parts and
+  CosmoForge additions, so the lineage stays auditable. (See the 2026-07
+  amendment: the P/Q operator machinery that earlier additions built on
+  has since been removed.)
 
 ## Consequences
 
@@ -95,3 +97,26 @@ intermediate for both bases.
   rebinning estimators.
 - Vanneste et al. 2018 (xQML), arXiv:1807.02484 — implementation
   pattern adopted here.
+
+## Amendment (2026-07): P/Q machinery removed
+
+The Context above records the class as it was first adapted. Since then
+`Bins` has been narrowed to bin *geometry*. Removed, because no production
+code path used them and they encoded a **flat** bin average the QML
+estimator (which is Fisher-weighted) does not use:
+
+- `bins()`, `bin_spectra()`, `bin_covariance()`, and the private P/Q
+  operator builder they shared.
+- The `cutfirst` filter named in the original Context no longer exists
+  either; bin filtering is now the `lmin_floor` cut in `__init__`.
+
+Added in their place: `shape_weights()`, the per-ℓ shape-weight vector
+that *declares* the in-bin spectrum shape (ADR-0019). `lbin` was renamed
+`lmid` (a warn-and-forward shim keeps `lbin` for one release, ADR-0018),
+because `Bins` knows bin edges and cannot know the effective multipole.
+
+**The attribution and the GPLv3 obligation are unchanged.** `fromdeltal`
+and the attribute naming (`lmins`, `lmaxs`, `nbins`, `dl`) remain
+xQML-derived. Narrowing the derived surface is not a relicensing argument;
+a clean-room reimplementation is still the only path to relaxing GPLv3,
+and it remains deferred.

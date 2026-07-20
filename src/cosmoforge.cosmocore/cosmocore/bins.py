@@ -11,6 +11,8 @@ estimator reduces to the standard per-multipole QML estimator.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 
 
@@ -26,8 +28,8 @@ class Bins:
 
     The binning operator formalism follows Bond, Jaffe & Knox (1998).
     The implementation is adapted from the xQML package (Vanneste et al.
-    2018, Phys. Rev. D 98, 103526), extended with input validation,
-    D_ell weighting, covariance binning, and lmin zero-padding support.
+    2018, Phys. Rev. D 98, 103526), extended with input validation and a
+    configurable ``lmin_floor`` for monopole/dipole-aware analyses.
 
     Parameters
     ----------
@@ -46,8 +48,11 @@ class Bins:
         Upper bounds after filtering (ell >= 2).
     nbins : int
         Number of bins.
-    lbin : np.ndarray
-        Effective multipole for each bin (midpoint).
+    lmid : np.ndarray
+        Bin midpoint ``(lmins + lmaxs) / 2``. This is a cheap label, **not**
+        the effective multipole: where a bandpower sits depends on the noise,
+        mask and Fisher weighting, none of which ``Bins`` knows. For the
+        effective multipole use ``Fisher.get_effective_ells()`` (ADR-0019).
     dl : np.ndarray
         Width of each bin (lmaxs - lmins + 1).
     lmin : int
@@ -130,78 +135,74 @@ class Bins:
         self.lmin = int(np.min(self.lmins))
         self.lmax = int(np.max(self.lmaxs))
         self.nbins = len(self.lmins)
-        self.lbin = (self.lmins + self.lmaxs) / 2.0
+        self.lmid = (self.lmins + self.lmaxs) / 2.0
         self.dl = self.lmaxs - self.lmins + 1
 
-    def bins(self):
-        """Return (lmins, lmaxs) tuple."""
-        return (self.lmins, self.lmaxs)
+    @property
+    def lbin(self):
+        """Deprecated alias for :attr:`lmid`.
 
-    def _bin_operators(self, *, Dl=False, cov=False):
+        Renamed because ``lbin`` implied an *effective* multipole, which
+        ``Bins`` cannot know (ADR-0019). Kept for one release as a
+        warn-and-forward shim per the post-1.0 deprecation policy
+        (ADR-0018); removed in the next release.
         """
-        Build binning (P) and unbinning (Q) operator matrices.
+        warnings.warn(
+            "Bins.lbin is deprecated and will be removed in the next release; "
+            "use Bins.lmid for the bin midpoint, or "
+            "Fisher.get_effective_ells() for the effective multipole.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.lmid
+
+    def shape_weights(self, convention="Cl"):
+        """Per-ℓ bandpower shape weight ``w_ℓ`` (ADR-0019).
+
+        The weight declares the in-bin spectrum shape the binned QML
+        derivative assumes: ``dC^b = Σ_{ℓ∈b} w_ℓ · b²_ℓ · dC^ℓ``.
 
         Parameters
         ----------
-        Dl : bool
-            If True, weight by ell*(ell+1)/(2*pi).
-        cov : bool
-            If True, build Q for covariance binning.
-
-        Returns
-        -------
-        p : np.ndarray
-            Binning matrix, shape (nbins, lmax+1).
-        q : np.ndarray
-            Unbinning matrix, shape (lmax+1, nbins).
-        """
-        if Dl:
-            ell2 = np.arange(self.lmax + 1)
-            ell2 = ell2 * (ell2 + 1) / (2 * np.pi)
-        else:
-            ell2 = np.ones(self.lmax + 1)
-        p = np.zeros((self.nbins, self.lmax + 1))
-        q = np.zeros((self.lmax + 1, self.nbins))
-
-        for b, (a, z) in enumerate(zip(self.lmins, self.lmaxs)):
-            dl = z - a + 1
-            p[b, a : z + 1] = ell2[a : z + 1] / dl
-            if cov:
-                q[a : z + 1, b] = 1 / ell2[a : z + 1] / dl
-            else:
-                q[a : z + 1, b] = 1 / ell2[a : z + 1]
-
-        return p, q
-
-    def bin_spectra(self, spectra, Dl=False, lmin=0):
-        """
-        Average spectra in bins.
-
-        Parameters
-        ----------
-        spectra : array_like
-            Power spectra, last axis is multipole.
-        Dl : bool
-            If True, weight by ell*(ell+1)/(2*pi).
-        lmin : int
-            Starting multipole of the input spectra. If > 0, the input
-            is zero-padded for ell < lmin before binning.
+        convention : {"Cl", "Dl"}
+            ``"Cl"`` declares a flat-C_ℓ shape (``w_ℓ = 1``); ``"Dl"``
+            declares a flat-D_ℓ shape (``w_ℓ = 2π / (ℓ(ℓ+1))``).
+            Case-insensitive.
 
         Returns
         -------
         np.ndarray
-            Binned spectra.
+            Weight vector indexed by multipole, shape ``(lmax + 1,)``.
+            The weight is a pure function of ℓ, so entries at ℓ outside any
+            bin still carry a value (``1`` for ``"Cl"``; ``2π/(ℓ(ℓ+1))`` for
+            ``"Dl"``, with ``w[0] = 0``). The binned derivative sum reads
+            only ℓ that fall inside a bin, so those gap entries are never
+            consumed.
+
+        Raises
+        ------
+        ValueError
+            If ``convention`` is not ``"Cl"`` or ``"Dl"``, or if the
+            ``"Dl"`` shape is requested while a bin includes ℓ = 0
+            (``D_ℓ`` is undefined at the monopole). ℓ = 1 is well defined
+            (``w = π``).
         """
-        spectra = np.asarray(spectra)
-        if lmin > 0:
-            pad = np.zeros((*spectra.shape[:-1], lmin))
-            spectra = np.concatenate([pad, spectra], axis=-1)
-        minlmax = np.min([spectra.shape[-1] - 1, self.lmax])
+        key = str(convention).strip().lower()
+        if key not in ("cl", "dl"):
+            raise ValueError(
+                f"Unknown shape convention '{convention}'. Must be 'Cl' or 'Dl'."
+            )
+        if key == "cl":
+            return np.ones(self.lmax + 1)
 
-        _p, _q = self._bin_operators(Dl=Dl)
-        return np.dot(spectra[..., : minlmax + 1], _p.T[: minlmax + 1, ...])
-
-    def bin_covariance(self, clcov):
-        """Bin a covariance matrix: P @ clcov @ Q."""
-        p, q = self._bin_operators(cov=True)
-        return np.matmul(p, np.matmul(clcov, q))
+        if self.lmin == 0:
+            raise ValueError(
+                "The flat-D_ell shape is undefined at the monopole "
+                "(2*pi/(ell*(ell+1)) diverges at ell=0), but a bin includes "
+                "ell=0. Use the 'Cl' shape for monopole bins, or raise "
+                "lmin_floor above 0."
+            )
+        ell = np.arange(self.lmax + 1, dtype=np.float64)
+        w = np.zeros(self.lmax + 1)
+        w[1:] = 2 * np.pi / (ell[1:] * (ell[1:] + 1))
+        return w

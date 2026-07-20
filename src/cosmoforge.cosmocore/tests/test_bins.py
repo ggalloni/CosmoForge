@@ -45,11 +45,11 @@ class TestBinsCreation:
         np.testing.assert_array_equal(bins.lmins, np.arange(2, 9))
         np.testing.assert_array_equal(bins.lmaxs, np.arange(2, 9))
 
-    def test_effective_ells(self):
-        """Effective ells are bin midpoints."""
+    def test_midpoints(self):
+        """lmid is the bin midpoint."""
         bins = Bins.fromdeltal(2, 7, 2)
         expected = np.array([2.5, 4.5, 6.5])
-        np.testing.assert_array_equal(bins.lbin, expected)
+        np.testing.assert_array_equal(bins.lmid, expected)
 
     def test_bin_widths(self):
         bins = Bins.fromdeltal(2, 10, 3)
@@ -75,110 +75,51 @@ class TestBinsCreation:
         np.testing.assert_array_equal(bins.lmins, [2])
         np.testing.assert_array_equal(bins.lmaxs, [4])
 
-    def test_bins_tuple(self):
+
+class TestShapeWeights:
+    """Test the per-ℓ bandpower shape weight (ADR-0019)."""
+
+    def test_flat_cl_is_unity(self):
+        """The flat-C_ell shape weight is 1 for every ell."""
+        bins = Bins.fromdeltal(2, 10, 3)
+        w = bins.shape_weights("Cl")
+        assert w.shape == (bins.lmax + 1,)
+        np.testing.assert_array_equal(w, np.ones(bins.lmax + 1))
+
+    def test_flat_dl_closed_form(self):
+        """The flat-D_ell shape weight is 2*pi/(ell*(ell+1))."""
+        bins = Bins.fromdeltal(2, 10, 3)
+        w = bins.shape_weights("Dl")
+        ell = np.arange(2, bins.lmax + 1)
+        np.testing.assert_allclose(w[2:], 2 * np.pi / (ell * (ell + 1)))
+
+    def test_convention_case_insensitive(self):
+        bins = Bins.fromdeltal(2, 10, 3)
+        np.testing.assert_array_equal(bins.shape_weights("dl"), bins.shape_weights("Dl"))
+
+    def test_unknown_convention_raises(self):
+        bins = Bins.fromdeltal(2, 10, 3)
+        with pytest.raises(ValueError, match="Must be 'Cl' or 'Dl'"):
+            bins.shape_weights("Bl")
+
+    def test_flat_dl_at_dipole(self):
+        """ell=1 is well defined for the flat-D_ell shape (w = pi)."""
+        bins = Bins.fromdeltal(1, 4, 1)  # lmin_floor=1, includes dipole
+        w = bins.shape_weights("Dl")
+        assert w[1] == pytest.approx(np.pi)
+
+    def test_flat_dl_with_monopole_raises(self):
+        """flat-D_ell is undefined at ell=0 and must raise."""
+        bins = Bins([0, 1, 2], [0, 1, 2], lmin_floor=0)
+        with pytest.raises(ValueError, match="monopole"):
+            bins.shape_weights("Dl")
+
+
+class TestLbinDeprecation:
+    """lbin survives one release as a warn-and-forward alias for lmid."""
+
+    def test_lbin_warns_and_forwards(self):
         bins = Bins.fromdeltal(2, 7, 2)
-        lmins, lmaxs = bins.bins()
-        np.testing.assert_array_equal(lmins, [2, 4, 6])
-        np.testing.assert_array_equal(lmaxs, [3, 5, 7])
-
-
-class TestBinOperators:
-    """Test binning and unbinning operator matrices."""
-
-    def test_flat_weighting(self):
-        """Flat weighting: P[b, ell] = 1/delta_ell within bin."""
-        bins = Bins.fromdeltal(2, 4, 3)
-        P, Q = bins._bin_operators()
-        assert P.shape == (1, 5)
-        np.testing.assert_allclose(P[0, 2:5], [1 / 3, 1 / 3, 1 / 3])
-        np.testing.assert_allclose(P[0, :2], [0, 0])
-
-    def test_identity_binning(self):
-        """delta_ell=1 binning matrix is identity (for ell>=2 block)."""
-        bins = Bins.fromdeltal(2, 5, 1)
-        P, _ = bins._bin_operators()
-        P_ell = P[:, 2:]
-        np.testing.assert_allclose(P_ell, np.eye(4))
-
-    def test_P_rows_sum_to_one(self):
-        """Each row of P sums to 1 (flat weighting)."""
-        bins = Bins.fromdeltal(2, 10, 3)
-        P, _ = bins._bin_operators()
-        row_sums = P.sum(axis=1)
-        np.testing.assert_allclose(row_sums, np.ones(bins.nbins))
-
-    def test_P_shape(self):
-        bins = Bins.fromdeltal(2, 10, 3)
-        P, Q = bins._bin_operators()
-        assert P.shape == (3, 11)
-        assert Q.shape == (11, 3)
-
-    def test_dl_weighting(self):
-        """Dl=True applies ell*(ell+1)/(2*pi) weighting."""
-        bins = Bins.fromdeltal(2, 4, 3)
-        P_flat, _ = bins._bin_operators(Dl=False)
-        P_dl, _ = bins._bin_operators(Dl=True)
-        # Dl weights should differ from flat
-        assert not np.allclose(P_flat, P_dl)
-
-
-class TestBinSpectra:
-    """Test bin_spectra method."""
-
-    def test_basic_binning(self):
-        """Average of constant spectrum is that constant."""
-        bins = Bins.fromdeltal(2, 4, 3)
-        spectra = np.array([1.0, 1.0, 1.0, 1.0, 1.0])  # ell 0..4
-        result = bins.bin_spectra(spectra)
-        np.testing.assert_allclose(result, [1.0])
-
-    def test_lmin_padding(self):
-        """bin_spectra with lmin=2 correctly pads."""
-        bins = Bins.fromdeltal(2, 4, 3)
-        spectra = np.array([10.0, 20.0, 30.0])  # values at ell=2,3,4
-        result = bins.bin_spectra(spectra, lmin=2)
-        expected = np.mean([10.0, 20.0, 30.0])
-        np.testing.assert_allclose(result, [expected])
-
-    def test_identity_binning_preserves_values(self):
-        """delta_ell=1 binning returns the input values."""
-        bins = Bins.fromdeltal(2, 5, 1)
-        spectra = np.array([0.0, 0.0, 10.0, 20.0, 30.0, 40.0])  # ell 0..5
-        result = bins.bin_spectra(spectra)
-        np.testing.assert_allclose(result, [10.0, 20.0, 30.0, 40.0])
-
-    def test_2d_spectra(self):
-        """Works with 2D input (multiple spectra)."""
-        bins = Bins.fromdeltal(2, 4, 3)
-        spectra = np.array(
-            [[10.0, 20.0, 30.0], [40.0, 50.0, 60.0]]
-        )  # 2 spectra, ell=2..4
-        result = bins.bin_spectra(spectra, lmin=2)
-        np.testing.assert_allclose(result, [[20.0], [50.0]])
-
-    def test_lmin_zero_is_noop(self):
-        """lmin=0 (default) doesn't pad."""
-        bins = Bins.fromdeltal(2, 4, 3)
-        spectra = np.array([0.0, 0.0, 10.0, 20.0, 30.0])
-        result_default = bins.bin_spectra(spectra)
-        result_lmin0 = bins.bin_spectra(spectra, lmin=0)
-        np.testing.assert_array_equal(result_default, result_lmin0)
-
-
-class TestBinCovariance:
-    """Test bin_covariance method."""
-
-    def test_identity_binning_preserves_covariance(self):
-        """delta_ell=1 binning preserves the covariance (for ell>=2 block)."""
-        bins = Bins.fromdeltal(2, 4, 1)
-        n = 5  # ell 0..4
-        cov = np.eye(n) * 2.0
-        result = bins.bin_covariance(cov)
-        # Should extract the 2..4 block (3x3) and preserve values
-        assert result.shape == (3, 3)
-
-    def test_shape(self):
-        bins = Bins.fromdeltal(2, 10, 3)
-        cov = np.eye(11)
-        result = bins.bin_covariance(cov)
-        assert result.shape == (3, 3)
+        with pytest.warns(DeprecationWarning, match="lmid"):
+            legacy = bins.lbin
+        np.testing.assert_array_equal(legacy, bins.lmid)

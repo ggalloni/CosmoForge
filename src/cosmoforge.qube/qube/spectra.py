@@ -1483,7 +1483,7 @@ class Spectra(Core, MPISharedMemoryMixin):
 
     def _dl_factor(self) -> np.ndarray:
         """Return the Cl->Dl factor tiled over all spectra."""
-        ell = self.bins.lbin.astype(np.float64)
+        ell = self.bins.lmid.astype(np.float64)
         return np.tile(ell * (ell + 1) / (2 * np.pi), self.params.nspectra)
 
     def _apply_output_convention(self, result, mode):
@@ -1617,8 +1617,8 @@ class Spectra(Core, MPISharedMemoryMixin):
         -----
         With binning enabled, ``n_params = nspectra * nbins``. The theory
         input to ``convolve_theory`` must be binned (one value per bin),
-        e.g. via ``bins.bin_spectra(cl_theory)`` (``cl_theory``
-        ℓ-indexed). For the flat form, the entries must be ordered the
+        matching the in-bin shape declared by the binning operator
+        (ADR-0019). For the flat form, the entries must be ordered the
         same way as the Fisher matrix columns; the dict form bypasses
         the ordering question entirely.
         """
@@ -1644,7 +1644,7 @@ class Spectra(Core, MPISharedMemoryMixin):
         """
         if self.rank != 0:
             return None
-        return self.bins.lbin
+        return self.bins.lmid
 
     def get_noise_bias(self) -> np.ndarray | None:
         """

@@ -357,7 +357,7 @@ class TestBinnedShapes:
         """Effective ells match bin midpoints."""
         bins = Bins.fromdeltal(2, 7, 2)
         expected = np.array([2.5, 4.5, 6.5])  # midpoints of [2,3], [4,5], [6,7]
-        np.testing.assert_array_equal(bins.lbin, expected)
+        np.testing.assert_array_equal(bins.lmid, expected)
 
 
 # =============================================================================
