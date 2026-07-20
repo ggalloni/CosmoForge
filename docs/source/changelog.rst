@@ -59,6 +59,18 @@ array instead of a file path, and nothing is written to disk unless asked.
   blocks assume one pixel set per spin-2 field — and the previous code silently
   used the *second* column of the pair for both. ``ValueError`` at mask
   resolution (ADR-0017).
+* ``Bins.lbin`` renamed to ``Bins.lmid``. The name ``lbin`` implied an
+  *effective* multipole, which ``Bins`` cannot know — it is only the bin
+  midpoint. ``lbin`` survives one release as a property that returns
+  ``lmid`` and emits a ``DeprecationWarning``; use ``lmid`` for the
+  midpoint or ``Fisher.get_effective_ells()`` for the effective multipole
+  (ADR-0018, ADR-0019).
+* ``Bins.bins()``, ``Bins.bin_spectra()`` and ``Bins.bin_covariance()``
+  removed. No production path used them, and ``bin_spectra`` returned a
+  *flat* bin average that silently disagrees with the Fisher-weighted
+  bandpower the QML estimator produces — use
+  ``Spectra.convolve_theory_for_inference()`` to bin theory (ADR-0007
+  amendment, ADR-0019).
 
 **Added:**
 
@@ -106,6 +118,12 @@ array instead of a file path, and nothing is written to disk unless asked.
   now accepts either a flat ``(nspectra·n_ell,)`` per-ℓ array (spectrum-major,
   matching ``get_bandpower_slices``) or a label-keyed dict
   ``{"TT": …, "EE": …}``. Single-spectrum output is numerically unchanged.
+* ``Bins.shape_weights(convention)`` returns the per-ℓ bandpower shape
+  weight ``w_ℓ`` that declares the in-bin spectrum shape: ``1`` for the
+  flat-C_ℓ shape (``"Cl"``), ``2π/(ℓ(ℓ+1))`` for the flat-D_ℓ shape
+  (``"Dl"``). Requesting ``"Dl"`` when a bin includes ℓ = 0 raises, since
+  D_ℓ is undefined at the monopole. Not yet wired into the estimator — that
+  is the ADR-0019 follow-up; this only adds the accessor.
 
 **Fixed:**
 

@@ -355,7 +355,7 @@ def knox_per_ell(cl_signal, beam, sigma_noise, npix, lmax_sim, fsky):
 def knox_per_bin(var_per_ell, bins, ells_eff):
     out = np.zeros(len(ells_eff))
     for bi, ell_eff in enumerate(ells_eff):
-        bin_idx = int(np.argmin(np.abs(bins.lbin - ell_eff)))
+        bin_idx = int(np.argmin(np.abs(bins.lmid - ell_eff)))
         lo, hi = int(bins.lmins[bin_idx]), int(bins.lmaxs[bin_idx])
         inv = np.sum(1.0 / var_per_ell[lo : hi + 1])
         out[bi] = np.sqrt(1.0 / inv) if inv > 0 else np.inf
