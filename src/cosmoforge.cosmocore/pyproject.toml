@@ -1,6 +1,6 @@
 [project]
 name = "cosmocore"
-version = "1.0.1"
+version = "1.1.0"
 description = "CosmoCore: common algebra for harmonic-pixel handling."
 readme = "README.md"
 authors = [

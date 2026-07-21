@@ -9,6 +9,9 @@ Every pull request that touches package source updates this file; see
 Unreleased
 ----------
 
+Version 1.1.0 (2026-07-21)
+--------------------------
+
 The in-memory pipeline programme: every input can now be handed in as an
 array instead of a file path, and nothing is written to disk unless asked.
 
