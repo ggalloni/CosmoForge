@@ -460,6 +460,11 @@ class Fisher(Core, MPISharedMemoryMixin):
                 V_Cinv_VT = bm.get_projected_inverse(
                     C_ell_dict, field_groups=field_groups
                 )
+                # Bandpower shape weight w_ℓ (ADR-0019), indexed by ℓ; folds
+                # into the per-ℓ weight beside beam²(ℓ). "Cl" ⇒ all-ones.
+                shape_w = self.bins.shape_weights(
+                    getattr(self.params, "output_convention", "Cl")
+                )
 
                 for param_idx in range(n_params):
                     spectrum_idx = param_idx // nbins
@@ -480,9 +485,12 @@ class Fisher(Core, MPISharedMemoryMixin):
                         for ell in range(
                             self.bins.lmins[bin_idx], self.bins.lmaxs[bin_idx] + 1
                         ):
-                            weight = self.beam_smoothing[
-                                beam_offset + ell - self.params.lmin
-                            ]
+                            weight = (
+                                shape_w[ell]
+                                * self.beam_smoothing[
+                                    beam_offset + ell - self.params.lmin
+                                ]
+                            )
                             E_b_diag += weight * bm.get_derivative_diagonal(ell, spec_key)
                         nz = np.nonzero(E_b_diag)[0]
                         sparse_coo_data[cache_key] = (nz, nz, E_b_diag[nz])
@@ -494,9 +502,12 @@ class Fisher(Core, MPISharedMemoryMixin):
                         for ell in range(
                             self.bins.lmins[bin_idx], self.bins.lmaxs[bin_idx] + 1
                         ):
-                            weight = self.beam_smoothing[
-                                beam_offset + ell - self.params.lmin
-                            ]
+                            weight = (
+                                shape_w[ell]
+                                * self.beam_smoothing[
+                                    beam_offset + ell - self.params.lmin
+                                ]
+                            )
                             if abs(weight) < _WEIGHT_ZERO_THRESHOLD:
                                 continue
                             dC_ell = bm.get_derivative_matrix(
@@ -1130,9 +1141,11 @@ class Fisher(Core, MPISharedMemoryMixin):
         - Pixel window functions.
         - The Fisher-weighting that QML naturally applies within each bin.
 
-        The theory C_ℓ should be the **unbeamed** physical spectrum
-        (standard CAMB/CLASS output), since beam² is already absorbed
-        into the derivatives used to build the window.
+        The input theory must be **unbeamed** (beam² is already absorbed into
+        the derivatives used to build the window) and in the **active output
+        convention** (ADR-0019): physical C_ℓ in ``Cl`` mode, D_ℓ = ℓ(ℓ+1)/(2π)
+        C_ℓ in ``Dl`` mode, since in Dl mode the window is built from the
+        shape-weighted derivative and maps per-ℓ D_ℓ to the D_b estimate.
 
         For best statistical accuracy near lmax, use the buffer approach:
         estimate to ``lmax_buffer = lmax_science + margin`` (a few bin
@@ -1208,6 +1221,53 @@ class Fisher(Core, MPISharedMemoryMixin):
         W = cholesky_solve(cholesky_factor(self.fisher), Q @ per_ell_fisher)
         self._bandpower_window = W
         return W
+
+    def get_effective_ells(self) -> np.ndarray | None:
+        """Effective multipole per bin: the inverse-variance-weighted window
+        centroid (ADR-0019).
+
+        For each spectrum block, normalises the bandpower window rows to sum to
+        one (they already do, via ``W · Qᵀ = I``) and takes ``ℓ_eff(b) = Σ_ℓ
+        W̃[b,ℓ] · ℓ`` over that spectrum's own ℓ columns. Because the window is
+        built from the shape-weighted derivative, the centroid is reported in
+        the active ``output_convention``; because it carries the per-spectrum
+        noise, TT/EE/BB land at different effective multipoles.
+
+        Returns
+        -------
+        np.ndarray or None
+            Effective multipoles, shape ``(nspectra·nbins,)`` (block-ordered
+            spectrum-major, matching ``get_bandpower_window_function``).
+            ``None`` on worker processes (rank != 0).
+
+        Raises
+        ------
+        ValueError
+            If called before a completed Fisher run.
+        """
+        # Broadcast rank 0's run-state so every rank raises together or every
+        # rank enters the collective get_bandpower_window_function() below.
+        # Raising on rank 0 alone (before the collective) would deadlock the
+        # workers inside _compute_per_ell_fisher (ADR-0019 MPI note).
+        is_run = bool(self.comm.bcast(getattr(self, "fisher", None) is not None, root=0))
+        if not is_run:
+            raise ValueError(
+                "get_effective_ells requires a completed Fisher run. Call run() first."
+            )
+
+        W = self.get_bandpower_window_function()
+        if self.rank != 0 or W is None:
+            return None
+
+        lmin = self.params.lmin
+        n_ell = self.params.lmax - lmin + 1
+        nbins = self.bins.nbins
+        ells = np.arange(lmin, lmin + n_ell, dtype=np.float64)
+        eff = np.empty(self.params.nspectra * nbins, dtype=np.float64)
+        for s in range(self.params.nspectra):
+            Wb = W[s * nbins : (s + 1) * nbins, s * n_ell : (s + 1) * n_ell]
+            eff[s * nbins : (s + 1) * nbins] = (Wb @ ells) / Wb.sum(axis=1)
+        return eff
 
     def _compute_per_ell_fisher(self) -> np.ndarray:
         """

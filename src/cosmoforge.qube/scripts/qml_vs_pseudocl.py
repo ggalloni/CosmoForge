@@ -398,7 +398,7 @@ def run_qml(
         spectra.run()
         t_spec = time.perf_counter() - t0
 
-        ells_bin = spectra.get_effective_ells()
+        ells_bin = spectra.get_effective_ells(use_midpoint=True)
         deconv_y = spectra.get_power_spectra(mode="deconvolved")
         decorr_y = spectra.get_power_spectra(mode="decorrelated")
         conv_y, W_conv, conv_theory_func = spectra.get_power_spectra(mode="convolved")

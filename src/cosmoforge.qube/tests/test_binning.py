@@ -71,9 +71,12 @@ def _run_spectra_with_bins(
     bins: Bins | None = None,
     basis=False,
     fisher: Fisher | None = None,
+    config_overrides: dict | None = None,
 ) -> Spectra:
     """Run Spectra pipeline with optional binning and computation basis."""
-    config_file = config_resolver(f"tests/data/nside4/{fields}/config.yaml")
+    config_file = _resolve_config_with_overrides(
+        fields, config_resolver, config_overrides
+    )
     qml = Spectra(config_file, fisher=fisher, basis=basis)
     if bins is not None:
         qml.set_binning(bins)
@@ -566,6 +569,179 @@ class TestBandpowerWindowMultiSpectrum:
         n_ell = f.params.lmax - 1
         assert W.shape == (n_ell, n_ell)
         np.testing.assert_allclose(W, np.eye(n_ell), atol=1e-10)
+
+
+class TestEffectiveElls:
+    """ADR-0019: the effective multipole is the inverse-variance-weighted
+    window centroid, computed on Fisher and delegated by Spectra."""
+
+    def test_perell_effective_ells_are_integer_ells(self, config_resolver):
+        """At delta_ell=1 the window is the identity, so ℓ_eff = ℓ exactly.
+
+        Independent anchor: the truth is the integer multipole, not a
+        recomputation of the centroid.
+        """
+        f = _run_fisher_with_bins("T", config_resolver)
+        ell_eff = f.get_effective_ells()
+        expected = np.arange(f.params.lmin, f.params.lmax + 1, dtype=float)
+        np.testing.assert_allclose(ell_eff, expected, atol=1e-8)
+
+    def test_effective_ells_lie_inside_their_bins(self, config_resolver):
+        """A wide-bin centroid sits within the bin edges and need not be the
+        midpoint (it is inverse-variance weighted)."""
+        bins = Bins.fromdeltal(2, 8, 3)
+        f = _run_fisher_with_bins("T", config_resolver, bins=bins)
+        ell_eff = f.get_effective_ells()
+        assert ell_eff.shape == (bins.nbins,)
+        assert np.all(ell_eff >= bins.lmins - 1e-9)
+        assert np.all(ell_eff <= bins.lmaxs + 1e-9)
+
+    def test_effective_ells_match_window_centroid(self, config_resolver):
+        """ℓ_eff equals the row-normalised bandpower-window centroid (ADR-0019),
+        and is *not* the bin midpoint — a midpoint fallback would fail this."""
+        bins = Bins.fromdeltal(2, 8, 3)
+        f = _run_fisher_with_bins("T", config_resolver, bins=bins)
+        W = f.get_bandpower_window_function()
+        ells = np.arange(f.params.lmin, f.params.lmax + 1, dtype=float)
+        expected = (W @ ells) / W.sum(axis=1)
+        np.testing.assert_allclose(f.get_effective_ells(), expected, rtol=1e-10)
+        # The inverse-variance centroid differs from the midpoint by ~0.5 here.
+        assert not np.allclose(f.get_effective_ells(), bins.lmid, atol=0.1)
+
+    def test_effective_ells_differ_between_cl_and_dl(self, config_resolver):
+        """The centroid is reported in the active convention, so the shape
+        weight shifts it: Cl and Dl effective ells differ (ADR-0019)."""
+        bins = Bins.fromdeltal(2, 8, 3)
+        f_cl = _run_fisher_with_bins("T", config_resolver, bins=bins)
+        f_dl = _run_fisher_with_bins(
+            "T",
+            config_resolver,
+            bins=bins,
+            config_overrides={"output_convention": "Dl"},
+        )
+        assert not np.allclose(
+            f_cl.get_effective_ells(), f_dl.get_effective_ells(), atol=0.05
+        )
+
+    def test_effective_ells_raise_before_run(self, config_resolver):
+        """Calling before a completed Fisher run raises."""
+        config_file = _resolve_config_with_overrides("T", config_resolver, None)
+        f = Fisher(config_file, basis=False)
+        f.set_binning(Bins.fromdeltal(2, 8, 2))
+        os.unlink(config_file)
+        with pytest.raises(ValueError, match="run"):
+            f.get_effective_ells()
+
+    def test_multi_spectrum_effective_ells_differ_per_spectrum(self, config_resolver):
+        """TQU spectra have different noise, so their window centroids differ."""
+        bins = Bins.fromdeltal(2, 8, 3)
+        f = _run_fisher_with_bins("TQU", config_resolver, bins=bins)
+        ell_eff = f.get_effective_ells()
+        assert ell_eff.shape == (f.params.nspectra * bins.nbins,)
+        per_spec = ell_eff.reshape(f.params.nspectra, bins.nbins)
+        # At least one bin differs across spectra (not all rows identical).
+        assert not np.allclose(per_spec, per_spec[0], atol=1e-6)
+
+    def test_spectra_delegates_and_midpoint_opt_in(self, config_resolver):
+        """Spectra.get_effective_ells delegates to Fisher; use_midpoint returns
+        the bin midpoint with no Fisher run."""
+        bins = Bins.fromdeltal(2, 8, 3)
+        f = _run_fisher_with_bins("T", config_resolver, bins=bins)
+        s = _run_spectra_with_bins("T", config_resolver, bins=bins, fisher=f)
+        np.testing.assert_allclose(s.get_effective_ells(), f.get_effective_ells())
+        np.testing.assert_array_equal(s.get_effective_ells(use_midpoint=True), bins.lmid)
+
+
+class TestDlShapeWeightedEstimator:
+    """ADR-0019: output_convention='Dl' is an estimator setting — the shape
+    weight w_ℓ = 2π/(ℓ(ℓ+1)) enters the binned derivative, so the Fisher and
+    the estimated bandpower come out as D_b natively (no post-hoc scalar)."""
+
+    @staticmethod
+    def _weighted_Q(bins, lmin, n_ell, w):
+        Qw = np.zeros((bins.nbins, n_ell))
+        for b, (lo, hi) in enumerate(zip(bins.lmins, bins.lmaxs)):
+            for ell in range(int(lo), int(hi) + 1):
+                Qw[b, ell - lmin] = w[ell]
+        return Qw
+
+    @pytest.mark.parametrize("basis", [False, "harmonic"])
+    def test_native_dl_fisher_equals_shape_weighted_perell(self, config_resolver, basis):
+        """F_b(Dl) = Q_w · F_perell(Cl) · Q_wᵀ with Q_w carrying w_ℓ.
+
+        F_perell is the unit-shape (Cl) per-ℓ Fisher; the shape weight is
+        applied externally, so this is an independent check that the native
+        Dl run folds w_ℓ into the derivative on whichever kernel `basis`
+        selects (dense per-ℓ, or the harmonic-fast COO path).
+        """
+        wide = Bins.fromdeltal(2, 8, 3)
+        f_cl = _run_fisher_with_bins("T", config_resolver, bins=wide, basis=basis)
+        F_pe = f_cl._compute_per_ell_fisher()
+        lmin = f_cl.params.lmin
+        n_ell = f_cl.params.lmax - lmin + 1
+        w = wide.shape_weights("Dl")
+        Qw = self._weighted_Q(wide, lmin, n_ell, w)
+        F_expected = Qw @ F_pe @ Qw.T
+
+        f_dl = _run_fisher_with_bins(
+            "T",
+            config_resolver,
+            bins=wide,
+            basis=basis,
+            config_overrides={"output_convention": "Dl"},
+        )
+        np.testing.assert_allclose(
+            f_dl.get_fisher_matrix(), F_expected, rtol=1e-8, atol=1e-14
+        )
+
+    def test_dl_window_consumes_dl_theory(self, config_resolver):
+        """In Dl mode the bandpower window maps per-ℓ D_ℓ (not C_ℓ) to D_b
+        (ADR-0019). A flat-per-bin D_ℓ theory must reproduce its own bin values;
+        the equivalent C_ℓ must not."""
+        bins = Bins.fromdeltal(2, 8, 3)
+        f = _run_fisher_with_bins(
+            "T", config_resolver, bins=bins, config_overrides={"output_convention": "Dl"}
+        )
+        s = _run_spectra_with_bins(
+            "T",
+            config_resolver,
+            bins=bins,
+            fisher=f,
+            config_overrides={"output_convention": "Dl"},
+        )
+        lmin, lmax = f.params.lmin, f.params.lmax
+        ell = np.arange(lmin, lmax + 1)
+        d_b = np.array([100.0, 55.0])  # arbitrary distinct per-bin D_b levels
+        d_ell = np.zeros(lmax - lmin + 1)
+        for b, (lo, hi) in enumerate(zip(bins.lmins, bins.lmaxs)):
+            d_ell[lo - lmin : hi - lmin + 1] = d_b[b]
+        # Flat-per-bin D_ℓ round-trips to its own bin value (W·Qᵀ = I).
+        np.testing.assert_allclose(s.convolve_theory_for_inference(d_ell), d_b, rtol=1e-9)
+        # The equivalent C_ℓ does not — proving the window consumes D_ℓ.
+        c_ell = d_ell / (ell * (ell + 1) / (2 * np.pi))
+        assert not np.allclose(s.convolve_theory_for_inference(c_ell), d_b, rtol=1e-2)
+
+    def test_perell_dl_is_dl_factor_times_cl(self, config_resolver):
+        """At delta_ell=1 the estimated D_ℓ = ℓ(ℓ+1)/2π · C_ℓ exactly, and Cl
+        output is untouched — the full estimator pipeline honours the shape."""
+        f_cl = _run_fisher_with_bins("T", config_resolver)
+        s_cl = _run_spectra_with_bins("T", config_resolver, fisher=f_cl)
+        power_cl = s_cl.get_power_spectra(mode="deconvolved")
+
+        f_dl = _run_fisher_with_bins(
+            "T", config_resolver, config_overrides={"output_convention": "Dl"}
+        )
+        s_dl = _run_spectra_with_bins(
+            "T",
+            config_resolver,
+            fisher=f_dl,
+            config_overrides={"output_convention": "Dl"},
+        )
+        power_dl = s_dl.get_power_spectra(mode="deconvolved")
+
+        ell = np.arange(f_cl.params.lmin, f_cl.params.lmax + 1)
+        d_factor = ell * (ell + 1) / (2 * np.pi)
+        np.testing.assert_allclose(power_dl, power_cl * d_factor, rtol=1e-9)
 
 
 # =============================================================================

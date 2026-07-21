@@ -124,6 +124,16 @@ def test_fortran_validation(python_spectra, fortran_data):
     fisher_python = python_spectra.fisher_instance.fisher
     beam_smoothing = python_spectra.fisher_instance.beam_smoothing
     fisher_raw = fisher_python / np.outer(beam_smoothing, beam_smoothing)
+    # This fixture runs output_convention=Dl, so the internal Fisher is now the
+    # D-space F_b: ADR-0019 folds the shape weight w_ℓ = 2π/(ℓ(ℓ+1)) into the
+    # derivative. The legacy Fortran fisher.dat is the C-space Fisher (Fortran
+    # applied Dl only to output spectra), so convert back with
+    # F_C = F_D · (ℓ(ℓ+1)/2π)² before comparing. The D_ℓ spectra/noise-bias
+    # references below are per-ℓ and already match the native D_b output.
+    lmin = python_spectra.params.lmin
+    ell = np.arange(lmin, lmin + fisher_raw.shape[0], dtype=np.float64)
+    d = ell * (ell + 1) / (2 * np.pi)
+    fisher_raw = fisher_raw * np.outer(d, d)
     diag_python = np.diag(fisher_raw)
     diag_fortran = np.diag(fortran_data["fisher"])
     results["fisher_diag"] = np.max(np.abs((diag_python - diag_fortran) / diag_fortran))

@@ -760,6 +760,7 @@ class PixelBasis(ComputationBasis):
         bins,
         beam_smoothing: np.ndarray | None,
         key,
+        shape_weights: np.ndarray | None = None,
     ) -> np.ndarray:
         """Build the binned derivative dC^b in a single Legendre/Wigner pass.
 
@@ -798,13 +799,16 @@ class PixelBasis(ComputationBasis):
         # kernel[ell] for ell=lmin..lmax, giving Σ_{ell∈bin} beam²(ell) ×
         # dC/dC_ell. beam_smoothing (when provided) is the inference-range
         # slice (ell=bins.lmin..lmax, offset-from-bins.lmin; ADR 0009).
+        # shape_weights (w_ℓ, ADR-0019) declares the in-bin spectrum shape and
+        # multiplies the per-ℓ contribution alongside beam²(ℓ); None ⇒ unit
+        # (flat-C_ℓ), keeping the Cl path bit-identical.
         weights = np.zeros(self.lmax + 1, dtype=np.float64)
         for ell in range(lmin_b, lmax_b + 1):
             if ell > self.lmax:
                 continue
-            w = 1.0
+            w = 1.0 if shape_weights is None else shape_weights[ell]
             if beam_smoothing is not None:
-                w = beam_smoothing[ell - bins.lmin]
+                w *= beam_smoothing[ell - bins.lmin]
             weights[ell] = w
 
         fi = self._fields.fields[comp_i]
