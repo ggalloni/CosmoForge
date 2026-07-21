@@ -83,7 +83,11 @@ array instead of a file path, and nothing is written to disk unless asked.
   ``Dl`` and ``Cl`` now estimate genuinely different observables
   (``D_output ≠ scalar · C_output`` for wide bins), so ``output_convention``
   must be fixed *before* ``run()`` — flipping it on an already-run instance no
-  longer rescales the output.
+  longer rescales the output. Consequently the bandpower window
+  (``Fisher.get_bandpower_window_function``) and
+  ``Spectra.convolve_theory_for_inference`` now consume per-ℓ theory in the
+  active convention: **D_ℓ, not C_ℓ, in Dl mode**. A likelihood that fed
+  physical C_ℓ into a Dl window must convert to D_ℓ (``× ℓ(ℓ+1)/2π``) first.
 * **``Spectra.get_effective_ells()`` no longer returns the bin midpoint by
   default.** It now returns the inverse-variance-weighted window centroid
   (delegated to ``Fisher.get_effective_ells()``), which requires a completed

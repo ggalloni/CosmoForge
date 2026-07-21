@@ -1662,13 +1662,18 @@ class Spectra(Core, MPISharedMemoryMixin):
         the same convention as ``get_power_spectra(mode="deconvolved")``.
         Use this in a Gaussian likelihood for parameter inference::
 
-            mu_b(theta) = convolve_theory_for_inference(C_ell(theta))
+            mu_b(theta) = convolve_theory_for_inference(theory(theta))
             -2 ln L = (d - mu)^T F_b (d - mu)
 
         Parameters
         ----------
         cl_theory : np.ndarray or dict
-            Per-ℓ theory C_ℓ. Accepted formats:
+            Per-ℓ theory in the **active output convention** (ADR-0019):
+            physical C_ℓ when ``output_convention="Cl"``, and D_ℓ =
+            ℓ(ℓ+1)/(2π) C_ℓ when ``output_convention="Dl"`` — because in Dl
+            mode the window is built from the shape-weighted derivative and so
+            maps per-ℓ D_ℓ to the D_b estimate. Feeding C_ℓ into a Dl window
+            (or vice versa) yields silently-wrong predictions. Accepted formats:
 
             - shape ``(n_ell,)`` for ℓ=lmin..lmax (length lmax-lmin+1),
               single-spectrum only.
@@ -1681,16 +1686,14 @@ class Spectra(Core, MPISharedMemoryMixin):
               per-ℓ arrays (each ``n_ell`` or ``lmax+1`` long), which
               bypasses the ordering question entirely.
 
-            Must be **unbeamed** physical C_ℓ — beam² is already absorbed
-            into the window.
+            Must be **unbeamed** — beam² is already absorbed into the window.
 
         Returns
         -------
         cl_binned : np.ndarray of shape (nspectra·n_bins,), or None
-            Expected binned bandpower for the given theory. If the
-            output convention is "Dl", the result is converted to D_ℓ
-            using the bin effective ells. Returns None on worker
-            processes (rank != 0).
+            Expected binned bandpower for the given theory, in the active
+            output convention (``D_b`` in Dl mode, ``C_b`` in Cl mode).
+            Returns None on worker processes (rank != 0).
 
         Notes
         -----
@@ -1706,7 +1709,8 @@ class Spectra(Core, MPISharedMemoryMixin):
         >>> spectra = Spectra("config.yaml", fisher=fisher, basis="harmonic")
         >>> spectra.set_binning(bins)
         >>> spectra.run()
-        >>> cl_th = compute_camb_cl(theta)        # ell=0..lmax
+        >>> cl_th = compute_camb_cl(theta)        # ell=0..lmax, physical C_ℓ
+        >>> # In Dl mode convert to D_ℓ first: cl_th *= ell*(ell+1)/(2*np.pi)
         >>> mu_b = spectra.convolve_theory_for_inference(cl_th)
         >>> data = spectra.get_power_spectra(mode="deconvolved").mean(0)
         >>> F_b = spectra.fisher_instance.get_fisher_matrix()

@@ -694,6 +694,33 @@ class TestDlShapeWeightedEstimator:
             f_dl.get_fisher_matrix(), F_expected, rtol=1e-8, atol=1e-14
         )
 
+    def test_dl_window_consumes_dl_theory(self, config_resolver):
+        """In Dl mode the bandpower window maps per-ℓ D_ℓ (not C_ℓ) to D_b
+        (ADR-0019). A flat-per-bin D_ℓ theory must reproduce its own bin values;
+        the equivalent C_ℓ must not."""
+        bins = Bins.fromdeltal(2, 8, 3)
+        f = _run_fisher_with_bins(
+            "T", config_resolver, bins=bins, config_overrides={"output_convention": "Dl"}
+        )
+        s = _run_spectra_with_bins(
+            "T",
+            config_resolver,
+            bins=bins,
+            fisher=f,
+            config_overrides={"output_convention": "Dl"},
+        )
+        lmin, lmax = f.params.lmin, f.params.lmax
+        ell = np.arange(lmin, lmax + 1)
+        d_b = np.array([100.0, 55.0])  # arbitrary distinct per-bin D_b levels
+        d_ell = np.zeros(lmax - lmin + 1)
+        for b, (lo, hi) in enumerate(zip(bins.lmins, bins.lmaxs)):
+            d_ell[lo - lmin : hi - lmin + 1] = d_b[b]
+        # Flat-per-bin D_ℓ round-trips to its own bin value (W·Qᵀ = I).
+        np.testing.assert_allclose(s.convolve_theory_for_inference(d_ell), d_b, rtol=1e-9)
+        # The equivalent C_ℓ does not — proving the window consumes D_ℓ.
+        c_ell = d_ell / (ell * (ell + 1) / (2 * np.pi))
+        assert not np.allclose(s.convolve_theory_for_inference(c_ell), d_b, rtol=1e-2)
+
     def test_perell_dl_is_dl_factor_times_cl(self, config_resolver):
         """At delta_ell=1 the estimated D_ℓ = ℓ(ℓ+1)/2π · C_ℓ exactly, and Cl
         output is untouched — the full estimator pipeline honours the shape."""

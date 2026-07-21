@@ -1141,9 +1141,11 @@ class Fisher(Core, MPISharedMemoryMixin):
         - Pixel window functions.
         - The Fisher-weighting that QML naturally applies within each bin.
 
-        The theory C_ℓ should be the **unbeamed** physical spectrum
-        (standard CAMB/CLASS output), since beam² is already absorbed
-        into the derivatives used to build the window.
+        The input theory must be **unbeamed** (beam² is already absorbed into
+        the derivatives used to build the window) and in the **active output
+        convention** (ADR-0019): physical C_ℓ in ``Cl`` mode, D_ℓ = ℓ(ℓ+1)/(2π)
+        C_ℓ in ``Dl`` mode, since in Dl mode the window is built from the
+        shape-weighted derivative and maps per-ℓ D_ℓ to the D_b estimate.
 
         For best statistical accuracy near lmax, use the buffer approach:
         estimate to ``lmax_buffer = lmax_science + margin`` (a few bin
