@@ -4,8 +4,14 @@ Paper I §Performance figure: demonstrates the optimality gap between QML and
 PCL across moderate-fsky and low-fsky configurations.
 
 Two galactic-strip configurations (TT only, nside=32, lmax=2*nside=64):
-  - low fsky  ~ 0.10  (gal cut 64 deg, delta_ell=5, invvar weights)
+  - low fsky  ~ 0.10  (gal cut 64 deg, delta_ell=9, invvar weights)
   - high fsky ~ 0.60  (gal cut 24 deg, delta_ell=1, per-ell)
+
+The bin width must divide lmax_science - 1 = 63 exactly, so that the bins tile
+the signal band and neither estimator is handed multipoles the other never
+sees. All reported sigma ratios are response-normalised (each sigma divided by
+its own windowed theory), since the two estimators measure different linear
+functionals of C_ell whenever their bandpower windows differ.
 
 For each configuration:
   - PCL via NaMaster (deconvolved bandpowers via M^-1) on a 5 deg C2-
@@ -59,7 +65,13 @@ LMAX_SCIENCE = 2 * NSIDE  # = 64
 LMAX_SIM = LMAX_SCIENCE
 NSIMS = 1000
 ADD_NOISE_TO_SIMS = True
-DELTA_ELL = 5
+# Must divide (LMAX_SCIENCE + 1 - 2) = 63 exactly. Bins.fromdeltal drops the
+# trailing partial bin, so a width that does not divide 63 leaves the top of the
+# band uncovered by QML while NaMaster's coupling matrix (which runs to
+# 3*nside-1) still feeds those multipoles into PCL's window -- handing PCL
+# multipoles QML never sees. Delta_ell = 5 covered only ell 2-61 against
+# lmax = 64. Admissible widths here: 1, 3, 7, 9, 21, 63.
+DELTA_ELL = 9
 
 # Noise: rescale a 2 µK·arcmin polarisation sensitivity (the SO/LiteBIRD-class
 # benchmark for BB) to TT, by matching N_ell/C_ell at NOISE_REF_ELL. C_TT >> C_BB
@@ -71,10 +83,11 @@ NOISE_SENS_UKARCMIN_POL = 2.0
 NOISE_REF_ELL = 50
 # SIGMA_NOISE is computed in main() once theory is loaded.
 
-# PCL receives an apodised mask; QML receives the binary one. NaMaster C2
-# (Grain 2010) cosine apodisation. The taper is per-case: at fsky~0.10 a
-# 5 deg taper eats too much of the already-thin strip (15 percent effective-
-# sky loss), so the low-fsky case uses 2 deg.
+# Both estimators see the same binary mask (apo_deg=None). Apodisation is
+# retained as a per-case knob (NaMaster C2, Grain 2010) but is off for the
+# paper figure: on these strips the taper costs PCL more effective sky than
+# the mode-coupling suppression buys back, so running PCL apodised would
+# overstate the QML advantage. See the note in analyze_case.
 CASES = [
     {
         "name": "low_fsky",
@@ -85,7 +98,7 @@ CASES = [
         # NaMaster bin weights matched to QUBE's inverse-variance binning,
         # so PCL and QML produce the same bandpower observable.
         "nmt_use_invvar_weights": True,
-        "apo_deg": 2.0,
+        "apo_deg": None,
         "apo_type": "C2",
     },
     {
@@ -96,7 +109,7 @@ CASES = [
         # Per-ell (no binning): unambiguous apples-to-apples comparison.
         "delta_ell": 1,
         "nmt_use_invvar_weights": False,
-        "apo_deg": 5.0,
+        "apo_deg": None,
         "apo_type": "C2",
     },
 ]
@@ -398,7 +411,9 @@ def run_qml(
         spectra.run()
         t_spec = time.perf_counter() - t0
 
-        ells_bin = spectra.get_effective_ells(use_midpoint=True)
+        # Window centroid, not the bin midpoint (ADR-0019): the QML bandpower
+        # window is not symmetric about the bin centre on a cut sky.
+        ells_bin = spectra.get_effective_ells()
         deconv_y = spectra.get_power_spectra(mode="deconvolved")
         decorr_y = spectra.get_power_spectra(mode="decorrelated")
         conv_y, W_conv, conv_theory_func = spectra.get_power_spectra(mode="convolved")
@@ -517,27 +532,42 @@ def analyze_case(
         f"delta_ell={delta_ell})\n{'=' * 70}"
     )
     mask_binary, fsky_qml = make_galactic_strip(nside, case["gal_cut_deg"])
-    # PCL receives the apodised mask; QML keeps the binary mask. The
-    # apodisation suppresses mode-coupling ringing that otherwise inflates
-    # PCL bandpower variance — standard NaMaster practice. C2 (Grain 2010)
-    # is the smoother of NaMaster's two cosine apodisations.
-    apo_deg = float(case["apo_deg"])
+    # apo_deg=None gives PCL the same binary mask QML sees. Apodisation is
+    # standard NaMaster practice because it suppresses mode-coupling ringing,
+    # but on these two galactic strips it measurably *costs* PCL: a 5 deg C2
+    # taper on the 24 deg cut drops the effective sky fraction <w^2> from 0.594
+    # to 0.557 and raises PCL's low-ell sigma by 1-6%. Since the point of this
+    # figure is a lower bound on the QML advantage, PCL is run in whichever
+    # configuration is better for it, which here is the binary mask. Both
+    # estimators then also see an identical sky, which is the cleaner
+    # comparison. Set apo_deg to a number to restore the taper.
+    apo_deg = case["apo_deg"]
     apo_type = case["apo_type"]
-    mask_apo = nmt.mask_apodization(mask_binary, apo_deg, apotype=apo_type)
-    # Hivon f_sky_2: effective sky fraction for the variance of a quadratic
-    # estimator on an apodised mask.
-    fsky_pcl = float(np.mean(mask_apo**2))
-    print(
-        f"  fsky_QML (binary) = {fsky_qml:.3f}  |  "
-        f"fsky_PCL (apo {apo_type} {apo_deg:g} deg, <w^2>) = {fsky_pcl:.3f}"
-    )
+    if apo_deg is None:
+        mask_pcl = mask_binary
+        # Binary mask: Hivon f_sky_2 = <w^2> = <w> = fsky.
+        fsky_pcl = float(np.mean(mask_binary**2))
+        print(
+            f"  fsky_QML (binary) = {fsky_qml:.3f}  |  "
+            f"fsky_PCL (binary, <w^2>) = {fsky_pcl:.3f}"
+        )
+    else:
+        apo_deg = float(apo_deg)
+        mask_pcl = nmt.mask_apodization(mask_binary, apo_deg, apotype=apo_type)
+        # Hivon f_sky_2: effective sky fraction for the variance of a quadratic
+        # estimator on an apodised mask.
+        fsky_pcl = float(np.mean(mask_pcl**2))
+        print(
+            f"  fsky_QML (binary) = {fsky_qml:.3f}  |  "
+            f"fsky_PCL (apo {apo_type} {apo_deg:g} deg, <w^2>) = {fsky_pcl:.3f}"
+        )
 
     use_invvar_bin = case.get("nmt_use_invvar_weights", False)
     var_per_ell_full = knox_per_ell(cl_full["TT"], beam, sigma_noise, npix, lmax_sim, 1.0)
     print("\n--- PCL ---")
     pcl = run_pcl(
         sim_maps,
-        mask_apo,
+        mask_pcl,
         beam,
         nside,
         delta_ell,
@@ -633,7 +663,29 @@ def analyze_case(
 
     n_match = min(nbins_qml, nbins_pcl)
     deconv_std = qml_diag["deconvolved"]["std"]
-    pcl_over_qml = pcl_std[:n_match] / deconv_std[:n_match]
+    # Response-normalised: each sigma is divided by its own windowed theory, so
+    # both become the fractional error on the amplitude of C^fid as that
+    # estimator's own window sees it. A bare sigma ratio compares errors on two
+    # different linear functionals of C_ell whenever the windows differ.
+    th_q = np.abs(qml_diag["deconvolved"]["windowed_theory"][:n_match])
+    th_p = np.abs(pcl_th[:n_match])
+    pcl_over_qml = (pcl_std[:n_match] / th_p) / (deconv_std[:n_match] / th_q)
+    # Conditional version from the full bandpower covariance. Pseudo-C_ell's
+    # neighbouring bandpowers are anti-correlated and a likelihood recovers
+    # that, so the diagonal ratio above overstates the information gap.
+    cov_q = qml_diag["deconvolved"]["cov_emp"][:n_match, :n_match]
+    cov_p = pcl_cov_emp[:n_match, :n_match]
+    pcl_over_qml_full = (th_q * np.sqrt(np.diag(np.linalg.inv(cov_q)))) / (
+        th_p * np.sqrt(np.diag(np.linalg.inv(cov_p)))
+    )
+    # Band-integrated amplitude error, sigma_A = 1/sqrt(t^T C^-1 t). This is the
+    # parameter-level statistic the optimality bound actually orders; the
+    # per-bandpower ratios are errors on two differently-windowed parameters
+    # and Cramer-Rao does not order those.
+    sigma_a_ratio = float(
+        np.sqrt(th_q @ np.linalg.inv(cov_q) @ th_q)
+        / np.sqrt(th_p @ np.linalg.inv(cov_p) @ th_p)
+    )
 
     print("\n  Recovery (chi^2/dof of the sample mean):")
     for mode in ("deconvolved", "convolved"):
@@ -651,7 +703,16 @@ def analyze_case(
         f"    offdiag RMS  = {dec['offdiag_rms']:.3f}  "
         f"max|offdiag| = {dec['offdiag_max_abs']:.3f}"
     )
-    print(f"\n  sigma_PCL / sigma_QML (median over bins) = {np.median(pcl_over_qml):.2f}")
+    print("\n  sigma_PCL / sigma_QML, response-normalised (median over bins):")
+    print(
+        f"    per-bandpower (diagonal) = {np.median(pcl_over_qml):.3f}"
+        f"   [{pcl_over_qml.min():.3f} - {pcl_over_qml.max():.3f}]"
+    )
+    print(
+        f"    conditional (full cov.)  = {np.median(pcl_over_qml_full):.3f}"
+        f"   [{pcl_over_qml_full.min():.3f} - {pcl_over_qml_full.max():.3f}]"
+    )
+    print(f"    band-integrated sigma_A  = {sigma_a_ratio:.3f}")
 
     return {
         "fsky": fsky_qml,
@@ -676,7 +737,11 @@ def analyze_case(
             "dof": pcl_dof,
             "chi2red_mean": pcl_chi2red,
         },
-        "ratios": {"pcl_over_qml": pcl_over_qml},
+        "ratios": {
+            "pcl_over_qml": pcl_over_qml,
+            "pcl_over_qml_full_cov": pcl_over_qml_full,
+            "sigma_A_ratio": sigma_a_ratio,
+        },
         "timings_s": {
             "pcl": pcl["time_s"],
             "qml_fisher": qml["time_fisher_s"],
@@ -690,20 +755,28 @@ def analyze_case(
 # ---------------------------------------------------------------------------
 def make_dl_variance_figure(results, lmax_science, fname):
     """Three-panel layout (one row): high-fsky spectra, low-fsky spectra,
-    and sigma_PCL/sigma_QML ratio.
+    and the response-normalised sigma_PCL/sigma_QML ratio.
 
     Each fsky case sits in its own panel so the visual y-offset that the
     earlier two-panel layout needed (to keep both lanes positive) is gone.
     Markers distinguish QML (circle) vs PCL (square); colour encodes fsky.
+
+    In the ratio panel colour encodes fsky and shade encodes the statistic:
+    light is the per-bandpower (covariance diagonal) ratio, dark the
+    conditional one built from the full bandpower covariance. The two differ
+    because pseudo-C_ell's bandpowers are anti-correlated, and that
+    correlation is recoverable in a likelihood.
     """
     case_colors = {
         "low_fsky": ("#1f5fae", "#5fa1d8"),  # QML, PCL shades for low fsky
         "high_fsky": ("#cc6a05", "#f0a55a"),  # QML, PCL shades for high fsky
     }
 
-    fig = plt.figure(figsize=(16.2, 3.8))
+    fig = plt.figure(figsize=(16.2, 4.4))
     ax_high = fig.add_subplot(1, 3, 1)
-    ax_low = fig.add_subplot(1, 3, 2, sharey=ax_high)
+    # No shared y: the two cases are now binned differently, so forcing one
+    # y-range squashes whichever panel has the smaller dynamic range.
+    ax_low = fig.add_subplot(1, 3, 2)
     ax_ratio = fig.add_subplot(1, 3, 3)
     spectra_axes = {"high_fsky": ax_high, "low_fsky": ax_low}
 
@@ -711,31 +784,52 @@ def make_dl_variance_figure(results, lmax_science, fname):
         qml_ells = np.asarray(r["qml_ells"])
         pcl_ells = np.asarray(r["pcl_ells"])
         deconv = r["qml"]["deconvolved"]
-        # NaMaster's invvar-weighted ell is the physically correct
-        # "effective ell" for both methods (QUBE's bandpower observable
-        # is also an invvar average; bin-midpoint reporting is being
-        # addressed separately).
         n_q = min(len(qml_ells), len(pcl_ells))
-        ell_eff = pcl_ells[:n_q]
-        dl = ell_eff * (ell_eff + 1) / (2 * np.pi)
+        # One common effective ell for both estimators: QML's bandpower window
+        # centroid (ADR-0019). NaMaster's get_effective_ells returns the
+        # *bin-weight* centroid, which with inverse-variance weights sits near
+        # the top of each bin (~9 for the ell 2-10 bin) and is not the same
+        # quantity; the two estimators' true window centroids agree to <0.5
+        # here. A shared ell also keeps the D_ell conversion common, so the two
+        # curves stay directly comparable -- giving each its own
+        # ell(ell+1)/2pi would rescale them relative to each other for purely
+        # cosmetic reasons. The +/-0.25 offsets are legibility only.
+        ell_eff = qml_ells[:n_q]
+        dl_q = dl_p = ell_eff * (ell_eff + 1) / (2 * np.pi)
+        ell_q = ell_p = ell_eff
         c_qml, c_pcl = case_colors.get(key, (C_QML, C_PCL))
         ax = spectra_axes.get(key)
         if ax is None:
             continue
 
+        # Both windowed theories, always. The two estimators measure different
+        # linear functionals of C_ell, so these curves are only guaranteed to
+        # coincide at delta_ell=1 (where they agree to 1e-15). Where they
+        # separate, a single "theory" curve would misrepresent one of the two.
+        th_q = np.asarray(deconv["windowed_theory"])[:n_q]
+        th_p = np.asarray(r["pcl"]["windowed_theory"])[:n_q]
         ax.plot(
-            ell_eff,
-            deconv["windowed_theory"][:n_q] * dl,
+            ell_q,
+            th_q * dl_q,
             color=c_qml,
             ls="--",
             lw=1.5,
-            alpha=0.7,
-            label="theory",
+            alpha=0.85,
+            label="windowed theory (QML)",
+        )
+        ax.plot(
+            ell_p,
+            th_p * dl_p,
+            color=c_pcl,
+            ls=":",
+            lw=2.0,
+            alpha=0.9,
+            label="windowed theory (PCL)",
         )
         ax.errorbar(
-            ell_eff - 0.25,
-            deconv["mean"][:n_q] * dl,
-            yerr=deconv["std"][:n_q] * dl,
+            ell_q - 0.25,
+            np.asarray(deconv["mean"])[:n_q] * dl_q,
+            yerr=np.asarray(deconv["std"])[:n_q] * dl_q,
             fmt="o",
             ms=5,
             capsize=2.5,
@@ -743,9 +837,9 @@ def make_dl_variance_figure(results, lmax_science, fname):
             label="QML",
         )
         ax.errorbar(
-            ell_eff + 0.25,
-            r["pcl"]["mean"][:n_q] * dl,
-            yerr=r["pcl"]["std"][:n_q] * dl,
+            ell_p + 0.25,
+            np.asarray(r["pcl"]["mean"])[:n_q] * dl_p,
+            yerr=np.asarray(r["pcl"]["std"])[:n_q] * dl_p,
             fmt="s",
             ms=5,
             capsize=2.5,
@@ -762,30 +856,73 @@ def make_dl_variance_figure(results, lmax_science, fname):
             fontsize=15,
         )
 
-        ratio = r["pcl"]["std"][:n_q] / deconv["std"][:n_q]
+        # Response-normalised ratio. A bare sigma_PCL/sigma_QML compares errors
+        # on two *different* quantities whenever the windows differ (they do:
+        # the lowest bandpower's window value ratio is ~1.26 here, and the
+        # mismatch persists at every bin width). Dividing each sigma by its own
+        # windowed theory turns both into the fractional error on the amplitude
+        # of C^fid as that estimator's own window sees it, which is comparable.
+        cov_q = np.asarray(deconv["cov_emp"])[:n_q, :n_q]
+        cov_p = np.asarray(r["pcl"]["cov_emp"])[:n_q, :n_q]
+        diag = (np.sqrt(np.diag(cov_p)) / np.abs(th_p)) / (
+            np.sqrt(np.diag(cov_q)) / np.abs(th_q)
+        )
+        # Conditional (full-covariance) version. Pseudo-C_ell's neighbouring
+        # bandpowers are strongly anti-correlated, and any likelihood using the
+        # full bandpower covariance recovers that information, so the diagonal
+        # ratio overstates the loss. sigma(A_b)^-1 = |t_b| sqrt((C^-1)_bb).
+        inv_q, inv_p = np.linalg.inv(cov_q), np.linalg.inv(cov_p)
+        full = (np.abs(th_q) * np.sqrt(np.diag(inv_q))) / (
+            np.abs(th_p) * np.sqrt(np.diag(inv_p))
+        )
         ax_ratio.plot(
-            ell_eff,
-            ratio,
-            "o-",
-            color=c_qml,
-            ms=5,
+            ell_q,
+            diag,
+            "-",
+            color=c_pcl,
             lw=1.5,
-            label=r["label"],
+            alpha=0.9,
+            zorder=2,
+            label=rf"{r['label']}, $\Delta\ell={r['delta_ell']}$ (diagonal)",
+        )
+        ax_ratio.plot(
+            ell_q,
+            full,
+            "-",
+            color=c_qml,
+            lw=2.3,
+            zorder=4,
+            label=rf"{r['label']}, $\Delta\ell={r['delta_ell']}$ (full cov.)",
         )
 
     for ax in (ax_high, ax_low):
         ax.set_xlabel(r"Multipole $\ell$")
+        ax.set_ylabel(r"$D_\ell^{TT}\;[\mu K^2]$")
         ax.set_xlim(0, lmax_science + 2)
-        ax.legend(loc="upper left", fontsize=13, ncol=2, framealpha=0.95)
-    ax_high.set_ylabel(r"$D_\ell^{TT}\;[\mu K^2]$")
-    # Headroom for the legend in the shared y-range.
+        ax.margins(y=0.13)
+        ax.legend(loc="upper left", fontsize=9.5, framealpha=0.95)
+    # Headroom for the legend.
     ymin, ymax = ax_high.get_ylim()
-    ax_high.set_ylim(ymin, ymax + 0.25 * (ymax - ymin))
+    ax_high.set_ylim(ymin, ymax + 0.22 * (ymax - ymin))
 
     ax_ratio.axhline(1.0, color="black", ls=":", lw=1.0)
+    # The relative error of a sample SD is 1/sqrt(2(N-1)) = 2.2%, not the
+    # 1/sqrt(2/(N-1)) that applies to the *variance*; for a ratio of two SDs it
+    # is 1/sqrt(N-1) = 3.2%. Both estimators run on the same realisations, so
+    # their errors are positively correlated and this is an upper bound. The
+    # band is drawn once rather than as per-point bars because the same MC
+    # error is common to every curve here.
+    mc = 1.0 / np.sqrt(NSIMS - 1)
+    ax_ratio.axhspan(1.0 - mc, 1.0 + mc, color="0.45", alpha=0.16, zorder=0)
     ax_ratio.set_xlabel(r"Multipole $\ell$")
     ax_ratio.set_ylabel(r"$\sigma_{\rm PCL} / \sigma_{\rm QML}$")
-    ax_ratio.legend(loc="upper right", fontsize=13)
+    ax_ratio.legend(
+        loc="upper right",
+        fontsize=9,
+        framealpha=0.95,
+        handlelength=2.6,
+        labelspacing=0.35,
+    )
     ax_ratio.set_xlim(0, lmax_science + 2)
 
     fig.savefig(fname)
@@ -818,37 +955,61 @@ def _load_results_from_json(path):
 
 
 def make_correlation_figure(results, fname):
-    """Split-triangle bandpower correlation per fsky case.
+    """Split-triangle bandpower correlation, one row of panels.
 
-    Upper triangle = QML deconvolved (F^-1 q), lower triangle = PCL — both
-    estimators of the same bandpower observable, so the comparison is
-    apples-to-apples. A narrow band around the diagonal is left as NaN to
-    render a clear divider between the two triangle halves; its half-width is
-    controlled by ``gap = max(1, nbin // 40)``.
+    Every panel puts a QML normalisation in the upper triangle against the
+    same PCL correlation in the lower one. Panels are grouped by fsky case,
+    each contributing the deconvolved F^-1 q — estimators of the same
+    bandpower observable, so that half is apples-to-apples — followed by the
+    decorrelated F^-1/2 q, which is the identity by construction and lands at
+    the Monte Carlo floor. A narrow band around the diagonal is left as NaN to
+    divide the halves; its half-width is ``gap = max(1, nbin // 40)``.
     """
-    n = len(results)
-    fig, axes = plt.subplots(1, n, figsize=(6.4 * n, 5.6), constrained_layout=True)
+    panels = []
+    for r in results.values():
+        for mode in ("deconvolved", "decorrelated"):
+            panels.append((mode, r))
+
+    n = len(panels)
+    fig, axes = plt.subplots(1, n, figsize=(5.2 * n, 5.6), constrained_layout=True)
     if n == 1:
         axes = [axes]
 
-    for ax, (key, r) in zip(axes, results.items()):
-        qml = np.asarray(r["qml"]["deconvolved"]["corr_emp"])
+    cmap = plt.get_cmap("RdBu_r").copy()
+    cmap.set_bad(color="white")
+
+    def _tag(ax, x, y, ha, va, text):
+        ax.text(
+            x,
+            y,
+            text,
+            transform=ax.transAxes,
+            ha=ha,
+            va=va,
+            fontsize=16,
+            fontweight="bold",
+            color="black",
+            bbox=dict(
+                facecolor="white",
+                alpha=0.9,
+                edgecolor="black",
+                boxstyle="round,pad=0.3",
+            ),
+        )
+
+    for ax, (mode, r) in zip(axes, panels):
+        qml = np.asarray(r["qml"][mode]["corr_emp"])
         pcl = np.asarray(r["pcl"]["corr_emp"])
         nbin = min(qml.shape[0], pcl.shape[0])
-        qml = qml[:nbin, :nbin]
-        pcl = pcl[:nbin, :nbin]
-
         gap = max(1, nbin // 40)
-        composite = np.full_like(qml, np.nan, dtype=float)
+        composite = np.full((nbin, nbin), np.nan, dtype=float)
         iu = np.triu_indices(nbin, k=gap)
         il = np.tril_indices(nbin, k=-gap)
-        # origin="lower": tril displays top-left (where the QML label sits),
-        # triu displays bottom-right (where the PCL label sits).
-        composite[il] = qml[il]
-        composite[iu] = pcl[iu]
+        # origin="lower": tril displays top-left (where the QML label
+        # sits), triu displays bottom-right (where the PCL label sits).
+        composite[il] = qml[:nbin, :nbin][il]
+        composite[iu] = pcl[:nbin, :nbin][iu]
 
-        cmap = plt.get_cmap("RdBu_r").copy()
-        cmap.set_bad(color="white")
         im = ax.imshow(composite, vmin=-1, vmax=1, cmap=cmap, origin="lower")
         ax.plot(
             [-0.5, nbin - 0.5],
@@ -859,44 +1020,14 @@ def make_correlation_figure(results, fname):
         )
         ax.set_xlim(-0.5, nbin - 0.5)
         ax.set_ylim(-0.5, nbin - 0.5)
-        ax.set_xlabel("Bandpower", fontsize=22)
-        ax.set_ylabel("Bandpower", fontsize=22)
-        ax.tick_params(axis="both", which="major", labelsize=18)
+        ax.set_title(r["label"], fontsize=20)
+        ax.set_xlabel("Bandpower", fontsize=20)
+        if ax is axes[0]:
+            ax.set_ylabel("Bandpower", fontsize=20)
+        ax.tick_params(axis="both", which="major", labelsize=16)
 
-        ax.text(
-            0.97,
-            0.04,
-            "PCL",
-            transform=ax.transAxes,
-            ha="right",
-            va="bottom",
-            fontsize=18,
-            fontweight="bold",
-            color="black",
-            bbox=dict(
-                facecolor="white",
-                alpha=0.9,
-                edgecolor="black",
-                boxstyle="round,pad=0.3",
-            ),
-        )
-        ax.text(
-            0.04,
-            0.96,
-            "QML decoupled",
-            transform=ax.transAxes,
-            ha="left",
-            va="top",
-            fontsize=18,
-            fontweight="bold",
-            color="black",
-            bbox=dict(
-                facecolor="white",
-                alpha=0.9,
-                edgecolor="black",
-                boxstyle="round,pad=0.3",
-            ),
-        )
+        _tag(ax, 0.97, 0.04, "right", "bottom", "PCL")
+        _tag(ax, 0.04, 0.96, "left", "top", f"QML {mode}")
 
     cbar = fig.colorbar(im, ax=axes, fraction=0.025, pad=0.02, label="Correlation")
     cbar.ax.tick_params(labelsize=18)
