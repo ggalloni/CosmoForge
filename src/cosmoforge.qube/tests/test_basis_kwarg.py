@@ -184,3 +184,40 @@ def test_spectra_ceiling_changes_the_answer(config_resolver):
     assert np.max(np.abs(deconvolved("basis_dict") - deconvolved("neither"))) > 1e-9, (
         "lmax_signal=8 produced the 4*nside=16 answer, so the ceiling is inert"
     )
+
+
+def _ran_fisher(cfg, ceiling=8):
+    f = Fisher(cfg, basis={"method": "harmonic"})
+    f.lmax_signal = ceiling
+    f.run()
+    return f
+
+
+def test_spectra_adopts_the_ceiling_of_a_supplied_fisher(config_resolver):
+    """``fisher=`` owns the ceiling, because its Cls, beams and basis are built.
+
+    ``Spectra`` used to resolve independently from ``params``/``4*nside`` here,
+    so handing it a Fisher built at 8 reported 16 while reusing that Fisher's
+    8-ceiling components: the same two-ceiling split as the constructor routes.
+    """
+    cfg = _cfg(config_resolver)
+    s = Spectra(cfg, fisher=_ran_fisher(cfg))
+    assert s.lmax_signal == 8  # adopted, not 4*nside=16
+
+
+def test_spectra_refuses_a_ceiling_that_conflicts_with_a_supplied_fisher(
+    config_resolver,
+):
+    """A different ceiling cannot be honoured, so it is refused, not reported.
+
+    Matches how ``fisher=`` already treats ``mask=``, ``noise_cov1=``,
+    ``cls_data=`` and ``beam=``: reusing a built Fisher means conflicting
+    inputs raise rather than being silently dropped.
+    """
+    cfg = _cfg(config_resolver)
+    with pytest.raises(ValueError, match="conflicts with the supplied"):
+        Spectra(
+            cfg,
+            fisher=_ran_fisher(cfg),
+            basis={"method": "harmonic", "lmax_signal": 12},
+        )

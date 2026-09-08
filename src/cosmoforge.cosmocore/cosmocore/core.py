@@ -162,15 +162,39 @@ class Core(ABC):
         raise TypeError(f"basis must be None/False/str/dict, got {type(basis).__name__}")
 
     def _absorb_basis_lmax_signal(self) -> None:
-        """``basis={"lmax_signal": …}`` is an alias for the ``lmax_signal`` setter.
+        """Resolve ``basis={"lmax_signal": …}`` into the ceiling, not the basis.
 
-        Lives on ``Core`` because all three subclasses share
-        ``_resolve_basis_config``: routing the key through the property is what
-        keeps the Cls, the beams and the basis at one ceiling instead of
-        leaving them at two. Must run after ``self._lmax_signal`` exists.
+        Writes ``_lmax_signal`` directly rather than going through the
+        property: this is construction, which is exactly the window a setter
+        may legitimately refuse (``Spectra`` does). Must run after
+        ``self._lmax_signal`` exists.
         """
         if self._basis_config and "lmax_signal" in self._basis_config:
             self._lmax_signal = self._basis_config.pop("lmax_signal")
+
+    @property
+    def lmax_signal(self) -> int:
+        """Signal-cov ceiling (ADR 0009), the one every consumer resolves from.
+
+        Resolution order: explicit setter, then ``params.lmax_signal``, then
+        ``4 * nside`` (matching the Fortran reference implementation). The
+        signal and derivative matrices are computed up to this lmax, while the
+        output power spectra use ``params.lmax``.
+
+        Defined once here rather than per subclass: three identical copies is
+        how ``Spectra`` came to be missing the ``params.lmax_signal`` rung, and
+        one run ended up carrying two different ceilings.
+        """
+        if self._lmax_signal is not None:
+            return self._lmax_signal
+        params_value = getattr(self.params, "lmax_signal", None)
+        if params_value is not None:
+            return params_value
+        return 4 * self.params.nside
+
+    @lmax_signal.setter
+    def lmax_signal(self, value: int) -> None:
+        self._lmax_signal = value
 
     def __init__(
         self,

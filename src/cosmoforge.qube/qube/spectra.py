@@ -307,6 +307,20 @@ class Spectra(Core, MPISharedMemoryMixin):
                     "beam= cannot be used together with fisher= because Spectra "
                     "reuses the Fisher beam setup."
                 )
+            # A supplied Fisher owns the ceiling: its Cls, beams and basis are
+            # already built, and run() reuses them. Asking for a different one
+            # cannot be honoured, so refuse rather than report a ceiling that
+            # is not in effect. Adopting it unconditionally also fixes the
+            # no-basis case, where Spectra used to resolve from
+            # params/4*nside independently of the Fisher it was handed.
+            if self._lmax_signal is not None and self._lmax_signal != fisher.lmax_signal:
+                raise ValueError(
+                    f"lmax_signal={self._lmax_signal} conflicts with the supplied "
+                    f"fisher=, which was computed at {fisher.lmax_signal}. Its Cls, "
+                    "beams and basis cannot be rebuilt; drop the request or build "
+                    "the Fisher at that ceiling."
+                )
+            self._lmax_signal = fisher.lmax_signal
             self.fisher_instance = fisher
             # Reuse already computed components from Fisher
             self._reuse_fisher_components()
@@ -351,29 +365,8 @@ class Spectra(Core, MPISharedMemoryMixin):
         profiler = getattr(self, "_profiler", None)
         return profiler.stage(name) if profiler is not None else nullcontext()
 
-    @property
-    def lmax_signal(self) -> int:
-        """
-        Maximum multipole for signal/derivative matrix computation.
-
-        Resolution order: explicit setter, then ``params.lmax_signal``, then
-        ``4*nside`` (matching the Fortran reference implementation). The
-        derivative matrices are computed up to this lmax, while the output
-        power spectra use params.lmax.
-
-        Returns
-        -------
-        int
-            Maximum multipole for signal covariance and derivative computation.
-        """
-        if self._lmax_signal is not None:
-            return self._lmax_signal
-        params_value = getattr(self.params, "lmax_signal", None)
-        if params_value is not None:
-            return params_value
-        return 4 * self.params.nside
-
-    @lmax_signal.setter
+    # Core's getter, and a setter that refuses once it can no longer apply.
+    @Core.lmax_signal.setter
     def lmax_signal(self, value: int) -> None:
         """Set the signal-cov ceiling, and refuse once it can no longer apply.
 

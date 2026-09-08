@@ -29,6 +29,14 @@ Unreleased
   ``basis={"lmax_signal": N}`` and ``lmax_signal:`` in the config. Scripts that
   set it and silently got the ``4*nside`` answer now fail loudly and need one
   of those instead.
+* ``Spectra(fisher=…)`` now adopts that Fisher's ``lmax_signal`` and raises
+  ``ValueError`` if the constructor also asks for a different one. A supplied
+  Fisher owns the ceiling: its Cls, beams and basis are already built and
+  ``run()`` reuses them, so a conflicting request cannot be honoured. This
+  matches how ``fisher=`` already refuses ``mask=``, ``noise_cov1=``,
+  ``cls_data=`` and ``beam=``. Adopting it also fixes the plain case, where
+  ``Spectra`` resolved from ``params.lmax_signal``/``4*nside`` independently of
+  the Fisher it was handed and could report a ceiling that was not in effect.
 * ``PixelDirectBudgetConfig`` is now keyword-only, and ``lmax_signal`` on it is
   optional (default ``None``). With ``has_switch`` gone, ``lmax_signal`` feeds
   no term on that path: it is echoed in the table header as provenance and read
