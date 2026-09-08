@@ -48,6 +48,22 @@ class TestPICSLikeInit:
         picslike = PICSLike(params_file=fast_config_path)
         assert picslike.simulation_index == 0
 
+    def test_basis_lmax_signal_is_a_setter_alias(self, fast_config_path):
+        """``basis={"lmax_signal": N}`` resolves the ceiling, it is not dropped.
+
+        The key was silently discarded here: it was never in PICSLike's
+        ``_basis_keys`` filter and there was no setter alias, so the ceiling
+        the caller asked for reached neither the Cls/beams nor the basis.
+        """
+        picslike = PICSLike(
+            params_file=fast_config_path,
+            basis={"method": "harmonic", "lmax_signal": 8},
+        )
+        assert picslike.lmax_signal == 8
+        # Absorbed into the property, so the basis builder cannot see a second
+        # ceiling on the config dict.
+        assert "lmax_signal" not in picslike._basis_config
+
 
 class TestSetSimulationIndex:
     """Test suite for set_simulation_index method."""

@@ -19,6 +19,16 @@ Unreleased
   (ADR-0018). A stale call raises ``TypeError`` and a stale ``--no-switch``
   exits with an argparse error, rather than silently modelling a buffer that
   does not exist.
+* ``Spectra.lmax_signal`` now raises ``RuntimeError`` when assigned after
+  construction, instead of accepting the value and ignoring it. ``Spectra``
+  builds *and runs* its internal Fisher inside ``__init__`` (unlike ``Fisher``,
+  which runs only when you call ``run()``), so a later assignment cannot change
+  the ceiling anything was computed at. It previously moved the reported
+  attribute and no result: ``s.lmax_signal = 8`` produced output bit-identical
+  to setting nothing at all. The error names the two routes that do work,
+  ``basis={"lmax_signal": N}`` and ``lmax_signal:`` in the config. Scripts that
+  set it and silently got the ``4*nside`` answer now fail loudly and need one
+  of those instead.
 * ``PixelDirectBudgetConfig`` is now keyword-only, and ``lmax_signal`` on it is
   optional (default ``None``). With ``has_switch`` gone, ``lmax_signal`` feeds
   no term on that path: it is echoed in the table header as provenance and read
@@ -66,6 +76,24 @@ Unreleased
   ``compute_signal_matrix`` pass disappears from setup. Results are unchanged
   (ADR-0003, amended to record that pixel-direct is exempt from the ``lswitch``
   ``S_fixed`` split).
+* Setting ``fisher.lmax_signal`` / ``picslike.lmax_signal`` before ``run()``
+  now applies to the computation basis too. The basis builder read
+  ``params.lmax_signal`` directly, so a setter-set ceiling was ignored: Cls
+  and beams were built at the requested ℓ while the basis was built at
+  ``4*nside``, and the run failed later with a "beam too short" error from the
+  spectra loader. Putting ``lmax_signal:`` in the YAML was unaffected.
+* ``Spectra.lmax_signal`` now honours ``params.lmax_signal`` before falling
+  back to ``4*nside``, matching ``Fisher`` and ``PICSLike``. A standalone
+  ``Spectra`` (no ``fisher=``) previously ignored the config key.
+* ``basis={"lmax_signal": …}`` is now an alias for the ``lmax_signal`` setter
+  on **all three** of ``Fisher``, ``Spectra`` and ``PICSLike``, rather than a
+  basis-only override. It reached only ``Fisher`` before. On ``Spectra`` it set
+  the internal Fisher's ceiling while leaving ``Spectra``'s own at ``4*nside``,
+  so one run carried two ceilings and the deconvolved Cl shifted by ~0.6% at
+  the lowest bandpower against the coherent answer. On ``PICSLike`` the key was
+  dropped entirely: it was never in that class's basis-key filter and had no
+  setter alias, so the requested ceiling reached neither the Cls and beams nor
+  the basis.
 
 Version 1.1.0 (2026-07-21)
 --------------------------

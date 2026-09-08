@@ -130,7 +130,7 @@ class Core(ABC):
           layer has no second noise covariance, so cross stays traditional).
         - ``False`` → traditional path (explicit opt-out).
         - ``"auto"`` / ``"harmonic"`` / ``"pixel"`` → ``{"method": …}`` (uncompressed).
-        - ``dict`` → used as-is (the only way to request compression).
+        - ``dict`` → copied (the only way to request compression).
         """
         unset = Core._UNSET
         if compression is not unset:
@@ -160,6 +160,17 @@ class Core(ABC):
         if isinstance(basis, dict):
             return dict(basis)
         raise TypeError(f"basis must be None/False/str/dict, got {type(basis).__name__}")
+
+    def _absorb_basis_lmax_signal(self) -> None:
+        """``basis={"lmax_signal": …}`` is an alias for the ``lmax_signal`` setter.
+
+        Lives on ``Core`` because all three subclasses share
+        ``_resolve_basis_config``: routing the key through the property is what
+        keeps the Cls, the beams and the basis at one ceiling instead of
+        leaving them at two. Must run after ``self._lmax_signal`` exists.
+        """
+        if self._basis_config and "lmax_signal" in self._basis_config:
+            self._lmax_signal = self._basis_config.pop("lmax_signal")
 
     def __init__(
         self,
@@ -719,8 +730,9 @@ class Core(ABC):
             operator never materialised. Pass a value (e.g. ``1e-6``)
             to opt into the V-based / eigenmode-truncated path.
         lmax_signal : int or None, optional
-            Signal-cov ceiling. If None, defaults to ``params.lmax_signal``
-            or ``4 * nside``.
+            Signal-cov ceiling. If None, falls back to the instance's
+            resolved ``lmax_signal`` (subclasses expose it as a property),
+            then ``params.lmax_signal``, then ``4 * nside``.
         mode_fraction : float or None, optional
             Fraction of modes to keep (between 0 and 1). Keeps the top modes
             ordered by eigenvalue. Mutually exclusive with epsilon.
@@ -778,7 +790,17 @@ class Core(ABC):
             )
 
         if lmax_signal is None:
-            lmax_signal = getattr(self.params, "lmax_signal", None)
+            # Subclasses expose a resolved ``lmax_signal`` property (setter →
+            # params → 4*nside); reading it keeps the basis at the same ceiling
+            # the Cls and beams were set up with. Plain Core has params only.
+            # Dispatched on the class, not ``getattr(self, ...)``: that form
+            # also swallows an AttributeError raised *inside* the property and
+            # would degrade silently to 4*nside, which is the failure this
+            # resolution order exists to remove.
+            if isinstance(getattr(type(self), "lmax_signal", None), property):
+                lmax_signal = self.lmax_signal
+            else:
+                lmax_signal = getattr(self.params, "lmax_signal", None)
         basis_lmax = lmax_signal if lmax_signal is not None else 4 * self.params.nside
 
         # Extract beam from field collection if not provided

@@ -235,6 +235,7 @@ class PICSLike(Core, MPISharedMemoryMixin):
         self.likelihood_result: LikelihoodResult | None = None
         self.simulation_index: int = 0  # Which simulation to use for likelihood
         self._lmax_signal = None
+        self._absorb_basis_lmax_signal()
         self.fiducial_spectrum: dict | None = None
         self._legendre_cache: np.ndarray | None = (
             None  # Pre-computed Legendre polynomials

@@ -248,6 +248,8 @@ class Fisher(Core, MPISharedMemoryMixin):
         self.signal_matrix = None
         self._lmax_signal = None
 
+        self._absorb_basis_lmax_signal()
+
         # Original reduced noise N, retained for the in-memory handoff to
         # Spectra (ADR-0016); populated by prepare_covariance_matrices.
         self.reduced_noise_cov1 = None
@@ -704,7 +706,6 @@ class Fisher(Core, MPISharedMemoryMixin):
             if self._basis_config is not None:
                 _basis_keys = (
                     "method",
-                    "lmax_signal",
                     "epsilon",
                     "mode_fraction",
                     "compression_target",
