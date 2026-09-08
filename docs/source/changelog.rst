@@ -6,8 +6,13 @@ All notable changes to CosmoForge will be documented here.
 Every pull request that touches package source updates this file; see
 ``CLAUDE.md`` and the pull-request template.
 
-Unreleased
-----------
+Version 1.2.0 (2026-09-08)
+--------------------------
+
+The Paper I referee round. One signal-cov ceiling per run instead of up to
+two, a memory model that matches what the profiler measures, and figures that
+compare the two estimators on the same quantity. Most of what changed here was
+reporting a number that was not the one in effect.
 
 **Breaking changes:**
 
