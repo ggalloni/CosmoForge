@@ -195,7 +195,13 @@ def write_temp_config(
 
 
 def benchmark_fisher(config_file, bins=None):
-    fisher = Fisher(config_file, compression={"method": "auto"})
+    # cache_derivatives is passed explicitly: it defaulted to True when this
+    # benchmark's published numbers were taken and flipped to False afterwards,
+    # which silently doubled the QML stage cost (the per-bin C^-1 dC products
+    # get recomputed inside Spectra). Keep the caching, throughput-oriented
+    # setting so these timings stay comparable to the memory benchmark, which
+    # profiles the same configuration.
+    fisher = Fisher(config_file, basis={"method": "auto"}, cache_derivatives=True)
     if bins is not None:
         fisher.set_binning(bins)
     t0 = time.perf_counter()
@@ -214,7 +220,7 @@ def benchmark_fisher(config_file, bins=None):
 
 
 def benchmark_spectra(config_file, fisher, bins=None):
-    spectra = Spectra(config_file, fisher=fisher, compression={"method": "auto"})
+    spectra = Spectra(config_file, fisher=fisher, basis={"method": "auto"})
     if bins is not None:
         spectra.set_binning(bins)
     t0 = time.perf_counter()
@@ -292,6 +298,11 @@ def main():
     )
 
     results = {}
+    # The first cell of the sweep pays the one-time Numba JIT compilation
+    # (~3 s), which made T@nside=16 slower than T@nside=32 in the published
+    # table. Run that cell twice — cold (with JIT) and warm (same process,
+    # post-compilation) — and report both.
+    first_cell = True
 
     for nside in nside_values:
         lmax = 2 * nside
@@ -339,38 +350,47 @@ def main():
                     fwhmarcmin=fwhmarcmin,
                 )
                 bins = Bins.fromdeltal(2, lmax, delta_ell)
-                try:
-                    timings, fisher = benchmark_fisher(config_file, bins=bins)
-                    print(f"  n_modes/dim = {timings['n_modes']}")
-                    print(f"  n_pix          = {timings['n_pix']}")
-                    print(f"  Fisher run:    {timings['total']:.2f}s")
-                    timings.update(
-                        {
-                            "nside": nside,
-                            "fsky": fsky,
-                            "lmax": lmax,
-                            "lmax_sim": lmax_sim,
-                            "delta_ell": delta_ell,
-                            "method": "auto",
-                            "spins": spins,
-                            "field_label": field_label,
-                        }
-                    )
+                jit_states = ["cold", "warm"] if first_cell else [None]
+                for jit_state in jit_states:
+                    key = run_label if jit_state is None else f"{run_label}_{jit_state}"
+                    if jit_state is not None:
+                        print(f"  --- JIT {jit_state} ---")
                     try:
-                        qml_timings = benchmark_spectra(config_file, fisher, bins=bins)
-                        print(
-                            f"  QML ({qml_timings['nsims']} sims): "
-                            f"{qml_timings['qml_total']:.2f}s"
+                        timings, fisher = benchmark_fisher(config_file, bins=bins)
+                        print(f"  n_modes/dim = {timings['n_modes']}")
+                        print(f"  n_pix          = {timings['n_pix']}")
+                        print(f"  Fisher run:    {timings['total']:.2f}s")
+                        timings.update(
+                            {
+                                "nside": nside,
+                                "fsky": fsky,
+                                "lmax": lmax,
+                                "lmax_sim": lmax_sim,
+                                "delta_ell": delta_ell,
+                                "method": "auto",
+                                "spins": spins,
+                                "field_label": field_label,
+                                "jit_state": jit_state or "warm",
+                            }
                         )
-                        timings.update(qml_timings)
-                    except Exception as qml_err:
-                        print(f"  QML SKIPPED: {qml_err}")
-                        timings["qml_total"] = None
-                        timings["qml_error"] = str(qml_err)
-                    results[run_label] = timings
-                except Exception as e:
-                    print(f"  FAILED: {e}")
-                    results[run_label] = {"error": str(e)}
+                        try:
+                            qml_timings = benchmark_spectra(
+                                config_file, fisher, bins=bins
+                            )
+                            print(
+                                f"  QML ({qml_timings['nsims']} sims): "
+                                f"{qml_timings['qml_total']:.2f}s"
+                            )
+                            timings.update(qml_timings)
+                        except Exception as qml_err:
+                            print(f"  QML SKIPPED: {qml_err}")
+                            timings["qml_total"] = None
+                            timings["qml_error"] = str(qml_err)
+                        results[key] = timings
+                    except Exception as e:
+                        print(f"  FAILED: {e}")
+                        results[key] = {"error": str(e)}
+                first_cell = False
 
     out_name = f"benchmark_pixel_direct_only_fsky{fsky:.3f}".replace(".", "p")
     if args.suffix:
