@@ -169,7 +169,7 @@ def test_qube_budget_stage_lookup_raises_on_unknown():
 def test_pixel_direct_basis_setup_carries_two_pix_squares():
     """Two n_pix² buffers, never three: Core resolves the pixel-direct path
     before the S_fixed branch, so the fixed-multipole matrix is never built."""
-    cfg = PixelDirectBudgetConfig(n_pix=1000, lmax_signal=64, n_bins=6, n_params=18)
+    cfg = PixelDirectBudgetConfig(n_pix=1000, n_bins=6, n_params=18)
     basis = predict_pixel_direct_budget(cfg).stage("basis_setup")
 
     pix_sq = 1000 * 1000 * 8
@@ -179,7 +179,7 @@ def test_pixel_direct_basis_setup_carries_two_pix_squares():
 
 
 def test_pixel_direct_fisher_run_scales_transient_with_n_params():
-    cfg = PixelDirectBudgetConfig(n_pix=1000, lmax_signal=64, n_bins=6, n_params=18)
+    cfg = PixelDirectBudgetConfig(n_pix=1000, n_bins=6, n_params=18)
     fisher = predict_pixel_direct_budget(cfg).stage("fisher_run")
     pix_sq = 1000 * 1000 * 8
     key = "cinv_times_dcb (n_params dense pixel matrices)"
@@ -207,17 +207,10 @@ def test_pixel_direct_qu_nside64_fsky010_basis_persistent_one_pix_sq():
     assert basis.persistent_bytes - cov.persistent_bytes == pix_sq
 
 
-def test_pixel_direct_defaults_to_uncached_matching_fisher_default():
-    cfg = PixelDirectBudgetConfig(n_pix=1000, lmax_signal=64, n_bins=6, n_params=18)
-    assert cfg.cache_derivatives is False
-    fisher = predict_pixel_direct_budget(cfg).stage("fisher_run")
-    assert not any("derivative cache" in term for term in fisher.persistent)
-
-
 def test_cache_derivatives_adds_n_params_pix_sq_from_fisher_through_spectra():
     """The cache is built in fisher.compute.derivative_cache and retained for
     Spectra, so it lands in persistent state on both stages, not transient."""
-    kwargs = dict(n_pix=1000, lmax_signal=64, n_bins=6, n_params=18)
+    kwargs = dict(n_pix=1000, n_bins=6, n_params=18)
     off = predict_pixel_direct_budget(PixelDirectBudgetConfig(**kwargs))
     on = predict_pixel_direct_budget(
         PixelDirectBudgetConfig(**kwargs, cache_derivatives=True)
@@ -269,17 +262,32 @@ def test_cached_fisher_peak_matches_isolated_g100_rerun(
 
 def test_pixel_direct_invalid_config_rejected():
     with pytest.raises(ValueError):
-        PixelDirectBudgetConfig(n_pix=0, lmax_signal=64, n_bins=6, n_params=18)
+        PixelDirectBudgetConfig(n_pix=0, n_bins=6, n_params=18)
     with pytest.raises(ValueError):
-        PixelDirectBudgetConfig(n_pix=1000, lmax_signal=0, n_bins=6, n_params=18)
+        PixelDirectBudgetConfig(n_pix=1000, n_bins=0, n_params=18)
     with pytest.raises(ValueError):
-        PixelDirectBudgetConfig(n_pix=1000, lmax_signal=64, n_bins=0, n_params=18)
+        PixelDirectBudgetConfig(n_pix=1000, n_bins=6, n_params=0)
+    # Optional, but still refused when given as a non-positive ceiling.
     with pytest.raises(ValueError):
-        PixelDirectBudgetConfig(n_pix=1000, lmax_signal=64, n_bins=6, n_params=0)
+        PixelDirectBudgetConfig(n_pix=1000, n_bins=6, n_params=18, lmax_signal=0)
+
+
+def test_pixel_direct_lmax_signal_is_optional_provenance_only():
+    """It feeds no term, so omitting it changes no number and drops it from the
+    header; supplying it echoes the ceiling back for a saved run."""
+    without = predict_pixel_direct_budget(
+        PixelDirectBudgetConfig(n_pix=1000, n_bins=6, n_params=18)
+    )
+    with_ceiling = predict_pixel_direct_budget(
+        PixelDirectBudgetConfig(n_pix=1000, n_bins=6, n_params=18, lmax_signal=64)
+    )
+    assert without.lifetime_peak_bytes == with_ceiling.lifetime_peak_bytes
+    assert "lmax_signal" not in without.format_table()
+    assert "lmax_signal=64" in with_ceiling.format_table()
 
 
 def test_pixel_direct_format_table_lists_all_stages():
-    cfg = PixelDirectBudgetConfig(n_pix=1000, lmax_signal=64, n_bins=6, n_params=18)
+    cfg = PixelDirectBudgetConfig(n_pix=1000, n_bins=6, n_params=18)
     table = predict_pixel_direct_budget(cfg).format_table()
     assert "[pixel_direct]" in table
     for stage in ("covariance_setup", "basis_setup", "fisher_run", "spectra_run"):

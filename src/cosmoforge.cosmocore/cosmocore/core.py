@@ -859,13 +859,12 @@ class Core(ABC):
             fiducial_file = getattr(self.params, "fiducialfile", None) or getattr(
                 self.params, "inputclfile", None
             )
-            has_coll = hasattr(self, "collection") and self.collection is not None
             # Injected fiducial_cls wins (ADR-0017); else read the file. The
             # injected object lets the S_fixed / SMW path run disk-free.
             have_fiducial = (
                 self._injected_fiducial_cls is not None or fiducial_file is not None
             )
-            if have_fiducial and has_coll:
+            if have_fiducial and getattr(self, "collection", None) is not None:
                 if self._injected_fiducial_cls is not None:
                     fiducial_spectrum = self._injected_fiducial_cls
                 else:

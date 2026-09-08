@@ -103,16 +103,21 @@ class BudgetConfig:
         return self.lmax is not None and self.lmax < self.lmax_signal
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class PixelDirectBudgetConfig:
     """Inputs to the QUBE pixel-direct path budget.
 
+    Keyword-only: ``lmax_signal`` became optional after it stopped feeding
+    any term, and reordering a positional signature around it would let an
+    old four-argument call silently rebind n_bins to a multipole.
+
     n_pix: total pixel count (same convention as BudgetConfig).
-    lmax_signal: signal-cov ceiling (Layer A). Informational here: the
-        pixel-direct path includes the high-ℓ signal in pixel space, so a
-        narrower inference window changes nothing in the budget (Core
-        resolves the path before building S_fixed, so no S_fixed buffer
-        is ever allocated on this path).
+    lmax_signal: signal-cov ceiling (Layer A). Optional, and read by nothing
+        except the table header, where it is echoed as provenance for a saved
+        run. The pixel-direct path carries the high-ℓ signal in pixel space,
+        so a narrower inference window changes no term in this budget (Core
+        resolves the path before building S_fixed, so no S_fixed buffer is
+        ever allocated here).
     n_bins: number of bandpower bins in the analysis. Drives the
         per-parameter ``cinv_times_dcb`` dict size during fisher_run.
     n_params: number of derivative parameters. ``n_bins × n_spectra`` in
@@ -129,15 +134,15 @@ class PixelDirectBudgetConfig:
     """
 
     n_pix: int
-    lmax_signal: int
     n_bins: int
     n_params: int
     cache_derivatives: bool = False
+    lmax_signal: int | None = None
 
     def __post_init__(self) -> None:
         if self.n_pix <= 0:
             raise ValueError(f"n_pix must be positive (got {self.n_pix})")
-        if self.lmax_signal <= 0:
+        if self.lmax_signal is not None and self.lmax_signal <= 0:
             raise ValueError(f"lmax_signal must be positive (got {self.lmax_signal})")
         if self.n_bins <= 0:
             raise ValueError(f"n_bins must be positive (got {self.n_bins})")
@@ -323,8 +328,9 @@ def _format_table(budget: QUBEBudget) -> str:
             f"  {switch_str}  release_V={cfg.release_pixel_projector}"
         )
     else:
+        ceiling = "" if cfg.lmax_signal is None else f"  lmax_signal={cfg.lmax_signal}"
         header = (
-            f"  n_pix={cfg.n_pix}  lmax_signal={cfg.lmax_signal}"
+            f"  n_pix={cfg.n_pix}{ceiling}"
             f"  n_bins={cfg.n_bins}  n_params={cfg.n_params}"
             f"  cache_derivatives={cfg.cache_derivatives}"
         )
@@ -354,12 +360,8 @@ def _format_table(budget: QUBEBudget) -> str:
         " run's own input maps and covariance)"
     )
     excludes = "Excludes: BLAS scratch, allocator overhead"
-    if budget.path == "harmonic":
+    if isinstance(cfg, BudgetConfig):
         excludes += ", derivative_cache transient (~5 × n_modes² × 8 B at eclipse-QU)"
-    elif not cfg.cache_derivatives:
-        excludes += (
-            "; derivative cache off (pass --cache-derivatives to add n_params × n_pix²)"
-        )
     lines.append(excludes + ".")
     return "\n".join(lines)
 
@@ -380,7 +382,11 @@ def _main() -> None:  # pragma: no cover - CLI entry point
         "--n-pix", type=int, required=True, help="total pixel count (Q+U for spin-2)"
     )
     parser.add_argument(
-        "--lmax-signal", type=int, required=True, help="signal-cov ceiling (Layer A)"
+        "--lmax-signal",
+        type=int,
+        default=None,
+        help="signal-cov ceiling (Layer A); required for --path harmonic, "
+        "provenance only for --path pixel_direct",
     )
     # Harmonic-only
     parser.add_argument(
@@ -416,6 +422,8 @@ def _main() -> None:  # pragma: no cover - CLI entry point
     args = parser.parse_args()
 
     if args.path == "harmonic":
+        if args.lmax_signal is None:
+            parser.error("--lmax-signal is required for --path harmonic")
         if args.n_modes is None:
             parser.error("--n-modes is required for --path harmonic")
         config = BudgetConfig(

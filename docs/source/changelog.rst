@@ -19,6 +19,14 @@ Unreleased
   (ADR-0018). A stale call raises ``TypeError`` and a stale ``--no-switch``
   exits with an argparse error, rather than silently modelling a buffer that
   does not exist.
+* ``PixelDirectBudgetConfig`` is now keyword-only, and ``lmax_signal`` on it is
+  optional (default ``None``). With ``has_switch`` gone, ``lmax_signal`` feeds
+  no term on that path: it is echoed in the table header as provenance and read
+  by nothing else. Keyword-only rather than reordered, because a reordered
+  positional signature would let an old four-argument call rebind ``n_bins`` to
+  a multipole with no error. ``qube-memory-budget --lmax-signal`` is
+  correspondingly no longer required for ``--path pixel_direct``; it stays
+  required for ``--path harmonic``, where it sizes the basis.
 
 **Added:**
 
