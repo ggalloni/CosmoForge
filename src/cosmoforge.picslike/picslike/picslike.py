@@ -235,6 +235,7 @@ class PICSLike(Core, MPISharedMemoryMixin):
         self.likelihood_result: LikelihoodResult | None = None
         self.simulation_index: int = 0  # Which simulation to use for likelihood
         self._lmax_signal = None
+        self._absorb_basis_lmax_signal()
         self.fiducial_spectrum: dict | None = None
         self._legendre_cache: np.ndarray | None = (
             None  # Pre-computed Legendre polynomials
@@ -242,25 +243,6 @@ class PICSLike(Core, MPISharedMemoryMixin):
 
         if self.rank == 0:
             self.log("PICSLike initialized!")
-
-    @property
-    def lmax_signal(self) -> int:
-        """Signal-cov ceiling (ADR 0009).
-
-        Resolution order: explicit setter, then ``params.lmax_signal``,
-        then ``4 * nside``.
-        """
-        if self._lmax_signal is not None:
-            return self._lmax_signal
-        params_value = getattr(self.params, "lmax_signal", None)
-        if params_value is not None:
-            return params_value
-        return 4 * self.params.nside
-
-    @lmax_signal.setter
-    def lmax_signal(self, value: int) -> None:
-        """Set custom lmax_signal value."""
-        self._lmax_signal = value
 
     def compute_signal_matrix(self, param_point: tuple) -> np.ndarray:
         """

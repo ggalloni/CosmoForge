@@ -248,6 +248,8 @@ class Fisher(Core, MPISharedMemoryMixin):
         self.signal_matrix = None
         self._lmax_signal = None
 
+        self._absorb_basis_lmax_signal()
+
         # Original reduced noise N, retained for the in-memory handoff to
         # Spectra (ADR-0016); populated by prepare_covariance_matrices.
         self.reduced_noise_cov1 = None
@@ -259,24 +261,6 @@ class Fisher(Core, MPISharedMemoryMixin):
         # by user-facing label-keyed accessors to navigate the flat
         # output arrays.
         self.spectra_list: list | None = None
-
-    @property
-    def lmax_signal(self) -> int:
-        """Signal-cov ceiling (ADR 0009).
-
-        Resolution order: explicit setter, then ``params.lmax_signal``,
-        then ``4 * nside``.
-        """
-        if self._lmax_signal is not None:
-            return self._lmax_signal
-        params_value = getattr(self.params, "lmax_signal", None)
-        if params_value is not None:
-            return params_value
-        return 4 * self.params.nside
-
-    @lmax_signal.setter
-    def lmax_signal(self, value: int) -> None:
-        self._lmax_signal = value
 
     # =========================================================================
     # Profiling hook (no-op unless ``_profiler`` is set externally)
@@ -704,7 +688,6 @@ class Fisher(Core, MPISharedMemoryMixin):
             if self._basis_config is not None:
                 _basis_keys = (
                     "method",
-                    "lmax_signal",
                     "epsilon",
                     "mode_fraction",
                     "compression_target",

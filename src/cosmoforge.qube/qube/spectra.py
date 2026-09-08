@@ -269,6 +269,12 @@ class Spectra(Core, MPISharedMemoryMixin):
             basis, compression, self.params.do_cross
         )
 
+        # lmax for signal matrix computation (matches the Fortran convention of
+        # 4*nside). Resolved here, ahead of _get_fisher(), because the internal
+        # Fisher is pinned to this ceiling and the property must already read.
+        self._lmax_signal = None
+        self._absorb_basis_lmax_signal()
+
         # Initialize Fisher matrix or compute it
         if fisher is not None:
             if not isinstance(fisher, Fisher):
@@ -301,6 +307,20 @@ class Spectra(Core, MPISharedMemoryMixin):
                     "beam= cannot be used together with fisher= because Spectra "
                     "reuses the Fisher beam setup."
                 )
+            # A supplied Fisher owns the ceiling: its Cls, beams and basis are
+            # already built, and run() reuses them. Asking for a different one
+            # cannot be honoured, so refuse rather than report a ceiling that
+            # is not in effect. Adopting it unconditionally also fixes the
+            # no-basis case, where Spectra used to resolve from
+            # params/4*nside independently of the Fisher it was handed.
+            if self._lmax_signal is not None and self._lmax_signal != fisher.lmax_signal:
+                raise ValueError(
+                    f"lmax_signal={self._lmax_signal} conflicts with the supplied "
+                    f"fisher=, which was computed at {fisher.lmax_signal}. Its Cls, "
+                    "beams and basis cannot be rebuilt; drop the request or build "
+                    "the Fisher at that ceiling."
+                )
+            self._lmax_signal = fisher.lmax_signal
             self.fisher_instance = fisher
             # Reuse already computed components from Fisher
             self._reuse_fisher_components()
@@ -335,9 +355,6 @@ class Spectra(Core, MPISharedMemoryMixin):
             None  # Normalized Fisher (for convolved covariance)
         )
 
-        # lmax for signal matrix computation (matches Fortran convention of 4*nside)
-        self._lmax_signal = None
-
     def _stage(self, name: str):
         """Return the profiler's stage context, or a nullcontext when none.
 
@@ -348,27 +365,23 @@ class Spectra(Core, MPISharedMemoryMixin):
         profiler = getattr(self, "_profiler", None)
         return profiler.stage(name) if profiler is not None else nullcontext()
 
-    @property
-    def lmax_signal(self) -> int:
-        """
-        Maximum multipole for signal/derivative matrix computation.
-
-        This defaults to 4*nside to match the Fortran reference implementation.
-        The derivative matrices are computed up to this lmax, while the output
-        power spectra use params.lmax.
-
-        Returns
-        -------
-        int
-            Maximum multipole for signal covariance and derivative computation.
-        """
-        if self._lmax_signal is not None:
-            return self._lmax_signal
-        return 4 * self.params.nside
-
-    @lmax_signal.setter
+    # Core's getter, and a setter that refuses once it can no longer apply.
+    @Core.lmax_signal.setter
     def lmax_signal(self, value: int) -> None:
-        """Set custom lmax_signal value."""
+        """Set the signal-cov ceiling, and refuse once it can no longer apply.
+
+        Unlike ``Fisher``, ``Spectra`` builds *and runs* its internal Fisher
+        during ``__init__``, so an assignment afterwards cannot change the
+        ceiling anything was computed at. It used to be accepted and ignored,
+        which moved the reported attribute and no result.
+        """
+        if getattr(self, "fisher_instance", None) is not None:
+            raise RuntimeError(
+                "Spectra runs its Fisher during __init__, so setting "
+                "lmax_signal now cannot change what is computed. Pass "
+                'basis={"lmax_signal": N} to the constructor, or set '
+                "lmax_signal: in the config."
+            )
         self._lmax_signal = value
 
     def _reuse_fisher_components(self):
@@ -484,6 +497,12 @@ class Spectra(Core, MPISharedMemoryMixin):
             fiducial_cls=self._injected_fiducial_cls,
             beam=self._injected_beam,
         )
+        # Pin the internal Fisher to this Spectra's resolved ceiling. Without
+        # it the two disagree whenever the ceiling came from the setter: the
+        # helper above has already popped the key out of _basis_config, so the
+        # dict no longer carries it either. Unconditional, so both routes and
+        # the plain default agree by construction rather than by spelling.
+        fisher.lmax_signal = self.lmax_signal
         fisher.run()
 
         if self.rank == 0:

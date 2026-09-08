@@ -11,7 +11,7 @@ import warnings
 import numpy as np
 import pytest
 
-from qube import Fisher
+from qube import Fisher, Spectra
 
 
 def _cfg(config_resolver):
@@ -115,3 +115,109 @@ def test_default_equivalent_to_traditional_and_explicit_harmonic(config_resolver
         rtol=1e-6,
         err_msg="auto default is not the same Fisher operator as basis=False",
     )
+
+
+def _with_ceiling(cfg, cls_, via, ceiling=8):
+    """Build ``cls_`` asking for ``lmax_signal=ceiling`` by one of two routes."""
+    if via == "basis_dict":
+        return cls_(cfg, basis={"method": "harmonic", "lmax_signal": ceiling})
+    obj = cls_(cfg, basis={"method": "harmonic"})
+    if via == "setter":
+        obj.lmax_signal = ceiling
+    return obj
+
+
+@pytest.mark.parametrize("via", ["setter", "basis_dict"])
+def test_fisher_lmax_signal_reaches_the_basis(config_resolver, via):
+    """The resolved ``lmax_signal`` is the ceiling the basis is built at.
+
+    Regression: the builder read ``params.lmax_signal`` directly, so a
+    setter-set ceiling left the Cls/beams at one lmax and the basis at 4*nside,
+    surfacing as a "beam too short" error deep in the spectra loader.
+    """
+    f = _with_ceiling(_cfg(config_resolver), Fisher, via)
+    assert f.lmax_signal == 8  # not the 4*nside=16 default
+    f.run()
+    assert f.basis_manager.lmax_signal == 8
+
+
+def test_spectra_lmax_signal_reaches_the_basis(config_resolver):
+    """Same contract on ``Spectra``, where the dict is the only live route.
+
+    The dict used to reach the internal Fisher and not ``Spectra`` itself,
+    leaving one run with two ceilings: basis at 8, Cls and beams at 16.
+    """
+    s = _with_ceiling(_cfg(config_resolver), Spectra, "basis_dict")
+    assert s.lmax_signal == 8
+    s.run()
+    assert s.basis_manager.lmax_signal == 8
+
+
+def test_spectra_lmax_signal_setter_refuses_once_the_fisher_exists(config_resolver):
+    """The setter cannot work after construction, so it says so.
+
+    ``Spectra.__init__`` runs the internal Fisher, so a later assignment
+    cannot change the ceiling anything was computed at. It was previously
+    accepted and ignored: ``s.lmax_signal = 8`` moved the reported attribute
+    and produced output bit-identical to setting nothing (measured max|diff|
+    exactly 0.0).
+    """
+    s = Spectra(_cfg(config_resolver), basis={"method": "harmonic"})
+    with pytest.raises(RuntimeError, match="cannot change what is computed"):
+        s.lmax_signal = 8
+
+
+def test_spectra_ceiling_changes_the_answer(config_resolver):
+    """The ceiling must reach the numbers, not just the attribute.
+
+    This is the assertion the attribute checks above cannot make: before the
+    fix the dict route built the basis at 8 against Cls and beams at 16, which
+    shifted the deconvolved Cl by ~0.6% at the lowest bandpower rather than
+    producing the coherent lmax_signal=8 answer.
+    """
+
+    def deconvolved(via):
+        s = _with_ceiling(_cfg(config_resolver), Spectra, via)
+        s.run()
+        return np.asarray(s.get_power_spectra(mode="deconvolved")).ravel()
+
+    assert np.max(np.abs(deconvolved("basis_dict") - deconvolved("neither"))) > 1e-9, (
+        "lmax_signal=8 produced the 4*nside=16 answer, so the ceiling is inert"
+    )
+
+
+def _ran_fisher(cfg, ceiling=8):
+    f = Fisher(cfg, basis={"method": "harmonic"})
+    f.lmax_signal = ceiling
+    f.run()
+    return f
+
+
+def test_spectra_adopts_the_ceiling_of_a_supplied_fisher(config_resolver):
+    """``fisher=`` owns the ceiling, because its Cls, beams and basis are built.
+
+    ``Spectra`` used to resolve independently from ``params``/``4*nside`` here,
+    so handing it a Fisher built at 8 reported 16 while reusing that Fisher's
+    8-ceiling components: the same two-ceiling split as the constructor routes.
+    """
+    cfg = _cfg(config_resolver)
+    s = Spectra(cfg, fisher=_ran_fisher(cfg))
+    assert s.lmax_signal == 8  # adopted, not 4*nside=16
+
+
+def test_spectra_refuses_a_ceiling_that_conflicts_with_a_supplied_fisher(
+    config_resolver,
+):
+    """A different ceiling cannot be honoured, so it is refused, not reported.
+
+    Matches how ``fisher=`` already treats ``mask=``, ``noise_cov1=``,
+    ``cls_data=`` and ``beam=``: reusing a built Fisher means conflicting
+    inputs raise rather than being silently dropped.
+    """
+    cfg = _cfg(config_resolver)
+    with pytest.raises(ValueError, match="conflicts with the supplied"):
+        Spectra(
+            cfg,
+            fisher=_ran_fisher(cfg),
+            basis={"method": "harmonic", "lmax_signal": 12},
+        )
