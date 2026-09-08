@@ -20,7 +20,6 @@ load_inverted: false
 smoothing_type: gaussian
 fwhmarcmin: 440.0
 apply_pixwin: false
-beam_file: 'scripts/beam_440TP_pixwin16.fits'
 
 outnoisecovmat1: 'tests/data/nside8/QU/reduced_NCVM1.bin'
 outnoisecovmat2: 'tests/data/nside8/QU/reduced_NCVM2.bin'

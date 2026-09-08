@@ -21,6 +21,7 @@ def test_input_params_yaml_reading(tmp_path):
         "inputclfile": "data/cls.dat",
         "covmatfile1": "data/noise1.bin",
         "beam_file": "data/beam.fits",
+        "smoothing_type": "file",
         "fwhmarcmin": 5.0,
         "feedback": 2,
         "apply_pixwin": False,
@@ -377,3 +378,29 @@ def test_calibration_garbage_raises_the_removal_error():
     params = InputParams()
     with pytest.raises(ValueError, match="no longer supported"):
         params.update({"calibration": "not-a-number"})
+
+
+def test_beam_file_with_analytic_smoothing_warns():
+    """An explicit ``beam_file`` next to an analytic beam is inert — say so.
+
+    Configs get read as provenance long after the run; an ignored path there has
+    twice been mistaken for the beam actually applied.
+    """
+    params = InputParams()
+    with pytest.warns(UserWarning, match="beam_file.*is ignored"):
+        params.update({"smoothing_type": "gaussian", "beam_file": "b.fits"})
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"smoothing_type": "gaussian"},  # key absent -> default only
+        {"smoothing_type": "file", "beam_file": "b.fits"},  # file reads it
+        {"smoothing_type": "none", "beam_file": ""},  # empty claims nothing
+    ],
+)
+def test_beam_file_warning_stays_silent(config):
+    params = InputParams()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        params.update(config)

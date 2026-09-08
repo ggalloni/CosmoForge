@@ -74,9 +74,11 @@ cost model.
 
 - `method="auto"` is the default for `Core`.
 
-- `lswitch` semantics extended to pixel basis: pixel receives
+- `lswitch` semantics extended to the pixel *V-based* path: it receives
   `N_eff = N + S_fixed` directly with reduced lmax = params.lmax;
-  harmonic still receives N and S_fixed split for SMW.
+  harmonic still receives N and S_fixed split for SMW. Pixel-*direct*
+  is exempt — it carries the full `lmax_signal` band in pixel space, so
+  `Core` resolves the method before the `S_fixed` build and skips it.
 
 ## Consequences
 

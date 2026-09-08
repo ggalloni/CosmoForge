@@ -279,9 +279,9 @@ bin_lmaxs: [9, 29, 64]
 
 ```yaml
 # Beam parameters
-smoothing_type: gaussian  # none, gaussian, cosine_legacy, cosine_npipe, file
-fwhmarcmin: 5.0
-beam_file: "data/beam.fits"
+smoothing_type: file  # none, gaussian, cosine_legacy, cosine_npipe, file
+fwhmarcmin: 5.0  # gaussian only
+beam_file: "data/beam.fits"  # read only by smoothing_type: file
 apply_pixwin: true
 ```
 

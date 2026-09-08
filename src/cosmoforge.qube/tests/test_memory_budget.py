@@ -166,66 +166,128 @@ def test_qube_budget_stage_lookup_raises_on_unknown():
 # -- Pixel-direct path -------------------------------------------------------
 
 
-def test_pixel_direct_basis_setup_carries_two_pix_squares_with_switch():
-    cfg = PixelDirectBudgetConfig(n_pix=1000, lmax_signal=64, n_bins=6, n_params=18)
+def test_pixel_direct_basis_setup_carries_two_pix_squares():
+    """Two n_pix² buffers, never three: Core resolves the pixel-direct path
+    before the S_fixed branch, so the fixed-multipole matrix is never built."""
+    cfg = PixelDirectBudgetConfig(n_pix=1000, n_bins=6, n_params=18)
     basis = predict_pixel_direct_budget(cfg).stage("basis_setup")
 
     pix_sq = 1000 * 1000 * 8
     assert basis.persistent["Cov_T (carried from covariance_setup)"] == pix_sq
     assert basis.persistent["basis._N (asfortranarray F-order copy)"] == pix_sq
-    assert basis.persistent["S_fixed (allocator pool retained)"] == pix_sq
-
-
-def test_pixel_direct_no_switch_drops_s_fixed_term():
-    cfg = PixelDirectBudgetConfig(
-        n_pix=1000, lmax_signal=64, n_bins=6, n_params=18, has_switch=False
-    )
-    basis = predict_pixel_direct_budget(cfg).stage("basis_setup")
-    assert "S_fixed (allocator pool retained)" not in basis.persistent
+    assert basis.persistent_bytes == 2 * pix_sq
 
 
 def test_pixel_direct_fisher_run_scales_transient_with_n_params():
-    cfg = PixelDirectBudgetConfig(n_pix=1000, lmax_signal=64, n_bins=6, n_params=18)
+    cfg = PixelDirectBudgetConfig(n_pix=1000, n_bins=6, n_params=18)
     fisher = predict_pixel_direct_budget(cfg).stage("fisher_run")
     pix_sq = 1000 * 1000 * 8
     key = "cinv_times_dcb (n_params dense pixel matrices)"
     assert fisher.transient[key] == 18 * pix_sq
 
 
-def test_pixel_direct_qu_nside64_fsky010_basis_persistent_within_2_percent():
-    """Calibration: mem_nc_20103507.out, ccabffd, QU_nside64_lmax128_fsky0.1.
+def test_pixel_direct_qu_nside64_fsky010_basis_persistent_one_pix_sq():
+    """basis_setup adds exactly one n_pix² buffer over covariance_setup.
 
-    Measured basis_setup persistent above covariance_setup exit:
-    4241.1 - 2767.7 = 1473.4 MiB. Predicted: 2 × pix_sq = 1465.6 MiB.
+    The old calibration run mem_nc_20103507.out (ccabffd, QU_nside64_lmax128_
+    fsky0.1) measured 4241.1 - 2767.7 = 1473.4 MiB ≈ 2 × pix_sq, matching the
+    code of the time: the F-order copy plus the S_fixed buffer Core built
+    before resolving the path. S_fixed is no longer built here, so only the
+    structural F-order copy remains. Confirmed locally on
+    benchmark_memory_isolated_fsky0p100_pixel_pt14 (QU, nside=32, n_pix=2400,
+    pix_sq = 43.9 MiB): basis_setup delta +44.0 MB, covariance_setup delta
+    +43.9 MB — one pix_sq each. Cluster re-measurement at nside=64 pending
+    for the paper's Table C.2 absolute numbers.
     """
     cfg = PixelDirectBudgetConfig(n_pix=9800, lmax_signal=128, n_bins=6, n_params=18)
     budget = predict_pixel_direct_budget(cfg)
     basis = budget.stage("basis_setup")
     cov = budget.stage("covariance_setup")
     pix_sq = 9800 * 9800 * 8
-    basis_above_cov_gib = (basis.persistent_bytes - cov.persistent_bytes) / GIBIBYTE
-    measured_gib = (4241.1 - 2767.7) / 1024
-    relative_error = abs(basis_above_cov_gib - measured_gib) / measured_gib
-    assert relative_error < 0.02, (
-        f"prediction {basis_above_cov_gib:.2f} GiB drifted from measured "
+    assert basis.persistent_bytes - cov.persistent_bytes == pix_sq
+
+
+def test_cache_derivatives_adds_n_params_pix_sq_from_fisher_through_spectra():
+    """The cache is built in fisher.compute.derivative_cache and retained for
+    Spectra, so it lands in persistent state on both stages, not transient."""
+    kwargs = dict(n_pix=1000, n_bins=6, n_params=18)
+    off = predict_pixel_direct_budget(PixelDirectBudgetConfig(**kwargs))
+    on = predict_pixel_direct_budget(
+        PixelDirectBudgetConfig(**kwargs, cache_derivatives=True)
+    )
+
+    cache_bytes = 18 * 1000 * 1000 * 8
+    for stage in ("fisher_run", "spectra_run"):
+        assert (
+            on.stage(stage).persistent_bytes - off.stage(stage).persistent_bytes
+            == cache_bytes
+        )
+        assert on.stage(stage).transient == off.stage(stage).transient
+    for stage in ("covariance_setup", "basis_setup"):
+        assert on.stage(stage).peak_bytes == off.stage(stage).peak_bytes
+
+
+@pytest.mark.parametrize(
+    "name, n_pix, n_params, measured_gib",
+    [
+        ("QU_nside64", 9800, 18, 28.69),
+        ("T_nside64", 4900, 6, 3.00),
+    ],
+)
+def test_cached_fisher_peak_matches_isolated_g100_rerun(
+    name, n_pix, n_params, measured_gib
+):
+    """Isolated single-cell g100 runs, fsky=0.1, pixel-direct, post-pt-14
+    (2026-08-26 re-run notes, "Cached vs uncached, measured"). Measured is the
+    fisher-stage peak RSS above that cell's own baseline. Tolerance covers
+    allocator/BLAS slack; cells below n_pix ~ 2400 are baseline-dominated and
+    are deliberately not pinned.
+    """
+    cfg = PixelDirectBudgetConfig(
+        n_pix=n_pix,
+        lmax_signal=128,
+        n_bins=6,
+        n_params=n_params,
+        cache_derivatives=True,
+    )
+    predicted_gib = (
+        predict_pixel_direct_budget(cfg).stage("fisher_run").peak_bytes / GIBIBYTE
+    )
+    relative_error = abs(predicted_gib - measured_gib) / measured_gib
+    assert relative_error < 0.10, (
+        f"{name}: prediction {predicted_gib:.2f} GiB drifted from measured "
         f"{measured_gib:.2f} GiB by {relative_error:.1%}"
     )
-    assert basis.persistent_bytes - cov.persistent_bytes == 2 * pix_sq
 
 
 def test_pixel_direct_invalid_config_rejected():
     with pytest.raises(ValueError):
-        PixelDirectBudgetConfig(n_pix=0, lmax_signal=64, n_bins=6, n_params=18)
+        PixelDirectBudgetConfig(n_pix=0, n_bins=6, n_params=18)
     with pytest.raises(ValueError):
-        PixelDirectBudgetConfig(n_pix=1000, lmax_signal=0, n_bins=6, n_params=18)
+        PixelDirectBudgetConfig(n_pix=1000, n_bins=0, n_params=18)
     with pytest.raises(ValueError):
-        PixelDirectBudgetConfig(n_pix=1000, lmax_signal=64, n_bins=0, n_params=18)
+        PixelDirectBudgetConfig(n_pix=1000, n_bins=6, n_params=0)
+    # Optional, but still refused when given as a non-positive ceiling.
     with pytest.raises(ValueError):
-        PixelDirectBudgetConfig(n_pix=1000, lmax_signal=64, n_bins=6, n_params=0)
+        PixelDirectBudgetConfig(n_pix=1000, n_bins=6, n_params=18, lmax_signal=0)
+
+
+def test_pixel_direct_lmax_signal_is_optional_provenance_only():
+    """It feeds no term, so omitting it changes no number and drops it from the
+    header; supplying it echoes the ceiling back for a saved run."""
+    without = predict_pixel_direct_budget(
+        PixelDirectBudgetConfig(n_pix=1000, n_bins=6, n_params=18)
+    )
+    with_ceiling = predict_pixel_direct_budget(
+        PixelDirectBudgetConfig(n_pix=1000, n_bins=6, n_params=18, lmax_signal=64)
+    )
+    assert without.lifetime_peak_bytes == with_ceiling.lifetime_peak_bytes
+    assert "lmax_signal" not in without.format_table()
+    assert "lmax_signal=64" in with_ceiling.format_table()
 
 
 def test_pixel_direct_format_table_lists_all_stages():
-    cfg = PixelDirectBudgetConfig(n_pix=1000, lmax_signal=64, n_bins=6, n_params=18)
+    cfg = PixelDirectBudgetConfig(n_pix=1000, n_bins=6, n_params=18)
     table = predict_pixel_direct_budget(cfg).format_table()
     assert "[pixel_direct]" in table
     for stage in ("covariance_setup", "basis_setup", "fisher_run", "spectra_run"):

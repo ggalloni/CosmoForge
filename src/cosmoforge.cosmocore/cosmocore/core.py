@@ -815,80 +815,11 @@ class Core(ABC):
             params_lmax = getattr(self.params, "lmax", None)
             if params_lmax is None:
                 params_lmax = basis_lmax
-            fiducial_file = getattr(self.params, "fiducialfile", None) or getattr(
-                self.params, "inputclfile", None
-            )
 
             lmin_signal_min = min(self.params.lmin_signal)
             if params_lmin > lmin_signal_min or params_lmax < basis_lmax:
                 lmin_b = params_lmin
                 lmax_b = params_lmax
-
-            # Compute S_fixed when the inference window is strictly narrower
-            # than the signal-cov band on either side.
-            if lmin_b is not None and (lmin_b > lmin_signal_min or lmax_b < basis_lmax):
-                has_coll = hasattr(self, "collection") and self.collection is not None
-                # Injected fiducial_cls wins (ADR-0017); else read the file. The
-                # injected object lets the S_fixed / SMW path run disk-free.
-                have_fiducial = (
-                    self._injected_fiducial_cls is not None or fiducial_file is not None
-                )
-                if have_fiducial and has_coll:
-                    if self._injected_fiducial_cls is not None:
-                        fiducial_spectrum = self._injected_fiducial_cls
-                    else:
-                        fiducial_spectrum = readcl(
-                            inputclfile=fiducial_file.strip(),
-                            Params=self.params,
-                            lmax=basis_lmax,
-                        )
-
-                    # ADR 0009 §"S_fixed accumulates both bands": the low
-                    # band is [max(lmin_signal[i], lmin_signal[j]), lmin)
-                    # per pair, the high band is (lmax, lmax_signal]. The
-                    # per-pair low-band floor protects against an
-                    # unphysical fiducial entry (e.g. cl_EE[1]) leaking into
-                    # S_fixed when lmin_signal is heterogeneous.
-                    fixed_spectra = _build_fixed_spectra(
-                        fiducial_spectrum,
-                        self.collection.spectra_manager._spectra_map,
-                        list(self.params.lmin_signal),
-                        lmin_b,
-                        lmax_b,
-                        basis_lmax,
-                    )
-
-                    # Save original (already beam-smoothed) spectra; restore
-                    # under finally so a raise during S_fixed assembly does
-                    # not leave the collection holding the zero-inside-window
-                    # spectra for the rest of the analysis.
-                    original_spectra_smoothed = {
-                        k: v.copy()
-                        for k, v in self.collection.spectra_manager._cls_dict.items()
-                    }
-
-                    try:
-                        self.collection.set_cls(fixed_spectra, lmax=basis_lmax)
-                        self.collection.beam_manager.apply_smoothing(
-                            self.collection.spectra_manager, lmax=basis_lmax
-                        )
-
-                        from .signal_kernels import (
-                            compute_signal_matrix as _compute_signal_matrix,
-                        )
-
-                        S_fixed = np.zeros_like(self.noise_cov1, dtype=np.float64)
-                        _compute_signal_matrix(
-                            S=S_fixed,
-                            lmax=basis_lmax,
-                            fields=self.collection,
-                        )
-                    finally:
-                        # Restore original (smoothed) spectra; do NOT re-apply
-                        # the beam — the saved copy was already smoothed.
-                        self.collection.spectra_manager._cls_dict = (
-                            original_spectra_smoothed
-                        )
 
         # Pre-resolve method="auto" with the *same* cost model the factory
         # uses (harmonic ~ n_modes^3 vs pixel-direct ~ (n_bins+1) * n_pix^3).
@@ -919,7 +850,74 @@ class Core(ABC):
         if is_pixel_direct:
             lmin_b = None
             lmax_b = None
-            S_fixed = None
+
+        # Build S_fixed for the narrowed inference window. Deliberately *after*
+        # the method resolution: pixel-direct never consumes S_fixed, and
+        # building it anyway costs a full signal-matrix pass and leaves a third
+        # n_pix² buffer resident in the allocator pool for the rest of the run.
+        if lmin_b is not None:
+            fiducial_file = getattr(self.params, "fiducialfile", None) or getattr(
+                self.params, "inputclfile", None
+            )
+            # Injected fiducial_cls wins (ADR-0017); else read the file. The
+            # injected object lets the S_fixed / SMW path run disk-free.
+            have_fiducial = (
+                self._injected_fiducial_cls is not None or fiducial_file is not None
+            )
+            if have_fiducial and getattr(self, "collection", None) is not None:
+                if self._injected_fiducial_cls is not None:
+                    fiducial_spectrum = self._injected_fiducial_cls
+                else:
+                    fiducial_spectrum = readcl(
+                        inputclfile=fiducial_file.strip(),
+                        Params=self.params,
+                        lmax=basis_lmax,
+                    )
+
+                # ADR 0009 §"S_fixed accumulates both bands": the low
+                # band is [max(lmin_signal[i], lmin_signal[j]), lmin)
+                # per pair, the high band is (lmax, lmax_signal]. The
+                # per-pair low-band floor protects against an
+                # unphysical fiducial entry (e.g. cl_EE[1]) leaking into
+                # S_fixed when lmin_signal is heterogeneous.
+                fixed_spectra = _build_fixed_spectra(
+                    fiducial_spectrum,
+                    self.collection.spectra_manager._spectra_map,
+                    list(self.params.lmin_signal),
+                    lmin_b,
+                    lmax_b,
+                    basis_lmax,
+                )
+
+                # Save original (already beam-smoothed) spectra; restore
+                # under finally so a raise during S_fixed assembly does
+                # not leave the collection holding the zero-inside-window
+                # spectra for the rest of the analysis.
+                original_spectra_smoothed = {
+                    k: v.copy()
+                    for k, v in self.collection.spectra_manager._cls_dict.items()
+                }
+
+                try:
+                    self.collection.set_cls(fixed_spectra, lmax=basis_lmax)
+                    self.collection.beam_manager.apply_smoothing(
+                        self.collection.spectra_manager, lmax=basis_lmax
+                    )
+
+                    from .signal_kernels import (
+                        compute_signal_matrix as _compute_signal_matrix,
+                    )
+
+                    S_fixed = np.zeros_like(self.noise_cov1, dtype=np.float64)
+                    _compute_signal_matrix(
+                        S=S_fixed,
+                        lmax=basis_lmax,
+                        fields=self.collection,
+                    )
+                finally:
+                    # Restore original (smoothed) spectra; do NOT re-apply
+                    # the beam — the saved copy was already smoothed.
+                    self.collection.spectra_manager._cls_dict = original_spectra_smoothed
 
         # lmin_signal is normalised to a per-component list by
         # Core._normalize_lmin_signal during params loading.
