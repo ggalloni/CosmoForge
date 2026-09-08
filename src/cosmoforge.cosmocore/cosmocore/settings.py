@@ -77,7 +77,9 @@ class InputParams:
     outinvcovmatfile1, outinvcovmatfile2 : str
         Paths for output inverse covariance matrices.
     beam_file : str
-        Path to beam window function file.
+        Path to beam window function file. Read only when
+        ``smoothing_type == "file"``; setting it alongside any other smoothing
+        type is inert and warns at config-parse time.
     fwhmarcmin : float
         Beam FWHM in arcminutes for Gaussian beam approximation.
     apply_pixwin : bool
@@ -470,6 +472,21 @@ class InputParams:
                     setattr(self, key, self._normalize_smoothing_type(value))
                 else:
                     setattr(self, key, value)
+
+        # beam_file is read only by smoothing_type="file". Warn when the config
+        # carries one anyway: a config is read as provenance long after the run,
+        # and an inert path there has twice been mistaken for the beam actually
+        # applied. Keyed on config_dict, not on the attribute, so the built-in
+        # default never fires.
+        if config_dict.get("beam_file") and self.smoothing_type != "file":
+            import warnings
+
+            warnings.warn(
+                f"beam_file={self.beam_file!r} is ignored: smoothing_type="
+                f"{self.smoothing_type!r} builds the beam analytically and never "
+                "opens the file. Remove beam_file or set smoothing_type: file.",
+                stacklevel=2,
+            )
 
         self.compute_derived()
         if self.physical_labels is None:

@@ -9,6 +9,56 @@ Every pull request that touches package source updates this file; see
 Unreleased
 ----------
 
+**Breaking changes:**
+
+* ``PixelDirectBudgetConfig`` loses ``has_switch`` and ``qube-memory-budget``
+  loses ``--no-switch``. The buffer they modelled is no longer allocated on the
+  pixel-direct path, so there is no behaviour left to forward a shim to: a
+  warn-and-ignore keyword would accept an argument that can no longer mean
+  anything. Cut outright for the same reason ``do_derivative_step`` was
+  (ADR-0018). A stale call raises ``TypeError`` and a stale ``--no-switch``
+  exits with an argparse error, rather than silently modelling a buffer that
+  does not exist.
+
+**Added:**
+
+* A config that sets ``beam_file`` together with any ``smoothing_type`` other
+  than ``file`` now emits one ``UserWarning`` naming both values. Only
+  ``smoothing_type: file`` ever opens the file; the analytic beams
+  (``none``, ``gaussian``, ``cosine_legacy``, ``cosine_npipe``) ignore it
+  silently, and an inert path left in a config has twice been read back as
+  provenance for the beam actually applied. The warning fires only on a
+  user-supplied key, never on the built-in default, and never on an empty
+  ``beam_file``. Resolved beams are unchanged. It is a ``UserWarning``, not a
+  ``DeprecationWarning``, so a suite run under ``-W error`` will now fail on a
+  config carrying an inert ``beam_file``; three of this repository's own test
+  configs did.
+
+* ``qube-memory-budget`` gained ``--cache-derivatives`` (and
+  ``PixelDirectBudgetConfig.cache_derivatives``, default ``False`` to match
+  ``Fisher``'s own default), which adds the retained binned-derivative cache
+  — ``n_params × n_pix²`` — to the predicted ``fisher_run`` and ``spectra_run``
+  state. Without it the tool predicted only the uncached configuration and
+  under-reported a cached run by 1.6× at QU/nside=64. The term is an upper
+  bound: measured 11.8 GiB against the modelled 13.2 GiB at that cell.
+
+**Fixed:**
+
+* ``qube-memory-budget``'s footer no longer claims a "~25–30 GiB" Python
+  baseline RSS. Measured baselines are 0.26 GiB for interpreter and imports,
+  rising with the run's own input maps and covariance.
+
+* Pixel-direct runs no longer build the fixed-multipole signal matrix
+  ``S_fixed``. ``Core.setup_computation_basis`` resolved ``method="auto"``
+  *after* the ℓ-switching branch, so a run that ended up pixel-direct still
+  paid a full signal-matrix pass and left a third ``n_pix²`` buffer resident
+  in the allocator pool for the rest of the run. The path never consumed it —
+  pixel-direct carries the high-ℓ signal in pixel space — so persistent
+  ``basis_setup`` state drops from three ``n_pix²`` buffers to two, and one
+  ``compute_signal_matrix`` pass disappears from setup. Results are unchanged
+  (ADR-0003, amended to record that pixel-direct is exempt from the ``lswitch``
+  ``S_fixed`` split).
+
 Version 1.1.0 (2026-07-21)
 --------------------------
 

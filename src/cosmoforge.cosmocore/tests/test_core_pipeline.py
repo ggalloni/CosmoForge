@@ -20,7 +20,7 @@ import numpy as np
 import pytest
 
 from cosmocore.bins import Bins
-from cosmocore.core import Core
+from cosmocore.core import Core, _build_fixed_spectra
 from cosmocore.settings import InputParams
 from cosmocore.spectrum_key import SpectrumKey, SpectrumKind
 
@@ -219,6 +219,33 @@ def test_setup_computation_basis_smw_lswitch():
         cls = np.ones(basis_lmax + 1, dtype=np.float64) * 1e-3
         logdet = core.get_covariance_logdet(cls)
         assert np.isfinite(logdet)
+
+
+@pytest.mark.parametrize("method,builds_s_fixed", [("harmonic", True), ("pixel", False)])
+def test_only_v_based_paths_build_s_fixed(method, builds_s_fixed):
+    """Pixel-direct never consumes S_fixed, so setup must not build it.
+
+    That path carries the full high-ℓ signal in pixel space, so the
+    inference-window narrowing is discarded (``is_pixel_direct`` branch).
+    Building S_fixed anyway costs a full signal-matrix pass and leaves a
+    third n_pix² buffer resident in the allocator pool for the whole run
+    (referee pt 14 on Eq. C.8). The harmonic leg pins the patch target:
+    same geometry, same narrowed window, S_fixed still built.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        params = _make_params(tmpdir, nside=8, lmax=16, params_lmax=10)
+        with patch(
+            "cosmocore.core._build_fixed_spectra",
+            wraps=_build_fixed_spectra,
+        ) as fixed_spectra:
+            core, cm = _setup_through_basis(
+                params,
+                basis_lmax=16,
+                method=method,
+                use_smw_optimization=True,
+            )
+        assert fixed_spectra.called is builds_s_fixed
+        assert np.isfinite(core.get_covariance_logdet(np.ones(17) * 1e-3))
 
 
 # =========================================================================

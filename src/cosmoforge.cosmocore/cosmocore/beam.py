@@ -149,7 +149,8 @@ class BeamManager:
         fwhmarcmin : float
             FWHM in arcminutes for Gaussian beam
         beam_file : str
-            Path to beam file for smoothtype="file"
+            Path to beam file. Read **only** when ``smoothtype == "file"``; every
+            other smoothing type builds the beam analytically and never opens it.
         injected_beam : numpy.ndarray, optional
             In-memory beam injected in place of ``beam_file`` (ADR-0017).
             Exactly what ``hp.read_cl(beam_file)`` returns: a 2D float array

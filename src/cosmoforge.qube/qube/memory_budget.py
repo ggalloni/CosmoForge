@@ -28,12 +28,13 @@ For each path the calculator splits stage cost into:
 
 ``StageBudget.peak_bytes = persistent_bytes + Σ transient_bytes``.
 
-Allocator overhead, BLAS workspace, and the empirical
-``fisher.compute.derivative_cache`` transient (queue item E for the
-harmonic path; ~``n_params × n_pix²`` for the pixel-direct path) are not
-modelled in detail. Expect ~5–10% allocator/BLAS slack at production
-scale, and an additive Python/numpy overhead floor (~0.2–0.5 GiB) that
-dominates at small ``n_pix``.
+The retained binned-derivative cache is modelled on the pixel-direct
+path via ``PixelDirectBudgetConfig.cache_derivatives`` (default False,
+matching ``Fisher``'s own default). Allocator overhead, BLAS workspace,
+and the harmonic-path derivative cache (queue item E) are not modelled.
+Expect ~5–10% allocator/BLAS slack at production scale, and an additive
+Python/numpy overhead floor (~0.2–0.5 GiB) that dominates at small
+``n_pix``.
 
 Calibration points:
 
@@ -45,6 +46,13 @@ Calibration points:
   basis_lmax=256 default → switch implicit; mem_nc_20103507.out, commit
   ccabffd): basis_setup persistent (above covariance) 1.43 GiB predicted
   vs 1.44 GiB measured.
+- **Pixel-direct fisher_run peak** at fsky=0.1, isolated single-cell
+  processes on Galileo100 (2026-08-26 re-run, above baseline RSS):
+  QU/64 15.74 GiB predicted vs 17.54 GiB measured uncached (0.90), and
+  28.62 GiB predicted vs 28.69 GiB measured with
+  ``cache_derivatives=True`` (1.00); T/64 3.04 vs 3.00 GiB cached.
+  Cells below n_pix ≈ 2400 are baseline- and allocator-dominated and
+  carry no calibration information.
 """
 
 from dataclasses import dataclass, field
@@ -100,28 +108,31 @@ class PixelDirectBudgetConfig:
     """Inputs to the QUBE pixel-direct path budget.
 
     n_pix: total pixel count (same convention as BudgetConfig).
-    lmax_signal: signal-cov ceiling (Layer A). Used for the auto-picker
-        informational fields and to decide whether the implicit-switch
-        S_fixed transient is allocated by Core (lmax_signal > params.lmax
-        → switch implicit).
+    lmax_signal: signal-cov ceiling (Layer A). Informational here: the
+        pixel-direct path includes the high-ℓ signal in pixel space, so a
+        narrower inference window changes nothing in the budget (Core
+        resolves the path before building S_fixed, so no S_fixed buffer
+        is ever allocated on this path).
     n_bins: number of bandpower bins in the analysis. Drives the
         per-parameter ``cinv_times_dcb`` dict size during fisher_run.
     n_params: number of derivative parameters. ``n_bins × n_spectra`` in
         practice (e.g. n_bins=6 × 3 spectra = 18 at eclipse-QU). Used for
         the empirical fisher_run derivative-product transient.
-    has_switch: True if Core's ``setup_computation_basis`` enters the
-        S_fixed branch before discovering the path is pixel-direct (i.e.
-        params.lmax < lmax_signal). At default benchmark configs
-        (lmax_signal=4·nside, params.lmax=2·nside) this is True. The
-        S_fixed buffer is allocated, populated, then dereferenced — but
-        the allocator pool keeps it resident through basis_setup exit.
+    cache_derivatives: True mirrors ``Fisher(cache_derivatives=True)``:
+        the binned derivatives are built once and retained from the
+        fisher derivative-cache stage through Spectra, adding
+        ``n_params × n_pix²``. Defaults to False to match Fisher's own
+        default. The term is an upper bound — measured cache cost at
+        QU/64 fsky=0.1 was 11.8 GiB against the modelled 13.2 GiB —
+        consistent with the ceiling convention used for the pixel
+        Spectra transient.
     """
 
     n_pix: int
     lmax_signal: int
     n_bins: int
     n_params: int
-    has_switch: bool = True
+    cache_derivatives: bool = False
 
     def __post_init__(self) -> None:
         if self.n_pix <= 0:
@@ -242,24 +253,26 @@ def predict_pixel_direct_budget(config: PixelDirectBudgetConfig) -> QUBEBudget:
         transient={"Cov_T (asfortranarray copy on read)": pix_sq},
     )
 
-    # basis_setup adds two pix_sq terms above covariance_setup. The first
-    # is structural (asfortranarray F-order copy at base.py:148). The
-    # second only appears when Core's setup_computation_basis enters the
-    # S_fixed allocation branch before discovering the path is
-    # pixel-direct — the buffer is dereferenced at line 610 of core.py
-    # but the allocator pool keeps it resident until basis_setup exit.
+    # basis_setup adds one pix_sq term above covariance_setup: the
+    # structural asfortranarray F-order copy at base.py:170. Core resolves
+    # method="auto" before the S_fixed branch, so the pixel-direct path
+    # never allocates the fixed-multipole signal matrix.
     basis_persistent: dict[str, int] = {
         "Cov_T (carried from covariance_setup)": pix_sq,
         "basis._N (asfortranarray F-order copy)": pix_sq,
     }
-    if config.has_switch:
-        basis_persistent["S_fixed (allocator pool retained)"] = pix_sq
     basis_setup = StageBudget(name="basis_setup", persistent=basis_persistent)
 
     # fisher_run: C_inv (full pixel-space inverse) plus the cinv_times_dcb
     # dict of n_params dense n_pix² products held through trace_loop.
     fisher_persistent = dict(basis_persistent)
     fisher_persistent["_direct_pix_buffer (lazy on first derivative)"] = pix_sq
+    if config.cache_derivatives:
+        # Built in fisher.compute.derivative_cache and held through Spectra,
+        # so it is persistent from this stage on rather than transient.
+        fisher_persistent["binned derivative cache (retained for Spectra)"] = (
+            config.n_params * pix_sq
+        )
     fisher_transient = {
         "C_inv (basis_manager.get_projected_inverse)": pix_sq,
         "cinv_times_dcb (n_params dense pixel matrices)": config.n_params * pix_sq,
@@ -310,10 +323,10 @@ def _format_table(budget: QUBEBudget) -> str:
             f"  {switch_str}  release_V={cfg.release_pixel_projector}"
         )
     else:
-        switch_str = "switch implicit" if cfg.has_switch else "no switch"
         header = (
             f"  n_pix={cfg.n_pix}  lmax_signal={cfg.lmax_signal}"
-            f"  n_bins={cfg.n_bins}  n_params={cfg.n_params}  {switch_str}"
+            f"  n_bins={cfg.n_bins}  n_params={cfg.n_params}"
+            f"  cache_derivatives={cfg.cache_derivatives}"
         )
     lines = [
         f"QUBE memory budget [{budget.path}]",
@@ -337,12 +350,17 @@ def _format_table(budget: QUBEBudget) -> str:
         lines.append("")
     lines.append(
         f"Lifetime peak: {_format_bytes(budget.lifetime_peak_bytes)}"
-        " (above Python baseline RSS, ~25–30 GiB at typical configs)"
+        " (above baseline RSS: interpreter + imports ~0.26 GiB, plus this"
+        " run's own input maps and covariance)"
     )
-    lines.append(
-        "Excludes: BLAS scratch, allocator overhead, derivative_cache transient"
-        " (~5 × n_modes² × 8 B at eclipse-QU)."
-    )
+    excludes = "Excludes: BLAS scratch, allocator overhead"
+    if budget.path == "harmonic":
+        excludes += ", derivative_cache transient (~5 × n_modes² × 8 B at eclipse-QU)"
+    elif not cfg.cache_derivatives:
+        excludes += (
+            "; derivative cache off (pass --cache-derivatives to add n_params × n_pix²)"
+        )
+    lines.append(excludes + ".")
     return "\n".join(lines)
 
 
@@ -390,9 +408,10 @@ def _main() -> None:  # pragma: no cover - CLI entry point
         help="(pixel_direct) total derivative parameter count",
     )
     parser.add_argument(
-        "--no-switch",
+        "--cache-derivatives",
         action="store_true",
-        help="(pixel_direct) Core did not allocate S_fixed transient",
+        help="(pixel_direct) Fisher(cache_derivatives=True): retain the binned"
+        " derivative cache through Spectra (adds n_params × n_pix²)",
     )
     args = parser.parse_args()
 
@@ -415,7 +434,7 @@ def _main() -> None:  # pragma: no cover - CLI entry point
             lmax_signal=args.lmax_signal,
             n_bins=args.n_bins,
             n_params=args.n_params,
-            has_switch=not args.no_switch,
+            cache_derivatives=args.cache_derivatives,
         )
         print(predict_pixel_direct_budget(config).format_table())
 

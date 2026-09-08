@@ -262,7 +262,8 @@ Create a configuration file for your analysis:
    # Input/output files
    inputclfile: "inputs/cls_theory.dat"
    maskfile: "inputs/analysis_mask.fits"
-   beam_file: "inputs/beam_profile.fits"
+   smoothing_type: file
+   beam_file: "inputs/beam_profile.fits"  # read only by smoothing_type: file
    
    # Output settings
    feedback: 1
