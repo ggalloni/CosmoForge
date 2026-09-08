@@ -248,6 +248,82 @@ def test_only_v_based_paths_build_s_fixed(method, builds_s_fixed):
         assert np.isfinite(core.get_covariance_logdet(np.ones(17) * 1e-3))
 
 
+def _pixel_direct_observables(tmpdir, *, params_lmax):
+    """Four scalars off a pixel-direct basis at nside=8, basis_lmax=16."""
+    params = _make_params(tmpdir, nside=8, lmax=16, params_lmax=params_lmax)
+    core, _ = _setup_through_basis(
+        params, basis_lmax=16, method="pixel", use_smw_optimization=True
+    )
+    C_ell = np.ones(17) * 1e-3
+    n_active = int(core.collection.total_active_pixels)
+    data = np.random.default_rng(20260908).standard_normal(n_active)
+    cov = core.get_total_covariance(C_ell)
+    return {
+        "logdet": float(core.get_covariance_logdet(C_ell)),
+        "quadform": float(core.quadratic_form(data, C_ell)),
+        "cov_trace": float(np.trace(cov)),
+        "cov_fro": float(np.linalg.norm(cov)),
+    }
+
+
+# Captured by running this exact configuration against the v1.1.0 source tree
+# (git archive v1.1.0, imported over PYTHONPATH), which built S_fixed here and
+# then discarded it on the pixel-direct branch. All four agreed to the last bit;
+# the tolerance below is for BLAS variation across machines, not for drift.
+# Regenerate with the probe in the PR discussion if the basis legitimately
+# changes: these are measurements, not analytic values.
+_V110_PIXEL_DIRECT = {
+    "logdet": 1612.9143724664957,
+    "quadform": 1581.7900899163615,
+    "cov_trace": 8321344.223152173,
+    "cov_fro": 673367.4529629507,
+}
+
+
+def test_pixel_direct_numerics_pinned_to_v110():
+    """Drift pin for the whole pixel-direct setup chain at nside=8, spin-0.
+
+    These four values flow through mask and geometry resolution, cls loading,
+    beam construction, the signal matrix, the noise covariance, the
+    pixel-direct basis build, and the three public accessors. A refactor that
+    perturbs any of them fails here. Four observables rather than one because
+    a scalar determinant can coincide while the operator differs.
+
+    Configuration note: params.lmax=10 < basis_lmax=16 is the narrowed window
+    that made v1.1.0 enter the S_fixed branch, kept for that historical link.
+    It is not the subject under test. Measured, not assumed: this does NOT
+    guard against S_fixed being reintroduced. Forcing v1.1.0's behaviour back
+    (deleting the ``is_pixel_direct`` reset of lmin_b/lmax_b, so
+    _build_fixed_spectra runs and the basis receives 2/10 instead of 2/16)
+    leaves all four values bit-identical, because the pixel-direct basis
+    exposes no S_fixed attribute and never reads the window. The guard for
+    that is ``test_only_v_based_paths_build_s_fixed`` above, the reorder
+    being a memory property rather than a numerical one.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        got = _pixel_direct_observables(tmpdir, params_lmax=10)
+    for key, expected in _V110_PIXEL_DIRECT.items():
+        assert got[key] == pytest.approx(expected, rel=1e-10), (
+            f"{key}: {got[key]!r} drifted from the v1.1.0 value {expected!r}"
+        )
+
+
+def test_pixel_direct_is_blind_to_the_inference_window():
+    """Narrowing [lmin, lmax] inside the signal-cov band changes no number.
+
+    Pixel-direct carries the whole band in pixel space (ADR-0003), so the
+    inference window is not an input to this operator. Stated as an invariant
+    so it survives if the pinned values above ever move for a legitimate
+    reason. Like that test, it is insensitive to the S_fixed reorder itself:
+    the mutation described there leaves both legs unchanged.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        narrowed = _pixel_direct_observables(tmpdir, params_lmax=10)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        full = _pixel_direct_observables(tmpdir, params_lmax=16)
+    assert narrowed == pytest.approx(full, rel=1e-12)
+
+
 # =========================================================================
 # 3. output_convention="Dl" folds the bandpower shape weight into the
 #    binned derivative (ADR-0019).
