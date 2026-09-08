@@ -70,7 +70,7 @@ Other renamed vocabulary (use these, not the legacy names):
 
 ## Multipole ranges (ADR 0009)
 
-- **Signal-cov band** `[min(lmin_signal), lmax_signal]` — what the basis represents (V, Λ, S). `lmax_signal` defaults to `4·nside`.
+- **Signal-cov band** `[min(lmin_signal), lmax_signal]` — what the basis represents (V, Λ, S). `lmax_signal` resolves in three steps: an explicit setter (or `basis={"lmax_signal": N}`, which aliases it), then the `lmax_signal:` config key, then `4·nside`. Defined once on `Core`; `Spectra` refuses the setter after construction because it runs its Fisher in `__init__`.
 - **Inference window** `[lmin, lmax]` — where C_ℓ vary; outside this band but inside the signal-cov band, the fiducial spectrum is used and the contribution is precomputed into `S_fixed`. V-based paths only: pixel-direct carries the whole signal-cov band in pixel space and never builds `S_fixed` (ADR-0003).
 - **Per-component low-ℓ floor** `lmin_signal[i]` — must satisfy `lmin_signal[i] >= |spins[i]|`. Enables direct dipole estimation (`lmin_signal=[1, 2]` for T+QU) and foreground/template handling (`lmin_signal=0`).
 - **Constraint chain** — `max(lmin_signal) <= lmin <= lmax <= lmax_signal` enforced at params load.
