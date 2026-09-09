@@ -76,7 +76,14 @@ from .fields import (
     ScalarField,
     create_field,
 )
-from .filters import Filter, intersect, mask_fingerprint
+from .filters import (
+    Filter,
+    harmonic_deprojection,
+    hits_weighting,
+    intersect,
+    mask_fingerprint,
+    scan_polynomial,
+)
 from .geometry import active_pixel_index, active_pixels
 from .in_out import (
     convert_spectra_normalization,
@@ -140,6 +147,9 @@ __all__ = [
     "signal_matrix",
     # filters
     "Filter",
+    "harmonic_deprojection",
+    "hits_weighting",
+    "scan_polynomial",
     "intersect",
     "mask_fingerprint",
     # in_out

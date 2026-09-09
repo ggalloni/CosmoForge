@@ -24,6 +24,47 @@ BT = SpectrumKind.CS
 # Slot-pair swap used to flip a spin-2 x spin-0 key into spin-0 x spin-2
 # ordering. Only the four mixed-spin kinds appear here; same-spin kinds
 # (SS, GG, CC, GC, CG) never need flipping.
+_SLOT_BY_LABEL = {
+    "S": Slot.S,
+    "T": Slot.S,
+    "G": Slot.G,
+    "E": Slot.G,
+    "C": Slot.C,
+    "B": Slot.C,
+}
+
+
+def slot_from_label(slot):
+    """
+    Coerce a slot label to a :class:`~cosmocore.spectrum_key.Slot`.
+
+    Parameters
+    ----------
+    slot : Slot or str
+        A ``Slot`` (returned unchanged), one of the internal letters ``"S"``,
+        ``"G"``, ``"C"``, or the CMB aliases ``"T"``, ``"E"``, ``"B"``.
+        Case-insensitive.
+
+    Returns
+    -------
+    Slot
+
+    Raises
+    ------
+    ValueError
+        On any other label.
+    """
+    if isinstance(slot, Slot):
+        return slot
+    try:
+        return _SLOT_BY_LABEL[str(slot).strip().upper()]
+    except KeyError:
+        raise ValueError(
+            f"unknown slot {slot!r}; use the internal letters S/G/C or the "
+            "CMB aliases T/E/B"
+        ) from None
+
+
 _KIND_SWAP = {
     SpectrumKind.GS: SpectrumKind.SG,
     SpectrumKind.CS: SpectrumKind.SC,
