@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from .._deprecation import resolve_alias
 from ..basics import (
     cholesky_solve,
     eigh,
@@ -33,30 +34,26 @@ from .base import BasisPrepared, ComputationBasis
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
+DEFAULT_COMPRESSION_TARGET = "noise_weighted"
 
-# Available compression targets
-def _resolve_target_alias(target, alias, new_name: str, old_name: str):
-    """Warn-and-forward the ``basis=``/``bases=`` spelling for one release (ADR-0018).
+
+def _resolve_target(compression_target, basis):
+    """Resolve one method's target from the current and deprecated spellings.
 
     These methods named the compression target ``basis`` while the constructor
     named it ``compression_target``, and ``basis=`` on ``Fisher``, ``Spectra``
     and ``PICSLike`` is a different concept entirely (harmonic vs pixel vs
     auto). One word for one concept: the old spelling still works and says so.
+    Both default to ``None`` in the signature so "not given" is tellable, hence
+    the default lands here rather than there.
     """
-    if alias is None:
-        return target
-    if target is not None:
-        raise TypeError(
-            f"pass only {new_name}=; {old_name}= is the deprecated alias for it"
-        )
-    warnings.warn(
-        f"{old_name}= is deprecated; use {new_name}= (ADR-0018)",
-        DeprecationWarning,
-        stacklevel=3,
+    resolved = resolve_alias(
+        compression_target, basis, "compression_target", "basis", stacklevel=4
     )
-    return alias
+    return resolved or DEFAULT_COMPRESSION_TARGET
 
 
+# Available compression targets
 COMPRESSION_TARGETS = {
     "harmonic": "P_h = V^T V (pure harmonic projector)",
     "noise_weighted": "P_h N^{-1} P_h (inverse noise weighting)",
@@ -340,7 +337,7 @@ class PixelBasis(ComputationBasis):
             return matrix_mult(matrix_mult(P_sub, C_sub_inv), P_sub)
         elif compression_target == "snr":
             if C_ell_sub is None:
-                raise ValueError("C_ell required for 'snr' compression_target")
+                raise ValueError("C_ell required for 'snr' target")
             V_scaled = V_sub * C_ell_sub[:, np.newaxis]
             S_sub = matrix_mult(V_sub.T, V_scaled)
             eigvals_S, eigvecs_S = eigh(S_sub)
@@ -515,7 +512,7 @@ class PixelBasis(ComputationBasis):
                 comp_matrix = matrix_mult(matrix_mult(P_sub, C_inv), P_sub)
             elif compression_target == "snr":
                 if C_ell is None:
-                    raise ValueError("C_ell required for 'snr' compression_target")
+                    raise ValueError("C_ell required for 'snr' target")
                 Lambda_diag = self._build_lambda_diagonal(
                     C_ell if not isinstance(C_ell, dict) else next(iter(C_ell.values()))
                 )
@@ -1013,7 +1010,7 @@ class PixelBasis(ComputationBasis):
             # S^{1/2} N^{-1} S^{1/2} - signal-to-noise ratio matrix
             if C_ell is None:
                 raise ValueError(
-                    "C_ell is required for 'snr' compression_target. "
+                    "C_ell is required for 'snr' target. "
                     "Provide power spectrum values for ell = 2 to lmax."
                 )
             # Build signal covariance S = V^T Λ V
@@ -1061,12 +1058,7 @@ class PixelBasis(ComputationBasis):
         normalized_eigenvalues : numpy.ndarray
             Eigenvalues normalized by maximum value (for threshold selection).
         """
-        compression_target = (
-            _resolve_target_alias(
-                compression_target, basis, "compression_target", "basis"
-            )
-            or "noise_weighted"
-        )
+        compression_target = _resolve_target(compression_target, basis)
         compression_matrix = self._build_compression_matrix(compression_target, C_ell)
         eigenvalues, _ = eigh(compression_matrix)
 
@@ -1113,12 +1105,7 @@ class PixelBasis(ComputationBasis):
             Spin-2 components additionally have ``E_eigenvalues``,
             ``E_normalized``, ``B_eigenvalues``, ``B_normalized``.
         """
-        compression_target = (
-            _resolve_target_alias(
-                compression_target, basis, "compression_target", "basis"
-            )
-            or "noise_weighted"
-        )
+        compression_target = _resolve_target(compression_target, basis)
         if compression_target not in COMPRESSION_TARGETS:
             raise ValueError(
                 f"Unknown compression target '{compression_target}'. "
@@ -1300,12 +1287,7 @@ class PixelBasis(ComputationBasis):
         """
         import matplotlib.pyplot as plt
 
-        compression_target = (
-            _resolve_target_alias(
-                compression_target, basis, "compression_target", "basis"
-            )
-            or "noise_weighted"
-        )
+        compression_target = _resolve_target(compression_target, basis)
         per_field = self.compute_eigenspectrum_per_field(compression_target, C_ell)
         n_comp = len(per_field)
 
@@ -1420,7 +1402,7 @@ class PixelBasis(ComputationBasis):
         """
         import matplotlib.pyplot as plt
 
-        compression_targets = _resolve_target_alias(
+        compression_targets = resolve_alias(
             compression_targets, bases, "compression_targets", "bases"
         )
         if compression_targets is None:

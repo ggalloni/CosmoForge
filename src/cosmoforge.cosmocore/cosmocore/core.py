@@ -28,6 +28,7 @@ from abc import ABC, abstractmethod
 import healpy as hp
 import numpy as np
 
+from ._deprecation import resolve_alias
 from .basics import matrix_inverse_symm, matrix_slogdet_symm
 from .basis import create_computation_basis
 from .fields import (
@@ -129,18 +130,7 @@ class Core(ABC):
         spelled the same argument ``params_file``, which named only one of the
         three things it takes.
         """
-        if params_file is None:
-            return params
-        if params is not None:
-            raise TypeError(
-                "pass only params=; params_file= is the deprecated alias for it"
-            )
-        warnings.warn(
-            "params_file= is deprecated; use params= (ADR-0018)",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-        return params_file
+        return resolve_alias(params, params_file, "params", "params_file", stacklevel=4)
 
     @staticmethod
     def _resolve_basis_config(basis, compression, do_cross):
