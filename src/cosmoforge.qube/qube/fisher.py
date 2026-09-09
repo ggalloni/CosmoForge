@@ -69,6 +69,8 @@ def _basis_path_label(basis_manager) -> str:
             if getattr(basis_manager, "_is_compressed", False)
             else "pixel-direct"
         )
+    if getattr(basis_manager, "_compress", False):
+        return f"harmonic m-block (delta_m={basis_manager._delta_m})"
     return "harmonic"
 
 
@@ -91,8 +93,12 @@ class Fisher(Core, MPISharedMemoryMixin):
 
     Parameters
     ----------
-    params_file : str, optional
-        Path to YAML parameter file containing analysis configuration.
+    params : InputParams, str or dict, optional
+        Analysis configuration: an ``InputParams``, a path to a YAML parameter
+        file, or a dict of parameter values. All three go to
+        :meth:`cosmocore.Core.read_params`.
+    params_file : InputParams, str or dict, optional
+        Deprecated alias for ``params`` (ADR-0018).
     basis : None, False, str or dict, optional
         Computation basis selection (ADR-0018). ``None`` (default) selects
         ``method="auto"``; ``False`` opts out to the traditional pixel-space
@@ -135,7 +141,7 @@ class Fisher(Core, MPISharedMemoryMixin):
 
     def __init__(
         self,
-        params_file: str | None = None,
+        params: InputParams | str | dict | None = None,
         basis: dict | str | bool | None = Core._UNSET,
         cache_derivatives: bool = False,
         symmetry_mode: SymmetryMode | str | None = None,
@@ -146,6 +152,8 @@ class Fisher(Core, MPISharedMemoryMixin):
         cls_data: dict | np.ndarray | None = None,
         fiducial_cls: dict | np.ndarray | None = None,
         beam: np.ndarray | None = None,
+        *,
+        params_file: InputParams | str | dict | None = None,
         **kwargs,
     ):
         """
@@ -153,8 +161,11 @@ class Fisher(Core, MPISharedMemoryMixin):
 
         Parameters
         ----------
-        params_file : str, optional
-            Path to YAML configuration file.
+        params : InputParams, str or dict, optional
+            Analysis configuration: an ``InputParams``, a path to a YAML
+            configuration file, or a dict of parameter values.
+        params_file : InputParams, str or dict, optional
+            Deprecated alias for ``params`` (ADR-0018).
         basis : None, False, str or dict, optional
             Computation basis selection (ADR-0018). ``None`` (default) →
             ``method="auto"``; ``False`` → traditional pixel-space path;
@@ -197,7 +208,7 @@ class Fisher(Core, MPISharedMemoryMixin):
             Additional keyword arguments passed to Core.
         """
         super().__init__(
-            params=params_file,
+            params=self._resolve_params_alias(params, params_file),
             mask=mask,
             noise_cov1=noise_cov1,
             noise_cov2=noise_cov2,
@@ -682,22 +693,9 @@ class Fisher(Core, MPISharedMemoryMixin):
                 self.setup_beams(lmax=self.lmax_signal)
                 self.log("Beam functions setup completed", level=3)
 
-            # Setup computation basis if configured. Only forward keys that
-            # are explicitly set in the config dict so the function defaults
-            # (e.g. epsilon=1e-6) take effect when the user omits a key.
+            # Setup computation basis if configured.
             if self._basis_config is not None:
-                _basis_keys = (
-                    "method",
-                    "epsilon",
-                    "mode_fraction",
-                    "compression_target",
-                    "C_ell",
-                )
-                kwargs = {
-                    k: self._basis_config[k]
-                    for k in _basis_keys
-                    if k in self._basis_config
-                }
+                kwargs = self._basis_setup_kwargs()
                 with self._stage("fisher.basis_setup"):
                     self.setup_computation_basis(**kwargs)
                 bm = self.basis_manager
@@ -712,7 +710,10 @@ class Fisher(Core, MPISharedMemoryMixin):
                 )
                 # Fisher's harmonic QML path reads only V_N_inv and V_Ninv_VT
                 # after setup. Drop V to free n_modes × n_pix.
-                bm.release_pixel_projector()
+                # m-block compression keeps reading V, and the harmonic
+                # basis raises rather than no-ops when asked to drop it.
+                if not getattr(bm, "_compress", False):
+                    bm.release_pixel_projector()
                 # The basis manager handles covariance inversion internally
                 # (SMW for harmonic, direct/truncated solve for pixel), so the
                 # traditional explicit C = N+S build and inversion is skipped.

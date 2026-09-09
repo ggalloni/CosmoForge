@@ -41,7 +41,7 @@ in issue titles, plans, hypotheses, and test names. Do not paraphrase.
   Spin-2 layout: rows `[E modes | B modes]`, cols `[Q pixels | U pixels]`.
 - **Λ (Lambda)** — Block-diagonal signal covariance in the harmonic basis. Spin-0 diagonal; spin-2 has 2×2 blocks (EE, BB, EB) at each (ℓ, m). For cross-component spin-2×spin-2 pairs in DIRECTIONAL mode the two off-diagonal blocks carry separate GC and CG values (`_build_lambda_block_spin2` accepts `C_GC` and `C_CG` independently); in SYMMETRIC mode a single `C_EB` fills both.
 - **SMW** — Sherman-Morrison-Woodbury. Used to invert (S+N) without forming the full pixel-space matrix. Stable form: `M(I + ΛM)⁻¹` (not `M − M K⁻¹ M`).
-- **m-block compression** — `compress=True, delta_m=0` treats K as block-diagonal in m. **Exact** for azimuthally symmetric masks (Oh/Spergel/Hinshaw 1999); approximation only for generic masks where the mask induces m–m' coupling. ~lmax² speedup. Currently single-field spin-0 only.
+- **m-block compression** — `compress=True, delta_m=0` treats K as block-diagonal in m. **Exact** for azimuthally symmetric masks (Oh/Spergel/Hinshaw 1999); approximation only for generic masks where the mask induces m–m' coupling. ~lmax² speedup. Currently single-field spin-0 only. Reachable from the public API as `basis={"method": "harmonic", "compress": True}`.
 - **Field block-diagonal K** — Auto-detected when no cross-spectra and noise is independent per field. Exact, no flag.
 
 ## Basis-native vs pixel-space methods

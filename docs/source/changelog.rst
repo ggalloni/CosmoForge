@@ -6,6 +6,47 @@ All notable changes to CosmoForge will be documented here.
 Every pull request that touches package source updates this file; see
 ``CLAUDE.md`` and the pull-request template.
 
+Unreleased
+----------
+
+**Fixed:**
+
+* ``basis={"compress": True, "delta_m": N}`` now reaches the basis. Both keys
+  were missing from the forward list in ``Fisher`` and ``PICSLike``, so they
+  were dropped before ``setup_computation_basis`` and the run logged the
+  harmonic path while computing the uncompressed answer; m-block compression
+  was unreachable except by constructing ``HarmonicBasis`` directly. The
+  forwarded set is now the signature of ``setup_computation_basis`` itself, so
+  ``beam`` and ``use_smw_optimization`` are accepted in the dict too.
+* An unrecognised key in the ``basis=`` dict raises ``ValueError`` instead of
+  being filtered out in silence.
+* ``PixelBasis``'s class docstring documented a ``basis`` constructor
+  parameter. The constructor takes ``compression_target``.
+* ``InputParams.__eq__`` compares two configurations instead of raising.
+  Every instance carries ``cross_idxs`` and ``auto_idxs`` as arrays, so
+  ``params_a == params_b`` raised ``ValueError: The truth value of an array
+  with more than one element is ambiguous`` on any real config, including two
+  instances read from the same file.
+
+**Deprecated:**
+
+* ``PixelBasis`` names one concept one way. ``compute_eigenspectrum``,
+  ``compute_eigenspectrum_per_field`` and ``plot_eigenvalue_spectrum`` take
+  ``compression_target=`` (the constructor's spelling); their ``basis=`` and
+  ``plot_eigenvalue_comparison``'s ``bases=`` still work for one release and
+  warn (ADR-0018). The old names collided with ``basis=`` on ``Fisher``,
+  ``Spectra`` and ``PICSLike``, which selects harmonic vs pixel vs auto and is
+  an unrelated concept.
+* ``params_file=`` on ``Fisher``, ``Spectra`` and ``PICSLike`` is now
+  ``params=``, the name ``Core`` has always used. It has always accepted an
+  ``InputParams``, a path or a dict, so "file" named one of the three things
+  it takes; the annotation claimed a path only. ``params_file=`` still works
+  for one release and warns (ADR-0018). Callers passing it positionally, which
+  is nearly all of them, are unaffected.
+* ``PixelBasis.available_bases()`` is now ``available_compression_targets()``
+  and ``cosmocore.basis.COMPRESSION_BASES`` is now ``COMPRESSION_TARGETS``.
+  Both old spellings work for one release and warn.
+
 Version 1.2.0 (2026-09-08)
 --------------------------
 

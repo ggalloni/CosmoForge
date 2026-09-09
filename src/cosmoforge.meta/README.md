@@ -105,7 +105,7 @@ noise_bias = qml.get_noise_bias()
 from picslike import PICSLike
 
 # Initialize pixel-based likelihood
-picslike = PICSLike(params_file="config/picslike_config.yaml")
+picslike = PICSLike(params="config/picslike_config.yaml")
 picslike.run()
 
 # Get results

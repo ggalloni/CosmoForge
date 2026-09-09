@@ -91,7 +91,7 @@ Basic Likelihood Computation
    from picslike import PICSLike
 
    # Initialize with configuration file
-   picslike = PICSLike(params_file="config/analysis.yaml")
+   picslike = PICSLike(params="config/analysis.yaml")
 
    # Run complete computation pipeline
    picslike.run()
@@ -113,7 +113,7 @@ Step-by-Step Setup
    from picslike import PICSLike
 
    # Initialize
-   picslike = PICSLike(params_file="config/analysis.yaml")
+   picslike = PICSLike(params="config/analysis.yaml")
 
    # Setup components in order
    picslike.setup_parameter_grid()
@@ -138,7 +138,7 @@ Multiple Simulations
 
    from picslike import PICSLike
 
-   picslike = PICSLike(params_file="config/analysis.yaml")
+   picslike = PICSLike(params="config/analysis.yaml")
    picslike.run()
 
    # Access individual simulation results
@@ -158,7 +158,7 @@ MPI Parallel Execution
    # Run with 8 MPI processes
    mpirun -n 8 python -c "
    from picslike import PICSLike
-   picslike = PICSLike(params_file='config.yaml')
+   picslike = PICSLike(params='config.yaml')
    picslike.run()
    "
 

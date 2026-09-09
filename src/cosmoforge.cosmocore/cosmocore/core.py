@@ -21,12 +21,14 @@ be extended by concrete analysis implementations.
 
 from __future__ import annotations
 
+import inspect
 import warnings
 from abc import ABC, abstractmethod
 
 import healpy as hp
 import numpy as np
 
+from ._deprecation import resolve_alias
 from .basics import matrix_inverse_symm, matrix_slogdet_symm
 from .basis import create_computation_basis
 from .fields import (
@@ -120,6 +122,17 @@ class Core(ABC):
     _UNSET = object()
 
     @staticmethod
+    def _resolve_params_alias(params, params_file):
+        """Warn-and-forward the ``params_file=`` spelling for one release (ADR-0018).
+
+        ``Core`` has always called this ``params`` and always accepted an
+        ``InputParams``, a path or a dict; the three orchestration classes
+        spelled the same argument ``params_file``, which named only one of the
+        three things it takes.
+        """
+        return resolve_alias(params, params_file, "params", "params_file", stacklevel=4)
+
+    @staticmethod
     def _resolve_basis_config(basis, compression, do_cross):
         """Map the public ``basis=`` kwarg to the internal ``_basis_config`` (ADR-0018).
 
@@ -171,6 +184,31 @@ class Core(ABC):
         """
         if self._basis_config and "lmax_signal" in self._basis_config:
             self._lmax_signal = self._basis_config.pop("lmax_signal")
+
+    def _basis_setup_kwargs(self) -> dict:
+        """The ``basis=`` dict as kwargs for :meth:`setup_computation_basis`.
+
+        Only keys actually present are returned, so the method's own defaults
+        still apply to the ones the caller omitted. Validated against its
+        signature rather than a hand-kept list: a key that list forgot was
+        dropped in silence, so ``basis={"compress": True}`` reported the
+        harmonic path and computed the uncompressed answer. ``lmax_signal`` is
+        absorbed into the ceiling by :meth:`_absorb_basis_lmax_signal` before
+        this runs.
+
+        Read off ``Core`` rather than off ``self``: subclasses wrap the method
+        as ``(*args, **kwargs)``, which carries no parameter names.
+        """
+        accepted = set(inspect.signature(Core.setup_computation_basis).parameters) - {
+            "self"
+        }
+        unknown = sorted(set(self._basis_config) - accepted)
+        if unknown:
+            raise ValueError(
+                f"unknown basis key(s) {unknown}; expected any of "
+                f"{sorted(accepted | {'lmax_signal'})}"
+            )
+        return dict(self._basis_config)
 
     @property
     def lmax_signal(self) -> int:

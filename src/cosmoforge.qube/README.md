@@ -475,7 +475,7 @@ fields = create_custom_fields()
 collection = FieldCollection(params, fields)
 
 # Custom analysis
-qml = Spectra(params_file, fisher=None)
+qml = Spectra(params, fisher=None)
 qml.collection = collection
 qml.run()
 ```

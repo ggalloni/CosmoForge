@@ -36,7 +36,7 @@ import numpy as np
 
 from .base import BasisPrepared, ComputationBasis
 from .harmonic import HarmonicBasis
-from .pixel import COMPRESSION_BASES, PixelBasis
+from .pixel import COMPRESSION_TARGETS, PixelBasis
 
 _BASIS_CLASSES: dict[str, type[ComputationBasis]] = {
     "harmonic": HarmonicBasis,
@@ -204,9 +204,21 @@ def create_computation_basis(
     return cls(N, theta, phi, lmax_signal, **filtered)
 
 
+def __getattr__(name: str):
+    """Serve the pre-1.3 spelling of the target registry for one release (ADR-0018)."""
+    if name == "COMPRESSION_BASES":
+        warnings.warn(
+            "COMPRESSION_BASES is deprecated; use COMPRESSION_TARGETS (ADR-0018)",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return COMPRESSION_TARGETS
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 __all__ = [
     "ComputationBasis",
-    "COMPRESSION_BASES",
+    "COMPRESSION_TARGETS",
     "HarmonicBasis",
     "PixelBasis",
     "BasisPrepared",
