@@ -42,6 +42,22 @@ Unreleased
   noise buffer, and is the supported way to build ``S`` without a ``Core``.
 * ``cosmocore.basics.restrict`` and ``restrict_data`` apply a restriction to a
   symmetric matrix and to pixel-space data.
+* ``cosmocore.filters`` ships constructors for the common operators, so a
+  caller does not assemble a template stack by hand:
+  ``harmonic_deprojection(mask=, spins=, ells=, slot=)`` removes whole
+  multipoles of one slot, taking its templates from the estimator's own ``V``
+  rather than resynthesising them; ``scan_polynomial(mask=, pole=, n_stripes=,
+  degree=)`` removes Legendre polynomials in azimuth within bands of constant
+  polar angle, the pixel-space image of per-scan baseline removal; and
+  ``hits_weighting(hits, mask=)`` builds inverse-noise weighting, which is
+  invertible and therefore a documented no-op control rather than a filter
+  anyone needs to apply. Every instrument-specific number is a required
+  argument. ``harmonic_deprojection`` is not purification and is not sharp in
+  multipole: its reach is set by the patch, roughly ``180 / radius`` degrees,
+  not by ``ells``.
+* ``cosmocore.basis.harmonic_operator`` and ``ell_mode_index`` are public, so
+  the cut-sky harmonics the estimator works in can be built without a
+  ``Fisher``. ``harmonic_deprojection`` is their first consumer.
 * ``BudgetConfig`` and ``PixelDirectBudgetConfig`` take ``working_dim`` (the
   filter's rank), and ``qube-memory-budget`` takes ``--working-dim``. The dense
   stages then scale with the rank while the kernel buffers stay at the pointing
@@ -53,6 +69,12 @@ Unreleased
 * ``Spectra(fisher=…)`` adopts that Fisher's filter and raises ``ValueError``
   if the constructor asks for a different one, matching the existing rule for
   ``lmax_signal``, ``mask=`` and the covariances.
+* The dormant ``out*`` covariance handoff is unsupported with a filter: it
+  writes the restricted ``(rank, rank)`` matrix while the read side reshapes to
+  the pointing count. In-memory handoff has been the primary path since
+  ADR-0016, so this is a documented limitation and not a code change. The
+  reduced covariances written by ``outnoisecovmat1/2`` stay unrestricted, so
+  the on-disk products remain in pixel space.
 * ``ComputationBasis`` now raises ``ValueError`` when the noise covariance
   handed in does not match the working dimension, instead of proceeding until
   a downstream matmul fails. The same check catches an unrestricted ``N`` under

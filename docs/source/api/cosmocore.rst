@@ -35,6 +35,7 @@ Core Modules
    cosmocore/conventions_cmb
    cosmocore/core
    cosmocore/fields
+   cosmocore/filters
    cosmocore/in_out
    cosmocore/mpi_utils
    cosmocore/settings

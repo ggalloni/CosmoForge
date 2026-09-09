@@ -265,3 +265,40 @@ spin-2 machinery (the V operator, the 2×2 Λ blocks) assumes one pixel set
 per spin-2 field — and the previous code silently used the *second* column
 of the pair for both. This is now rejected at `_resolve_mask` rather than
 mishandled downstream.
+
+### Amendment (2026-09-09, filters): three kwargs join the vocabulary
+
+[ADR-0020](0020-filters-as-restriction-to-range.md) adds a pixel-space filter
+as a first-class input, and with it three constructor kwargs on `Core`:
+
+| Kwarg | Shadows (params) | Matches (internal) |
+|---|---|---|
+| `pixel_filter` | nothing | `Core.pixel_filter`, a `cosmocore.filters.Filter` |
+| `maps_prefiltered` | nothing | `Core.maps_prefiltered` |
+| `noise_prefiltered` | nothing | `Core.noise_prefiltered` |
+
+Two things about them are worth stating, because both look like violations of
+§Decision.5 and are not:
+
+**`pixel_filter` shadows no path.** The vocabulary rule is that an injection
+kwarg is named after the object it becomes rather than the path it shadows, and
+a filter has no path to shadow: nothing in `InputParams` names one, and 1.3.0
+deliberately ships no YAML expression of a filter (nobody drives filtered runs
+from config today, and the question of what such a key would contain is left
+open). It is an in-memory input with one adapter rather than two. When a
+config form arrives it takes the file-adapter slot under this same name.
+
+**The prefiltered flags are not inputs at all.** They are declarations *about*
+two inputs, `maps1/2` and `noise_cov1/2`, saying that the array as handed
+already carries the filter, so it is restricted with `Uᵀ` rather than `Σ Wᵀ`.
+They live on the classes and never on the `Filter` record, because the record
+describes an operator while the flags describe a particular caller's data.
+They are booleans, so the "injected object is exactly what the reader would
+have returned" contract does not apply to them.
+
+The seams themselves are unchanged: `pixel_filter` is applied *after*
+`_resolve_noise_cov` and `_resolve_maps` return, so both adapters converge
+first and the filter restricts the converged object. `Core._check_filter_geometry`
+runs once, at the noise seam, and compares the filter's `blake2b` fingerprint of
+`active_pixel_index(mask)` against this run's mask. That is the ordering
+published by the 2026-07-13 amendment above, now doing a second job.

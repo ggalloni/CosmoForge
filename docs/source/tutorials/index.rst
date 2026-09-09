@@ -8,6 +8,7 @@ Learn how to use CosmoForge through detailed tutorials and examples.
 
    basic_usage
    in_memory_inputs
+   pixel_filters
 
 .. note::
    Additional tutorials are planned for future releases:

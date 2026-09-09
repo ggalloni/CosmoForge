@@ -16,6 +16,7 @@ agent-facing convention that governs when an ADR should be written.
 ### Basis architecture
 - [ADR-0002 — Computation basis abstraction](0002-computation-basis-abstraction.md). `HarmonicBasis` and `PixelBasis` behind a `ComputationBasis` ABC; replaces the legacy "compression" framing.
 - [ADR-0003 — Pixel basis direct mode and `method="auto"`](0003-pixel-basis-direct-mode.md). Direct pixel-space path bypassing V; cost-based selector compares `n_modes³` vs `(n_bins+1)·n_pix³`. fsky ≈ 0.35 crossover.
+- [ADR-0020 — Filters are restriction to the operator's range, unified with compression](0020-filters-as-restriction-to-range.md). A pixel-space filter is a subspace: the analysis runs inside `range(F)`, recorded as the operator's thin SVD, with the ridge kept only as a test oracle. One seam per object, always the end object (`V` once, `S` once, the binned `E_b` once per bin). Field-block structure is off wholesale under a filter, and the basis layer's `n_components` is documented as a *field* count.
 - [ADR-0018 — Auto basis is the true default; `compression=` → `basis=`](0018-auto-basis-default-and-kwarg-rename.md). Realises ADR-0003's auto default at the orchestration layer; renames the constructor kwarg; establishes the post-1.0 deprecation-shim policy (retires ADR-0002/0013 no-shim precedent).
 
 ### Numerical stability and linear algebra
@@ -40,7 +41,7 @@ agent-facing convention that governs when an ADR should be written.
 ### Inputs, outputs, and persistence
 - [ADR-0015 — Opt-in persistence](0015-opt-in-persistence.md). No computed quantity is written unless the caller provides an output path; `out*` defaults become `None` and the four write helpers no-op on a falsy path. Hard cut from the old write-by-default behaviour.
 - [ADR-0016 — Fisher→Spectra handoff transport](0016-fisher-spectra-handoff-transport.md). In-memory alias of the live Fisher's covariances is the primary handoff; the `out*` files remain a dormant read adapter (two-job transport). Whole-Fisher serialization deferred (unpicklable comm/logger; window-fns re-invoke `compute()`).
-- [ADR-0017 — File-or-array loading seams](0017-file-or-array-loading-seams.md). Two adapters per input seam (params path + injected in-memory object). Invariant per seam: contract identity (injected == reader output), one convergence + validation point, pure parsers stay pure. Satisfied by either a dedicated `_resolve_<input>()` on the seam-owning class (`mask`/`noise_cov` on `Core`, `maps` on `Spectra`) or reuse of an existing collaborator that already converges + validates (`cls_data`/`fiducial_cls` via `set_cls`). Fixed injection-kwarg vocabulary (`mask`, `noise_cov1/2`, `maps1/2`, `cls_data`, `fiducial_cls`, `beam`). Adopts the two-layer (high/low) interface split. Amended 2026-07-08 (A3–A4): mechanism vs invariant.
+- [ADR-0017 — File-or-array loading seams](0017-file-or-array-loading-seams.md). Two adapters per input seam (params path + injected in-memory object). Invariant per seam: contract identity (injected == reader output), one convergence + validation point, pure parsers stay pure. Satisfied by either a dedicated `_resolve_<input>()` on the seam-owning class (`mask`/`noise_cov` on `Core`, `maps` on `Spectra`) or reuse of an existing collaborator that already converges + validates (`cls_data`/`fiducial_cls` via `set_cls`). Fixed injection-kwarg vocabulary (`mask`, `noise_cov1/2`, `maps1/2`, `cls_data`, `fiducial_cls`, `beam`). Adopts the two-layer (high/low) interface split. Amended 2026-07-08 (A3–A4): mechanism vs invariant; amended 2026-09-09 (filters): `pixel_filter`, `maps_prefiltered`, `noise_prefiltered` join the vocabulary, the first as a one-adapter input with no path to shadow.
 
 ### Packaging and runtime
 - [ADR-0012 — Optional `mpi4py` via stub dispatch](0012-optional-mpi-via-stub-dispatch.md). Single import boundary at `cosmocore._mpi`; `mpi4py` becomes an opt-in `mpi` extra; CI matrix exercises both branches.
@@ -50,7 +51,7 @@ agent-facing convention that governs when an ADR should be written.
 
 | Status | ADRs |
 |---|---|
-| Accepted | 0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008, 0009, 0011, 0012, 0013, 0014, 0015, 0016, 0017, 0018 |
+| Accepted | 0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008, 0009, 0011, 0012, 0013, 0014, 0015, 0016, 0017, 0018, 0020 |
 | Proposed / deferred | 0010, 0019 |
 | Superseded | — |
 
@@ -58,7 +59,7 @@ No supersession chains in place; all current ADRs are additive.
 
 ## Adding a new ADR
 
-Next free number is **0019**. Use the pattern `NNNN-kebab-title.md`.
+Next free number is **0021**. Use the pattern `NNNN-kebab-title.md`.
 
 1. First line: `# ADR-NNNN: {title}`.
 2. Sections: **Status** (Accepted / Proposed / Superseded; date and merge target if known), **Context**, **Decision**, **Consequences**. Optional: **References**, **Validation**, **See also** (related memory files and code paths).
