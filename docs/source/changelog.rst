@@ -6,6 +6,21 @@ All notable changes to CosmoForge will be documented here.
 Every pull request that touches package source updates this file; see
 ``CLAUDE.md`` and the pull-request template.
 
+Unreleased
+----------
+
+**Fixed:**
+
+* ``basis={"compress": True, "delta_m": N}`` now reaches the basis. Both keys
+  were missing from the forward list in ``Fisher`` and ``PICSLike``, so they
+  were dropped before ``setup_computation_basis`` and the run logged the
+  harmonic path while computing the uncompressed answer; m-block compression
+  was unreachable except by constructing ``HarmonicBasis`` directly. The
+  forwarded set is now the signature of ``setup_computation_basis`` itself, so
+  ``beam`` and ``use_smw_optimization`` are accepted in the dict too.
+* An unrecognised key in the ``basis=`` dict raises ``ValueError`` instead of
+  being filtered out in silence.
+
 Version 1.2.0 (2026-09-08)
 --------------------------
 

@@ -826,18 +826,7 @@ class PICSLike(Core, MPISharedMemoryMixin):
             self.setup_beams(lmax=self.lmax_signal)
 
             if self._basis_config is not None:
-                _basis_keys = (
-                    "method",
-                    "epsilon",
-                    "mode_fraction",
-                    "compression_target",
-                    "C_ell",
-                )
-                kwargs = {
-                    k: self._basis_config[k]
-                    for k in _basis_keys
-                    if k in self._basis_config
-                }
+                kwargs = self._basis_setup_kwargs()
                 self.setup_computation_basis(**kwargs)
                 self.log("Computation basis setup completed", level=3)
 

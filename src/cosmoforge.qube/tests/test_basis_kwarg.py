@@ -221,3 +221,33 @@ def test_spectra_refuses_a_ceiling_that_conflicts_with_a_supplied_fisher(
             fisher=_ran_fisher(cfg),
             basis={"method": "harmonic", "lmax_signal": 12},
         )
+
+
+def test_basis_compress_reaches_the_basis(config_resolver):
+    """``basis={"compress": True}`` builds the m-block path, it is not dropped.
+
+    ``compress``/``delta_m`` were missing from the hand-kept forward list, so
+    the key was filtered out before ``setup_computation_basis`` and the run
+    reported "harmonic" while computing the uncompressed answer.
+    """
+    f = Fisher(_cfg(config_resolver), basis={"method": "harmonic", "compress": True})
+    f.run()
+    assert f.basis_manager._compress is True
+    # V is still needed by the m-block path, so the Fisher run must not release it.
+    assert f.basis_manager._harmonic_basis._V is not None
+    # Sanity only: the m-block answer is the same Fisher, not garbage. delta_m=0
+    # assumes exactly uniform phi sampling per ring; HEALPix at nside=4 is far
+    # from that, so the diagonal drifts from ~1e-4 at low ell to ~8% at the top
+    # multipole. The sharp accuracy claim lives in cosmocore's
+    # test_symmetric_mask_fisher_accuracy, on a geometry that earns it.
+    np.testing.assert_allclose(
+        np.diag(f.get_fisher_matrix()),
+        np.diag(_fisher_matrix(config_resolver, "T", basis="harmonic")),
+        rtol=0.1,
+    )
+
+
+def test_basis_unknown_key_raises(config_resolver):
+    f = Fisher(_cfg(config_resolver), basis={"method": "harmonic", "compres": True})
+    with pytest.raises(ValueError, match="unknown basis key"):
+        f.run()

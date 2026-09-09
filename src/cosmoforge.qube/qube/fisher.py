@@ -69,6 +69,8 @@ def _basis_path_label(basis_manager) -> str:
             if getattr(basis_manager, "_is_compressed", False)
             else "pixel-direct"
         )
+    if getattr(basis_manager, "_compress", False):
+        return f"harmonic m-block (delta_m={basis_manager._delta_m})"
     return "harmonic"
 
 
@@ -682,22 +684,9 @@ class Fisher(Core, MPISharedMemoryMixin):
                 self.setup_beams(lmax=self.lmax_signal)
                 self.log("Beam functions setup completed", level=3)
 
-            # Setup computation basis if configured. Only forward keys that
-            # are explicitly set in the config dict so the function defaults
-            # (e.g. epsilon=1e-6) take effect when the user omits a key.
+            # Setup computation basis if configured.
             if self._basis_config is not None:
-                _basis_keys = (
-                    "method",
-                    "epsilon",
-                    "mode_fraction",
-                    "compression_target",
-                    "C_ell",
-                )
-                kwargs = {
-                    k: self._basis_config[k]
-                    for k in _basis_keys
-                    if k in self._basis_config
-                }
+                kwargs = self._basis_setup_kwargs()
                 with self._stage("fisher.basis_setup"):
                     self.setup_computation_basis(**kwargs)
                 bm = self.basis_manager
@@ -712,7 +701,10 @@ class Fisher(Core, MPISharedMemoryMixin):
                 )
                 # Fisher's harmonic QML path reads only V_N_inv and V_Ninv_VT
                 # after setup. Drop V to free n_modes × n_pix.
-                bm.release_pixel_projector()
+                # m-block compression keeps reading V, and the harmonic
+                # basis raises rather than no-ops when asked to drop it.
+                if not getattr(bm, "_compress", False):
+                    bm.release_pixel_projector()
                 # The basis manager handles covariance inversion internally
                 # (SMW for harmonic, direct/truncated solve for pixel), so the
                 # traditional explicit C = N+S build and inversion is skipped.
