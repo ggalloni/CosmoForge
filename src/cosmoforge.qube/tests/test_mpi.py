@@ -114,3 +114,66 @@ def test_effective_ells_collective(comm, config_resolver):
         assert np.all(np.isfinite(ell_eff))
     else:
         assert ell_eff is None
+
+
+def _qu_mask(local_path):
+    import healpy as hp
+
+    path = os.path.join(local_path, "tests", "data", "nside4", "QU", "mask.fits")
+    return np.repeat(np.asarray(hp.read_map(path), float)[:, None], 2, axis=1)
+
+
+def test_pixel_filter_survives_the_shared_memory_broadcast(
+    comm, local_path, config_resolver
+):
+    """``W`` travels through ``_shared_array``, never as a pickle (ADR-0020).
+
+    Every rank must end holding the same factors, and a projector's ``U`` must
+    still *be* its ``W``: raw and pre-filtered inputs land in identical
+    coordinates only while that identity holds.
+    """
+    from cosmocore.filters import harmonic_deprojection
+
+    mask = _qu_mask(local_path)
+    projector = harmonic_deprojection(mask=mask, spins=[2], ells=[2, 3], slot="E")
+
+    config_file = config_resolver("tests/data/nside4/QU/config.yaml")
+    fisher = Fisher(config_file, basis=False, mask=mask, pixel_filter=projector)
+    fisher.run()
+    os.unlink(config_file)
+
+    f = fisher.pixel_filter
+    assert f is not None
+    assert f.W.shape == (projector.n_pixels, projector.rank)
+    assert f.U is f.W
+    assert f.rank == projector.rank
+    assert f.fingerprint == projector.fingerprint
+
+    checksums = comm.allgather((float(f.W.sum()), float(np.abs(f.W).sum())))
+    assert len(set(checksums)) == 1
+
+
+def test_filtered_spectra_under_mpi(comm, local_path, config_resolver):
+    """The worker ranks estimate from restricted maps and derivatives."""
+    from cosmocore.filters import harmonic_deprojection
+
+    mask = _qu_mask(local_path)
+    projector = harmonic_deprojection(mask=mask, spins=[2], ells=[2, 3], slot="E")
+
+    config_file_f = config_resolver("tests/data/nside4/QU/config.yaml")
+    fisher = Fisher(config_file_f, basis=False, mask=mask, pixel_filter=projector)
+    fisher.run()
+    os.unlink(config_file_f)
+
+    config_file_s = config_resolver("tests/data/nside4/QU/config.yaml")
+    qml = Spectra(config_file_s, fisher=fisher)
+    qml.run()
+    os.unlink(config_file_s)
+
+    assert qml.pixel_filter is not None
+    assert qml.pixel_filter.U is qml.pixel_filter.W
+
+    if comm.Get_rank() == 0:
+        spectra = qml.get_power_spectra()
+        assert spectra is not None
+        assert np.all(np.isfinite(spectra))

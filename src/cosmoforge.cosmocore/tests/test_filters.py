@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from cosmocore.filters import (
+    MIN_RANGE_EPSILON,
     Filter,
     _centred_phi,
     _field_columns,
@@ -286,3 +287,61 @@ def test_constructors_agree_on_the_fingerprint(cap):
     both = scan & band
     assert isinstance(both, Filter)
     assert both.rank <= min(scan.rank, band.rank)
+
+
+class TestRangeRank:
+    """The second of the two threshold knobs, which no constructor reaches.
+
+    Every shipped constructor supplies ``range_epsilon`` or builds its record
+    directly, so ``from_operator(range_rank=...)`` is only ever exercised by a
+    caller writing their own operator. It is public and documented, so it is
+    tested here rather than left to them.
+    """
+
+    def _graded(self, n=40):
+        rng = np.random.default_rng(2)
+        Q = np.linalg.qr(rng.standard_normal((n, n)))[0]
+        return (Q * np.logspace(0, -8, n)) @ Q.T
+
+    def test_range_rank_keeps_exactly_that_many_directions(self):
+        # A smooth spectrum has no gap to cut at, so the cut warns and says so.
+        with pytest.warns(UserWarning, match="without a spectral gap"):
+            f = Filter.from_operator(self._graded(), range_rank=12)
+        assert f.rank == 12
+        assert f.sigma.size == 12
+        assert f.range_rank == 12
+        assert f.range_epsilon is None
+        assert not f.is_projector
+
+    def test_range_rank_outside_the_spectrum_is_refused(self):
+        with pytest.raises(ValueError, match="outside 1"):
+            Filter.from_operator(self._graded(n=40), range_rank=41)
+
+    def test_the_two_knobs_are_mutually_exclusive(self):
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            Filter.from_operator(self._graded(), range_epsilon=1e-3, range_rank=5)
+
+
+class TestFromOperatorRecognisesItsInput:
+    """Two behaviours of ``from_operator`` no shipped constructor reaches."""
+
+    def test_a_projection_matrix_comes_back_as_a_projector(self):
+        """Unit singular values mean ``U`` aliases ``W``, not a graded record."""
+        rng = np.random.default_rng(4)
+        Q = np.linalg.qr(rng.standard_normal((30, 8)))[0]
+        f = Filter.from_operator(Q @ Q.T, range_epsilon=1e-6)
+        assert f.is_projector
+        assert f.U is f.W
+        assert f.rank == 8
+        np.testing.assert_allclose(f.sigma, 1.0)
+        # Q_removed is what lets two projectors intersect by complement-of-union.
+        assert f.Q_removed is not None and f.Q_removed.shape == (30, 22)
+
+    def test_an_epsilon_below_the_floor_is_clipped_loudly(self):
+        """The floor is sqrt(eps) because the restricted covariance carries Σ²."""
+        rng = np.random.default_rng(6)
+        Q = np.linalg.qr(rng.standard_normal((20, 20)))[0]
+        F = (Q * np.logspace(0, -12, 20)) @ Q.T
+        with pytest.warns(UserWarning, match="below MIN_RANGE_EPSILON"):
+            f = Filter.from_operator(F, range_epsilon=1e-13)
+        assert f.range_epsilon == pytest.approx(MIN_RANGE_EPSILON)

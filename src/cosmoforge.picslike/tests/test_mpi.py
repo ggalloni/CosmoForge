@@ -46,3 +46,29 @@ def test_broadcast_drops_stale_smw_cache(fast_config_path):
     pl._broadcast_variables()
 
     assert pl._smw_data_cache is None
+
+
+def test_filtered_likelihood_under_mpi(comm, fast_config_path):
+    """The worker ranks evaluate the grid in the filter's range (ADR-0020)."""
+    import healpy as hp
+    import yaml
+
+    from cosmocore.filters import harmonic_deprojection
+
+    with open(fast_config_path) as f:
+        config = yaml.safe_load(f)
+    m = np.asarray(hp.read_map(config["maskfile"]), float)
+    mask = np.repeat(m[:, None], len(config["physical_labels"]), axis=1)
+    projector = harmonic_deprojection(mask=mask, spins=[0, 2], ells=[2, 3], slot="E")
+
+    pl = PICSLike(fast_config_path, basis=False, mask=mask, pixel_filter=projector)
+    pl.run()
+
+    assert pl.pixel_filter is not None
+    assert pl.pixel_filter.U is pl.pixel_filter.W
+    assert pl.pixel_filter.rank == projector.rank
+
+    if comm.Get_rank() == 0:
+        result = pl.likelihood_result
+        assert np.all(np.isfinite(result.log_likelihood_values))
+        assert np.all(np.isfinite(result.chi_squared_values))
