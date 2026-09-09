@@ -108,10 +108,10 @@ ppc = PixelBasis(N, N_inv, theta, phi, lmax=100)
 ppc.setup()
 
 # Inspect per-field eigenspectra to choose thresholds
-fig, axes = ppc.plot_eigenvalue_spectrum(basis="noise_weighted")
+fig, axes = ppc.plot_eigenvalue_spectrum(compression_target="noise_weighted")
 
 # Apply eigenmode truncation with chosen threshold
-ppc.apply_compression(epsilon=1e-4, basis="noise_weighted")
+ppc.apply_compression(epsilon=1e-4, compression_target="noise_weighted")
 
 # Compute Fisher matrix
 fisher = ppc.compute_fisher_matrix(C_ell)
@@ -133,7 +133,7 @@ ppc = PixelBasis(
 ppc.setup()
 
 # Per-field eigenspectrum with E/B breakdown
-spectra = ppc.compute_eigenspectrum_per_field(basis="noise_weighted")
+spectra = ppc.compute_eigenspectrum_per_field(compression_target="noise_weighted")
 for entry in spectra:
     print(f"{entry['label']}: {len(entry['eigenvalues'])} modes")
 

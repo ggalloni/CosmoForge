@@ -62,6 +62,7 @@ import numpy as np
 from cosmocore import (
     Core,
     FieldCollection,
+    InputParams,
     MPISharedMemoryMixin,
     SpectrumKey,
     cholesky_solve,
@@ -94,8 +95,11 @@ class PICSLike(Core, MPISharedMemoryMixin):
 
     Parameters
     ----------
-    params_file : str, optional
-        Path to YAML parameter file containing analysis configuration.
+    params_file : InputParams, str or dict, optional
+        Analysis configuration: an ``InputParams``, a path to a YAML parameter
+        file, or a dict of parameter values. All three go to
+        :meth:`cosmocore.Core.read_params`; the name says "file" for
+        historical reasons only.
     **kwargs : dict
         Additional keyword arguments passed to the Core parent class.
 
@@ -154,7 +158,7 @@ class PICSLike(Core, MPISharedMemoryMixin):
 
     def __init__(
         self,
-        params_file: str | None = None,
+        params_file: InputParams | str | dict | None = None,
         basis: dict | str | bool | None = Core._UNSET,
         compression: dict | str | bool | None = Core._UNSET,
         mask: np.ndarray | None = None,
@@ -172,8 +176,9 @@ class PICSLike(Core, MPISharedMemoryMixin):
 
         Parameters
         ----------
-        params_file : str, optional
-            Path to YAML configuration file.
+        params_file : InputParams, str or dict, optional
+            Analysis configuration: an ``InputParams``, a path to a YAML
+            configuration file, or a dict of parameter values.
         basis : None, False, str or dict, optional
             Computation basis selection (ADR-0018). ``None`` (default) →
             ``method="auto"``; ``False`` → traditional pixel-space path;

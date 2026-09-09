@@ -20,6 +20,22 @@ Unreleased
   ``beam`` and ``use_smw_optimization`` are accepted in the dict too.
 * An unrecognised key in the ``basis=`` dict raises ``ValueError`` instead of
   being filtered out in silence.
+* ``params_file=`` on ``Fisher``, ``Spectra`` and ``PICSLike`` documents what
+  it has always accepted: an ``InputParams``, a path, or a dict. The docstring
+  and the annotation both claimed a path only. No behaviour change; the name
+  is unchanged.
+* ``PixelBasis``'s class docstring documented a ``basis`` constructor
+  parameter. The constructor takes ``compression_target``.
+
+**Deprecated:**
+
+* ``PixelBasis`` names one concept one way. ``compute_eigenspectrum``,
+  ``compute_eigenspectrum_per_field`` and ``plot_eigenvalue_spectrum`` take
+  ``compression_target=`` (the constructor's spelling); their ``basis=`` and
+  ``plot_eigenvalue_comparison``'s ``bases=`` still work for one release and
+  warn (ADR-0018). The old names collided with ``basis=`` on ``Fisher``,
+  ``Spectra`` and ``PICSLike``, which selects harmonic vs pixel vs auto and is
+  an unrelated concept.
 
 Version 1.2.0 (2026-09-08)
 --------------------------

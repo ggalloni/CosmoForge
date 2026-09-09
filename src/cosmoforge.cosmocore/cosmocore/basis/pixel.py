@@ -13,6 +13,7 @@ Available compression bases (from Gjerløw et al. 2019):
 
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -32,7 +33,30 @@ from .base import BasisPrepared, ComputationBasis
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
+
 # Available compression basis presets
+def _resolve_target_alias(target, alias, new_name: str, old_name: str):
+    """Warn-and-forward the ``basis=``/``bases=`` spelling for one release (ADR-0018).
+
+    These methods named the compression target ``basis`` while the constructor
+    named it ``compression_target``, and ``basis=`` on ``Fisher``, ``Spectra``
+    and ``PICSLike`` is a different concept entirely (harmonic vs pixel vs
+    auto). One word for one concept: the old spelling still works and says so.
+    """
+    if alias is None:
+        return target
+    if target is not None:
+        raise TypeError(
+            f"pass only {new_name}=; {old_name}= is the deprecated alias for it"
+        )
+    warnings.warn(
+        f"{old_name}= is deprecated; use {new_name}= (ADR-0018)",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+    return alias
+
+
 COMPRESSION_BASES = {
     "harmonic": "P_h = V^T V (pure harmonic projector)",
     "noise_weighted": "P_h N^{-1} P_h (inverse noise weighting)",
@@ -81,15 +105,15 @@ class PixelBasis(ComputationBasis):
         Maximum multipole for harmonic expansion.
     beam : numpy.ndarray or None, optional
         Beam window function B_ℓ for ℓ=2 to lmax.
-    basis : str, default "noise_weighted"
-        Compression basis to use. Options:
+    compression_target : str, default "noise_weighted"
+        Matrix to eigendecompose. Options:
         - "harmonic": P_h = V^T V (pure harmonic projector)
         - "noise_weighted": P_h N^{-1} P_h (inverse noise weighting)
         - "total_covariance": P_h C^{-1} P_h where C = N + S
         - "snr": S^{1/2} N^{-1} S^{1/2} (signal-to-noise ratio)
     C_ell : numpy.ndarray or None, optional
         Power spectrum values for ell = 2 to lmax. Required for
-        "total_covariance" and "snr" bases.
+        "total_covariance" and "snr" targets.
     epsilon : float, optional
         Eigenvalue threshold relative to maximum.
     mode_fraction : float, optional
@@ -276,7 +300,7 @@ class PixelBasis(ComputationBasis):
         V_sub: np.ndarray,
         N_field: np.ndarray,
         N_field_inv: np.ndarray,
-        basis: str,
+        compression_target: str,
         C_ell_sub: np.ndarray | None = None,
     ) -> np.ndarray:
         """
@@ -290,8 +314,8 @@ class PixelBasis(ComputationBasis):
             Noise covariance for this field, shape (n_field_pix, n_field_pix).
         N_field_inv : numpy.ndarray
             Noise inverse for this field.
-        basis : str
-            Compression basis.
+        compression_target : str
+            Compression target.
         C_ell_sub : numpy.ndarray or None
             Auto-spectrum diagonal for this sub-field (EE for E, BB for B).
 
@@ -302,21 +326,21 @@ class PixelBasis(ComputationBasis):
         """
         P_sub = matrix_mult(V_sub.T, V_sub)
 
-        if basis == "harmonic":
+        if compression_target == "harmonic":
             return P_sub
-        elif basis == "noise_weighted":
+        elif compression_target == "noise_weighted":
             return matrix_mult(matrix_mult(P_sub, N_field_inv), P_sub)
-        elif basis == "total_covariance":
+        elif compression_target == "total_covariance":
             if C_ell_sub is None:
-                raise ValueError("C_ell required for 'total_covariance' basis")
+                raise ValueError("C_ell required for 'total_covariance' target")
             V_scaled = V_sub * C_ell_sub[:, np.newaxis]
             S_sub = matrix_mult(V_sub.T, V_scaled)
             C_sub = N_field + S_sub
             C_sub_inv = matrix_inverse_symm(C_sub, overwrite=True)
             return matrix_mult(matrix_mult(P_sub, C_sub_inv), P_sub)
-        elif basis == "snr":
+        elif compression_target == "snr":
             if C_ell_sub is None:
-                raise ValueError("C_ell required for 'snr' basis")
+                raise ValueError("C_ell required for 'snr' compression_target")
             V_scaled = V_sub * C_ell_sub[:, np.newaxis]
             S_sub = matrix_mult(V_sub.T, V_scaled)
             eigvals_S, eigvecs_S = eigh(S_sub)
@@ -325,14 +349,14 @@ class PixelBasis(ComputationBasis):
             S_sqrt = matrix_mult(Q_scaled, eigvecs_S.T)
             return matrix_mult(matrix_mult(S_sqrt, N_field_inv), S_sqrt)
         else:
-            raise ValueError(f"Unknown compression basis '{basis}'")
+            raise ValueError(f"Unknown compression target '{compression_target}'")
 
     def _eigendecompose_spin2_split(
         self,
         V_comp: np.ndarray,
         N_field: np.ndarray,
         N_field_inv: np.ndarray,
-        basis: str,
+        compression_target: str,
         epsilon: tuple[float, float] | None,
         mode_fraction: tuple[float, float] | None,
         C_ell: np.ndarray | None = None,
@@ -348,14 +372,14 @@ class PixelBasis(ComputationBasis):
             Noise covariance for this field.
         N_field_inv : numpy.ndarray
             Noise inverse for this field.
-        basis : str
-            Compression basis.
+        compression_target : str
+            Compression target.
         epsilon : tuple of float or None
             (E_epsilon, B_epsilon) thresholds.
         mode_fraction : tuple of float or None
             (E_fraction, B_fraction) mode fractions.
         C_ell : numpy.ndarray or None
-            C_ell for basis that needs it. For spin-2, this should be a dict-like
+            C_ell for the target that needs it. For spin-2, this should be a dict-like
             or we extract EE/BB diagonals.
 
         Returns
@@ -383,10 +407,10 @@ class PixelBasis(ComputationBasis):
 
         # Build compression matrices for E and B separately
         comp_E = self._build_compression_matrix_for_subfield(
-            V_E, N_field, N_field_inv, basis, C_ell_E
+            V_E, N_field, N_field_inv, compression_target, C_ell_E
         )
         comp_B = self._build_compression_matrix_for_subfield(
-            V_B, N_field, N_field_inv, basis, C_ell_B
+            V_B, N_field, N_field_inv, compression_target, C_ell_B
         )
 
         # Eigendecompose each with separate thresholds
@@ -408,7 +432,7 @@ class PixelBasis(ComputationBasis):
     def _eigendecompose_field(
         self,
         comp_idx: int,
-        basis: str,
+        compression_target: str,
         epsilon: float | tuple[float, float] | None,
         mode_fraction: float | tuple[float, float] | None,
         C_ell: np.ndarray | dict | None = None,
@@ -423,14 +447,14 @@ class PixelBasis(ComputationBasis):
         ----------
         comp_idx : int
             Component index.
-        basis : str
-            Compression basis.
+        compression_target : str
+            Compression target.
         epsilon : float, tuple, or None
             Threshold(s).
         mode_fraction : float, tuple, or None
             Mode fraction(s).
         C_ell : array or dict or None
-            Power spectrum for basis that needs it.
+            Power spectrum for the target that needs it.
 
         Returns
         -------
@@ -460,7 +484,7 @@ class PixelBasis(ComputationBasis):
                 V_comp,
                 N_field,
                 N_field_inv,
-                basis,
+                compression_target,
                 epsilon if isinstance(epsilon, tuple) else None,
                 mode_fraction if isinstance(mode_fraction, tuple) else None,
                 C_ell,
@@ -474,13 +498,13 @@ class PixelBasis(ComputationBasis):
             # Build P_h for this field
             P_sub = matrix_mult(V_comp.T, V_comp)
 
-            if basis == "harmonic":
+            if compression_target == "harmonic":
                 comp_matrix = P_sub
-            elif basis == "noise_weighted":
+            elif compression_target == "noise_weighted":
                 comp_matrix = matrix_mult(matrix_mult(P_sub, N_field_inv), P_sub)
-            elif basis == "total_covariance":
+            elif compression_target == "total_covariance":
                 if C_ell is None:
-                    raise ValueError("C_ell required for 'total_covariance' basis")
+                    raise ValueError("C_ell required for 'total_covariance' target")
                 Lambda_diag = self._build_lambda_diagonal(
                     C_ell if not isinstance(C_ell, dict) else next(iter(C_ell.values()))
                 )
@@ -489,9 +513,9 @@ class PixelBasis(ComputationBasis):
                 C_total = N_field + S
                 C_inv = matrix_inverse_symm(C_total, overwrite=True)
                 comp_matrix = matrix_mult(matrix_mult(P_sub, C_inv), P_sub)
-            elif basis == "snr":
+            elif compression_target == "snr":
                 if C_ell is None:
-                    raise ValueError("C_ell required for 'snr' basis")
+                    raise ValueError("C_ell required for 'snr' compression_target")
                 Lambda_diag = self._build_lambda_diagonal(
                     C_ell if not isinstance(C_ell, dict) else next(iter(C_ell.values()))
                 )
@@ -503,7 +527,7 @@ class PixelBasis(ComputationBasis):
                 S_sqrt = matrix_mult(Q_scaled, eigvecs_S.T)
                 comp_matrix = matrix_mult(matrix_mult(S_sqrt, N_field_inv), S_sqrt)
             else:
-                raise ValueError(f"Unknown compression basis '{basis}'")
+                raise ValueError(f"Unknown compression target '{compression_target}'")
 
             U, eigvals = self._eigendecompose_single(comp_matrix, eps_scalar, mf_scalar)
             return U, eigvals
@@ -931,44 +955,44 @@ class PixelBasis(ComputationBasis):
 
     def _build_compression_matrix(
         self,
-        basis: str,
+        compression_target: str,
         C_ell: np.ndarray | None = None,
     ) -> np.ndarray:
         """
-        Build the matrix for eigendecomposition based on compression basis.
+        Build the matrix for eigendecomposition based on the compression target.
 
         Parameters
         ----------
-        basis : str
-            Compression basis: "harmonic", "noise_weighted", "total_covariance", "snr".
+        compression_target : str
+            Compression target: "harmonic", "noise_weighted", "total_covariance", "snr".
         C_ell : numpy.ndarray, optional
             Power spectrum values for ell = 2 to lmax. Required for
-            "total_covariance" and "snr" bases.
+            "total_covariance" and "snr" targets.
 
         Returns
         -------
         numpy.ndarray
             Compression matrix of shape (n_pix, n_pix).
         """
-        if basis not in COMPRESSION_BASES:
+        if compression_target not in COMPRESSION_BASES:
             raise ValueError(
-                f"Unknown compression basis '{basis}'. "
+                f"Unknown compression target '{compression_target}'. "
                 f"Available: {list(COMPRESSION_BASES.keys())}"
             )
 
-        if basis == "harmonic":
+        if compression_target == "harmonic":
             # Pure harmonic projector P_h = V^T V
             return self._P_h
 
-        elif basis == "noise_weighted":
+        elif compression_target == "noise_weighted":
             # P_h N^{-1} P_h
             return matrix_mult(matrix_mult(self._P_h, self.N_inv), self._P_h)
 
-        elif basis == "total_covariance":
+        elif compression_target == "total_covariance":
             # P_h C^{-1} P_h where C = N + S
             if C_ell is None:
                 raise ValueError(
-                    "C_ell is required for 'total_covariance' basis. "
+                    "C_ell is required for 'total_covariance' compression_target. "
                     "Provide power spectrum values for ell = 2 to lmax."
                 )
             # Build signal covariance S = V^T Λ V
@@ -978,18 +1002,18 @@ class PixelBasis(ComputationBasis):
             V_scaled = self._V * Lambda_diag[:, np.newaxis]
             S = matrix_mult(self._V.T, V_scaled)
             # Total covariance C = N + S (symmetric N via lazy reconstruction
-            # if the basis has been factorised in place).
+            # if the noise has been factorised in place).
             C = self._N_symmetric + S
             # C^{-1}
             C_inv = matrix_inverse_symm(C, overwrite=True)
             # P_h C^{-1} P_h
             return matrix_mult(matrix_mult(self._P_h, C_inv), self._P_h)
 
-        elif basis == "snr":
+        elif compression_target == "snr":
             # S^{1/2} N^{-1} S^{1/2} - signal-to-noise ratio matrix
             if C_ell is None:
                 raise ValueError(
-                    "C_ell is required for 'snr' basis. "
+                    "C_ell is required for 'snr' compression_target. "
                     "Provide power spectrum values for ell = 2 to lmax."
                 )
             # Build signal covariance S = V^T Λ V
@@ -1005,26 +1029,30 @@ class PixelBasis(ComputationBasis):
             return matrix_mult(matrix_mult(S_sqrt, self.N_inv), S_sqrt)
 
         # Should never reach here
-        raise ValueError(f"Unhandled basis: {basis}")
+        raise ValueError(f"Unhandled compression_target: {compression_target}")
 
     def compute_eigenspectrum(
         self,
-        basis: str = "noise_weighted",
+        compression_target: str | None = None,
         C_ell: np.ndarray | None = None,
+        *,
+        basis: str | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """
-        Compute eigenvalue spectrum for a given compression basis.
+        Compute eigenvalue spectrum for a given compression target.
 
         This method computes the eigendecomposition without applying compression,
         allowing inspection of the spectrum to choose an appropriate threshold.
 
         Parameters
         ----------
-        basis : str, default "noise_weighted"
-            Compression basis: "harmonic", "noise_weighted", "total_covariance", "snr".
+        compression_target : str, default "noise_weighted"
+            Compression target: "harmonic", "noise_weighted", "total_covariance", "snr".
         C_ell : numpy.ndarray, optional
             Power spectrum values for ell = 2 to lmax. Required for
-            "total_covariance" and "snr" bases.
+            "total_covariance" and "snr" targets.
+        basis : str or None, optional
+            Deprecated alias for ``compression_target`` (ADR-0018).
 
         Returns
         -------
@@ -1033,7 +1061,13 @@ class PixelBasis(ComputationBasis):
         normalized_eigenvalues : numpy.ndarray
             Eigenvalues normalized by maximum value (for threshold selection).
         """
-        compression_matrix = self._build_compression_matrix(basis, C_ell)
+        compression_target = (
+            _resolve_target_alias(
+                compression_target, basis, "compression_target", "basis"
+            )
+            or "noise_weighted"
+        )
+        compression_matrix = self._build_compression_matrix(compression_target, C_ell)
         eigenvalues, _ = eigh(compression_matrix)
 
         # Sort in descending order
@@ -1050,8 +1084,10 @@ class PixelBasis(ComputationBasis):
 
     def compute_eigenspectrum_per_field(
         self,
-        basis: str = "noise_weighted",
+        compression_target: str | None = None,
         C_ell: np.ndarray | dict | None = None,
+        *,
+        basis: str | None = None,
     ) -> list[dict]:
         """
         Compute per-component eigenvalue spectra.
@@ -1062,10 +1098,12 @@ class PixelBasis(ComputationBasis):
 
         Parameters
         ----------
-        basis : str, default "noise_weighted"
-            Compression basis.
+        compression_target : str, default "noise_weighted"
+            Compression target.
         C_ell : numpy.ndarray, dict, or None
-            Power spectrum (required for "total_covariance" and "snr" bases).
+            Power spectrum (required for "total_covariance" and "snr" targets).
+        basis : str or None, optional
+            Deprecated alias for ``compression_target`` (ADR-0018).
 
         Returns
         -------
@@ -1075,9 +1113,15 @@ class PixelBasis(ComputationBasis):
             Spin-2 components additionally have ``E_eigenvalues``,
             ``E_normalized``, ``B_eigenvalues``, ``B_normalized``.
         """
-        if basis not in COMPRESSION_BASES:
+        compression_target = (
+            _resolve_target_alias(
+                compression_target, basis, "compression_target", "basis"
+            )
+            or "noise_weighted"
+        )
+        if compression_target not in COMPRESSION_BASES:
             raise ValueError(
-                f"Unknown compression basis '{basis}'. "
+                f"Unknown compression target '{compression_target}'. "
                 f"Available: {list(COMPRESSION_BASES.keys())}"
             )
 
@@ -1109,7 +1153,7 @@ class PixelBasis(ComputationBasis):
                 cell_sub_full = cell_diag_0
 
             comp_matrix = self._build_compression_matrix_for_subfield(
-                V_comp, N_field, N_field_inv, basis, cell_sub_full
+                V_comp, N_field, N_field_inv, compression_target, cell_sub_full
             )
             eigenvalues = np.sort(eigvalsh(comp_matrix))[::-1]
             max_ev = np.max(np.abs(eigenvalues))
@@ -1129,14 +1173,14 @@ class PixelBasis(ComputationBasis):
                 V_B = V_comp[n_base:, :]
 
                 comp_E = self._build_compression_matrix_for_subfield(
-                    V_E, N_field, N_field_inv, basis, cell_diag_0
+                    V_E, N_field, N_field_inv, compression_target, cell_diag_0
                 )
                 ev_E = np.sort(eigvalsh(comp_E))[::-1]
                 max_E = np.max(np.abs(ev_E))
                 norm_E = ev_E / max_E if max_E > 0 else ev_E.copy()
 
                 comp_B = self._build_compression_matrix_for_subfield(
-                    V_B, N_field, N_field_inv, basis, cell_diag_1
+                    V_B, N_field, N_field_inv, compression_target, cell_diag_1
                 )
                 ev_B = np.sort(eigvalsh(comp_B))[::-1]
                 max_B = np.max(np.abs(ev_B))
@@ -1189,13 +1233,15 @@ class PixelBasis(ComputationBasis):
 
     def plot_eigenvalue_spectrum(
         self,
-        basis: str = "noise_weighted",
+        compression_target: str | None = None,
         C_ell: np.ndarray | dict | None = None,
         axes: np.ndarray | None = None,
         log_scale: bool = True,
         show_threshold_lines: bool = True,
         threshold_values: list[float] | None = None,
         show_eb_split: bool = True,
+        *,
+        basis: str | None = None,
     ) -> tuple[Figure, np.ndarray]:
         """
         Plot eigenvalue spectrum for compression threshold selection.
@@ -1208,10 +1254,10 @@ class PixelBasis(ComputationBasis):
 
         Parameters
         ----------
-        basis : str, default "noise_weighted"
-            Compression basis.
+        compression_target : str, default "noise_weighted"
+            Compression target.
         C_ell : numpy.ndarray, dict, or None
-            Power spectrum (required for "total_covariance" and "snr" bases).
+            Power spectrum (required for "total_covariance" and "snr" targets).
         axes : numpy.ndarray of Axes or None
             Pre-created axes array (length ``n_components``).  If None, a new
             figure is created.
@@ -1223,6 +1269,8 @@ class PixelBasis(ComputationBasis):
             Custom threshold values to show.  Default: [1e-2, 1e-4, 1e-6, 1e-8].
         show_eb_split : bool, default True
             For spin-2 components, overlay E and B sub-spectra.
+        basis : str or None, optional
+            Deprecated alias for ``compression_target`` (ADR-0018).
 
         Returns
         -------
@@ -1240,7 +1288,9 @@ class PixelBasis(ComputationBasis):
         ...     N, theta, phi, lmax_signal=100, epsilon=0.0,
         ... )
         >>> ppc_probe.setup()
-        >>> fig, axes = ppc_probe.plot_eigenvalue_spectrum(basis="noise_weighted")
+        >>> fig, axes = ppc_probe.plot_eigenvalue_spectrum(
+        ...     compression_target="noise_weighted"
+        ... )
         >>> # From the plot, decide threshold (e.g., 1e-4).
         >>> ppc = PixelBasis(
         ...     N, theta, phi, lmax_signal=100,
@@ -1250,7 +1300,13 @@ class PixelBasis(ComputationBasis):
         """
         import matplotlib.pyplot as plt
 
-        per_field = self.compute_eigenspectrum_per_field(basis, C_ell)
+        compression_target = (
+            _resolve_target_alias(
+                compression_target, basis, "compression_target", "basis"
+            )
+            or "noise_weighted"
+        )
+        per_field = self.compute_eigenspectrum_per_field(compression_target, C_ell)
         n_comp = len(per_field)
 
         if axes is None:
@@ -1306,7 +1362,7 @@ class PixelBasis(ComputationBasis):
                 ax.set_yscale("log")
             ax.set_xlabel("Mode index", fontsize=12)
             ax.set_ylabel("Normalized eigenvalue", fontsize=12)
-            ax.set_title(f"{entry['label']}: {basis}", fontsize=12)
+            ax.set_title(f"{entry['label']}: {compression_target}", fontsize=12)
             ax.legend(loc="upper right", fontsize=9)
             ax.grid(True, alpha=0.3)
             ax.set_xlim(1, len(normalized))
@@ -1328,28 +1384,32 @@ class PixelBasis(ComputationBasis):
 
     def plot_eigenvalue_comparison(
         self,
-        bases: list[str] | None = None,
+        compression_targets: list[str] | None = None,
         C_ell: np.ndarray | dict | None = None,
         axes: np.ndarray | None = None,
         log_scale: bool = True,
+        *,
+        bases: list[str] | None = None,
     ) -> tuple[Figure, np.ndarray]:
         """
-        Compare eigenvalue spectra across different compression bases.
+        Compare eigenvalue spectra across different compression targets.
 
-        Creates one subplot per component, overlaying the different bases.
+        Creates one subplot per component, overlaying the different targets.
 
         Parameters
         ----------
-        bases : list of str or None
-            Compression bases to compare.  Default: all available (or just
+        compression_targets : list of str or None
+            Compression targets to compare.  Default: all available (or just
             "harmonic"/"noise_weighted" if C_ell is not provided).
         C_ell : numpy.ndarray, dict, or None
-            Power spectrum (required for "total_covariance" and "snr" bases).
+            Power spectrum (required for "total_covariance" and "snr" targets).
         axes : numpy.ndarray of Axes or None
             Pre-created axes array (length ``n_components``).  If None, a new
             figure is created.
         log_scale : bool, default True
             Whether to use logarithmic y-axis.
+        bases : list of str or None, optional
+            Deprecated alias for ``compression_targets`` (ADR-0018).
 
         Returns
         -------
@@ -1360,11 +1420,14 @@ class PixelBasis(ComputationBasis):
         """
         import matplotlib.pyplot as plt
 
-        if bases is None:
+        compression_targets = _resolve_target_alias(
+            compression_targets, bases, "compression_targets", "bases"
+        )
+        if compression_targets is None:
             if C_ell is not None:
-                bases = list(COMPRESSION_BASES.keys())
+                compression_targets = list(COMPRESSION_BASES.keys())
             else:
-                bases = ["harmonic", "noise_weighted"]
+                compression_targets = ["harmonic", "noise_weighted"]
 
         n_comp = self.n_components
 
@@ -1377,13 +1440,13 @@ class PixelBasis(ComputationBasis):
             axes_arr = np.atleast_1d(axes)
             fig = axes_arr[0].get_figure()
 
-        basis_colors = plt.cm.tab10(np.linspace(0, 1, len(bases)))
+        target_colors = plt.cm.tab10(np.linspace(0, 1, len(compression_targets)))
 
-        for basis, color in zip(bases, basis_colors):
+        for target, color in zip(compression_targets, target_colors):
             try:
-                per_field = self.compute_eigenspectrum_per_field(basis, C_ell)
+                per_field = self.compute_eigenspectrum_per_field(target, C_ell)
             except ValueError as e:
-                print(f"Skipping basis '{basis}': {e}")
+                print(f"Skipping target '{target}': {e}")
                 continue
 
             for idx, entry in enumerate(per_field):
@@ -1395,7 +1458,7 @@ class PixelBasis(ComputationBasis):
                     normalized,
                     color=color,
                     linewidth=1.5,
-                    label=basis,
+                    label=target,
                 )
 
         for idx in range(n_comp):

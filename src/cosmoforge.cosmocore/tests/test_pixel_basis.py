@@ -615,7 +615,7 @@ class TestPixelBasisBases:
             compression_target="invalid_basis",
         )
 
-        with pytest.raises(ValueError, match="Unknown compression basis"):
+        with pytest.raises(ValueError, match="Unknown compression target"):
             ppc.setup()
 
     def test_different_bases_give_different_results(self, uniform_sky_setup):
@@ -666,7 +666,9 @@ class TestPixelBasisEigenspectrum:
         )
         ppc.setup()
 
-        eigenvalues, normalized = ppc.compute_eigenspectrum(basis="noise_weighted")
+        eigenvalues, normalized = ppc.compute_eigenspectrum(
+            compression_target="noise_weighted"
+        )
 
         assert eigenvalues.shape == (setup["n_pix"],)
         assert normalized.shape == (setup["n_pix"],)
@@ -685,7 +687,7 @@ class TestPixelBasisEigenspectrum:
         )
         ppc.setup()
 
-        _, normalized = ppc.compute_eigenspectrum(basis="noise_weighted")
+        _, normalized = ppc.compute_eigenspectrum(compression_target="noise_weighted")
 
         assert_allclose(np.max(normalized), 1.0, rtol=1e-10)
 
@@ -703,7 +705,7 @@ class TestPixelBasisEigenspectrum:
         )
         ppc.setup()
 
-        eigenvalues, _ = ppc.compute_eigenspectrum(basis="noise_weighted")
+        eigenvalues, _ = ppc.compute_eigenspectrum(compression_target="noise_weighted")
 
         # Check descending order
         assert np.all(eigenvalues[:-1] >= eigenvalues[1:])
@@ -725,10 +727,10 @@ class TestPixelBasisEigenspectrum:
         )
         ppc.setup()
 
-        for basis in ["harmonic", "noise_weighted", "total_covariance", "snr"]:
-            c_ell_arg = C_ell if basis in ["total_covariance", "snr"] else None
+        for target in ["harmonic", "noise_weighted", "total_covariance", "snr"]:
+            c_ell_arg = C_ell if target in ["total_covariance", "snr"] else None
             eigenvalues, normalized = ppc.compute_eigenspectrum(
-                basis=basis, C_ell=c_ell_arg
+                compression_target=target, C_ell=c_ell_arg
             )
 
             assert eigenvalues is not None
@@ -754,7 +756,7 @@ class TestPixelBasisEigenspectrum:
         )
         ppc.setup()
 
-        fig, axes = ppc.plot_eigenvalue_spectrum(basis="noise_weighted")
+        fig, axes = ppc.plot_eigenvalue_spectrum(compression_target="noise_weighted")
 
         assert fig is not None
         assert axes is not None
@@ -784,7 +786,7 @@ class TestPixelBasisEigenspectrum:
         ppc.setup()
 
         fig, axes = ppc.plot_eigenvalue_comparison(
-            bases=["harmonic", "noise_weighted"],
+            compression_targets=["harmonic", "noise_weighted"],
             C_ell=C_ell,
         )
 
@@ -808,10 +810,10 @@ class TestPixelBasisEigenspectrum:
         ppc.setup()
 
         with pytest.raises(ValueError, match="C_ell is required"):
-            ppc.compute_eigenspectrum(basis="total_covariance")
+            ppc.compute_eigenspectrum(compression_target="total_covariance")
 
         with pytest.raises(ValueError, match="C_ell is required"):
-            ppc.compute_eigenspectrum(basis="snr")
+            ppc.compute_eigenspectrum(compression_target="snr")
 
 
 class TestComputeEigenspectrumPerField:
@@ -831,7 +833,7 @@ class TestComputeEigenspectrumPerField:
         )
         ppc.setup()
 
-        result = ppc.compute_eigenspectrum_per_field(basis="noise_weighted")
+        result = ppc.compute_eigenspectrum_per_field(compression_target="noise_weighted")
 
         assert len(result) == 1
         entry = result[0]
@@ -857,7 +859,7 @@ class TestComputeEigenspectrumPerField:
         )
         ppc.setup()
 
-        result = ppc.compute_eigenspectrum_per_field(basis="noise_weighted")
+        result = ppc.compute_eigenspectrum_per_field(compression_target="noise_weighted")
 
         assert len(result) == 2
         assert result[0]["component"] == 0
@@ -883,7 +885,7 @@ class TestComputeEigenspectrumPerField:
         ppc = PixelBasis(N, theta, phi, lmax, spins=[2], epsilon=0.0)
         ppc.setup()
 
-        result = ppc.compute_eigenspectrum_per_field(basis="noise_weighted")
+        result = ppc.compute_eigenspectrum_per_field(compression_target="noise_weighted")
 
         assert len(result) == 1
         entry = result[0]
@@ -913,7 +915,7 @@ class TestComputeEigenspectrumPerField:
         ppc.setup()
 
         result = ppc.compute_eigenspectrum_per_field(
-            basis="total_covariance", C_ell=C_ell
+            compression_target="total_covariance", C_ell=C_ell
         )
 
         assert len(result) == 1
@@ -942,7 +944,7 @@ class TestComputeEigenspectrumPerField:
         ppc.setup()
 
         result = ppc.compute_eigenspectrum_per_field(
-            basis="total_covariance", C_ell=C_ell_dict
+            compression_target="total_covariance", C_ell=C_ell_dict
         )
 
         assert len(result) == 2
@@ -963,8 +965,8 @@ class TestComputeEigenspectrumPerField:
         )
         ppc.setup()
 
-        with pytest.raises(ValueError, match="Unknown compression basis"):
-            ppc.compute_eigenspectrum_per_field(basis="invalid_basis")
+        with pytest.raises(ValueError, match="Unknown compression target"):
+            ppc.compute_eigenspectrum_per_field(compression_target="invalid_basis")
 
 
 class TestPlotMultiField:
@@ -989,7 +991,7 @@ class TestPlotMultiField:
         )
         ppc.setup()
 
-        fig, axes = ppc.plot_eigenvalue_spectrum(basis="noise_weighted")
+        fig, axes = ppc.plot_eigenvalue_spectrum(compression_target="noise_weighted")
 
         assert len(axes) == 2
         plt.close(fig)
@@ -1016,7 +1018,7 @@ class TestPlotMultiField:
         ppc.setup()
 
         fig, axes = ppc.plot_eigenvalue_spectrum(
-            basis="noise_weighted", show_eb_split=True
+            compression_target="noise_weighted", show_eb_split=True
         )
 
         assert len(axes) == 1
@@ -1047,7 +1049,7 @@ class TestPlotMultiField:
         ppc.setup()
 
         fig, axes = ppc.plot_eigenvalue_comparison(
-            bases=["harmonic", "noise_weighted"],
+            compression_targets=["harmonic", "noise_weighted"],
         )
 
         assert len(axes) == 2
@@ -1205,3 +1207,52 @@ class TestPPCOperationChain:
         C_ell = np.ones(setup["lmax"] - 1) * 1e-6
         with pytest.raises(ValueError, match="spectra_list should be None"):
             ppc.compute_fisher_matrix(C_ell, spectra_list=[(0, 0, 0)])
+
+
+class TestCompressionTargetAlias:
+    """``basis=``/``bases=`` are the deprecated spelling of the target (ADR-0018)."""
+
+    def _probe(self, uniform_sky_setup):
+        from cosmocore.basis import PixelBasis
+
+        setup = uniform_sky_setup
+        ppc = PixelBasis(
+            N=setup["N"],
+            theta=setup["theta"],
+            phi=setup["phi"],
+            lmax_signal=setup["lmax"],
+            epsilon=0.0,
+        )
+        ppc.setup()
+        return ppc
+
+    def test_basis_alias_warns_and_forwards(self, uniform_sky_setup):
+        ppc = self._probe(uniform_sky_setup)
+        with pytest.warns(DeprecationWarning, match="basis="):
+            old, _ = ppc.compute_eigenspectrum(basis="harmonic")
+        new, _ = ppc.compute_eigenspectrum(compression_target="harmonic")
+        np.testing.assert_array_equal(old, new)
+
+    def test_bases_alias_warns_and_forwards(self, uniform_sky_setup):
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        ppc = self._probe(uniform_sky_setup)
+        with pytest.warns(DeprecationWarning, match="bases="):
+            fig, _ = ppc.plot_eigenvalue_comparison(bases=["harmonic"])
+        plt.close(fig)
+
+    def test_both_spellings_together_is_an_error(self, uniform_sky_setup):
+        ppc = self._probe(uniform_sky_setup)
+        with pytest.raises(TypeError, match="only compression_target="):
+            ppc.compute_eigenspectrum(
+                compression_target="harmonic", basis="noise_weighted"
+            )
+
+    def test_target_defaults_to_noise_weighted(self, uniform_sky_setup):
+        ppc = self._probe(uniform_sky_setup)
+        default, _ = ppc.compute_eigenspectrum()
+        explicit, _ = ppc.compute_eigenspectrum(compression_target="noise_weighted")
+        np.testing.assert_array_equal(default, explicit)
