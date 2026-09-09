@@ -251,3 +251,14 @@ def test_basis_unknown_key_raises(config_resolver):
     f = Fisher(_cfg(config_resolver), basis={"method": "harmonic", "compres": True})
     with pytest.raises(ValueError, match="unknown basis key"):
         f.run()
+
+
+@pytest.mark.parametrize("cls_", [Fisher, Spectra])
+def test_params_file_is_a_deprecated_alias(config_resolver, cls_):
+    """``params_file=`` still works on the qube constructors, and warns."""
+    cfg = _cfg(config_resolver)
+    with pytest.warns(DeprecationWarning, match="params_file="):
+        obj = cls_(params_file=cfg)
+    assert obj.params is not None
+    with pytest.raises(TypeError, match="only params="):
+        cls_(params=cfg, params_file=cfg)

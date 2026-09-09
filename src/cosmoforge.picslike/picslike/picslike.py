@@ -95,11 +95,12 @@ class PICSLike(Core, MPISharedMemoryMixin):
 
     Parameters
     ----------
-    params_file : InputParams, str or dict, optional
+    params : InputParams, str or dict, optional
         Analysis configuration: an ``InputParams``, a path to a YAML parameter
         file, or a dict of parameter values. All three go to
-        :meth:`cosmocore.Core.read_params`; the name says "file" for
-        historical reasons only.
+        :meth:`cosmocore.Core.read_params`.
+    params_file : InputParams, str or dict, optional
+        Deprecated alias for ``params`` (ADR-0018).
     **kwargs : dict
         Additional keyword arguments passed to the Core parent class.
 
@@ -158,7 +159,7 @@ class PICSLike(Core, MPISharedMemoryMixin):
 
     def __init__(
         self,
-        params_file: InputParams | str | dict | None = None,
+        params: InputParams | str | dict | None = None,
         basis: dict | str | bool | None = Core._UNSET,
         compression: dict | str | bool | None = Core._UNSET,
         mask: np.ndarray | None = None,
@@ -169,6 +170,8 @@ class PICSLike(Core, MPISharedMemoryMixin):
         beam: np.ndarray | None = None,
         maps1: np.ndarray | None = None,
         maps2: np.ndarray | None = None,
+        *,
+        params_file: InputParams | str | dict | None = None,
         **kwargs: Any,
     ) -> None:
         """
@@ -176,9 +179,11 @@ class PICSLike(Core, MPISharedMemoryMixin):
 
         Parameters
         ----------
-        params_file : InputParams, str or dict, optional
+        params : InputParams, str or dict, optional
             Analysis configuration: an ``InputParams``, a path to a YAML
             configuration file, or a dict of parameter values.
+        params_file : InputParams, str or dict, optional
+            Deprecated alias for ``params`` (ADR-0018).
         basis : None, False, str or dict, optional
             Computation basis selection (ADR-0018). ``None`` (default) →
             ``method="auto"``; ``False`` → traditional pixel-space path;
@@ -211,7 +216,7 @@ class PICSLike(Core, MPISharedMemoryMixin):
         """
         # Initialize parent Core class
         super().__init__(
-            params=params_file,
+            params=self._resolve_params_alias(params, params_file),
             mask=mask,
             noise_cov1=noise_cov1,
             noise_cov2=noise_cov2,

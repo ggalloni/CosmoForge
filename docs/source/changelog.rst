@@ -20,10 +20,6 @@ Unreleased
   ``beam`` and ``use_smw_optimization`` are accepted in the dict too.
 * An unrecognised key in the ``basis=`` dict raises ``ValueError`` instead of
   being filtered out in silence.
-* ``params_file=`` on ``Fisher``, ``Spectra`` and ``PICSLike`` documents what
-  it has always accepted: an ``InputParams``, a path, or a dict. The docstring
-  and the annotation both claimed a path only. No behaviour change; the name
-  is unchanged.
 * ``PixelBasis``'s class docstring documented a ``basis`` constructor
   parameter. The constructor takes ``compression_target``.
 
@@ -36,6 +32,15 @@ Unreleased
   warn (ADR-0018). The old names collided with ``basis=`` on ``Fisher``,
   ``Spectra`` and ``PICSLike``, which selects harmonic vs pixel vs auto and is
   an unrelated concept.
+* ``params_file=`` on ``Fisher``, ``Spectra`` and ``PICSLike`` is now
+  ``params=``, the name ``Core`` has always used. It has always accepted an
+  ``InputParams``, a path or a dict, so "file" named one of the three things
+  it takes; the annotation claimed a path only. ``params_file=`` still works
+  for one release and warns (ADR-0018). Callers passing it positionally, which
+  is nearly all of them, are unaffected.
+* ``PixelBasis.available_bases()`` is now ``available_compression_targets()``
+  and ``cosmocore.basis.COMPRESSION_BASES`` is now ``COMPRESSION_TARGETS``.
+  Both old spellings work for one release and warn.
 
 Version 1.2.0 (2026-09-08)
 --------------------------

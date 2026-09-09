@@ -469,17 +469,17 @@ class TestCompressionCrossValidation:
 class TestPixelBasisBases:
     """Tests for different compression basis presets."""
 
-    def test_available_bases_classmethod(self):
-        """Test that available_bases returns all basis options."""
-        from cosmocore.basis import COMPRESSION_BASES, PixelBasis
+    def test_available_compression_targets_classmethod(self):
+        """Test that available_compression_targets returns all target options."""
+        from cosmocore.basis import COMPRESSION_TARGETS, PixelBasis
 
-        bases = PixelBasis.available_bases()
+        bases = PixelBasis.available_compression_targets()
 
         assert "harmonic" in bases
         assert "noise_weighted" in bases
         assert "total_covariance" in bases
         assert "snr" in bases
-        assert bases == COMPRESSION_BASES
+        assert bases == COMPRESSION_TARGETS
 
     def test_harmonic_basis(self, uniform_sky_setup):
         """Test compression with pure harmonic basis."""

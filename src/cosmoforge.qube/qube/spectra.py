@@ -97,11 +97,12 @@ class Spectra(Core, MPISharedMemoryMixin):
 
     Parameters
     ----------
-    params_file : InputParams, str or dict, optional
+    params : InputParams, str or dict, optional
         Analysis configuration: an ``InputParams``, a path to a YAML parameter
         file, or a dict of parameter values. All three go to
-        :meth:`cosmocore.Core.read_params`; the name says "file" for
-        historical reasons only.
+        :meth:`cosmocore.Core.read_params`.
+    params_file : InputParams, str or dict, optional
+        Deprecated alias for ``params`` (ADR-0018).
     fisher : Fisher, optional
         Pre-computed Fisher matrix instance. If provided, reuses computed
         components (covariance matrices, geometry, etc.) for efficiency.
@@ -182,7 +183,7 @@ class Spectra(Core, MPISharedMemoryMixin):
 
     def __init__(
         self,
-        params_file: InputParams | str | dict | None = None,
+        params: InputParams | str | dict | None = None,
         fisher: Fisher | None = None,
         basis: dict | str | bool | None = Core._UNSET,
         compression: dict | str | bool | None = Core._UNSET,
@@ -194,6 +195,8 @@ class Spectra(Core, MPISharedMemoryMixin):
         beam: np.ndarray | None = None,
         maps1: np.ndarray | None = None,
         maps2: np.ndarray | None = None,
+        *,
+        params_file: InputParams | str | dict | None = None,
         **kwargs,
     ):
         """
@@ -201,9 +204,11 @@ class Spectra(Core, MPISharedMemoryMixin):
 
         Parameters
         ----------
-        params_file : InputParams, str or dict, optional
+        params : InputParams, str or dict, optional
             Analysis configuration: an ``InputParams``, a path to a YAML
             configuration file, or a dict of parameter values.
+        params_file : InputParams, str or dict, optional
+            Deprecated alias for ``params`` (ADR-0018).
         fisher : Fisher, optional
             Pre-computed Fisher instance. If provided, reuses computed components
             (covariance matrices, geometry, field collections) for efficiency.
@@ -253,7 +258,7 @@ class Spectra(Core, MPISharedMemoryMixin):
         """
         self.params: InputParams = None
         super().__init__(
-            params=params_file,
+            params=self._resolve_params_alias(params, params_file),
             mask=mask,
             noise_cov1=noise_cov1,
             noise_cov2=noise_cov2,

@@ -121,6 +121,28 @@ class Core(ABC):
     _UNSET = object()
 
     @staticmethod
+    def _resolve_params_alias(params, params_file):
+        """Warn-and-forward the ``params_file=`` spelling for one release (ADR-0018).
+
+        ``Core`` has always called this ``params`` and always accepted an
+        ``InputParams``, a path or a dict; the three orchestration classes
+        spelled the same argument ``params_file``, which named only one of the
+        three things it takes.
+        """
+        if params_file is None:
+            return params
+        if params is not None:
+            raise TypeError(
+                "pass only params=; params_file= is the deprecated alias for it"
+            )
+        warnings.warn(
+            "params_file= is deprecated; use params= (ADR-0018)",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        return params_file
+
+    @staticmethod
     def _resolve_basis_config(basis, compression, do_cross):
         """Map the public ``basis=`` kwarg to the internal ``_basis_config`` (ADR-0018).
 

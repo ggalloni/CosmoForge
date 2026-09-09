@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
 
-# Available compression basis presets
+# Available compression targets
 def _resolve_target_alias(target, alias, new_name: str, old_name: str):
     """Warn-and-forward the ``basis=``/``bases=`` spelling for one release (ADR-0018).
 
@@ -57,7 +57,7 @@ def _resolve_target_alias(target, alias, new_name: str, old_name: str):
     return alias
 
 
-COMPRESSION_BASES = {
+COMPRESSION_TARGETS = {
     "harmonic": "P_h = V^T V (pure harmonic projector)",
     "noise_weighted": "P_h N^{-1} P_h (inverse noise weighting)",
     "total_covariance": "P_h C^{-1} P_h (full covariance weighting, requires C_ell)",
@@ -974,10 +974,10 @@ class PixelBasis(ComputationBasis):
         numpy.ndarray
             Compression matrix of shape (n_pix, n_pix).
         """
-        if compression_target not in COMPRESSION_BASES:
+        if compression_target not in COMPRESSION_TARGETS:
             raise ValueError(
                 f"Unknown compression target '{compression_target}'. "
-                f"Available: {list(COMPRESSION_BASES.keys())}"
+                f"Available: {list(COMPRESSION_TARGETS.keys())}"
             )
 
         if compression_target == "harmonic":
@@ -1119,10 +1119,10 @@ class PixelBasis(ComputationBasis):
             )
             or "noise_weighted"
         )
-        if compression_target not in COMPRESSION_BASES:
+        if compression_target not in COMPRESSION_TARGETS:
             raise ValueError(
                 f"Unknown compression target '{compression_target}'. "
-                f"Available: {list(COMPRESSION_BASES.keys())}"
+                f"Available: {list(COMPRESSION_TARGETS.keys())}"
             )
 
         results: list[dict] = []
@@ -1425,7 +1425,7 @@ class PixelBasis(ComputationBasis):
         )
         if compression_targets is None:
             if C_ell is not None:
-                compression_targets = list(COMPRESSION_BASES.keys())
+                compression_targets = list(COMPRESSION_TARGETS.keys())
             else:
                 compression_targets = ["harmonic", "noise_weighted"]
 
@@ -2075,21 +2075,32 @@ class PixelBasis(ComputationBasis):
         return self._compression_target
 
     @classmethod
-    def available_bases(cls) -> dict[str, str]:
+    def available_compression_targets(cls) -> dict[str, str]:
         """
-        Get available compression bases and their descriptions.
+        Get the available compression targets and their descriptions.
 
         Returns
         -------
         dict
-            Dictionary mapping basis names to their descriptions.
+            Dictionary mapping target names to their descriptions.
 
         Examples
         --------
-        >>> PixelBasis.available_bases()
+        >>> PixelBasis.available_compression_targets()
         {'harmonic': 'P_h = V^T V (pure harmonic projector)',
          'noise_weighted': 'P_h N^{-1} P_h (inverse noise weighting)',
          'total_covariance': 'P_h C^{-1} P_h (full covariance weighting, requires C_ell)',
          'snr': 'S^{1/2} N^{-1} S^{1/2} (signal-to-noise ratio, requires C_ell)'}
         """
-        return COMPRESSION_BASES.copy()
+        return COMPRESSION_TARGETS.copy()
+
+    @classmethod
+    def available_bases(cls) -> dict[str, str]:
+        """Deprecated alias for :meth:`available_compression_targets` (ADR-0018)."""
+        warnings.warn(
+            "available_bases() is deprecated; use available_compression_targets() "
+            "(ADR-0018)",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return cls.available_compression_targets()

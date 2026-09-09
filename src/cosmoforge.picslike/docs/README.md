@@ -81,7 +81,7 @@ Container for analysis results:
 from picslike import PICSLike
 
 # Initialize analysis
-picslike = PICSLike(params_file="config/pixel_analysis.yaml")
+picslike = PICSLike(params="config/pixel_analysis.yaml")
 
 # Run full pipeline
 picslike.run()
