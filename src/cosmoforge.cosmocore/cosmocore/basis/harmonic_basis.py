@@ -116,6 +116,100 @@ def _fill_V_spin2(
                 mode_idx += 1
 
 
+def harmonic_operator(theta, phi, *, spin, lmin, lmax):
+    """
+    Real spherical harmonics evaluated on the given pointings: the ``V`` operator.
+
+    The same construction :class:`HarmonicBasisBuilder` uses, exposed as a
+    function so callers that need the harmonic basis but not a noise covariance
+    (pixel filters, for one) need not stand up a whole
+    :class:`~cosmocore.basis.HarmonicBasis`.
+
+    Parameters
+    ----------
+    theta, phi : numpy.ndarray
+        Pointing angles of one component's active pixels.
+    spin : int
+        ``0`` or ``2``.
+    lmin, lmax : int
+        Multipole range, inclusive. Spin-2 representation theory pins
+        ``lmin >= 2``.
+
+    Returns
+    -------
+    numpy.ndarray
+        Spin-0: ``(n_modes, n_pix)`` with ``n_modes = (lmax + 1)**2 - lmin**2``.
+        Spin-2: ``(2 * n_modes, 2 * n_pix)``, rows ``[E | B]`` and columns
+        ``[Q | U]``.
+
+    Notes
+    -----
+    Rows are m-ordered, not ell-ordered: the ``m = 0`` block first (one row per
+    ell), then per ``|m|`` the cos rows for every ell followed by the sin rows.
+    Use :func:`ell_mode_index` to find a given multipole's rows; do not assume
+    contiguity.
+
+    The beam is *not* applied. It enters the estimator through the derivative
+    diagonals as ``b**2_ell``, never through ``V``.
+    """
+    if spin not in (0, 2):
+        raise ValueError(f"spin must be 0 or 2, got {spin}")
+    if spin == 2 and lmin < 2:
+        raise ValueError(f"spin-2 harmonics start at ell = 2, got lmin={lmin}")
+    if not 0 <= lmin <= lmax:
+        raise ValueError(f"need 0 <= lmin <= lmax, got lmin={lmin}, lmax={lmax}")
+
+    n_pix = len(theta)
+    n_modes = (lmax + 1) ** 2 - lmin**2
+    cos_theta = np.cos(theta)
+    sin_theta = np.sin(theta)
+
+    m_phi = np.outer(np.arange(lmax + 1), phi)
+    cos_mphi = np.cos(m_phi)
+    sin_mphi = np.sin(m_phi)
+
+    if spin == 0:
+        V = np.zeros((n_modes, n_pix), dtype=np.float64)
+        _fill_V_spin0(V, cos_theta, sin_theta, cos_mphi, sin_mphi, lmin, lmax)
+    else:
+        V = np.zeros((2 * n_modes, 2 * n_pix), dtype=np.float64)
+        _fill_V_spin2(
+            V, cos_theta, sin_theta, cos_mphi, sin_mphi, lmin, lmax, n_modes, n_pix
+        )
+    return V
+
+
+def ell_mode_index(lmin, lmax):
+    """
+    Row indices of each multipole in ``V``'s m-ordered layout.
+
+    Parameters
+    ----------
+    lmin, lmax : int
+        The range ``V`` was built for.
+
+    Returns
+    -------
+    dict
+        ``{ell: [row, ...]}``, ``2 * ell + 1`` rows per multipole: one in the
+        ``m = 0`` block, then a cos and a sin row per ``|m|``. For spin-2 these
+        index within the E block; add ``n_modes`` for the B block.
+    """
+    mapping = {}
+    for ell in range(lmin, lmax + 1):
+        modes = [ell - lmin]
+        block_offset = lmax - lmin + 1
+        for abs_m in range(1, ell + 1):
+            ell_start = max(abs_m, lmin)
+            n_ell_m = lmax - ell_start + 1
+            pos_in_block = ell - ell_start
+            modes.append(block_offset + pos_in_block)
+            modes.append(block_offset + n_ell_m + pos_in_block)
+            block_offset += 2 * n_ell_m
+        mapping[ell] = modes
+    return mapping
+
+
 class HarmonicBasisBuilder:
     """Builds and caches harmonic operator V, Lambda matrices, and derivative matrices.
 
@@ -242,29 +336,10 @@ class HarmonicBasisBuilder:
 
         Pixel loop is parallelized via Numba prange.
         """
-        n_pix_comp = len(theta)
-        cos_theta = np.cos(theta)
-        sin_theta = np.sin(theta)
-
-        n_modes = (
-            (self._lmax_smw + 1) ** 2 - max(self._lmin_smw, lmin_v) ** 2
-            if lmin_v is not None
-            else self._n_modes_per_component
+        lmin_v_local = self._lmin_smw if lmin_v is None else max(self._lmin_smw, lmin_v)
+        return harmonic_operator(
+            theta, phi, spin=0, lmin=lmin_v_local, lmax=self._lmax_smw
         )
-        V = np.zeros((n_modes, n_pix_comp), dtype=np.float64)
-
-        lmin_v_local = self._lmin_smw if lmin_v is None else lmin_v
-        lmax_v = self._lmax_smw
-
-        cos_mphi = np.zeros((lmax_v + 1, n_pix_comp), dtype=np.float64)
-        sin_mphi = np.zeros((lmax_v + 1, n_pix_comp), dtype=np.float64)
-        for m in range(lmax_v + 1):
-            cos_mphi[m, :] = np.cos(m * phi)
-            sin_mphi[m, :] = np.sin(m * phi)
-
-        _fill_V_spin0(V, cos_theta, sin_theta, cos_mphi, sin_mphi, lmin_v_local, lmax_v)
-
-        return V
 
     def _build_harmonic_operator_spin2(
         self,
@@ -291,36 +366,10 @@ class HarmonicBasisBuilder:
 
         Pixel loop is parallelized via Numba prange.
         """
-        n_pix = len(theta)
-        lmin_v_local = self._lmin_smw if lmin_v is None else lmin_v
-        n_modes = (self._lmax_smw + 1) ** 2 - max(self._lmin_smw, lmin_v_local) ** 2
-
-        V = np.zeros((2 * n_modes, 2 * n_pix), dtype=np.float64)
-
-        cos_theta = np.cos(theta)
-        sin_theta = np.sin(theta)
-
-        lmax_v = self._lmax_smw
-
-        cos_mphi = np.zeros((lmax_v + 1, n_pix), dtype=np.float64)
-        sin_mphi = np.zeros((lmax_v + 1, n_pix), dtype=np.float64)
-        for m in range(lmax_v + 1):
-            cos_mphi[m, :] = np.cos(m * phi)
-            sin_mphi[m, :] = np.sin(m * phi)
-
-        _fill_V_spin2(
-            V,
-            cos_theta,
-            sin_theta,
-            cos_mphi,
-            sin_mphi,
-            lmin_v_local,
-            lmax_v,
-            n_modes,
-            n_pix,
+        lmin_v_local = self._lmin_smw if lmin_v is None else max(self._lmin_smw, lmin_v)
+        return harmonic_operator(
+            theta, phi, spin=2, lmin=lmin_v_local, lmax=self._lmax_smw
         )
-
-        return V
 
     # =========================================================================
     # Ell-mode mapping and derivative diagonals
@@ -333,28 +382,7 @@ class HarmonicBasisBuilder:
         - One mode in the m=0 block (at position ell-lmin within the block)
         - For each |m| from 1 to ell: two modes (cos and sin rows)
         """
-        self._ell_to_modes_local = {}
-        lmin_v = self._lmin_smw
-        lmax_v = self._lmax_smw
-
-        for ell in range(lmin_v, lmax_v + 1):
-            modes = []
-            # m=0: position within m=0 block
-            modes.append(ell - lmin_v)
-
-            # |m|>0: find position within each |m| block
-            block_offset = lmax_v - lmin_v + 1  # size of m=0 block
-            for abs_m in range(1, ell + 1):
-                ell_start = max(abs_m, lmin_v)
-                n_ell_m = lmax_v - ell_start + 1
-                pos_in_block = ell - ell_start
-                # cos row
-                modes.append(block_offset + pos_in_block)
-                # sin row
-                modes.append(block_offset + n_ell_m + pos_in_block)
-                block_offset += 2 * n_ell_m
-
-            self._ell_to_modes_local[ell] = modes
+        self._ell_to_modes_local = ell_mode_index(self._lmin_smw, self._lmax_smw)
 
         if self.n_components == 1:
             self._ell_to_modes = self._ell_to_modes_local

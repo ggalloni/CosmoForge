@@ -36,6 +36,7 @@ import numpy as np
 
 from .base import BasisPrepared, ComputationBasis
 from .harmonic import HarmonicBasis
+from .harmonic_basis import ell_mode_index, harmonic_operator
 from .pixel import COMPRESSION_BASES, PixelBasis
 
 _BASIS_CLASSES: dict[str, type[ComputationBasis]] = {
@@ -219,6 +220,8 @@ __all__ = [
     "HarmonicBasis",
     "PixelBasis",
     "BasisPrepared",
+    "ell_mode_index",
+    "harmonic_operator",
     "_problem_dimensions",
     "create_computation_basis",
 ]
