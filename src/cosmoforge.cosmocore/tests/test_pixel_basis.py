@@ -1256,3 +1256,15 @@ class TestCompressionTargetAlias:
         default, _ = ppc.compute_eigenspectrum()
         explicit, _ = ppc.compute_eigenspectrum(compression_target="noise_weighted")
         np.testing.assert_array_equal(default, explicit)
+
+    def test_falsy_target_is_rejected_not_defaulted(self, uniform_sky_setup):
+        # Only None means "not given". An empty string was passed, so it must
+        # reach the validation, not be swallowed by the default.
+        ppc = self._probe(uniform_sky_setup)
+        with pytest.raises(ValueError, match="Unknown compression target"):
+            ppc.compute_eigenspectrum_per_field(compression_target="")
+        with (
+            pytest.warns(DeprecationWarning),
+            pytest.raises(ValueError, match="Unknown compression target"),
+        ):
+            ppc.compute_eigenspectrum_per_field(basis="")

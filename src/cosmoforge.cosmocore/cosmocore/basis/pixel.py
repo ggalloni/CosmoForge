@@ -45,12 +45,14 @@ def _resolve_target(compression_target, basis):
     and ``PICSLike`` is a different concept entirely (harmonic vs pixel vs
     auto). One word for one concept: the old spelling still works and says so.
     Both default to ``None`` in the signature so "not given" is tellable, hence
-    the default lands here rather than there.
+    the default lands here rather than there. Only ``None`` means "not given":
+    a falsy target that was actually passed goes through to the validation that
+    rejects it, rather than being quietly replaced by the default.
     """
     resolved = resolve_alias(
         compression_target, basis, "compression_target", "basis", stacklevel=4
     )
-    return resolved or DEFAULT_COMPRESSION_TARGET
+    return DEFAULT_COMPRESSION_TARGET if resolved is None else resolved
 
 
 # Available compression targets
