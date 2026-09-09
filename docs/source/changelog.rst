@@ -22,6 +22,11 @@ Unreleased
   being filtered out in silence.
 * ``PixelBasis``'s class docstring documented a ``basis`` constructor
   parameter. The constructor takes ``compression_target``.
+* ``InputParams.__eq__`` compares two configurations instead of raising.
+  Every instance carries ``cross_idxs`` and ``auto_idxs`` as arrays, so
+  ``params_a == params_b`` raised ``ValueError: The truth value of an array
+  with more than one element is ambiguous`` on any real config, including two
+  instances read from the same file.
 
 **Deprecated:**
 

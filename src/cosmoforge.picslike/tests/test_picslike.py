@@ -722,11 +722,7 @@ class TestParamsAlias:
     def test_params_file_warns_and_forwards(self, fast_config_path):
         with pytest.warns(DeprecationWarning, match="params_file="):
             aliased = PICSLike(params_file=fast_config_path)
-        # Field-wise, not ``==``: InputParams.__eq__ compares array-valued
-        # fields with a bare ``==`` and raises on the ambiguous truth value.
-        current = PICSLike(params=fast_config_path)
-        assert aliased.params.nside == current.params.nside
-        assert aliased.params.lmax == current.params.lmax
+        assert aliased.params == PICSLike(params=fast_config_path).params
 
     def test_both_spellings_together_is_an_error(self, fast_config_path):
         with pytest.raises(TypeError, match="only params="):

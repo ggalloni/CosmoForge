@@ -2,6 +2,7 @@
 
 import warnings
 
+import numpy as np
 import pytest
 import yaml
 
@@ -404,3 +405,38 @@ def test_beam_file_warning_stays_silent(config):
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         params.update(config)
+
+
+class TestEquality:
+    """``__eq__`` answers on real configs, which always carry arrays."""
+
+    def test_default_instances_are_equal(self):
+        # cross_idxs and auto_idxs are ndarrays on every instance, so this
+        # raised "truth value of an array is ambiguous" before the fix.
+        assert InputParams() == InputParams()
+
+    def test_differing_array_attribute_is_unequal(self):
+        a, b = InputParams(), InputParams()
+        b.auto_idxs = np.array([99, 98])
+        assert a != b
+
+    def test_array_against_none_is_unequal_both_ways(self):
+        a, b = InputParams(), InputParams()
+        b.cross_idxs = None
+        assert a != b
+        assert b != a
+
+    def test_differing_scalar_attribute_is_unequal(self):
+        a, b = InputParams(), InputParams()
+        b.nside = a.nside + 1
+        assert a != b
+
+    def test_other_types_are_unequal(self):
+        assert InputParams() != "not params"
+
+    def test_same_file_gives_equal_params(self, tmp_path):
+        cfg = tmp_path / "config.yaml"
+        cfg.write_text(yaml.dump({"nside": 8, "lmax": 12, "labels": ["T"]}))
+        assert InputParams.read_parameter_file(str(cfg)) == (
+            InputParams.read_parameter_file(str(cfg))
+        )
