@@ -67,7 +67,14 @@ class BudgetConfig:
     """Inputs to the QUBE harmonic-path budget.
 
     n_pix: total pixel count (2 × n_pix_observed for QU spin-2;
-        n_pix_observed for T spin-0; sum for TQU).
+        n_pix_observed for T spin-0; sum for TQU). This is the *pointing*
+        count: it sizes the V build and the pixel-space buffers even under a
+        filter.
+    working_dim: dimension every restricted object carries, i.e. the filter's
+        rank. None means no filter, and it equals ``n_pix``. The dense stages
+        (Cholesky of N, V_N_inv, the SMW solves) scale with this, while the V
+        build and S_fixed are still born at ``n_pix``, so a filtered run peaks
+        with both alive.
     n_modes: total mode count after V projection. The calculator does not
         derive this from lmax_signal because mode counting depends on spin
         and m=0 exclusions.
@@ -87,10 +94,15 @@ class BudgetConfig:
     lmax_signal: int
     lmax: int | None = None
     release_pixel_projector: bool = True
+    working_dim: int | None = None
 
     def __post_init__(self) -> None:
         if self.n_pix <= 0:
             raise ValueError(f"n_pix must be positive (got {self.n_pix})")
+        if self.working_dim is not None and not 0 < self.working_dim <= self.n_pix:
+            raise ValueError(
+                f"working_dim={self.working_dim} must be in 1..n_pix={self.n_pix}"
+            )
         if self.n_modes <= 0:
             raise ValueError(f"n_modes must be positive (got {self.n_modes})")
         if self.lmax_signal <= 0:
@@ -102,6 +114,15 @@ class BudgetConfig:
     def has_switch(self) -> bool:
         return self.lmax is not None and self.lmax < self.lmax_signal
 
+    @property
+    def r(self) -> int:
+        """Working dimension: the filter's rank, or ``n_pix`` unfiltered."""
+        return self.n_pix if self.working_dim is None else self.working_dim
+
+    @property
+    def has_filter(self) -> bool:
+        return self.working_dim is not None and self.working_dim < self.n_pix
+
 
 @dataclass(frozen=True, kw_only=True)
 class PixelDirectBudgetConfig:
@@ -111,7 +132,11 @@ class PixelDirectBudgetConfig:
     any term, and reordering a positional signature around it would let an
     old four-argument call silently rebind n_bins to a multipole.
 
-    n_pix: total pixel count (same convention as BudgetConfig).
+    n_pix: total pixel count (same convention as BudgetConfig): the pointing
+        count, which still sizes the kernel buffers under a filter.
+    working_dim: the filter's rank, or None for no filter. The kernel output
+        and the scratch buffer stay ``n_pix²``; every solve, inverse and
+        cached derivative shrinks to ``working_dim²``.
     lmax_signal: signal-cov ceiling (Layer A). Optional, and read by nothing
         except the table header, where it is echoed as provenance for a saved
         run. The pixel-direct path carries the high-ℓ signal in pixel space,
@@ -138,16 +163,30 @@ class PixelDirectBudgetConfig:
     n_params: int
     cache_derivatives: bool = False
     lmax_signal: int | None = None
+    working_dim: int | None = None
 
     def __post_init__(self) -> None:
         if self.n_pix <= 0:
             raise ValueError(f"n_pix must be positive (got {self.n_pix})")
+        if self.working_dim is not None and not 0 < self.working_dim <= self.n_pix:
+            raise ValueError(
+                f"working_dim={self.working_dim} must be in 1..n_pix={self.n_pix}"
+            )
         if self.lmax_signal is not None and self.lmax_signal <= 0:
             raise ValueError(f"lmax_signal must be positive (got {self.lmax_signal})")
         if self.n_bins <= 0:
             raise ValueError(f"n_bins must be positive (got {self.n_bins})")
         if self.n_params <= 0:
             raise ValueError(f"n_params must be positive (got {self.n_params})")
+
+    @property
+    def r(self) -> int:
+        """Working dimension: the filter's rank, or ``n_pix`` unfiltered."""
+        return self.n_pix if self.working_dim is None else self.working_dim
+
+    @property
+    def has_filter(self) -> bool:
+        return self.working_dim is not None and self.working_dim < self.n_pix
 
 
 @dataclass
@@ -197,31 +236,56 @@ def predict_qube_budget(config: BudgetConfig) -> QUBEBudget:
     pix_sq = config.n_pix * config.n_pix * _BYTES_PER_DOUBLE
     mode_sq = config.n_modes * config.n_modes * _BYTES_PER_DOUBLE
     mode_pix = config.n_modes * config.n_pix * _BYTES_PER_DOUBLE
+    # Restricted counterparts. Without a filter r == n_pix and every term
+    # below collapses to the unfiltered one, so the calibrated numbers are
+    # unchanged. The filter terms are modelled, not measured.
+    work_sq = config.r * config.r * _BYTES_PER_DOUBLE
+    mode_work = config.n_modes * config.r * _BYTES_PER_DOUBLE
+    filter_W = config.n_pix * config.r * _BYTES_PER_DOUBLE if config.has_filter else 0
 
     covariance_setup = StageBudget(
         name="covariance_setup",
-        persistent={"Cov_T": pix_sq},
-        transient={"Cov_T (asfortranarray copy on read)": pix_sq},
+        persistent={"Cov_T": work_sq},
+        transient={
+            "Cov_T (asfortranarray copy on read)": pix_sq,
+            **(
+                {
+                    "N (unrestricted, alive during restriction)": pix_sq,
+                    "W^T N intermediate": config.r * config.n_pix * _BYTES_PER_DOUBLE,
+                }
+                if config.has_filter
+                else {}
+            ),
+        },
     )
 
     basis_persistent: dict[str, int] = {
-        "L (Cholesky factor of N, in-place)": pix_sq,
-        "V_N_inv": mode_pix,
+        "L (Cholesky factor of N, in-place)": work_sq,
+        "V_N_inv": mode_work,
         "V_Ninv_VT (M kernel)": mode_sq,
     }
+    if filter_W:
+        basis_persistent["W (filter basis, held all run)"] = filter_W
     if config.has_switch:
         # _noise_cov_T diverges from _V_Ninv_VT only on the switch path; the
         # no-switch path aliases the buffer (harmonic.py:322).
         basis_persistent["T (noise-bias kernel, switch path)"] = mode_sq
     if not config.release_pixel_projector:
-        basis_persistent["V (pixel projector)"] = mode_pix
+        basis_persistent["V (pixel projector)"] = mode_work
 
     basis_transient: dict[str, int] = {}
     if config.release_pixel_projector:
-        basis_transient["V (transient before release)"] = mode_pix
+        basis_transient["V (transient before release)"] = mode_work
+    if config.has_filter:
+        # V is built over all pointings and restricted afterwards, so both
+        # shapes are alive across the V W Σ product.
+        basis_transient["V (unrestricted, alive during V W Σ)"] = mode_pix
     if config.has_switch:
+        # S_fixed is born n × n and restricted before it reaches the basis.
         basis_transient["S_fixed (switch optimisation)"] = pix_sq
-        basis_transient["corr intermediate (V_N_inv @ S_fixed)"] = mode_pix
+        if config.has_filter:
+            basis_transient["S_fixed (restricted copy)"] = work_sq
+        basis_transient["corr intermediate (V_N_inv @ S_fixed)"] = mode_work
 
     basis_setup = StageBudget(
         name="basis_setup",
@@ -251,11 +315,23 @@ def predict_qube_budget(config: BudgetConfig) -> QUBEBudget:
 def predict_pixel_direct_budget(config: PixelDirectBudgetConfig) -> QUBEBudget:
     """Predict QUBE memory budget on the pixel-direct path."""
     pix_sq = config.n_pix * config.n_pix * _BYTES_PER_DOUBLE
+    # The kernel still points at every active pixel, so its output and scratch
+    # buffer stay n_pix²; everything solved or cached shrinks to r². Without a
+    # filter the two are equal and the calibrated numbers are unchanged.
+    work_sq = config.r * config.r * _BYTES_PER_DOUBLE
+    filter_W = config.n_pix * config.r * _BYTES_PER_DOUBLE if config.has_filter else 0
 
     covariance_setup = StageBudget(
         name="covariance_setup",
-        persistent={"Cov_T (Core retains; not nullified for pixel-direct)": pix_sq},
-        transient={"Cov_T (asfortranarray copy on read)": pix_sq},
+        persistent={"Cov_T (Core retains; not nullified for pixel-direct)": work_sq},
+        transient={
+            "Cov_T (asfortranarray copy on read)": pix_sq,
+            **(
+                {"N (unrestricted, alive during restriction)": pix_sq}
+                if config.has_filter
+                else {}
+            ),
+        },
     )
 
     # basis_setup adds one pix_sq term above covariance_setup: the
@@ -263,9 +339,11 @@ def predict_pixel_direct_budget(config: PixelDirectBudgetConfig) -> QUBEBudget:
     # method="auto" before the S_fixed branch, so the pixel-direct path
     # never allocates the fixed-multipole signal matrix.
     basis_persistent: dict[str, int] = {
-        "Cov_T (carried from covariance_setup)": pix_sq,
-        "basis._N (asfortranarray F-order copy)": pix_sq,
+        "Cov_T (carried from covariance_setup)": work_sq,
+        "basis._N (asfortranarray F-order copy)": work_sq,
     }
+    if filter_W:
+        basis_persistent["W (filter basis, held all run)"] = filter_W
     basis_setup = StageBudget(name="basis_setup", persistent=basis_persistent)
 
     # fisher_run: C_inv (full pixel-space inverse) plus the cinv_times_dcb
@@ -276,12 +354,18 @@ def predict_pixel_direct_budget(config: PixelDirectBudgetConfig) -> QUBEBudget:
         # Built in fisher.compute.derivative_cache and held through Spectra,
         # so it is persistent from this stage on rather than transient.
         fisher_persistent["binned derivative cache (retained for Spectra)"] = (
-            config.n_params * pix_sq
+            config.n_params * work_sq
         )
     fisher_transient = {
-        "C_inv (basis_manager.get_projected_inverse)": pix_sq,
-        "cinv_times_dcb (n_params dense pixel matrices)": config.n_params * pix_sq,
+        "C_inv (basis_manager.get_projected_inverse)": work_sq,
+        "cinv_times_dcb (n_params dense pixel matrices)": config.n_params * work_sq,
     }
+    if config.has_filter:
+        # Each bin's kernel output is born n × n and conjugated to r × r.
+        fisher_transient["binned kernel output (before conjugation)"] = pix_sq
+        fisher_transient["conjugation intermediate (W^T dC)"] = (
+            config.r * config.n_pix * _BYTES_PER_DOUBLE
+        )
     fisher_run = StageBudget(
         name="fisher_run",
         persistent=fisher_persistent,
@@ -293,7 +377,7 @@ def predict_pixel_direct_budget(config: PixelDirectBudgetConfig) -> QUBEBudget:
     # derivative products are recomputed from C_inv and dC_b similarly to
     # Fisher — same transient shape but bounded by spectra parameter count.
     spectra_persistent = dict(fisher_persistent)
-    spectra_persistent["noise_cov_w (Spectra)"] = pix_sq
+    spectra_persistent["noise_cov_w (Spectra)"] = work_sq
     # Spectra recomputes derivatives when cache_derivatives=False — peak
     # transient empirically scales with n_bins (per-bin C^{-1} dC products
     # held during the inner loop). The ceiling here over-predicts measured
@@ -303,8 +387,8 @@ def predict_pixel_direct_budget(config: PixelDirectBudgetConfig) -> QUBEBudget:
         name="spectra_run",
         persistent=spectra_persistent,
         transient={
-            "C_inv per parameter point": pix_sq,
-            "per-bin C^{-1} dC products": config.n_bins * pix_sq,
+            "C_inv per parameter point": work_sq,
+            "per-bin C^{-1} dC products": config.n_bins * work_sq,
         },
     )
 
@@ -321,16 +405,18 @@ def _format_bytes(b: int) -> str:
 
 def _format_table(budget: QUBEBudget) -> str:
     cfg = budget.config
+    rank = f"  rank={cfg.r}" if cfg.has_filter else ""
     if isinstance(cfg, BudgetConfig):
         switch_str = f"lmax={cfg.lmax}" if cfg.lmax is not None else "no switch"
         header = (
-            f"  n_pix={cfg.n_pix}  n_modes={cfg.n_modes}  lmax_signal={cfg.lmax_signal}"
+            f"  n_pix={cfg.n_pix}{rank}  n_modes={cfg.n_modes}"
+            f"  lmax_signal={cfg.lmax_signal}"
             f"  {switch_str}  release_V={cfg.release_pixel_projector}"
         )
     else:
         ceiling = "" if cfg.lmax_signal is None else f"  lmax_signal={cfg.lmax_signal}"
         header = (
-            f"  n_pix={cfg.n_pix}{ceiling}"
+            f"  n_pix={cfg.n_pix}{rank}{ceiling}"
             f"  n_bins={cfg.n_bins}  n_params={cfg.n_params}"
             f"  cache_derivatives={cfg.cache_derivatives}"
         )
@@ -380,6 +466,13 @@ def _main() -> None:  # pragma: no cover - CLI entry point
     )
     parser.add_argument(
         "--n-pix", type=int, required=True, help="total pixel count (Q+U for spin-2)"
+    )
+    parser.add_argument(
+        "--working-dim",
+        type=int,
+        default=None,
+        help="filter rank: the dimension of every restricted object. Omit for "
+        "an unfiltered run, where it equals --n-pix",
     )
     parser.add_argument(
         "--lmax-signal",
@@ -432,6 +525,7 @@ def _main() -> None:  # pragma: no cover - CLI entry point
             lmax_signal=args.lmax_signal,
             lmax=args.lmax,
             release_pixel_projector=not args.keep_pixel_projector,
+            working_dim=args.working_dim,
         )
         print(predict_qube_budget(config).format_table())
     else:
@@ -443,6 +537,7 @@ def _main() -> None:  # pragma: no cover - CLI entry point
             n_bins=args.n_bins,
             n_params=args.n_params,
             cache_derivatives=args.cache_derivatives,
+            working_dim=args.working_dim,
         )
         print(predict_pixel_direct_budget(config).format_table())
 

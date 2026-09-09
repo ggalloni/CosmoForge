@@ -76,6 +76,7 @@ from .fields import (
     ScalarField,
     create_field,
 )
+from .filters import Filter, intersect, mask_fingerprint
 from .geometry import active_pixel_index, active_pixels
 from .in_out import (
     convert_spectra_normalization,
@@ -102,6 +103,7 @@ from .signal_kernels import (
     derivative_step_02,
     derivative_step_22,
     do_derivative_step,
+    signal_matrix,
 )
 from .spectra_io import (
     SpectraManager,
@@ -135,6 +137,11 @@ __all__ = [
     "derivative_step_02",
     "derivative_step_22",
     "do_derivative_step",
+    "signal_matrix",
+    # filters
+    "Filter",
+    "intersect",
+    "mask_fingerprint",
     # in_out
     "convert_spectra_normalization",
     "output_geometry",

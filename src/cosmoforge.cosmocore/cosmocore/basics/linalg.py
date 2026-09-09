@@ -441,3 +441,57 @@ def matrix_slogdet_symm(M):
 
     # Sign is always +1 for positive definite matrices
     return 1.0, logdet
+
+
+def restrict(X, W, sigma=None):
+    """
+    Restrict a symmetric matrix to a filter's range: ``Σ Wᵀ X W Σ``.
+
+    Parameters
+    ----------
+    X : numpy.ndarray
+        Symmetric ``(n, n)`` matrix in pixel space.
+    W : numpy.ndarray
+        Orthonormal ``(n, r)`` basis of the kept subspace.
+    sigma : numpy.ndarray or None
+        Kept singular values, shape ``(r,)``. ``None`` (a projector) skips
+        the scaling entirely.
+
+    Returns
+    -------
+    numpy.ndarray
+        Fortran-ordered symmetric ``(r, r)`` matrix.
+    """
+    M = W.T @ X @ W
+    if sigma is not None:
+        M *= sigma[:, None]
+        M *= sigma[None, :]
+    symmetrize_inplace(M)
+    # M is C-ordered and now exactly symmetric, so its transpose is a
+    # Fortran-ordered view of the same values: a free layout change.
+    return M.T
+
+
+def restrict_data(d, W, sigma=None):
+    """
+    Restrict pixel-space data to a filter's range: ``Σ Wᵀ d``.
+
+    Parameters
+    ----------
+    d : numpy.ndarray
+        Pixel-space data, shape ``(n,)`` or ``(n, nsims)``.
+    W : numpy.ndarray
+        Orthonormal ``(n, r)`` basis of the kept subspace.
+    sigma : numpy.ndarray or None
+        Kept singular values, shape ``(r,)``. ``None`` (a projector) skips
+        the scaling entirely.
+
+    Returns
+    -------
+    numpy.ndarray
+        C-ordered array, shape ``(r,)`` or ``(r, nsims)``.
+    """
+    out = W.T @ d
+    if sigma is not None:
+        out *= sigma if out.ndim == 1 else sigma[:, None]
+    return np.ascontiguousarray(out)

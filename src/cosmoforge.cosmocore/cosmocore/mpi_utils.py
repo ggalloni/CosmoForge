@@ -124,6 +124,67 @@ class MPISharedMemoryMixin:
         return False
 
     # ------------------------------------------------------------------
+    # Pixel filter (ADR-0020)
+    # ------------------------------------------------------------------
+
+    def _broadcast_pixel_filter(self) -> None:
+        """Replace each rank's filter with one shared-memory copy per node.
+
+        ``W`` never travels as a pickle: at production scale it is a few
+        hundred MB per rank, and serialising it once per rank on a fat node
+        costs tens of GB of duplicated traffic. The factors go through
+        ``_shared_array`` and the frozen record is rebuilt around the shared
+        buffers with the non-validating constructor.
+
+        ``Q_removed`` is not shared. It exists so that composing two
+        projectors is a complement-of-union, which happens while the filter is
+        being built, long before any of this runs.
+        """
+        from .filters import Filter
+
+        on_root = self.rank == 0
+        has_filter = self.comm.bcast(
+            (getattr(self, "pixel_filter", None) is not None) if on_root else None,
+            root=0,
+        )
+        if not has_filter:
+            self.pixel_filter = None
+            return
+
+        f = self.pixel_filter if on_root else None
+        meta = self.comm.bcast(
+            {
+                "rank": f.rank,
+                "is_projector": f.is_projector,
+                "range_epsilon": f.range_epsilon,
+                "range_rank": f.range_rank,
+                "fingerprint": f.fingerprint,
+                "n_pixels": f.n_pixels,
+            }
+            if on_root
+            else None,
+            root=0,
+        )
+        W = self._shared_array(f.W if on_root else None)
+        # A projector's U is W, and must stay the same object so that raw and
+        # pre-filtered inputs keep landing in identical coordinates.
+        U = W if meta["is_projector"] else self._shared_array(f.U if on_root else None)
+        sigma = self._bcast_array(f.sigma if on_root else None)
+
+        self.pixel_filter = Filter._from_factors(
+            W=W,
+            U=U,
+            sigma=sigma,
+            rank=meta["rank"],
+            is_projector=meta["is_projector"],
+            range_epsilon=meta["range_epsilon"],
+            range_rank=meta["range_rank"],
+            Q_removed=None,
+            fingerprint=meta["fingerprint"],
+            n_pixels=meta["n_pixels"],
+        )
+
+    # ------------------------------------------------------------------
     # Buffer-based broadcast (fallback / non-shared use)
     # ------------------------------------------------------------------
 

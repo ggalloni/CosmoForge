@@ -23,6 +23,8 @@ compute_02_contribution
     Compute spin-0 x spin-2 field contributions to signal matrix.
 compute_signal_matrix
     Build the full signal covariance matrix.
+signal_matrix
+    Allocate and fill the signal covariance, optionally restricted to a filter.
 derivative_step_00
     Derivative computation for spin-0 x spin-0 correlations.
 derivative_step_02
@@ -63,6 +65,7 @@ from .basics import (
     legendre_00,
     legendre_02,
     legendre_22,
+    restrict,
 )
 from .fields import FieldCollection
 
@@ -507,6 +510,41 @@ def compute_signal_matrix(
     for i in range(S.shape[0]):
         for j in range(i + 1, S.shape[0]):
             S[i, j] = S[j, i]
+
+
+def signal_matrix(fields: FieldCollection, lmax, pixel_filter=None):
+    """
+    Allocate and fill the pixel-space signal covariance, optionally restricted.
+
+    The one place that sizes ``S``. Callers used to allocate with
+    ``zeros_like(noise_cov1)``, which is the restricted ``(r, r)`` buffer under
+    a filter while :func:`compute_signal_matrix` fills ``(n, n)`` by field pixel
+    counts and hands the slices to a bounds-unchecked kernel.
+
+    Parameters
+    ----------
+    fields : FieldCollection
+        Fields carrying the pointings and the currently-set spectra. Sizes the
+        matrix through ``fields.total_active_pixels``.
+    lmax : int
+        Maximum multipole of the signal sum.
+    pixel_filter : Filter or None
+        When given, the filled matrix is returned restricted to the filter's
+        range, ``Σ Wᵀ S W Σ``, shape ``(rank, rank)``. Same name and same
+        object as the ``pixel_filter=`` kwarg on ``Fisher``, ``Spectra`` and
+        ``PICSLike``.
+
+    Returns
+    -------
+    numpy.ndarray
+        Fortran-ordered symmetric matrix, ``(n, n)`` or ``(rank, rank)``.
+    """
+    n = fields.total_active_pixels
+    S = np.asfortranarray(np.zeros((n, n), dtype=np.float64))
+    compute_signal_matrix(S=S, lmax=lmax, fields=fields)
+    if pixel_filter is None:
+        return S
+    return restrict(S, pixel_filter.W, pixel_filter.scaling)
 
 
 @njit(cache=True)

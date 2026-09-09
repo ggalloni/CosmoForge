@@ -6,6 +6,72 @@ All notable changes to CosmoForge will be documented here.
 Every pull request that touches package source updates this file; see
 ``CLAUDE.md`` and the pull-request template.
 
+Unreleased
+----------
+
+**Added:**
+
+* Pixel-space filters are a first-class input. ``Fisher``, ``Spectra`` and
+  ``PICSLike`` accept ``pixel_filter=``, a ``cosmocore.filters.Filter``, and
+  carry the analysis out by restriction to the operator's range on every path
+  (traditional ``basis=False``, pixel-direct, compressed pixel, harmonic). The
+  spectra, Fisher matrix and likelihood returned are then those of the filtered
+  data. Build a filter with ``Filter.from_operator(F, range_epsilon=…)``,
+  ``Filter.from_deprojection(T)`` for a template-annihilating projector, or
+  ``Filter.from_subspace(W)``; combine two projectors with ``f1 & f2``.
+  ADR-0020.
+* ``Filter`` requires a rank threshold and has no default: ``from_operator``
+  takes exactly one of ``range_epsilon`` (relative cut on the operator's own
+  singular values) or ``range_rank`` (an exact count), and raises otherwise.
+  ``range_epsilon`` is clipped to ``MIN_RANGE_EPSILON`` (``sqrt(eps)``, about
+  1.5e-8) with a warning, because the restricted covariance carries ``Σ²`` and
+  a smaller cut puts its condition number beyond double precision. Truncating
+  outside a spectral gap warns and reports where the largest gap is; keeping
+  every singular value warns that the filter is invertible and quotes the
+  resulting condition number.
+* ``maps_prefiltered`` and ``noise_prefiltered`` declare that an input already
+  carries the filter, so it is not applied twice. They are independent, because
+  pipeline noise simulations that went through the filter alongside raw signal
+  maps are a legitimate combination. ``noise_prefiltered`` means "the
+  covariance of the noise in the maps as handed", never "the filter whitened my
+  noise": for a projector the two conventions are identical, for a graded
+  filter they differ by ``Σ²`` and are different noise models.
+* ``cosmocore.signal_matrix(fields, lmax, pixel_filter=None)`` allocates and
+  fills the pixel-space signal covariance, optionally restricted. It replaces
+  five copies of the same allocate-and-fill that sized the matrix from the
+  noise buffer, and is the supported way to build ``S`` without a ``Core``.
+* ``cosmocore.basics.restrict`` and ``restrict_data`` apply a restriction to a
+  symmetric matrix and to pixel-space data.
+* ``BudgetConfig`` and ``PixelDirectBudgetConfig`` take ``working_dim`` (the
+  filter's rank), and ``qube-memory-budget`` takes ``--working-dim``. The dense
+  stages then scale with the rank while the kernel buffers stay at the pointing
+  count. Omitting it reproduces the previous numbers exactly. The filter terms
+  are modelled, not calibrated against a measured run.
+
+**Changed:**
+
+* ``Spectra(fisher=…)`` adopts that Fisher's filter and raises ``ValueError``
+  if the constructor asks for a different one, matching the existing rule for
+  ``lmax_signal``, ``mask=`` and the covariances.
+* ``ComputationBasis`` now raises ``ValueError`` when the noise covariance
+  handed in does not match the working dimension, instead of proceeding until
+  a downstream matmul fails. The same check catches an unrestricted ``N`` under
+  a filter.
+* Under a filter the basis layer refuses the operations whose premises the
+  filter breaks, all with ``NotImplementedError``: m-block compression
+  (``compress=True``, which needs an azimuthally symmetric range), per-field
+  ``epsilon``/``mode_fraction`` lists, and per-component eigen-spectra. Field
+  blocks are treated as one coupled group, so the block-diagonal ``K``
+  shortcut cannot return a wrong Fisher. ``mode_fraction`` is the recommended
+  compression knob under a filter.
+
+**Fixed:**
+
+* The fixed-multipole signal matrix ``S_fixed`` and the pixel-space derivative
+  are now sized from the field pixel counts rather than from the noise buffer.
+  The old sizing was correct only because the two agreed; it fed truncated
+  views to a bounds-unchecked kernel as soon as they did not.
+
 Version 1.2.0 (2026-09-08)
 --------------------------
 

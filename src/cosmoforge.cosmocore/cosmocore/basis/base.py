@@ -122,6 +122,7 @@ class ComputationBasis(ABC):
         lmax: int | None = None,
         fiducial_C_ell: np.ndarray | None = None,
         S_fixed: np.ndarray | None = None,
+        pixel_filter=None,
     ):
         """
         Initialize computation basis.
@@ -165,7 +166,13 @@ class ComputationBasis(ABC):
         S_fixed : numpy.ndarray or None, optional
             Precomputed signal matrix for fixed multipoles outside
             ``[lmin, lmax]``. Recommended way to pass the fixed signal
-            contribution. Shape ``(n_pix_total, n_pix_total)``.
+            contribution. Shape ``(working_dim, working_dim)``.
+        pixel_filter : Filter or None, optional
+            Pixel-space filter this basis works under (ADR-0020). ``N``,
+            ``S_fixed`` and the data are then expected already restricted to
+            its range, and the working dimension is ``pixel_filter.rank``
+            rather than ``n_pix``. The basis still builds ``V`` over all
+            ``n_pix`` pointings and restricts it once, as ``V W Σ``.
         """
         self._N = np.asfortranarray(N, dtype=np.float64)
         # Pre-factor cache slot for the lazy N_inv property (populated on
@@ -268,6 +275,23 @@ class ComputationBasis(ABC):
 
         # Derived quantities
         self.n_pix = sum(self._n_pix_per_component)
+
+        # Working dimension. Without a filter it is the pointing count; with
+        # one it is the filter's rank, and n_pix stays the pointing count that
+        # sizes the V build and the pixel-direct kernels.
+        self._pixel_filter = pixel_filter
+        self.working_dim = self.n_pix if pixel_filter is None else pixel_filter.rank
+        if pixel_filter is not None and pixel_filter.n_pixels != self.n_pix:
+            raise ValueError(
+                f"pixel_filter spans {pixel_filter.n_pixels} pixels but this "
+                f"basis has {self.n_pix}"
+            )
+        if self._N.shape != (self.working_dim, self.working_dim):
+            raise ValueError(
+                f"noise covariance has shape {self._N.shape}, expected "
+                f"({self.working_dim}, {self.working_dim}); under a filter it "
+                "must arrive already restricted to the filter's range"
+            )
 
     def _init_harmonic_internals(self) -> None:
         """Initialize harmonic mode counts, offsets, and the HarmonicBasisBuilder.
@@ -419,6 +443,15 @@ class ComputationBasis(ABC):
         pairs: set[tuple[int, int]] = set()
         if self.n_components <= 1:
             return pairs
+        if self._pixel_filter is not None:
+            # Under a filter the pixel offsets index the pointing layout, not
+            # the restricted one, and a general W mixes components anyway.
+            # Declare every pair coupled rather than slice the wrong blocks.
+            return {
+                (ci, cj)
+                for ci in range(self.n_components)
+                for cj in range(ci + 1, self.n_components)
+            }
         N_sym = self._N_symmetric
         diag_max = float(np.max(np.abs(np.diag(N_sym)))) if N_sym.size else 0.0
         # Floor the absolute threshold for the (unphysical) all-zero diagonal
@@ -439,6 +472,26 @@ class ComputationBasis(ABC):
     def _build_basis(self) -> None:
         """Build harmonic operator V, mode mappings, and derivative diagonals."""
         self._harmonic_basis.build()
+        if self._pixel_filter is not None:
+            self._restrict_V()
+
+    def _restrict_V(self) -> None:
+        """Fold the filter into V once: ``V' = V W Σ``, shape ``(n_modes, rank)``.
+
+        The single seam for every V-based path. S and the per-multipole
+        derivatives never exist in pixel space here, so nothing else in the
+        basis has to know about the filter, and the restricted problem is
+        smaller than the unfiltered one.
+        """
+        f = self._pixel_filter
+        hb = self._harmonic_basis
+        V = hb._V @ f.W
+        if not f.is_projector:
+            V *= f.sigma[None, :]
+        hb._V = np.ascontiguousarray(V)
+        # The per-component blocks still have n-column geometry and no longer
+        # line up with V'; drop them so a stale read fails loudly.
+        hb._V_blocks = None
 
     # Properties delegating to _harmonic_basis (avoids copy-back)
 
@@ -654,6 +707,13 @@ class ComputationBasis(ABC):
 
         if self.n_components <= 1:
             return [[0]] if self.n_components == 1 else []
+
+        if self._pixel_filter is not None:
+            # A filter's W couples every component pair through the restricted
+            # inverse, and block-diagonality cannot be read back off a global W
+            # (degenerate singular values let LAPACK rotate columns across
+            # blocks). One group: the K inversion stays exact.
+            return [list(range(self.n_components))]
 
         adj: dict[int, set[int]] = {i: set() for i in range(self.n_components)}
         for key in C_ell_dict:

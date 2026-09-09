@@ -136,6 +136,7 @@ class PixelBasis(ComputationBasis):
         lmax: int | None = None,
         S_fixed: np.ndarray | None = None,
         fields=None,
+        pixel_filter=None,
     ):
         super().__init__(
             N,
@@ -148,11 +149,13 @@ class PixelBasis(ComputationBasis):
             lmin=lmin,
             lmax=lmax,
             S_fixed=S_fixed,
+            pixel_filter=pixel_filter,
         )
         self._fields = fields
 
-        # Before compression, dim = n_pix
-        self.dim = self.n_pix
+        # Before compression, dim is the working dimension: n_pix, or the
+        # filter's rank when the problem has been restricted.
+        self.dim = self.working_dim
         # Compression quantities
         self._compression_target = compression_target
         self._C_ell_for_basis = C_ell
@@ -198,6 +201,18 @@ class PixelBasis(ComputationBasis):
 
         if isinstance(value, (int, float)):
             return [float(value)] * self.n_components
+
+        if isinstance(value, list) and self._pixel_filter is not None:
+            # Per-field thresholds name per-component blocks, and a filter's W
+            # mixes components; the restricted coordinates have no such blocks.
+            # Not a ValueError: plot_eigenvalue_comparison swallows those.
+            raise NotImplementedError(
+                f"{name} as a per-field list is not available under a pixel "
+                "filter, which mixes the component blocks the list names. "
+                "Pass a scalar (mode_fraction is the better knob under a "
+                "filter: it removes exactly the high-S/N low-ell modes that "
+                "set the eigenvalue scale)"
+            )
 
         if isinstance(value, list):
             if len(value) != self.n_components:
@@ -439,6 +454,14 @@ class PixelBasis(ComputationBasis):
         eigenvalues : numpy.ndarray or None
             Eigenvalues if available (None for E/B split).
         """
+        if self._pixel_filter is not None:
+            raise NotImplementedError(
+                "per-component eigen-decomposition is not available under a "
+                "pixel filter: the pixel offsets index the pointing layout, "
+                "not the restricted one, and a filter's W mixes the component "
+                "blocks. Use the single-matrix path (a scalar epsilon or "
+                "mode_fraction)"
+            )
         spin = self._spins[comp_idx]
         pix_start = self._pix_offsets[comp_idx]
         pix_end = self._pix_offsets[comp_idx + 1]
@@ -527,7 +550,7 @@ class PixelBasis(ComputationBasis):
     @property
     def projector(self) -> np.ndarray:
         """
-        Get the projection matrix U^T (dim × n_pix).
+        Get the projection matrix U^T (dim × working_dim).
 
         Maps pixel space to the basis. In pixel-direct mode the
         projector is the identity; in compressed mode it is ``U^T``,
@@ -542,7 +565,7 @@ class PixelBasis(ComputationBasis):
             # Cache the identity projector — n_pix×n_pix dense, allocated once.
             cached = getattr(self, "_direct_projector", None)
             if cached is None:
-                cached = np.eye(self.n_pix)
+                cached = np.eye(self.working_dim)
                 self._direct_projector = cached
             return cached
         if self._eigenvectors is None:
@@ -628,6 +651,12 @@ class PixelBasis(ComputationBasis):
                 "(lswitch_high < lmax)"
             )
         S_fixed = np.asarray(self._S_fixed, dtype=np.float64)
+        if S_fixed.shape != self._N.shape:
+            raise ValueError(
+                f"S_fixed has shape {S_fixed.shape} but the noise buffer is "
+                f"{self._N.shape}; under a filter S_fixed must arrive already "
+                "restricted (Core builds it that way)"
+            )
 
         # Preserve raw N for noise-bias computations (still read lazily by
         # get_noise_for_bias, so we cannot release it here).
@@ -919,15 +948,15 @@ class PixelBasis(ComputationBasis):
     def _build_signal_matrix_direct(self) -> np.ndarray:
         """Build signal matrix S via existing pixel-space machinery.
 
-        Uses the spectra currently set on the FieldCollection.
-        Reuses ``compute_signal_matrix`` from ``cosmocore.signal_kernels``.
+        Uses the spectra currently set on the FieldCollection. Returns the
+        restricted ``(rank, rank)`` matrix under a filter, so that the
+        ``S + N`` adds downstream meet.
         """
-        from ..signal_kernels import compute_signal_matrix
+        from ..signal_kernels import signal_matrix
 
-        S = np.zeros((self.n_pix, self.n_pix), dtype=np.float64)
-        S = np.asfortranarray(S)
-        compute_signal_matrix(S, self.lmax_signal, self._fields)
-        return S
+        return signal_matrix(
+            self._fields, self.lmax_signal, pixel_filter=self._pixel_filter
+        )
 
     def _build_compression_matrix(
         self,
@@ -1079,6 +1108,15 @@ class PixelBasis(ComputationBasis):
             raise ValueError(
                 f"Unknown compression basis '{basis}'. "
                 f"Available: {list(COMPRESSION_BASES.keys())}"
+            )
+
+        if self._pixel_filter is not None:
+            raise NotImplementedError(
+                "per-component eigen-decomposition is not available under a "
+                "pixel filter: the pixel offsets index the pointing layout, "
+                "not the restricted one, and a filter's W mixes the component "
+                "blocks. Use the single-matrix path (a scalar epsilon or "
+                "mode_fraction)"
             )
 
         results: list[dict] = []
@@ -1483,6 +1521,12 @@ class PixelBasis(ComputationBasis):
         need_per_field = (
             has_any_tuple or self.n_components > 1 or any(s == 2 for s in self._spins)
         )
+        if self._pixel_filter is not None:
+            # Every spin-2 run would otherwise route through the per-field
+            # branch, which slices the (r, r) noise with pointing offsets
+            # (numpy truncates silently) and reads the unrestricted V blocks.
+            # The eigenproblem runs in the restricted space instead.
+            need_per_field = False
 
         if need_per_field:
             # Per-field decomposition path
@@ -1985,7 +2029,7 @@ class PixelBasis(ComputationBasis):
         float
             Compression ratio (1.0 means no compression).
         """
-        return self.dim / self.n_pix
+        return self.dim / self.working_dim
 
     @property
     def eigenvalues(self) -> np.ndarray | None:

@@ -63,7 +63,6 @@ from cosmocore import (
     SpectrumKey,
     SpectrumKind,
     SymmetryMode,
-    do_derivative_step,
     matrix_inverse_symm,
     matrix_mult,
     matrix_trace,
@@ -321,6 +320,21 @@ class Spectra(Core, MPISharedMemoryMixin):
                     "the Fisher at that ceiling."
                 )
             self._lmax_signal = fisher.lmax_signal
+            # Same rule for the filter (ADR-0020): the Fisher's restricted
+            # derivatives and basis are already built against its filter, so
+            # Spectra adopts it and refuses a conflicting one.
+            if (
+                self.pixel_filter is not None
+                and self.pixel_filter is not fisher.pixel_filter
+            ):
+                raise ValueError(
+                    "pixel_filter= conflicts with the supplied fisher=, which "
+                    "was computed with a different filter (or none). Its "
+                    "derivatives cannot be rebuilt; drop the request or build "
+                    "the Fisher with this filter."
+                )
+            self.pixel_filter = fisher.pixel_filter
+            self.noise_prefiltered = fisher.noise_prefiltered
             self.fisher_instance = fisher
             # Reuse already computed components from Fisher
             self._reuse_fisher_components()
@@ -496,6 +510,8 @@ class Spectra(Core, MPISharedMemoryMixin):
             cls_data=self._injected_cls_data,
             fiducial_cls=self._injected_fiducial_cls,
             beam=self._injected_beam,
+            pixel_filter=self.pixel_filter,
+            noise_prefiltered=self.noise_prefiltered,
         )
         # Pin the internal Fisher to this Spectra's resolved ceiling. Without
         # it the two disagree whenever the ceiling came from the setter: the
@@ -546,6 +562,11 @@ class Spectra(Core, MPISharedMemoryMixin):
                 self.maps2 = self._resolve_maps(
                     self._injected_maps2, self.params.inputmapfile2, ntot
                 )
+
+            # Filter seam for d (ADR-0020).
+            self.maps1 = self._restrict_maps(self.maps1)
+            if self.params.do_cross:
+                self.maps2 = self._restrict_maps(self.maps2)
 
     def setup_fisher_inversion(self):
         """
@@ -770,13 +791,6 @@ class Spectra(Core, MPISharedMemoryMixin):
         # __new__ (test fixtures bypass __init__).
         symmetry_mode = getattr(self, "symmetry_mode", SymmetryMode.SYMMETRIC)
         return self.collection.spectra_manager.build_inputs(symmetry_mode=symmetry_mode)
-
-    def _build_derivative_matrix(self, ell: int, spectrum_idx: int = 0) -> np.ndarray:
-        """Build pixel-space derivative matrix dC/dC_ell (no-basis fallback)."""
-        ntot = sum(self.collection.n_active)
-        dC = np.zeros((ntot, ntot), dtype=np.float64, order="F")
-        do_derivative_step(dC, spectrum_idx, current_ell=ell, fields=self.collection)
-        return dC
 
     def _get_binned_derivative(self, bin_idx: int, spectrum_idx: int = 0) -> np.ndarray:
         """
@@ -1262,6 +1276,8 @@ class Spectra(Core, MPISharedMemoryMixin):
             if self.params.do_cross:
                 self.noise_cov2 = self._shared_array(getattr(self, "noise_cov2", None))
                 self.inv_cov2 = self._shared_array(getattr(self, "inv_cov2", None))
+
+        self._broadcast_pixel_filter()
 
         # Maps (can be large: n_pix × n_sims)
         self.maps1 = self._shared_array(getattr(self, "maps1", None))

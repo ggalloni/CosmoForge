@@ -46,11 +46,10 @@ from cosmocore import (
     SymmetryMode,
     cholesky_factor,
     cholesky_solve,
-    compute_signal_matrix,
-    do_derivative_step,
     matrix_inverse_symm,
     matrix_mult,
     matrix_trace,
+    signal_matrix,
     write_covmat_reduced,
     write_out_matrix,
 )
@@ -287,20 +286,16 @@ class Fisher(Core, MPISharedMemoryMixin):
         Returns
         -------
         numpy.ndarray
-            Signal covariance matrix of shape (n_pix, n_pix).
+            Signal covariance, ``(n_pix, n_pix)``, or ``(rank, rank)`` under a
+            filter.
         """
         if self.noise_cov1 is None:
             raise ValueError("Covariance matrices must be set up first")
 
-        self.signal_matrix = np.zeros_like(self.noise_cov1, dtype=np.float64)
-        self.signal_matrix = np.asfortranarray(self.signal_matrix, dtype=np.float64)
-
         start_time = time.time() if self.rank == 0 else None
 
-        compute_signal_matrix(
-            S=self.signal_matrix,
-            lmax=self.lmax_signal,
-            fields=self.collection,
+        self.signal_matrix = signal_matrix(
+            self.collection, self.lmax_signal, pixel_filter=self.pixel_filter
         )
 
         if self.rank == 0 and start_time is not None:
@@ -343,13 +338,6 @@ class Fisher(Core, MPISharedMemoryMixin):
             self.noise_cov2 = np.asfortranarray(self.noise_cov2)
             self.noise_cov2 = matrix_inverse_symm(self.noise_cov2)
             write_covmat_reduced(self.params.outinvcovmatfile2, self.noise_cov2)
-
-    def _build_derivative_matrix(self, ell: int, spectrum_idx: int = 0) -> np.ndarray:
-        """Build pixel-space derivative matrix dC/dC_ell."""
-        dC = np.zeros_like(self.noise_cov1, dtype=np.float64)
-        dC = np.asfortranarray(dC)
-        do_derivative_step(dC, spectrum_idx, current_ell=ell, fields=self.collection)
-        return dC
 
     def _build_multi_spectrum_inputs(self):
         """Build C_ell_dict and spectra_list keyed by SpectrumKey.
@@ -766,6 +754,8 @@ class Fisher(Core, MPISharedMemoryMixin):
                     )
                     for i in range(n_point_vectors)
                 )
+
+                self._broadcast_pixel_filter()
 
                 if self._basis_config is not None:
                     self.basis_manager = self.comm.bcast(

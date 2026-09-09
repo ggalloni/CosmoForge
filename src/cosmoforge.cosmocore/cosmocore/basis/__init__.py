@@ -49,12 +49,17 @@ def _problem_dimensions(
     spins: list[int] | None,
     lmax_signal: int,
     lmax: int | None = None,
+    pixel_filter=None,
 ) -> tuple[int, int]:
-    """Compute (n_pix, n_modes) at the effective inference window upper.
+    """Compute (working_dim, n_modes) at the effective inference window upper.
 
     ``lmax`` is the inference-window upper bound; modes above it are absorbed
     into ``S_fixed``. Falls back to ``lmax_signal`` when no inference
     narrowing is configured.
+
+    Under a filter the first element is the filter's rank, not the pointing
+    count: the dense stages that the cost model weighs (the Cholesky of N and
+    the per-bin ``C⁻¹ dC`` products) all run in the restricted space.
     """
     if isinstance(theta, np.ndarray):
         thetas = (theta,)
@@ -66,6 +71,8 @@ def _problem_dimensions(
         spins = [0] * n_components
 
     n_pix = sum(2 * len(t) if spins[i] == 2 else len(t) for i, t in enumerate(thetas))
+    if pixel_filter is not None:
+        n_pix = pixel_filter.rank
 
     effective_lmax = lmax if lmax is not None else lmax_signal
     n_modes_base = (effective_lmax + 1) ** 2 - 4
@@ -151,7 +158,9 @@ def create_computation_basis(
     """
     spins = kwargs.get("spins")
     lmax_b = kwargs.get("lmax")
-    n_pix, n_modes = _problem_dimensions(theta, spins, lmax_signal, lmax_b)
+    n_pix, n_modes = _problem_dimensions(
+        theta, spins, lmax_signal, lmax_b, kwargs.get("pixel_filter")
+    )
     n_bins = kwargs.pop("n_bins", None)
     if n_bins is None:
         # Worst case for pixel-direct: assume one bandpower per multipole.

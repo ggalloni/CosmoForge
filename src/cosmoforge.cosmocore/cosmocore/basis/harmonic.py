@@ -20,6 +20,7 @@ from ..basics import (
     matrix_mult,
     matrix_slogdet_symm,
     matrix_trace,
+    restrict,
     smw_inverse,
     smw_logdet,
     smw_quadratic_form,
@@ -99,6 +100,7 @@ class HarmonicBasis(ComputationBasis):
         S_fixed: np.ndarray | None = None,
         compress: bool = False,
         delta_m: int = 0,
+        pixel_filter=None,
     ):
         super().__init__(
             N=N,
@@ -112,6 +114,7 @@ class HarmonicBasis(ComputationBasis):
             lmax=lmax,
             fiducial_C_ell=fiducial_C_ell,
             S_fixed=S_fixed,
+            pixel_filter=pixel_filter,
         )
         self._init_harmonic_internals()
         self.dim = self.n_modes_total
@@ -129,6 +132,17 @@ class HarmonicBasis(ComputationBasis):
             if any(s != 0 for s in self._spins):
                 raise NotImplementedError(
                     "m-block compression is only supported for spin-0 fields."
+                )
+            if self._pixel_filter is not None:
+                # m-block truncation assumes K is block-diagonal in |m|, which
+                # needs range(W) to be invariant under azimuthal rotation.
+                # Scan templates, ground templates and patch-restricted
+                # harmonic projectors all break that, and every shape still
+                # works, so the Fisher would be silently approximate.
+                raise NotImplementedError(
+                    "m-block compression (compress=True) is not available under "
+                    "a pixel filter: the filter destroys the azimuthal symmetry "
+                    "the |m|-block approximation relies on"
                 )
 
     @property
@@ -301,6 +315,9 @@ class HarmonicBasis(ComputationBasis):
         # compute_00_contribution fills lower triangle only; symmetrise.
         S_fixed = S_fixed + S_fixed.T - np.diag(np.diag(S_fixed))
 
+        if self._pixel_filter is not None:
+            f = self._pixel_filter
+            return restrict(S_fixed, f.W, f.scaling)
         return S_fixed
 
     def _compute_smw_components(self) -> None:

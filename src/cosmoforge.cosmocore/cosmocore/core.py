@@ -27,13 +27,14 @@ from abc import ABC, abstractmethod
 import healpy as hp
 import numpy as np
 
-from .basics import matrix_inverse_symm, matrix_slogdet_symm
+from .basics import matrix_inverse_symm, matrix_slogdet_symm, restrict, restrict_data
 from .basis import create_computation_basis
 from .fields import (
     BaseField,
     FieldCollection,
     create_field,
 )
+from .filters import mask_fingerprint
 from .geometry import ACTIVE_THRESHOLD, active_pixel_index
 from .in_out import (
     output_geometry,
@@ -45,7 +46,7 @@ from .in_out import (
     write_covmat_reduced,
 )
 from .settings import InputParams
-from .signal_kernels import compute_pointings
+from .signal_kernels import compute_pointings, do_derivative_step, signal_matrix
 
 
 def _build_fixed_spectra(
@@ -84,6 +85,10 @@ def _build_fixed_spectra(
                 cl_fixed[ell] = cl_array[ell]
         fixed_spectra[label] = cl_fixed
     return fixed_spectra
+
+
+#: Relative out-of-range map power above which ``maps_prefiltered`` is doubted.
+_PREFILTERED_MAP_TOL = 1e-6
 
 
 class Core(ABC):
@@ -206,6 +211,9 @@ class Core(ABC):
         cls_data: dict | np.ndarray | None = None,
         fiducial_cls: dict | np.ndarray | None = None,
         beam: np.ndarray | None = None,
+        pixel_filter=None,
+        maps_prefiltered: bool = False,
+        noise_prefiltered: bool = False,
     ):
         """
         Initialize the core analysis framework.
@@ -240,6 +248,26 @@ class Core(ABC):
             injected arrays. ``cls_data`` feeds ``setup_cls``; ``fiducial_cls``
             feeds the S_fixed fiducial re-read in ``setup_computation_basis``.
             When given, each wins over its params path.
+        pixel_filter : Filter, optional
+            Pixel-space filter applied to the analysis (ADR-0020). The estimator
+            is then carried out by restriction to ``range(F)``: every pixel-space
+            object is mapped to the filter's ``rank`` coordinates, and the
+            returned spectra, Fisher matrix and likelihood are those of the
+            filtered data. Must have been built against this run's active-pixel
+            ordering; the fingerprint is checked in
+            :meth:`setup_covariance_matrices`.
+        maps_prefiltered : bool
+            Declare that the maps handed in already carry the filter, so it is
+            not applied twice. They are restricted with ``Uᵀ`` instead of
+            ``Σ Wᵀ``. Ignored when ``pixel_filter`` is None.
+        noise_prefiltered : bool
+            Declare that the noise covariance handed in is the covariance of the
+            noise *in the maps as handed*, i.e. it already contains ``F``. It is
+            restricted with ``Uᵀ`` instead of ``Σ Wᵀ``. This is not a claim that
+            the filter whitened the noise: declaring a white post-filter ``N``
+            asserts noise power along the removed modes. For a projector the two
+            conventions coincide; for a graded filter they differ by ``Σ²`` and
+            are different noise models. Ignored when ``pixel_filter`` is None.
         beam : numpy.ndarray, optional
             In-memory beam injected in place of ``params.beam_file`` (the
             ``smoothing_type="file"`` adapter; ADR-0017). Exactly what
@@ -254,6 +282,9 @@ class Core(ABC):
         self._injected_cls_data = cls_data
         self._injected_fiducial_cls = fiducial_cls
         self._injected_beam = beam
+        self.pixel_filter = pixel_filter
+        self.maps_prefiltered = bool(maps_prefiltered)
+        self.noise_prefiltered = bool(noise_prefiltered)
 
         # Initialize enhanced logger
         from .logger import get_logger_from_params
@@ -580,6 +611,15 @@ class Core(ABC):
                 concatenate_pixact,
             )
             write_covmat_reduced(self.params.outnoisecovmat2, self.noise_cov2)
+
+        # Filter seam for N (ADR-0020). The reduced covariances are written out
+        # unrestricted, so the on-disk products stay in pixel space; everything
+        # downstream of here works in the filter's range.
+        if self.pixel_filter is not None:
+            self._check_filter_geometry(concatenate_pixact.shape[0])
+            self.noise_cov1 = self._restrict_noise(self.noise_cov1)
+            if self.noise_cov2 is not None:
+                self.noise_cov2 = self._restrict_noise(self.noise_cov2)
 
         return self.noise_cov1, self.noise_cov2
 
@@ -950,15 +990,14 @@ class Core(ABC):
                         self.collection.spectra_manager, lmax=basis_lmax
                     )
 
-                    from .signal_kernels import (
-                        compute_signal_matrix as _compute_signal_matrix,
-                    )
-
-                    S_fixed = np.zeros_like(self.noise_cov1, dtype=np.float64)
-                    _compute_signal_matrix(
-                        S=S_fixed,
-                        lmax=basis_lmax,
-                        fields=self.collection,
+                    # Sized from the field pixel counts, never from
+                    # noise_cov1: under a filter that buffer is (r, r) while
+                    # the kernel fills (n, n) by field offsets and would write
+                    # past the end of a truncated view.
+                    S_fixed = signal_matrix(
+                        self.collection,
+                        basis_lmax,
+                        pixel_filter=self.pixel_filter,
                     )
                 finally:
                     # Restore original (smoothed) spectra; do NOT re-apply
@@ -993,6 +1032,7 @@ class Core(ABC):
             delta_m=delta_m,
             fields=getattr(self, "collection", None),
             n_bins=n_bins,
+            pixel_filter=self.pixel_filter,
         )
 
         # Build harmonic operator and precompute SMW components
@@ -1012,6 +1052,85 @@ class Core(ABC):
     # These methods provide a basis-agnostic interface. Subclasses use
     # these methods without knowing whether a computation basis is enabled.
     # =========================================================================
+
+    # =========================================================================
+    # Filter restriction (ADR-0020)
+    # =========================================================================
+
+    def _restrict_matrix(self, X, *, prefiltered: bool = False) -> np.ndarray:
+        """Restrict a symmetric pixel-space matrix to the filter's range.
+
+        A raw object maps as ``Σ Wᵀ X W Σ`` (equivalently ``Uᵀ F X Fᵀ U``); one
+        that already carries the filter maps as ``Uᵀ X U``. For a projector
+        ``U`` *is* ``W`` and ``Σ`` is the identity, so the two agree.
+        """
+        f = self.pixel_filter
+        if prefiltered:
+            return restrict(X, f.U, None)
+        return restrict(X, f.W, f.scaling)
+
+    def _restrict_data(self, d, *, prefiltered: bool = False) -> np.ndarray:
+        """Restrict pixel-space data, ``(n,)`` or ``(n, nsims)``, to the range."""
+        f = self.pixel_filter
+        if prefiltered:
+            return restrict_data(d, f.U, None)
+        return restrict_data(d, f.W, f.scaling)
+
+    def _check_filter_geometry(self, n_active: int) -> None:
+        """Check the filter against this run's active-pixel layout, once."""
+        f = self.pixel_filter
+        if f.n_pixels != n_active:
+            raise ValueError(
+                f"pixel_filter was built for {f.n_pixels} pixels but this run has "
+                f"{n_active} active pixels; rebuild it against this mask"
+            )
+        expected = mask_fingerprint(self.mask)
+        if f.fingerprint is not None and f.fingerprint != expected:
+            raise ValueError(
+                "pixel_filter was built against a different active-pixel "
+                "ordering than this run's mask; its rows would be permuted. "
+                "Rebuild it with active_pixel_index(mask) of this mask"
+            )
+        self.log(
+            f"Filter active: rank {f.rank} of {n_active} pixels "
+            f"({'projector' if f.is_projector else 'graded'})",
+            level=2,
+        )
+
+    def _restrict_noise(self, N):
+        """Restrict a noise covariance, reporting the power it leaves behind.
+
+        The removed fraction cannot be a hard check: a noise model declared
+        white after filtering has power in the filter's null space by
+        construction, which is exactly the modelling error the
+        ``noise_prefiltered`` documentation warns about.
+        """
+        trace_full = float(np.trace(N))
+        restricted = self._restrict_matrix(N, prefiltered=self.noise_prefiltered)
+        if trace_full > 0.0:
+            outside = 1.0 - float(np.trace(restricted)) / trace_full
+            self.log(
+                f"Noise power outside the filter's range: {outside:.3%}",
+                level=2,
+            )
+        return restricted
+
+    def _restrict_maps(self, maps):
+        """Restrict a map stack, warning if pre-filtered maps leave the range."""
+        if self.pixel_filter is None or maps is None:
+            return maps
+        if self.maps_prefiltered:
+            f = self.pixel_filter
+            kept = f.U @ (f.U.T @ maps)
+            residual = np.linalg.norm(maps - kept) / max(np.linalg.norm(maps), 1e-300)
+            if residual > _PREFILTERED_MAP_TOL:
+                warnings.warn(
+                    f"maps_prefiltered=True but {residual:.3g} of the map power "
+                    "lies outside the filter's range; either the maps did not go "
+                    "through this filter, or they carry a component it removes",
+                    stacklevel=2,
+                )
+        return self._restrict_data(maps, prefiltered=self.maps_prefiltered)
 
     def get_total_covariance(self, C_ell: np.ndarray) -> np.ndarray:
         """
@@ -1255,8 +1374,10 @@ class Core(ABC):
                 and spins[key.comp_j] == 2
             )
             if not direct_unsupported:
-                return bm.get_binned_derivative_direct(
-                    bin_idx, self.bins, beam_smoothing, key, shape_weights=shape_w
+                return self._restrict_binned_derivative(
+                    bm.get_binned_derivative_direct(
+                        bin_idx, self.bins, beam_smoothing, key, shape_weights=shape_w
+                    )
                 )
 
         lmin_b = self.bins.lmins[bin_idx]
@@ -1273,7 +1394,7 @@ class Core(ABC):
                 dC_b = weight * dC_ell
             else:
                 dC_b += weight * dC_ell
-        return dC_b
+        return self._restrict_binned_derivative(dC_b)
 
     def quadratic_form(self, data: np.ndarray, C_ell) -> float:
         """
@@ -1309,8 +1430,31 @@ class Core(ABC):
         raise NotImplementedError("Subclasses must implement _build_signal_matrix")
 
     def _build_derivative_matrix(self, ell: int, spectrum_idx: int = 0) -> np.ndarray:
-        """Build derivative matrix dC/dC_ell. Subclasses must override."""
-        raise NotImplementedError("Subclasses must implement _build_derivative_matrix")
+        """Build the pixel-space per-multipole derivative ``dC/dC_ell``.
+
+        Sized from the field pixel counts. The result stays in pixel space
+        even under a filter: the derivative's restriction seam is the *binned*
+        return of :meth:`get_binned_derivative_matrix`, so that the ``n² r``
+        conjugation is paid once per bin rather than once per multipole.
+        """
+        ntot = self.collection.total_active_pixels
+        dC = np.zeros((ntot, ntot), dtype=np.float64, order="F")
+        do_derivative_step(dC, spectrum_idx, current_ell=ell, fields=self.collection)
+        return dC
+
+    def _restrict_binned_derivative(self, dC_b: np.ndarray) -> np.ndarray:
+        """Restrict a binned derivative when it is still a pixel-space object.
+
+        The V-based paths never build a pixel-space derivative (the filter has
+        already been folded into ``V``), so only the traditional and
+        pixel-direct paths pass through here.
+        """
+        if self.pixel_filter is None:
+            return dC_b
+        bm = getattr(self, "basis_manager", None)
+        if bm is not None and getattr(bm, "_is_compressed", True):
+            return dC_b
+        return self._restrict_matrix(dC_b)
 
     def log(self, message: str, level: int = 1):
         """
