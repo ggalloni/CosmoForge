@@ -10,7 +10,6 @@ from .geometry import _project_and_norm, get_rotation_angle
 from .indexing import idx2spec, spec2idx
 from .legendre import legendre_00, legendre_02, legendre_22, legendre_plm
 from .linalg import (
-    _copy_lower_to_upper,
     add_diagonal,
     cholesky_decomposition,
     cholesky_factor,
@@ -30,7 +29,7 @@ from .linalg import (
     symmetrize_inplace,
 )
 from .smw import smw_inverse, smw_kernel, smw_logdet, smw_quadratic_form
-from .wigner import _wigner_d_start, wigner_d_matrix, wigner_d_small
+from .wigner import wigner_d_matrix, wigner_d_small
 
 __all__ = [
     # legendre
@@ -40,7 +39,6 @@ __all__ = [
     "legendre_plm",
     # wigner
     "wigner_d_small",
-    "_wigner_d_start",
     "wigner_d_matrix",
     # indexing
     "spec2idx",
@@ -52,7 +50,6 @@ __all__ = [
     "matrix_mult",
     "add_diagonal",
     "matrix_trace",
-    "_copy_lower_to_upper",
     "matrix_inverse_symm",
     "matrix_slogdet",
     "cholesky_decomposition",

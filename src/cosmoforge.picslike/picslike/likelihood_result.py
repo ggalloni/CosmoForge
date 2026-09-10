@@ -310,46 +310,22 @@ class LikelihoodResult:
 
         Notes
         -----
-        Finds the smallest interval containing the specified fraction of
-        the likelihood. Uses a simple threshold-based approach.
+        Highest-density interval on the grid: the grid points are taken in
+        order of decreasing likelihood until their mass reaches
+        ``confidence_level`` (a horizontal line lowered through the
+        likelihood), and the bounds are the extreme parameter values of that
+        set. On a multimodal likelihood the set can be disconnected; the
+        returned bounds are then its hull.
         """
-        # Normalize likelihood
-        if np.sum(likelihood) == 0:
+        total = np.sum(likelihood)
+        if total == 0:
             return float(param_values[0]), float(param_values[-1])
 
-        likelihood_norm = likelihood / np.sum(likelihood)
-
-        # Find maximum likelihood point
-        max_index = np.argmax(likelihood_norm)
-
-        # Expand outward from maximum until we reach desired confidence level
-        indices = [max_index]
-        total_prob = likelihood_norm[max_index]
-
-        while total_prob < confidence_level and len(indices) < len(likelihood_norm):
-            # Find next highest likelihood points on either side
-            left_candidate = max_index - len(indices) // 2 - 1
-            right_candidate = max_index + len(indices) // 2 + 1
-
-            # Add valid candidates
-            if left_candidate >= 0 and left_candidate not in indices:
-                indices.append(left_candidate)
-                total_prob += likelihood_norm[left_candidate]
-
-            if (
-                right_candidate < len(likelihood_norm)
-                and right_candidate not in indices
-                and total_prob < confidence_level
-            ):
-                indices.append(right_candidate)
-                total_prob += likelihood_norm[right_candidate]
-
-        # Get bounds from included indices
-        indices.sort()
-        lower_bound = float(param_values[indices[0]])
-        upper_bound = float(param_values[indices[-1]])
-
-        return lower_bound, upper_bound
+        order = np.argsort(likelihood)[::-1]
+        mass = np.cumsum(likelihood[order]) / total
+        n_keep = int(np.searchsorted(mass, confidence_level)) + 1
+        kept = param_values[order[:n_keep]]
+        return float(kept.min()), float(kept.max())
 
     def save(self, output_path: str | Path) -> None:
         """

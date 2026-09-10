@@ -846,20 +846,8 @@ class PixelBasis(ComputationBasis):
         spin_j = fj.spin
 
         # Pixel layout matches do_derivative_step's convention.
-        ri = sum(
-            2 * n if s == 2 else n
-            for n, s in zip(
-                self._fields.n_active[:comp_i],
-                self._fields.spin[:comp_i],
-            )
-        )
-        rj = sum(
-            2 * n if s == 2 else n
-            for n, s in zip(
-                self._fields.n_active[:comp_j],
-                self._fields.spin[:comp_j],
-            )
-        )
+        ri = self._pix_offsets[comp_i]
+        rj = self._pix_offsets[comp_j]
         nrow = self._n_pix_per_component[comp_i]
         ncol = self._n_pix_per_component[comp_j]
 

@@ -535,21 +535,10 @@ class Core(ABC):
         field_actives = [field.active_pixels for field in self.collection.fields]
         self.npixs = [len(active) for active in field_actives]
 
-        self.point_vectors = tuple(np.empty((n, 3), dtype=np.float64) for n in self.npixs)
-        self.theta_vectors = tuple(np.empty(n, dtype=np.float64) for n in self.npixs)
-        self.phi_vectors = tuple(np.empty(n, dtype=np.float64) for n in self.npixs)
-
         self.pixact = self.collection.get_active_pixels()
 
-        # Compute pointing vectors
         self.point_vectors, self.theta, self.phi = compute_pointings(
-            self.params.nside,
-            self.npixs,
-            self.point_vectors,
-            self.theta_vectors,
-            self.phi_vectors,
-            field_actives,
-            self.params.ordering,
+            self.params.nside, field_actives, self.params.ordering
         )
 
         # Set pointing vectors in collection

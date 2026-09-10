@@ -449,3 +449,18 @@ class TestEdgeCases:
         # Should work without error
         best_fit = result.get_best_fit()
         assert best_fit is not None
+
+
+def test_parameter_interval_is_highest_density(sample_likelihood_result):
+    """Skewed grid likelihood: the interval follows the density, not the index.
+
+    Sorted by density the 68% set is indices 3, 4, 5 (mass 0.70). Expanding
+    symmetrically in index from the maximum would instead return indices 1 to
+    4, including two low-density points and excluding the 0.15 at index 5.
+    """
+    values = np.arange(8.0)
+    likelihood = np.array([0.02, 0.05, 0.10, 0.30, 0.25, 0.15, 0.08, 0.05])
+    lower, upper = sample_likelihood_result._compute_parameter_interval(
+        values, likelihood, 0.68
+    )
+    assert (lower, upper) == (3.0, 5.0)

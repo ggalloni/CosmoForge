@@ -48,21 +48,7 @@ def get_signal_covmat(fields, local_path):
     collection = FieldCollection(Par, fields)
 
     field_actives = [field.active_pixels for field in fields]
-    npixs = [len(active) for active in field_actives]
-
-    point_vectors = tuple(np.empty((n, 3), dtype=np.float64) for n in npixs)
-    theta_vectors = tuple(np.empty(n, dtype=np.float64) for n in npixs)
-    phi_vectors = tuple(np.empty(n, dtype=np.float64) for n in npixs)
-
-    point_vectors, _, _ = compute_pointings(
-        Par.nside,
-        npixs,
-        point_vectors,
-        theta_vectors,
-        phi_vectors,
-        field_actives,
-        Par.ordering,
-    )
+    point_vectors, _, _ = compute_pointings(Par.nside, field_actives, Par.ordering)
 
     collection.set_pointing_vectors(point_vectors)
 

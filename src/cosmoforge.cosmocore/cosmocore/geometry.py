@@ -65,7 +65,11 @@ def active_pixels(mask: np.ndarray) -> list[np.ndarray]:
     ------
     ValueError
         If the row count is not a valid HEALPix ``npix`` — most likely a
-        transposed ``(ncomponents, npix)`` mask.
+        transposed ``(ncomponents, npix)`` mask; or if the mask has a negative
+        entry other than ``healpy.UNSEEN``. A mask is a weight in ``[0, 1]``;
+        ``UNSEEN`` marks an unobserved pixel and counts as inactive, any other
+        negative value is a bug in the caller's mask and is refused rather than
+        thresholded away.
 
     Examples
     --------
@@ -76,6 +80,13 @@ def active_pixels(mask: np.ndarray) -> list[np.ndarray]:
     [[0, 2], [1, 2]]
     """
     mask = _as_columns(mask)
+    negative = (mask < 0) & (mask != hp.UNSEEN)
+    if negative.any():
+        raise ValueError(
+            f"mask has {int(negative.sum())} negative entr(y/ies) other than "
+            "healpy.UNSEEN. A mask is a weight in [0, 1]; set unobserved pixels "
+            "to 0 or healpy.UNSEEN."
+        )
     return [np.flatnonzero(mask[:, i] > ACTIVE_THRESHOLD) for i in range(mask.shape[1])]
 
 

@@ -22,6 +22,7 @@ import healpy as hp
 import numpy as np
 from numpy.polynomial.legendre import legvander
 
+from .basics import svd
 from .geometry import _as_columns, active_pixel_index, active_pixels
 from .spectrum_key import Slot
 
@@ -236,7 +237,7 @@ class Filter:
             raise ValueError(f"F must be 2-D, got shape {F.shape}")
         n = F.shape[0]
 
-        U_f, s, Wt = np.linalg.svd(F, full_matrices=False)
+        U_f, s, Wt = svd(F)
 
         effective_epsilon = None
         if range_rank is not None:

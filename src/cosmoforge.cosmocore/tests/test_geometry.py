@@ -129,12 +129,12 @@ def test_different_temperature_and_polarisation_masks_are_supported():
     assert len(point_vectors) == 2  # per FIELD
 
 
-def test_compute_pointings_refuses_per_component_actives():
+def test_per_component_actives_are_refused_at_the_collection():
     """The original bug's input, now unrepresentable.
 
-    ``compute_pointings`` loops over fields but indexes ``active``, so handing it
-    the per-component ``pixact`` gives one field another's sky positions — right
-    by luck for ``[T, QU]``, silently wrong for ``[QU, T]``. Lengths disagree, so
+    Pointing vectors are per FIELD. Handing ``set_pointing_vectors`` the
+    per-component ``pixact`` used to be absorbed by ``zip`` truncation, right by
+    luck for ``[T, QU]`` and silently wrong for ``[QU, T]``. Counts disagree, so
     say so.
     """
     nside = 8
@@ -145,13 +145,36 @@ def test_compute_pointings_refuses_per_component_actives():
     core.setup_fields()
     core.setup_geometry()
 
-    per_component = core.pixact  # 3 entries
-    npixs = core.npixs  # 2 entries (per field)
-    buffers = tuple(np.empty((n, 3), dtype=np.float64) for n in npixs)
-    scalars = tuple(np.empty(n, dtype=np.float64) for n in npixs)
-
+    per_component = core.pixact  # 3 entries, 2 fields
+    vectors, _, _ = compute_pointings(nside, per_component, "RING")
     with pytest.raises(ValueError, match="per field|per-component"):
-        compute_pointings(nside, npixs, buffers, scalars, scalars, per_component, "RING")
+        core.collection.set_pointing_vectors(vectors)
+
+
+def test_compute_pointings_returns_one_block_per_field():
+    nside = 4
+    active = [np.array([0, 5, 10]), np.arange(12 * nside**2)]
+    vectors, theta, phi = compute_pointings(nside, active, "RING")
+    assert [v.shape for v in vectors] == [(3, 3), (192, 3)]
+    np.testing.assert_allclose(np.linalg.norm(vectors[0], axis=1), 1.0, atol=1e-12)
+    th, ph = hp.pix2ang(nside, active[0])
+    np.testing.assert_array_equal(theta[0], th)
+    np.testing.assert_array_equal(phi[0], ph)
+    expected = np.column_stack(hp.pix2vec(nside, active[0]))
+    np.testing.assert_allclose(vectors[0], expected, atol=1e-12)
+
+
+def test_unseen_counts_as_inactive():
+    mask = np.ones(12)
+    mask[[3, 7]] = hp.UNSEEN
+    assert active_pixels(mask)[0].tolist() == [0, 1, 2, 4, 5, 6, 8, 9, 10, 11]
+
+
+def test_negative_mask_entries_are_refused():
+    mask = np.ones(12)
+    mask[3] = -1.0
+    with pytest.raises(ValueError, match="negative"):
+        active_pixels(mask)
 
 
 def test_spin2_mask_columns_must_agree():

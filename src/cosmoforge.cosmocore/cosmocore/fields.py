@@ -30,7 +30,7 @@ import healpy as hp
 import numpy as np
 
 from cosmocore.beam import BeamManager
-from cosmocore.geometry import ACTIVE_THRESHOLD
+from cosmocore.geometry import active_pixels
 from cosmocore.in_out import readcl
 from cosmocore.settings import InputParams
 from cosmocore.spectra_io import SpectraManager
@@ -262,7 +262,7 @@ class BaseField(ABC):
             ``geometry.ACTIVE_THRESHOLD``. Computed lazily and cached.
         """
         if self._active_pixels is None:
-            self._active_pixels = np.flatnonzero(self.mask > ACTIVE_THRESHOLD)
+            self._active_pixels = active_pixels(self.mask)[0]
         return self._active_pixels
 
     @property
@@ -884,13 +884,26 @@ class FieldCollection:
             List of pointing vector arrays, one per field. Each array should
             have shape (n_active, 3) for the corresponding field.
 
+        Raises
+        ------
+        ValueError
+            If the number of arrays differs from the number of fields.
+
         Notes
         -----
         The pointing vectors are distributed to individual fields in the
         collection. Each field validates that the vector count matches
-        its number of active pixels.
+        its number of active pixels. Pointing vectors are per field: the
+        per-component active pixels used to slip through here by ``zip``
+        truncation and hand one field another's sky positions.
         """
-
+        if len(point_vectors) != len(self.fields):
+            raise ValueError(
+                f"point_vectors has {len(point_vectors)} entries but the "
+                f"collection has {len(self.fields)} fields: pointing vectors "
+                "are per field, not per component. Did you pass the "
+                "per-component active pixels (pixact)?"
+            )
         for field, vectors in zip(self.fields, point_vectors):
             field.set_point_vectors(vectors)
 

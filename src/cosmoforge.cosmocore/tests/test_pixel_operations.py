@@ -1,64 +1,37 @@
 """Test pixel operations functionality from cosmocore."""
 
 import numpy as np
+import pytest
 
 from cosmocore import compute_pointings
 
 
 def test_compute_pointings():
-    """Test compute_pointings function."""
+    """RING and NESTED both give unit vectors, and differ from each other."""
     nside = 2
+    active = [np.array([0, 5, 10])]
 
-    # Setup for single field
-    npixs = [3]  # 3 active pixels in field 0
-    active_pixels = np.array([[0, 5, 10]])  # Active pixel indices
-
-    # Create empty point_vectors, theta_vectors, phi_vectors tuples
-    point_vectors = (np.zeros((3, 3)),)  # (n_active, 3) for field 0
-    theta_vectors = (np.zeros(3),)  # (n_active,) for field 0
-    phi_vectors = (np.zeros(3),)  # (n_active,) for field 0
-
-    # Test RING ordering
-    result, _, _ = compute_pointings(
-        nside, npixs, point_vectors, theta_vectors, phi_vectors, active_pixels, "RING"
-    )
-
-    # Check that we get normalized unit vectors
+    result, _, _ = compute_pointings(nside, active, "RING")
     vectors = result[0]
     assert vectors.shape == (3, 3)
+    np.testing.assert_allclose(np.linalg.norm(vectors, axis=1), 1.0, atol=1e-10)
 
-    # Check normalization
-    for i in range(3):
-        norm = np.sqrt(np.sum(vectors[i, :] ** 2))
-        assert abs(norm - 1.0) < 1e-10
-
-    # Test NESTED ordering
-    point_vectors_nested = (np.zeros((3, 3)),)
-    theta_vectors_nested = (np.zeros(3),)
-    phi_vectors_nested = (np.zeros(3),)
-    result_nested, _, _ = compute_pointings(
-        nside,
-        npixs,
-        point_vectors_nested,
-        theta_vectors_nested,
-        phi_vectors_nested,
-        active_pixels,
-        "NESTED",
-    )
-
-    # Should be different from RING (in general)
+    result_nested, _, _ = compute_pointings(nside, active, "NESTED")
     vectors_nested = result_nested[0]
     assert vectors_nested.shape == (3, 3)
-
-    # Check normalization for NESTED too
-    for i in range(3):
-        norm = np.sqrt(np.sum(vectors_nested[i, :] ** 2))
-        assert abs(norm - 1.0) < 1e-10
+    np.testing.assert_allclose(np.linalg.norm(vectors_nested, axis=1), 1.0, atol=1e-10)
+    assert not np.allclose(vectors, vectors_nested)
 
 
 def test_count_nonzero_mask():
-    """Test count_nonzero_mask function."""
+    """Deprecated in 1.3.0, removed in 1.4.0; behaviour pinned until then."""
+    import warnings
+
     from cosmocore.signal_kernels import count_nonzero_mask
+
+    with pytest.warns(DeprecationWarning, match="active_pixels"):
+        count_nonzero_mask(np.ones(12))
+    warnings.simplefilter("ignore", DeprecationWarning)
 
     # Test counting non-zero pixels in mask
     nside = 4
@@ -79,3 +52,17 @@ def test_count_nonzero_mask():
     mask_zeros = np.zeros(npix, dtype=np.float64)
     count_zeros = count_nonzero_mask(mask_zeros)
     assert count_zeros == 0
+
+
+def test_wigner_d_matrix_is_deprecated_and_still_agrees_with_wigner_d_small():
+    from cosmocore.basics import wigner_d_matrix, wigner_d_small
+
+    ell, s, theta = 3, 2, 0.7
+    out = np.empty(2 * ell + 1)
+    with pytest.warns(DeprecationWarning, match="wigner_d_small"):
+        wigner_d_matrix(ell, s, np.cos(theta), np.sin(theta), out)
+    expected = [
+        wigner_d_small(ell, m, s, np.cos(theta), np.sin(theta))
+        for m in range(-ell, ell + 1)
+    ]
+    np.testing.assert_array_equal(out, expected)

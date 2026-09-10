@@ -9,6 +9,36 @@ Every pull request that touches package source updates this file; see
 Unreleased
 ----------
 
+**Breaking changes:**
+
+* ``cosmocore.compute_pointings(nside, active, ordering)`` returns the three
+  tuples ``(point_vectors, theta, phi)`` instead of filling caller-supplied
+  buffers; the ``npixs``, ``point_vectors``, ``theta_vectors`` and
+  ``phi_vectors`` parameters are gone. The old seven-argument call raises
+  ``TypeError`` at the call site, and a shim keeping the old positional slots
+  would misbind the new call, so this is a hard cut under the ADR-0018 bright
+  line. The per-pixel ``healpy`` calls are replaced by one vectorised
+  ``pix2ang`` per field; the pointing vectors are bit-identical to the old
+  loop at ``nside <= 8`` and within one ulp above.
+* ``cosmocore.active_pixels`` (and everything built on it, including
+  ``Field.active_pixels`` and every mask handed to ``Fisher``) raises
+  ``ValueError`` on a mask with a negative entry other than ``healpy.UNSEEN``.
+  ``UNSEEN`` still counts as inactive. Previously any negative value was
+  silently thresholded away.
+* ``FieldCollection.set_pointing_vectors`` raises ``ValueError`` when the
+  number of arrays differs from the number of fields, instead of silently
+  truncating.
+
+**Deprecated (removed in 1.4.0):**
+
+* ``cosmocore.count_nonzero_mask``: use ``len(active_pixels(mask)[0])``. The
+  two differ on masks with negative entries.
+* ``cosmocore.basics.wigner_d_matrix``: use a comprehension over
+  ``wigner_d_small``. It is no longer JIT-compiled.
+* ``cosmocore.basics.matrix_slogdet``: use ``numpy.linalg.slogdet``.
+* ``cosmocore.idx2spec``: nothing in the package calls it; ``SpectrumKey`` is
+  the public identity of a spectrum.
+
 **Added:**
 
 * Pixel-space filters are a first-class input. ``Fisher``, ``Spectra`` and
@@ -89,6 +119,13 @@ Unreleased
 
 **Fixed:**
 
+* ``LikelihoodResult.get_confidence_intervals`` returns the highest-density
+  interval its documentation always promised: grid points are taken in order
+  of decreasing likelihood until the requested mass is reached. The previous
+  loop expanded symmetrically in grid index from the maximum, so on an
+  asymmetric posterior it returned a wider interval shifted towards the
+  steep side. Reported bounds change for asymmetric posteriors; symmetric
+  ones are unaffected.
 * The fixed-multipole signal matrix ``S_fixed`` and the pixel-space derivative
   are now sized from the field pixel counts rather than from the noise buffer.
   The old sizing was correct only because the two agreed; it fed truncated

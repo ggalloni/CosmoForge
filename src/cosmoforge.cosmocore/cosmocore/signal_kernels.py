@@ -12,7 +12,7 @@ optimized with Numba for performance.
 Functions
 ---------
 count_nonzero_mask
-    Count non-zero pixels in a mask.
+    Count non-zero pixels in a mask (deprecated, use ``active_pixels``).
 compute_pointings
     Compute 3D pointing vectors for HEALPix pixels.
 compute_00_contribution
@@ -56,6 +56,8 @@ References
    Phys. Rev. D 62, 123002 (2000)
 """
 
+import warnings
+
 import healpy as hp
 import numpy as np
 from numba import njit, prange
@@ -70,10 +72,15 @@ from .basics import (
 from .fields import FieldCollection
 
 
-@njit(cache=True)
 def count_nonzero_mask(mask):
     """
     Count non-zero pixels in a 1D mask array.
+
+    .. deprecated:: 1.3.0
+        Removed in 1.4.0. Use ``len(cosmocore.active_pixels(mask)[0])``. The two
+        differ on masks with negative entries: this function counts
+        ``abs(mask) > 0.5``, ``active_pixels`` refuses negatives other than
+        ``healpy.UNSEEN``.
 
     Parameters
     ----------
@@ -84,12 +91,14 @@ def count_nonzero_mask(mask):
     -------
     int
         Number of pixels with absolute value > 0.5.
-
-    Notes
-    -----
-    This function is optimized with Numba for performance in tight loops.
-    Uses threshold of 0.5 to determine active pixels.
     """
+    warnings.warn(
+        "count_nonzero_mask is deprecated and will be removed in 1.4.0; use "
+        "len(cosmocore.active_pixels(mask)[0]). Note it counts abs(mask) > 0.5, "
+        "so the two differ on masks with negative entries.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     npix = mask.shape[0]
     npixs = 0
     ntemp = 0
@@ -100,9 +109,7 @@ def count_nonzero_mask(mask):
     return npixs
 
 
-def compute_pointings(
-    nside, npixs, point_vectors, theta_vectors, phi_vectors, active, ordering
-):
+def compute_pointings(nside, active, ordering):
     """
     Compute 3D pointing vectors for active HEALPix pixels.
 
@@ -110,17 +117,6 @@ def compute_pointings(
     ----------
     nside : int
         HEALPix resolution parameter.
-    npixs : list of int
-        Number of active pixels for each field.
-    point_vectors : tuple of numpy.ndarray
-        Tuple of arrays to store pointing vectors for each field.
-        Each array has shape (n_active, 3).
-    theta_vectors : tuple of numpy.ndarray
-        Tuple of arrays to store theta unit vectors for each field.
-        Each array has shape (n_active).
-    phi_vectors : tuple of numpy.ndarray
-        Tuple of arrays to store phi unit vectors for each field.
-        Each array has shape (n_active).
     active : sequence of numpy.ndarray
         Active pixel indices for each field (one array per field, not per
         component: a spin-2 field has a single pixel set shared by Q and U).
@@ -129,44 +125,39 @@ def compute_pointings(
 
     Returns
     -------
-    tuple of numpy.ndarray
-        Updated pointing vectors with normalized 3D unit vectors.
-
-    Notes
-    -----
-    Converts HEALPix pixel indices to 3D Cartesian unit vectors pointing
-    to pixel centers. Used for spherical harmonic calculations and
-    geometric operations.
+    point_vectors : tuple of numpy.ndarray
+        One ``(n_active, 3)`` array of unit vectors per field.
+    theta_vectors, phi_vectors : tuple of numpy.ndarray
+        One ``(n_active,)`` array of colatitudes / longitudes per field.
     """
-    nmaps = len(npixs)
+    nest = ordering == "NESTED"
+    point_vectors, theta_vectors, phi_vectors = [], [], []
+    for pixels in active:
+        theta, phi = hp.pix2ang(nside, np.asarray(pixels), nest=nest)
+        point_vectors.append(_unit_vectors(theta, phi))
+        theta_vectors.append(theta)
+        phi_vectors.append(phi)
+    return tuple(point_vectors), tuple(theta_vectors), tuple(phi_vectors)
 
-    # `active` must be per FIELD, like `npixs`. Handing over the per-COMPONENT
-    # pixact instead is the mistake that silently gives one field another's sky
-    # positions (rows line up by luck for [T, QU], not for [QU, T]).
-    if len(active) != nmaps:
-        raise ValueError(
-            f"active has {len(active)} entries but npixs has {nmaps}: both must be "
-            "per field. Did you pass the per-component active pixels (pixact)?"
-        )
 
-    for field_idx in range(nmaps):
-        ntemp = npixs[field_idx]
-
-        for i in range(ntemp):
-            theta, phi = hp.pix2ang(
-                nside, active[field_idx][i], nest=(ordering == "NESTED")
-            )
-            x = np.sin(theta) * np.cos(phi)
-            y = np.sin(theta) * np.sin(phi)
-            z = np.cos(theta)
-            norm = np.sqrt(x**2 + y**2 + z**2)
-            point_vectors[field_idx][i, 0] = x / norm
-            point_vectors[field_idx][i, 1] = y / norm
-            point_vectors[field_idx][i, 2] = z / norm
-            theta_vectors[field_idx][i] = theta
-            phi_vectors[field_idx][i] = phi
-
-    return point_vectors, theta_vectors, phi_vectors
+@njit
+def _unit_vectors(theta, phi):
+    # ponytail: this is hp.ang2vec, kept as a scalar loop on purpose. numpy's
+    # array trig takes a SIMD path that differs from the scalar libm call by one
+    # ulp in about a quarter of the entries, and the nside-4 QU Fisher
+    # references amplify that to 1e-5 relative. The scalar path reproduces the
+    # pre-1.3.0 pointings bit for bit at nside <= 8; switch to hp.ang2vec when
+    # the reference data are regenerated.
+    out = np.empty((theta.shape[0], 3))
+    for i in range(theta.shape[0]):
+        x = np.sin(theta[i]) * np.cos(phi[i])
+        y = np.sin(theta[i]) * np.sin(phi[i])
+        z = np.cos(theta[i])
+        norm = np.sqrt(x**2 + y**2 + z**2)
+        out[i, 0] = x / norm
+        out[i, 1] = y / norm
+        out[i, 2] = z / norm
+    return out
 
 
 @njit

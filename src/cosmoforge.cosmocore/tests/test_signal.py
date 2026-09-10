@@ -76,18 +76,9 @@ def test_signal_covmat(data_resolver):
     # Create collection using new design
     collection = FieldCollection(Par, fields)
 
-    npixs = []
-    for field in fields:
-        npixs += field.n_active if field.spin == 0 else field.n_active * 2
-
-    point_vectors = tuple(
-        np.empty((npixs[i], 3), dtype=np.float64) for i in range(len(npixs))
-    )
-    theta_vectors = tuple(np.empty(npixs[i], dtype=np.float64) for i in range(len(npixs)))
-    phi_vectors = tuple(np.empty(npixs[i], dtype=np.float64) for i in range(len(npixs)))
-    pixact = collection.get_active_pixels()
+    field_actives = [field.active_pixels for field in fields]
     point_vectors, theta_vectors, phi_vectors = compute_pointings(
-        Par.nside, npixs, point_vectors, theta_vectors, phi_vectors, pixact, Par.ordering
+        Par.nside, field_actives, Par.ordering
     )
 
     collection.set_pointing_vectors(point_vectors)
@@ -177,18 +168,9 @@ def test_signal_covmat_multiple_scalar_fields(data_resolver):
     # Create collection using new design
     collection = FieldCollection(Par, fields)
 
-    npixs = []
-    for field in fields:
-        npixs += field.n_active if field.spin == 0 else field.n_active * 2
-
-    point_vectors = tuple(
-        np.empty((npixs[i], 3), dtype=np.float64) for i in range(len(npixs))
-    )
-    theta_vectors = tuple(np.empty(npixs[i], dtype=np.float64) for i in range(len(npixs)))
-    phi_vectors = tuple(np.empty(npixs[i], dtype=np.float64) for i in range(len(npixs)))
-    pixact = collection.get_active_pixels()
+    field_actives = [field.active_pixels for field in fields]
     point_vectors, theta_vectors, phi_vectors = compute_pointings(
-        Par.nside, npixs, point_vectors, theta_vectors, phi_vectors, pixact, Par.ordering
+        Par.nside, field_actives, Par.ordering
     )
 
     collection.set_pointing_vectors(point_vectors)

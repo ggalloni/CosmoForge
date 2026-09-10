@@ -1,6 +1,14 @@
-"""Matrix operations: multiplication, trace, inversion, determinants."""
+"""Matrix operations: multiplication, trace, inversion, determinants.
+
+The thin wrappers around numpy (``inv``, ``solve_linear``, ``eigh``,
+``eigvalsh``, ``svd``) are deliberate: every numerical routine the package
+uses is named once here, so swapping one for an architecture-specific
+implementation is a single edit rather than a hunt through call sites.
+"""
 
 from __future__ import annotations
+
+import warnings
 
 import numpy as np
 from numba import njit
@@ -250,6 +258,11 @@ def matrix_slogdet(M):
     """
     Compute sign and logarithm of the determinant of a matrix.
 
+    .. deprecated:: 1.3.0
+        Removed in 1.4.0. Use ``numpy.linalg.slogdet``. The two differ only on
+        a matrix with a pivot below 1e-15 in absolute value, which this
+        function reports as singular and numpy does not.
+
     Parameters
     ----------
     M : numpy.ndarray
@@ -270,6 +283,12 @@ def matrix_slogdet(M):
     -----
     Uses LAPACK's dgetrf (LU decomposition with partial pivoting).
     """
+    warnings.warn(
+        "matrix_slogdet is deprecated and will be removed in 1.4.0; use "
+        "numpy.linalg.slogdet.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if M.shape[0] != M.shape[1]:
         raise ValueError("Matrix must be square")
 

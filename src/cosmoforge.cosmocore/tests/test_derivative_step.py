@@ -72,19 +72,9 @@ def test_derivative_step_scalar_fields():
 
     # Pointing vectors are per FIELD, not per component (see Core.setup_geometry).
     field_actives = [field.active_pixels for field in fields]
-    npixs = [len(active) for active in field_actives]
 
-    point_vectors = tuple(np.empty((n, 3), dtype=np.float64) for n in npixs)
-    theta_vectors = tuple(np.empty(n, dtype=np.float64) for n in npixs)
-    phi_vectors = tuple(np.empty(n, dtype=np.float64) for n in npixs)
     point_vectors, theta_vectors, phi_vectors = compute_pointings(
-        Par.nside,
-        npixs,
-        point_vectors,
-        theta_vectors,
-        phi_vectors,
-        field_actives,
-        Par.ordering,
+        Par.nside, field_actives, Par.ordering
     )
 
     collection.set_pointing_vectors(point_vectors)
@@ -168,19 +158,9 @@ def test_derivative_step_polarization_fields():
 
     # Pointing vectors are per FIELD, not per component (see Core.setup_geometry).
     field_actives = [field.active_pixels for field in fields]
-    npixs = [len(active) for active in field_actives]
 
-    point_vectors = tuple(np.empty((n, 3), dtype=np.float64) for n in npixs)
-    theta_vectors = tuple(np.empty(n, dtype=np.float64) for n in npixs)
-    phi_vectors = tuple(np.empty(n, dtype=np.float64) for n in npixs)
     point_vectors, theta_vectors, phi_vectors = compute_pointings(
-        Par.nside,
-        npixs,
-        point_vectors,
-        theta_vectors,
-        phi_vectors,
-        field_actives,
-        Par.ordering,
+        Par.nside, field_actives, Par.ordering
     )
 
     collection.set_pointing_vectors(point_vectors)
@@ -290,19 +270,9 @@ def test_derivative_step_temperature_polarization():
 
     # Pointing vectors are per FIELD, not per component (see Core.setup_geometry).
     field_actives = [field.active_pixels for field in fields]
-    npixs = [len(active) for active in field_actives]
 
-    point_vectors = tuple(np.empty((n, 3), dtype=np.float64) for n in npixs)
-    theta_vectors = tuple(np.empty(n, dtype=np.float64) for n in npixs)
-    phi_vectors = tuple(np.empty(n, dtype=np.float64) for n in npixs)
     point_vectors, theta_vectors, phi_vectors = compute_pointings(
-        Par.nside,
-        npixs,
-        point_vectors,
-        theta_vectors,
-        phi_vectors,
-        field_actives,
-        Par.ordering,
+        Par.nside, field_actives, Par.ordering
     )
 
     collection.set_pointing_vectors(point_vectors)
@@ -399,19 +369,9 @@ def test_derivative_step_scalar_temperature_polarization():
 
     # Pointing vectors are per FIELD, not per component (see Core.setup_geometry).
     field_actives = [field.active_pixels for field in fields]
-    npixs = [len(active) for active in field_actives]
 
-    point_vectors = tuple(np.empty((n, 3), dtype=np.float64) for n in npixs)
-    theta_vectors = tuple(np.empty(n, dtype=np.float64) for n in npixs)
-    phi_vectors = tuple(np.empty(n, dtype=np.float64) for n in npixs)
     point_vectors, theta_vectors, phi_vectors = compute_pointings(
-        Par.nside,
-        npixs,
-        point_vectors,
-        theta_vectors,
-        phi_vectors,
-        field_actives,
-        Par.ordering,
+        Par.nside, field_actives, Par.ordering
     )
 
     collection.set_pointing_vectors(point_vectors)
@@ -495,19 +455,9 @@ def test_derivative_step_consistency():
 
     # Pointing vectors are per FIELD, not per component (see Core.setup_geometry).
     field_actives = [field.active_pixels for field in fields]
-    npixs = [len(active) for active in field_actives]
 
-    point_vectors = tuple(np.empty((n, 3), dtype=np.float64) for n in npixs)
-    theta_vectors = tuple(np.empty(n, dtype=np.float64) for n in npixs)
-    phi_vectors = tuple(np.empty(n, dtype=np.float64) for n in npixs)
     point_vectors, theta_vectors, phi_vectors = compute_pointings(
-        Par.nside,
-        npixs,
-        point_vectors,
-        theta_vectors,
-        phi_vectors,
-        field_actives,
-        Par.ordering,
+        Par.nside, field_actives, Par.ordering
     )
 
     collection.set_pointing_vectors(point_vectors)
@@ -581,19 +531,7 @@ def test_do_derivative_step_rejects_the_legacy_signature():
     collection = FieldCollection(Par, [field])
 
     field_actives = [field.active_pixels]
-    npixs = [len(active) for active in field_actives]
-    point_vectors = tuple(np.empty((n, 3), dtype=np.float64) for n in npixs)
-    theta_vectors = tuple(np.empty(n, dtype=np.float64) for n in npixs)
-    phi_vectors = tuple(np.empty(n, dtype=np.float64) for n in npixs)
-    point_vectors, _, _ = compute_pointings(
-        nside,
-        npixs,
-        point_vectors,
-        theta_vectors,
-        phi_vectors,
-        field_actives,
-        Par.ordering,
-    )
+    point_vectors, _, _ = compute_pointings(nside, field_actives, Par.ordering)
     collection.set_pointing_vectors(point_vectors)
 
     ntot = collection.total_active_pixels
