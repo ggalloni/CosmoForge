@@ -462,6 +462,17 @@ class Spectra(Core, MPISharedMemoryMixin):
 
     def _load_covariance_matrices(self):
         """Load noise and inverted covariance matrices from disk files (adapter ii)."""
+        if self.pixel_filter is not None:
+            raise NotImplementedError(
+                "The out* covariance-file handoff is not supported with a "
+                "pixel_filter (ADR-0020). Fisher.run() writes the restricted "
+                f"{self.pixel_filter.rank} x {self.pixel_filter.rank} covariance "
+                "to those files, and this loader can only read a full "
+                f"{self.collection.total_active_pixels} x "
+                f"{self.collection.total_active_pixels} pixel-space matrix. Pass "
+                "the live Fisher via fisher= instead of routing through disk."
+            )
+
         ntot = self.collection.total_active_pixels
 
         # Load inverted covariance matrices

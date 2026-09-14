@@ -130,6 +130,15 @@ Unreleased
   are now sized from the field pixel counts rather than from the noise buffer.
   The old sizing was correct only because the two agreed; it fed truncated
   views to a bounds-unchecked kernel as soon as they did not.
+* ``Spectra(fisher=…)`` on the traditional path no longer falls back to the
+  ``out*`` covariance files on worker ranks under MPI. ``Fisher.run()`` shares
+  ``noise_cov1`` and the signal matrix through shared memory but was not
+  sharing the retained noise covariance, so every rank other than 0 saw it as
+  ``None`` and took the disk adapter instead. Without a filter that read the
+  right dimensions and merely cost one full pixel-space matrix read per rank;
+  with a ``pixel_filter`` the files hold the restricted ``r x r`` covariance
+  and the load raised a reshape ``ValueError``. Filtered spectra and filtered
+  likelihoods now run at any rank count.
 
 Version 1.2.0 (2026-09-08)
 --------------------------

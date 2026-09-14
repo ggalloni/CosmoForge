@@ -463,6 +463,22 @@ class TestGuards:
         with pytest.raises(ValueError, match="different active-pixel ordering"):
             Fisher(config, basis=False, mask=mask, pixel_filter=misfingerprinted).run()
 
+    def test_out_file_handoff_refuses_a_filter(self, geometry):
+        """The ``out*`` files hold ``r x r`` under a filter; the loader reads ``n x n``.
+
+        Reproduces the worker-rank state that used to reach this adapter by
+        accident: before ``Fisher.run()`` shared ``reduced_noise_cov1``, every
+        rank but 0 saw it as ``None`` and fell past the in-memory adapter to
+        disk, where the reshape raised an opaque ``ValueError``.
+        """
+        config, mask, projector = geometry
+        fisher = Fisher(config, basis=False, mask=mask, pixel_filter=projector)
+        fisher.run()
+        assert fisher.reduced_noise_cov1 is not None
+        fisher.reduced_noise_cov1 = None
+        with pytest.raises(NotImplementedError, match="not supported with a"):
+            Spectra(config, fisher=fisher)
+
     def test_spectra_refuses_a_conflicting_filter(self, geometry):
         config, mask, projector = geometry
         fisher = Fisher(config, basis=False, mask=mask)

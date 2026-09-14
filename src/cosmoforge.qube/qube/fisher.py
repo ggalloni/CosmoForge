@@ -769,9 +769,19 @@ class Fisher(Core, MPISharedMemoryMixin):
                     self.signal_matrix = self._shared_array(
                         getattr(self, "signal_matrix", None)
                     )
+                    # N as handed, retained by prepare_covariance_matrices.
+                    # Without it a worker rank sees reduced_noise_cov1 is None
+                    # and Spectra falls past the in-memory adapter to the out*
+                    # files, which under a filter hold r x r (ADR-0016).
+                    self.reduced_noise_cov1 = self._shared_array(
+                        getattr(self, "reduced_noise_cov1", None)
+                    )
                     if self.params.do_cross:
                         self.noise_cov2 = self._shared_array(
                             getattr(self, "noise_cov2", None)
+                        )
+                        self.reduced_noise_cov2 = self._shared_array(
+                            getattr(self, "reduced_noise_cov2", None)
                         )
 
                 self.comm.Barrier()
