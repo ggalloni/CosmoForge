@@ -533,21 +533,10 @@ class PICSLike(Core, MPISharedMemoryMixin):
         if not simulation_results:
             raise ValueError("No simulation results provided")
 
-        n_points = len(simulation_results[0].chi_squared_values)
-
-        # Initialize arrays for mean computation
-        mean_chi2 = np.zeros(n_points)
-        mean_log_like = np.zeros(n_points)
-
-        # Compute means across simulations
-        for i in range(n_points):
-            chi2_values = [result.chi_squared_values[i] for result in simulation_results]
-            log_like_values = [
-                result.log_likelihood_values[i] for result in simulation_results
-            ]
-
-            mean_chi2[i] = np.mean(chi2_values)
-            mean_log_like[i] = np.mean(log_like_values)
+        mean_chi2 = np.mean([r.chi_squared_values for r in simulation_results], axis=0)
+        mean_log_like = np.mean(
+            [r.log_likelihood_values for r in simulation_results], axis=0
+        )
 
         mean_result = LikelihoodResult(
             parameter_grid=simulation_results[0].parameter_grid,

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from functools import cached_property
+from itertools import accumulate
 from typing import NamedTuple
 
 import numpy as np
@@ -218,10 +219,8 @@ class ComputationBasis(ABC):
             for i, n in enumerate(self._n_physical_pix)
         ]
 
-        # Compute pixel offsets for block structure
-        self._pix_offsets = [0]
-        for n in self._n_pix_per_component:
-            self._pix_offsets.append(self._pix_offsets[-1] + n)
+        # Pixel offsets for block structure, with the total at the end.
+        self._pix_offsets = list(accumulate(self._n_pix_per_component, initial=0))
 
         # For backward compatibility: theta/phi as concatenated arrays
         if self.n_components == 1:
@@ -329,10 +328,8 @@ class ComputationBasis(ABC):
         # total for multi-field Fisher computation
         self.n_modes = self._n_modes_base
 
-        # Compute mode offsets for block structure
-        self._mode_offsets = [0]
-        for n in self._n_modes_per_component_list:
-            self._mode_offsets.append(self._mode_offsets[-1] + n)
+        # Mode offsets for block structure, with the total at the end.
+        self._mode_offsets = list(accumulate(self._n_modes_per_component_list, initial=0))
 
         # Harmonic basis helper (V, Lambda, derivative construction)
         self._harmonic_basis = HarmonicBasisBuilder(self)

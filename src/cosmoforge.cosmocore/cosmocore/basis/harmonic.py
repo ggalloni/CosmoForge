@@ -532,12 +532,6 @@ class HarmonicBasis(ComputationBasis):
                 block = V_mi_Ninv @ V_mj.T
                 self._vninvvt_blocks[(mi, mj)] = block
 
-        # Build reverse mapping: global mode index -> (m, local_index)
-        self._mode_to_m_local = {}
-        for m, modes in m_to_modes.items():
-            for local_idx, global_idx in enumerate(modes):
-                self._mode_to_m_local[global_idx] = (m, local_idx)
-
         # Build mapping: for each m-block, which local indices belong to each ell
         self._mblock_ell_local_indices = {}
         for m in sorted(m_to_modes.keys()):

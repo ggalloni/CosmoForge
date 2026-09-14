@@ -77,12 +77,10 @@ def _build_fixed_spectra(
             low_floor = max(lmin_signal[i], lmin_signal[j])
         else:
             low_floor = fallback_floor
-        for ell in range(low_floor, lmin_b):
-            if ell < n:
-                cl_fixed[ell] = cl_array[ell]
-        for ell in range(lmax_b + 1, basis_lmax + 1):
-            if ell < n:
-                cl_fixed[ell] = cl_array[ell]
+        stop = min(lmin_b, n)
+        cl_fixed[low_floor:stop] = cl_array[low_floor:stop]
+        stop = min(basis_lmax + 1, n)
+        cl_fixed[lmax_b + 1 : stop] = cl_array[lmax_b + 1 : stop]
         fixed_spectra[label] = cl_fixed
     return fixed_spectra
 

@@ -35,7 +35,7 @@ This module handles various file formats commonly used in CMB analysis:
 - Multi-simulation FITS files with structured field organization
 """
 
-import os
+from pathlib import Path
 
 import healpy as hp
 import numpy as np
@@ -53,9 +53,7 @@ def _ensure_output_directory(filepath):
     filepath : str
         Path to a file for which the parent directory should be created.
     """
-    output_dir = os.path.dirname(filepath.strip())
-    if output_dir and not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+    Path(filepath.strip()).parent.mkdir(parents=True, exist_ok=True)
 
 
 def read_covmat(covmatfile, npix, nmaps, active, C):

@@ -325,7 +325,7 @@ class ParameterGrid:
             raise ValueError(msg)
 
         # Distribute points using round-robin assignment
-        return [self.grid_points[i] for i in range(rank, len(self.grid_points), size)]
+        return self.grid_points[rank::size]
 
     def get_spectrum(self, param_point: tuple) -> np.ndarray:
         """

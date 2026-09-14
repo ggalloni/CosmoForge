@@ -495,3 +495,34 @@ def test_build_fixed_spectra_high_band_unchanged():
     for ell in range(lmax_b + 1, basis_lmax + 1):
         assert fixed["TT"][ell] == fiducial["TT"][ell]
         assert fixed["EE"][ell] == fiducial["EE"][ell]
+
+
+def test_build_fixed_spectra_clamps_to_a_short_fiducial():
+    """A fiducial shorter than ``basis_lmax + 1`` is copied only where it exists.
+
+    The three tests above all pass exactly ``basis_lmax + 1`` entries, so the
+    length clamp is otherwise unexercised. Both bands are truncated here: the
+    array stops inside the high band, and the second case stops inside the low
+    band.
+    """
+    from cosmocore.core import _build_fixed_spectra
+
+    spectra_map = {(0, 0, 0): "TT"}
+    lmin_signal = [2]
+
+    # High band truncated: fiducial reaches ell=5, basis_lmax=8.
+    fiducial = {"TT": np.arange(6, dtype=np.float64)}
+    fixed = _build_fixed_spectra(fiducial, spectra_map, lmin_signal, 3, 4, 8)
+    assert len(fixed["TT"]) == 6
+    assert fixed["TT"][2] == fiducial["TT"][2]
+    assert fixed["TT"][3] == 0.0
+    assert fixed["TT"][4] == 0.0
+    assert fixed["TT"][5] == fiducial["TT"][5]
+
+    # Low band truncated: fiducial stops at ell=3, lmin_b=6.
+    fiducial = {"TT": np.arange(4, dtype=np.float64)}
+    fixed = _build_fixed_spectra(fiducial, spectra_map, lmin_signal, 6, 8, 10)
+    assert len(fixed["TT"]) == 4
+    assert fixed["TT"][2] == fiducial["TT"][2]
+    assert fixed["TT"][3] == fiducial["TT"][3]
+    assert fixed["TT"][:2].tolist() == [0.0, 0.0]
