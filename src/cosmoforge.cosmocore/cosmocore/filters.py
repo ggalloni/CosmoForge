@@ -3,9 +3,10 @@
 A linear pixel-space filter ``F`` enters the estimator as a *restriction*: the
 analysis is carried out in the coordinates ``Σ Wᵀ d`` on ``range(F)``, never by
 regularising a singular ``F C Fᵀ``. Conjugated QML and the pixel likelihood are
-invariant under invertible maps of the data, so only the subspace and the
-grading matter, and both are read off the thin SVD ``F = U Σ Wᵀ`` truncated at
-a user-chosen rank.
+invariant under invertible maps of the data (the Gaussian Fisher invariance of
+Tegmark, Taylor & Heavens 1997, ApJ 480, 22, eq. 24), so only the subspace and
+the grading matter, and both are read off the thin SVD ``F = U Σ Wᵀ`` truncated
+at a user-chosen rank.
 
 The :class:`Filter` record here holds that truncated SVD and nothing else.
 Operators that build one (harmonic deprojection, scan-template deprojection,

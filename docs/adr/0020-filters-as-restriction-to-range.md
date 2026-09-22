@@ -37,8 +37,12 @@ bolt one on.
 
 Optimal statistics depend on a linear `F` only through its row space above the
 rank threshold: conjugated QML and the Gaussian likelihood are invariant under
-invertible maps of the filtered data (measured at 1e-13 and 2e-16). So the
-library keeps `F = U Σ Wᵀ` truncated at rank `r` and works in `r` dimensions.
+invertible maps of the filtered data. That is not an empirical finding but the
+Gaussian Fisher invariance of Tegmark, Taylor & Heavens (1997, ApJ 480, 22,
+astro-ph/9603021) eq. 24, where an invertible map acts as a similarity
+transform inside the trace and cancels; we measure it at 1e-13 and 2e-16 to
+test this implementation, not the statement. So the library keeps
+`F = U Σ Wᵀ` truncated at rank `r` and works in `r` dimensions.
 The ridge is deleted from the library and survives only as a test oracle.
 
 Internal coordinates are the **range side**. Raw inputs map by `Uᵀ F = Σ Wᵀ`,
@@ -55,6 +59,8 @@ bias/variance knob, not an implementation detail.
 
 A filter and S/N compression are the same primitive, `Qᵀ C Q`, differing only
 in where `Q` comes from: geometric for a filter, statistical for compression.
+This is the general linear compression `y = B x` of Tegmark, Taylor & Heavens
+(1997) §3.2, under which our S/N targets are the Karhunen-Loeve special cases.
 They compose in a fixed order, deproject first and compress inside the
 survivors, and the compression eigenproblem runs in the already-restricted
 problem so that downstream code sees one subspace, not two.
