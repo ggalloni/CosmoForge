@@ -339,3 +339,29 @@ class TestBlendSpectraLmin:
         blended = grid._blend_spectra(param, fid, lmin=0, lmax=2)
         np.testing.assert_array_equal(blended["TT"][:3], param["TT"][:3])
         np.testing.assert_array_equal(blended["TT"][3:], fid["TT"][3:])
+
+
+class TestCollectFromProcesses:
+    """Reassembly of per-rank results must undo the round-robin split."""
+
+    @pytest.mark.parametrize("size", [1, 2, 3, 48, 402])
+    def test_inverts_round_robin_split(self, minimal_params, size):
+        import numpy as np
+
+        r_values = np.linspace(0.0, 1.0, 401)
+        grid = ParameterGrid(
+            core_params=minimal_params,
+            parameter_ranges={"r": r_values},
+            theoretical_spectra={(r,): {} for r in r_values},
+        )
+        # Each rank returns (n_local_points, n_sims) values tagged by its points.
+        blocks = [
+            np.array(grid.get_points_for_process(rank, size)).reshape(-1, 1)
+            * np.array([1.0, -1.0])
+            for rank in range(size)
+        ]
+
+        combined = grid._collect_from_processes(blocks)
+
+        np.testing.assert_array_equal(combined[:, 0], r_values)
+        np.testing.assert_array_equal(combined[:, 1], -r_values)

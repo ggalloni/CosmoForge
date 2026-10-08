@@ -504,8 +504,8 @@ class PICSLike(Core, MPISharedMemoryMixin):
 
         if self.rank == 0:
             # Combine results from all processes for this simulation
-            combined_chi2 = np.concatenate(all_chi2)
-            combined_log_like = np.concatenate(all_log_like)
+            combined_chi2 = self.parameter_grid._collect_from_processes(all_chi2)
+            combined_log_like = self.parameter_grid._collect_from_processes(all_log_like)
 
             # Create LikelihoodResult for this simulation
             for i in range(n_sims):
