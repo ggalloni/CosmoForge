@@ -327,6 +327,32 @@ class ParameterGrid:
         # Distribute points using round-robin assignment
         return self.grid_points[rank::size]
 
+    def _collect_from_processes(self, blocks: list[np.ndarray]) -> np.ndarray:
+        """
+        Reassemble per-process results into grid order.
+
+        Inverse of :meth:`get_points_for_process`: ``blocks[rank]`` holds the
+        values for that rank's points, in the order they were assigned.
+
+        Parameters
+        ----------
+        blocks : list[np.ndarray]
+            One array per MPI process, as returned by ``comm.gather``. The
+            first axis runs over that process's points.
+
+        Returns
+        -------
+        combined : np.ndarray
+            Array whose first axis follows ``grid_points``.
+        """
+        size = len(blocks)
+        combined = np.empty(
+            (len(self.grid_points), *blocks[0].shape[1:]), dtype=blocks[0].dtype
+        )
+        for rank, block in enumerate(blocks):
+            combined[rank::size] = block
+        return combined
+
     def get_spectrum(self, param_point: tuple) -> np.ndarray:
         """
         Get theoretical spectrum for a parameter point.

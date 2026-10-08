@@ -29,6 +29,16 @@ def test_picslike_pipeline_under_mpi(comm, fast_config_path):
         assert np.all(np.isfinite(result.log_likelihood_values))
         assert np.all(np.isfinite(result.chi_squared_values))
 
+        # Points are dealt round-robin, so a plain concatenation of the
+        # gathered blocks would attach values to the wrong points.
+        expected = np.array(
+            [pl._compute_likelihood_point(p) for p in pl.parameter_grid.grid_points]
+        )
+        chi2 = np.array([r.chi_squared_values for r in pl.simulation_results]).T
+        log_like = np.array([r.log_likelihood_values for r in pl.simulation_results]).T
+        np.testing.assert_allclose(chi2, expected[:, 0], rtol=1e-12)
+        np.testing.assert_allclose(log_like, expected[:, 1], rtol=1e-12)
+
 
 def test_broadcast_drops_stale_smw_cache(fast_config_path):
     """The broadcast is the worker ranks' only SMW-cache invalidation point.

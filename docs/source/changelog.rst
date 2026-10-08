@@ -119,6 +119,14 @@ Unreleased
 
 **Fixed:**
 
+* ``PICSLike`` run on more than one MPI rank attached its chi-squared and
+  log-likelihood values to the wrong grid points. Points are dealt to ranks
+  round-robin, but rank 0 joined the gathered blocks end to end, so every
+  ``LikelihoodResult``, the mean result and anything derived from them
+  (posteriors, best fits, intervals) came out permuted. Single-rank runs were
+  correct. The values themselves were right, so a multi-rank result from 1.2.0
+  or earlier can be repaired by restoring the order, or rerun. This changes
+  what existing multi-rank scripts compute.
 * ``LikelihoodResult.get_confidence_intervals`` returns the highest-density
   interval its documentation always promised: grid points are taken in order
   of decreasing likelihood until the requested mass is reached. The previous
