@@ -116,6 +116,8 @@ Unreleased
   blocks are treated as one coupled group, so the block-diagonal ``K``
   shortcut cannot return a wrong Fisher. ``mode_fraction`` is the recommended
   compression knob under a filter.
+* ``cosmocore.matrix_trace``, which evaluates every ``Tr(C⁻¹ dC_i C⁻¹ dC_j)`` in the ``Fisher`` trace loop, the ``Spectra`` noise-bias traces and the basis-layer Fisher, now runs on all Numba threads and reads both operands along rows. It used to run on one core with a strided read of the second operand, which made the trace loop the dominant serial stage on the traditional and pixel-direct paths at large pixel counts. Results move only by floating-point reassociation (relative differences of order 1e-14 on the Fisher matrix) and do not depend on the thread count. The thread count is ``NUMBA_NUM_THREADS``, which defaults to every core; set it per rank when running several MPI ranks on one node.
+* The signal-matrix symmetrisation and the pixel-direct derivative symmetrisation are compiled loops, replacing a Python double loop and an index-array copy that allocated about one and a half extra copies of the derivative block.
 
 **Fixed:**
 

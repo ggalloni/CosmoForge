@@ -11,7 +11,7 @@ from __future__ import annotations
 import warnings
 
 import numpy as np
-from numba import njit
+from numba import njit, prange
 from scipy.linalg import cho_solve, lapack
 
 
@@ -63,10 +63,15 @@ def add_diagonal(M, d, out=None):
     return out
 
 
-@njit(cache=True)
+@njit(parallel=True, cache=True)
 def matrix_trace(A, B):
     """
     Compute trace of matrix product A @ B.
+
+    Threaded over blocks of 64 rows of ``A``. Each block walks ``B`` along its rows
+    (contiguous for C-ordered input) and keeps one accumulator per row, so the inner
+    loop vectorises. Block partials are summed in a fixed order, so the result does not
+    depend on the thread count.
 
     Parameters
     ----------
@@ -79,11 +84,18 @@ def matrix_trace(A, B):
         Trace of the matrix product: tr(A @ B) = sum_i sum_j A_ij B_ji.
     """
     n = A.shape[0]
-    s = 0.0
-    for i in range(n):
+    bs = 64
+    nb = (n + bs - 1) // bs
+    partial = np.zeros(nb)
+    for ib in prange(nb):
+        i0 = ib * bs
+        i1 = min(i0 + bs, n)
+        acc = np.zeros(i1 - i0)
         for j in range(n):
-            s += A[i, j] * B[j, i]
-    return s
+            for i in range(i0, i1):
+                acc[i - i0] += A[i, j] * B[j, i]
+        partial[ib] = acc.sum()
+    return partial.sum()
 
 
 @njit

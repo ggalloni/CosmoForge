@@ -27,6 +27,7 @@ from ..basics import (
     svd,
     symmetrize_inplace,
 )
+from ..basics.linalg import _copy_lower_to_upper
 from .base import BasisPrepared, ComputationBasis
 
 if TYPE_CHECKING:
@@ -739,14 +740,6 @@ class PixelBasis(ComputationBasis):
             label = combined[mode]
         return self._spec_label_to_idx[label]
 
-    @staticmethod
-    def _symmetrize_inplace(block: np.ndarray) -> None:
-        """Set block[i,j] = block[j,i] for i < j, in-place. Block must be square."""
-        # Equivalent to: block += block.T - diag(block)
-        # but uses in-place ops to avoid temporary allocations of size n_pix^2.
-        idx = np.triu_indices_from(block, k=1)
-        block[idx] = block[(idx[1], idx[0])]
-
     def _direct_buffer(self) -> np.ndarray:
         """Return a reusable n_pix × n_pix Fortran-ordered buffer.
 
@@ -867,7 +860,7 @@ class PixelBasis(ComputationBasis):
             if sub_mode == 0:
                 # compute_00_contribution mode=0 fills only lower + diagonal;
                 # derivative_step_00 mode=0 symmetrizes upper at the end.
-                self._symmetrize_inplace(block)
+                _copy_lower_to_upper(block)
             else:
                 # Cross-field (mode=1): both halves filled inside, but the
                 # transposed cross-block in dS must be set to match
@@ -897,7 +890,7 @@ class PixelBasis(ComputationBasis):
             )
             # derivative_step_22 symmetrizes its full output; compute_22 does
             # not, so do it here. The block is the full square spin-2 derivative.
-            self._symmetrize_inplace(block)
+            _copy_lower_to_upper(block)
         elif (spin_i, spin_j) in ((0, 2), (2, 0)):
             cl12 = weights if mode == 0 else zeros
             cl13 = weights if mode == 1 else zeros

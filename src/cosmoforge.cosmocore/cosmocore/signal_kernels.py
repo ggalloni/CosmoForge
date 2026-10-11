@@ -69,6 +69,7 @@ from .basics import (
     legendre_22,
     restrict,
 )
+from .basics.linalg import _copy_lower_to_upper
 from .fields import FieldCollection
 
 
@@ -498,9 +499,7 @@ def compute_signal_matrix(
                     )
             col_offset += ncol
         row_offset += nrow
-    for i in range(S.shape[0]):
-        for j in range(i + 1, S.shape[0]):
-            S[i, j] = S[j, i]
+    _copy_lower_to_upper(S)
 
 
 def signal_matrix(fields: FieldCollection, lmax, pixel_filter=None):
