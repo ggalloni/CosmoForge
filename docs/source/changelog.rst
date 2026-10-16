@@ -71,7 +71,9 @@ Unreleased
   singular values) or ``range_rank`` (an exact count), and raises otherwise.
   ``range_epsilon`` is clipped to ``MIN_RANGE_EPSILON`` (``sqrt(eps)``, about
   1.5e-8) with a warning, because the restricted covariance carries ``Σ²`` and
-  a smaller cut puts its condition number beyond double precision. Truncating
+  a smaller cut puts its condition number beyond double precision. A
+  ``range_rank`` that would keep a singular value at or below that floor
+  raises ``ValueError``. Truncating
   outside a spectral gap warns and reports where the largest gap is; keeping
   every singular value warns that the filter is invertible and quotes the
   resulting condition number.

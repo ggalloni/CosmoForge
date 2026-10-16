@@ -67,7 +67,7 @@ def _complement(A, epsilon):
     of ``A`` above the relative cut ``epsilon`` and ``kept`` spans everything
     orthogonal to them.
     """
-    U, s, _ = np.linalg.svd(A, full_matrices=True)
+    U, s, _ = svd(A, full_matrices=True)
     n_removed = int(np.count_nonzero(s > epsilon * s[0])) if s.size else 0
     if n_removed >= A.shape[0]:
         raise ValueError(
@@ -240,8 +240,10 @@ class Filter:
             )
 
         F = np.asarray(F, dtype=np.float64)
-        if F.ndim != 2:
-            raise ValueError(f"F must be 2-D, got shape {F.shape}")
+        if F.ndim != 2 or F.shape[0] != F.shape[1]:
+            raise ValueError(
+                f"F must be square (n_pixels, n_pixels), got shape {F.shape}"
+            )
         n = F.shape[0]
 
         U_f, s, Wt = svd(F)
@@ -251,6 +253,12 @@ class Filter:
             k = int(range_rank)
             if not 1 <= k <= s.size:
                 raise ValueError(f"range_rank={k} outside 1..{s.size} for this operator")
+            if s[k - 1] <= MIN_RANGE_EPSILON * s[0]:
+                raise ValueError(
+                    f"range_rank={k} keeps σ_{k}/σ₁ = {s[k - 1] / s[0]:.3g}, at or "
+                    f"below MIN_RANGE_EPSILON={MIN_RANGE_EPSILON:g}: the restricted "
+                    "covariance would be singular. Lower range_rank"
+                )
         else:
             eps = float(range_epsilon)
             if eps < MIN_RANGE_EPSILON:
@@ -273,13 +281,18 @@ class Filter:
         cls._warn_on_truncation(s, k)
 
         sigma = np.ascontiguousarray(s[:k])
-        is_projector = bool(np.allclose(sigma, 1.0, atol=_PROJECTOR_ATOL))
         W = np.ascontiguousarray(Wt[:k].T)
+        # Unit singular values are not enough: a rotation has them too. A
+        # projector also maps its kept directions onto themselves, U_k = W.
+        is_projector = bool(
+            np.allclose(sigma, 1.0, rtol=0.0, atol=_PROJECTOR_ATOL)
+            and np.allclose(U_f[:, :k], W, rtol=0.0, atol=1e-8)
+        )
         if is_projector:
             # U aliases W: same subspace, and crucially the same rotation
             # within it, so Σ Wᵀ and Uᵀ are the same map.
             U = W
-            Q_removed = np.ascontiguousarray(Wt[k:].T) if Wt.shape[0] == n else None
+            Q_removed = np.ascontiguousarray(Wt[k:].T)
         else:
             U = np.ascontiguousarray(U_f[:, :k])
             Q_removed = None
@@ -392,7 +405,8 @@ class Filter:
         if k < s.size:
             gap = s[k] / s[k - 1]
             if gap > GAP_WARN_RATIO:
-                largest = int(np.argmin(s[1:] / s[:-1])) + 1
+                with np.errstate(invalid="ignore"):
+                    largest = int(np.nanargmin(s[1:] / s[:-1])) + 1
                 warnings.warn(
                     f"filter truncated at rank {k} without a spectral gap: "
                     f"σ_{k + 1}/σ_{k} = {gap:.3g}. The largest gap in the "

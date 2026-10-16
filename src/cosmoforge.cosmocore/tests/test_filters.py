@@ -321,6 +321,18 @@ class TestRangeRank:
         with pytest.raises(ValueError, match="mutually exclusive"):
             Filter.from_operator(self._graded(), range_epsilon=1e-3, range_rank=5)
 
+    def test_range_rank_that_keeps_a_null_direction_is_refused(self):
+        """A kept zero makes the restricted covariance singular."""
+        with pytest.raises(ValueError, match="MIN_RANGE_EPSILON"):
+            Filter.from_operator(np.diag([1.0, 2.0, 0.0, 3.0]), range_rank=4)
+
+    def test_hits_weighting_with_an_unobserved_pixel_refuses_full_rank(self, cap):
+        hits = np.where(cap > 0.5, 100.0, 0.0)
+        hits[np.flatnonzero(cap[:, 0] > 0.5)[0], :] = 0.0
+        n = active_pixel_index(cap).size
+        with pytest.raises(ValueError, match="MIN_RANGE_EPSILON"):
+            hits_weighting(hits, mask=cap, range_rank=n)
+
 
 class TestFromOperatorRecognisesItsInput:
     """Two behaviours of ``from_operator`` no shipped constructor reaches."""
@@ -336,6 +348,31 @@ class TestFromOperatorRecognisesItsInput:
         np.testing.assert_allclose(f.sigma, 1.0)
         # Q_removed is what lets two projectors intersect by complement-of-union.
         assert f.Q_removed is not None and f.Q_removed.shape == (30, 22)
+
+    def test_a_rotation_is_not_a_projector(self):
+        """Unit singular values are not enough: ``U`` must equal ``W``.
+
+        A rotation keeps every direction at unit gain but turns them, so a
+        pre-filtered input ``F d`` lands in ``Uᵀ F d`` only if ``U`` is the
+        rotated basis. Aliasing it to ``W`` would put the data in a different
+        frame from the model.
+        """
+        rng = np.random.default_rng(1)
+        R = np.linalg.qr(rng.standard_normal((6, 6)))[0]
+        d = rng.standard_normal(6)
+        with pytest.warns(UserWarning, match="kept every singular value"):
+            f = Filter.from_operator(R, range_rank=6)
+        assert not f.is_projector
+        np.testing.assert_allclose(f.sigma * (f.W.T @ d), f.U.T @ (R @ d), atol=1e-12)
+
+    def test_near_unit_singular_values_are_not_a_projector(self):
+        """The projector test is absolute; numpy's default rtol would hide 8e-6."""
+        f = Filter.from_operator(np.diag([1.0, 1.0 - 8e-6]), range_rank=2)
+        assert not f.is_projector
+
+    def test_a_non_square_operator_is_refused(self):
+        with pytest.raises(ValueError, match="square"):
+            Filter.from_operator(np.ones((4, 3)), range_rank=2)
 
     def test_an_epsilon_below_the_floor_is_clipped_loudly(self):
         """The floor is sqrt(eps) because the restricted covariance carries Σ²."""
