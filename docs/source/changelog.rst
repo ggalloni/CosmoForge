@@ -23,6 +23,10 @@ Unreleased
 * ``PixelBasis``'s class docstring documented a ``basis`` constructor
   parameter. The constructor takes ``compression_target``.
 * ``InputParams.__eq__`` compares two configurations instead of raising.
+  Every instance carries ``cross_idxs`` and ``auto_idxs`` as arrays, so
+  ``params_a == params_b`` raised ``ValueError: The truth value of an array
+  with more than one element is ambiguous`` on any real config, including two
+  instances read from the same file.
 
 **Documentation:**
 
@@ -31,10 +35,6 @@ Unreleased
   (Galloni 2026, ``arXiv:2610.18012``) as well for any use of pixel-space
   filters. New ``citing`` page in the docs; ``CITATION.cff`` and every README
   carry both references.
-  Every instance carries ``cross_idxs`` and ``auto_idxs`` as arrays, so
-  ``params_a == params_b`` raised ``ValueError: The truth value of an array
-  with more than one element is ambiguous`` on any real config, including two
-  instances read from the same file.
 
 **Deprecated:**
 
