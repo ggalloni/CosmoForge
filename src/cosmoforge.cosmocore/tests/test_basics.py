@@ -19,6 +19,7 @@ from cosmocore.basics import (
 )
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_idx2spec():
     """Test inverse spectrum index conversion."""
     nfields = 3
@@ -87,8 +88,11 @@ def test_project_and_norm():
     assert pz == 0.0  # z-component should be zero (projection onto xy-plane)
 
 
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_matrix_slogdet():
-    """Test matrix_slogdet for general matrices."""
+    """Deprecated in 1.3.0, removed in 1.4.0; behaviour pinned until then."""
+    with pytest.warns(DeprecationWarning, match="slogdet"):
+        matrix_slogdet(np.eye(2))
     # Test with positive definite matrix
     M = np.array([[2.0, 1.0], [1.0, 2.0]])
     sign, logdet = matrix_slogdet(M)

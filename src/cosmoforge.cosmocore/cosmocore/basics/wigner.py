@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 from numba import njit
 
@@ -172,12 +174,15 @@ def _wigner_d_start(ell: int, m: int, s: int, cos_half: float, sin_half: float) 
     return result
 
 
-@njit(cache=True)
 def wigner_d_matrix(
     ell: int, s: int, cos_theta: float, sin_theta: float, d_out: np.ndarray
 ) -> None:
     """
     Compute all d^l_{m,s}(theta) for m = -l to l for a fixed l and s.
+
+    .. deprecated:: 1.3.0
+        Removed in 1.4.0. Use ``[wigner_d_small(ell, m, s, cos_theta, sin_theta)
+        for m in range(-ell, ell + 1)]``.
 
     Parameters
     ----------
@@ -193,6 +198,13 @@ def wigner_d_matrix(
         Pre-allocated output array of length (2*l+1) to store d^l_{m,s}
         for m = -l, -l+1, ..., l-1, l. Index i corresponds to m = i - l.
     """
+    warnings.warn(
+        "wigner_d_matrix is deprecated and will be removed in 1.4.0; use "
+        "[wigner_d_small(ell, m, s, cos_theta, sin_theta) "
+        "for m in range(-ell, ell + 1)].",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     for i in range(2 * ell + 1):
         m = i - ell
         d_out[i] = wigner_d_small(ell, m, s, cos_theta, sin_theta)

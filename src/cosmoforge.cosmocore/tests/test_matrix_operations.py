@@ -76,6 +76,41 @@ def test_matrix_trace():
     np.testing.assert_allclose(result_identity, expected_identity)
 
 
+def test_matrix_trace_matches_serial_kernel():
+    """Blocked threaded trace agrees with the old serial double loop.
+
+    Sizes straddle the 64-row block edge and the operands are non-symmetric and of mixed
+    memory order, as ``C^-1 dC`` products are. The result must not depend on the thread
+    count.
+    """
+    from numba import get_num_threads, njit, set_num_threads
+
+    @njit
+    def serial_trace(A, B):
+        n = A.shape[0]
+        s = 0.0
+        for i in range(n):
+            for j in range(n):
+                s += A[i, j] * B[j, i]
+        return s
+
+    rng = np.random.default_rng(7)
+    for n in (1, 63, 64, 65, 300):
+        A = rng.standard_normal((n, n))
+        B = np.asfortranarray(rng.standard_normal((n, n)))
+        expected = serial_trace(A, B)
+        np.testing.assert_allclose(matrix_trace(A, B), expected, rtol=1e-12)
+        np.testing.assert_allclose(matrix_trace(B, A), expected, rtol=1e-12)
+
+    threads = get_num_threads()
+    try:
+        set_num_threads(1)
+        single = matrix_trace(A, B)
+    finally:
+        set_num_threads(threads)
+    assert matrix_trace(A, B) == single
+
+
 def test_matrix_operations_with_fisher_like_data():
     """Test matrix operations with Fisher-like data patterns"""
     # Simulate Fisher matrix computation pattern

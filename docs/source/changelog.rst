@@ -9,8 +9,167 @@ Every pull request that touches package source updates this file; see
 Unreleased
 ----------
 
+**Breaking changes:**
+
+* ``cosmocore.compute_pointings(nside, active, ordering)`` returns the three
+  tuples ``(point_vectors, theta, phi)`` instead of filling caller-supplied
+  buffers; the ``npixs``, ``point_vectors``, ``theta_vectors`` and
+  ``phi_vectors`` parameters are gone. The old seven-argument call raises
+  ``TypeError`` at the call site, and a shim keeping the old positional slots
+  would misbind the new call, so this is a hard cut under the ADR-0018 bright
+  line. The per-pixel ``healpy`` calls are replaced by one vectorised
+  ``pix2ang`` per field; the pointing vectors are bit-identical to the old
+  loop at ``nside <= 8`` and within one ulp above.
+* ``cosmocore.active_pixels`` (and everything built on it, including
+  ``Field.active_pixels`` and every mask handed to ``Fisher``) raises
+  ``ValueError`` on a mask with a negative entry other than ``healpy.UNSEEN``.
+  ``UNSEEN`` still counts as inactive. Previously any negative value was
+  silently thresholded away.
+* ``FieldCollection.set_pointing_vectors`` raises ``ValueError`` when the
+  number of arrays differs from the number of fields, instead of silently
+  truncating.
+
+**Deprecated (removed in 1.4.0):**
+
+* ``cosmocore.count_nonzero_mask``: use ``len(active_pixels(mask)[0])``. The
+  two differ on masks with negative entries.
+* ``cosmocore.basics.wigner_d_matrix``: use a comprehension over
+  ``wigner_d_small``. It is no longer JIT-compiled.
+* ``cosmocore.basics.matrix_slogdet``: use ``numpy.linalg.slogdet``.
+* ``cosmocore.idx2spec``: nothing in the package calls it; ``SpectrumKey`` is
+  the public identity of a spectrum.
+* ``PixelBasis`` names one concept one way. ``compute_eigenspectrum``,
+  ``compute_eigenspectrum_per_field`` and ``plot_eigenvalue_spectrum`` take
+  ``compression_target=`` (the constructor's spelling); their ``basis=`` and
+  ``plot_eigenvalue_comparison``'s ``bases=`` still work for one release and
+  warn (ADR-0018). The old names collided with ``basis=`` on ``Fisher``,
+  ``Spectra`` and ``PICSLike``, which selects harmonic vs pixel vs auto and is
+  an unrelated concept.
+* ``params_file=`` on ``Fisher``, ``Spectra`` and ``PICSLike`` is now
+  ``params=``, the name ``Core`` has always used. It has always accepted an
+  ``InputParams``, a path or a dict, so "file" named one of the three things
+  it takes; the annotation claimed a path only. ``params_file=`` still works
+  for one release and warns (ADR-0018). Callers passing it positionally, which
+  is nearly all of them, are unaffected.
+* ``PixelBasis.available_bases()`` is now ``available_compression_targets()``
+  and ``cosmocore.basis.COMPRESSION_BASES`` is now ``COMPRESSION_TARGETS``.
+  Both old spellings work for one release and warn.
+
+**Added:**
+
+* Pixel-space filters are a first-class input. ``Fisher``, ``Spectra`` and
+  ``PICSLike`` accept ``pixel_filter=``, a ``cosmocore.filters.Filter``, and
+  carry the analysis out by restriction to the operator's range on every path
+  (traditional ``basis=False``, pixel-direct, compressed pixel, harmonic). The
+  spectra, Fisher matrix and likelihood returned are then those of the filtered
+  data. Build a filter with ``Filter.from_operator(F, range_epsilon=…)``,
+  ``Filter.from_deprojection(T)`` for a template-annihilating projector, or
+  ``Filter.from_subspace(W)``; combine two projectors with ``f1 & f2``.
+  ADR-0020.
+* ``Filter`` requires a rank threshold and has no default: ``from_operator``
+  takes exactly one of ``range_epsilon`` (relative cut on the operator's own
+  singular values) or ``range_rank`` (an exact count), and raises otherwise.
+  ``range_epsilon`` is clipped to ``MIN_RANGE_EPSILON`` (``sqrt(eps)``, about
+  1.5e-8) with a warning, because the restricted covariance carries ``Σ²`` and
+  a smaller cut puts its condition number beyond double precision. A
+  ``range_rank`` that would keep a singular value at or below that floor
+  raises ``ValueError``. Truncating
+  outside a spectral gap warns and reports where the largest gap is; keeping
+  every singular value warns that the filter is invertible and quotes the
+  resulting condition number.
+* ``maps_prefiltered`` and ``noise_prefiltered`` declare that an input already
+  carries the filter, so it is not applied twice. They are independent, because
+  pipeline noise simulations that went through the filter alongside raw signal
+  maps are a legitimate combination. ``noise_prefiltered`` means "the
+  covariance of the noise in the maps as handed", never "the filter whitened my
+  noise": for a projector the two conventions are identical, for a graded
+  filter they differ by ``Σ²`` and are different noise models.
+* ``cosmocore.signal_matrix(fields, lmax, pixel_filter=None)`` allocates and
+  fills the pixel-space signal covariance, optionally restricted. It replaces
+  five copies of the same allocate-and-fill that sized the matrix from the
+  noise buffer, and is the supported way to build ``S`` without a ``Core``.
+* ``cosmocore.basics.restrict`` and ``restrict_data`` apply a restriction to a
+  symmetric matrix and to pixel-space data.
+* ``cosmocore.filters`` ships constructors for the common operators, so a
+  caller does not assemble a template stack by hand:
+  ``harmonic_deprojection(mask=, spins=, ells=, slot=)`` removes whole
+  multipoles of one slot, taking its templates from the estimator's own ``V``
+  rather than resynthesising them; ``scan_polynomial(mask=, pole=, n_stripes=,
+  degree=)`` removes Legendre polynomials in azimuth within bands of constant
+  polar angle, the pixel-space image of per-scan baseline removal; and
+  ``hits_weighting(hits, mask=)`` builds inverse-noise weighting, which is
+  invertible and therefore a documented no-op control rather than a filter
+  anyone needs to apply. Every instrument-specific number is a required
+  argument. The two geometric constructors take ``ordering=`` (``"RING"`` by
+  default), which must match the analysis's ``params.ordering``. ``harmonic_deprojection`` is not purification and is not sharp in
+  multipole: its reach is set by the patch, roughly ``180 / radius`` degrees,
+  not by ``ells``.
+* ``cosmocore.basis.harmonic_operator`` and ``ell_mode_index`` are public, so
+  the cut-sky harmonics the estimator works in can be built without a
+  ``Fisher``. ``harmonic_deprojection`` is their first consumer.
+* ``BudgetConfig`` and ``PixelDirectBudgetConfig`` take ``working_dim`` (the
+  filter's rank), and ``qube-memory-budget`` takes ``--working-dim``. The dense
+  stages then scale with the rank while the kernel buffers stay at the pointing
+  count. Omitting it reproduces the previous numbers exactly. The filter terms
+  are modelled, not calibrated against a measured run.
+
+**Changed:**
+
+* ``Spectra(fisher=…)`` adopts that Fisher's filter and raises ``ValueError``
+  if the constructor asks for a different one, matching the existing rule for
+  ``lmax_signal``, ``mask=`` and the covariances.
+* The dormant ``out*`` covariance handoff is unsupported with a filter: it
+  writes the restricted ``(rank, rank)`` matrix while the read side reshapes to
+  the pointing count. In-memory handoff has been the primary path since
+  ADR-0016, so this is a documented limitation and not a code change. The
+  reduced covariances written by ``outnoisecovmat1/2`` stay unrestricted, so
+  the on-disk products remain in pixel space.
+* ``ComputationBasis`` now raises ``ValueError`` when the noise covariance
+  handed in does not match the working dimension, instead of proceeding until
+  a downstream matmul fails. The same check catches an unrestricted ``N`` under
+  a filter.
+* Under a filter the basis layer refuses the operations whose premises the
+  filter breaks, all with ``NotImplementedError``: m-block compression
+  (``compress=True``, which needs an azimuthally symmetric range), per-field
+  ``epsilon``/``mode_fraction`` lists, per-component eigen-spectra, and the
+  ``snr`` and ``total_covariance`` compression targets on spin-2 or
+  multi-field runs. Field
+  blocks are treated as one coupled group, so the block-diagonal ``K``
+  shortcut cannot return a wrong Fisher. ``mode_fraction`` is the recommended
+  compression knob under a filter.
+* ``cosmocore.matrix_trace``, which evaluates every ``Tr(C⁻¹ dC_i C⁻¹ dC_j)`` in the ``Fisher`` trace loop, the ``Spectra`` noise-bias traces and the basis-layer Fisher, now runs on all Numba threads and reads both operands along rows. It used to run on one core with a strided read of the second operand, which made the trace loop the dominant serial stage on the traditional and pixel-direct paths at large pixel counts. Results move only by floating-point reassociation (relative differences of order 1e-14 on the Fisher matrix) and do not depend on the thread count. The thread count is ``NUMBA_NUM_THREADS``, which defaults to every core; set it per rank when running several MPI ranks on one node.
+* The signal-matrix symmetrisation and the pixel-direct derivative symmetrisation are compiled loops, replacing a Python double loop and an index-array copy that allocated about one and a half extra copies of the derivative block.
+
 **Fixed:**
 
+* ``PICSLike`` run on more than one MPI rank attached its chi-squared and
+  log-likelihood values to the wrong grid points. Points are dealt to ranks
+  round-robin, but rank 0 joined the gathered blocks end to end, so every
+  ``LikelihoodResult``, the mean result and anything derived from them
+  (posteriors, best fits, intervals) came out permuted. Single-rank runs were
+  correct. The values themselves were right, so a multi-rank result from 1.2.0
+  or earlier can be repaired by restoring the order, or rerun. This changes
+  what existing multi-rank scripts compute.
+* ``LikelihoodResult.get_confidence_intervals`` returns the highest-density
+  interval its documentation always promised: grid points are taken in order
+  of decreasing likelihood until the requested mass is reached. The previous
+  loop expanded symmetrically in grid index from the maximum, so on an
+  asymmetric posterior it returned a wider interval shifted towards the
+  steep side. Reported bounds change for asymmetric posteriors; symmetric
+  ones are unaffected.
+* The fixed-multipole signal matrix ``S_fixed`` and the pixel-space derivative
+  are now sized from the field pixel counts rather than from the noise buffer.
+  The old sizing was correct only because the two agreed; it fed truncated
+  views to a bounds-unchecked kernel as soon as they did not.
+* ``Spectra(fisher=…)`` on the traditional path no longer falls back to the
+  ``out*`` covariance files on worker ranks under MPI. ``Fisher.run()`` shares
+  ``noise_cov1`` and the signal matrix through shared memory but was not
+  sharing the retained noise covariance, so every rank other than 0 saw it as
+  ``None`` and took the disk adapter instead. Without a filter that read the
+  right dimensions and merely cost one full pixel-space matrix read per rank;
+  with a ``pixel_filter`` the files hold the restricted ``r x r`` covariance
+  and the load raised a reshape ``ValueError``. Filtered spectra and filtered
+  likelihoods now run at any rank count.
 * ``basis={"compress": True, "delta_m": N}`` now reaches the basis. Both keys
   were missing from the forward list in ``Fisher`` and ``PICSLike``, so they
   were dropped before ``setup_computation_basis`` and the run logged the
@@ -35,25 +194,6 @@ Unreleased
   (Galloni 2026, ``arXiv:2610.18012``) as well for any use of pixel-space
   filters. New ``citing`` page in the docs; ``CITATION.cff`` and every README
   carry both references.
-
-**Deprecated:**
-
-* ``PixelBasis`` names one concept one way. ``compute_eigenspectrum``,
-  ``compute_eigenspectrum_per_field`` and ``plot_eigenvalue_spectrum`` take
-  ``compression_target=`` (the constructor's spelling); their ``basis=`` and
-  ``plot_eigenvalue_comparison``'s ``bases=`` still work for one release and
-  warn (ADR-0018). The old names collided with ``basis=`` on ``Fisher``,
-  ``Spectra`` and ``PICSLike``, which selects harmonic vs pixel vs auto and is
-  an unrelated concept.
-* ``params_file=`` on ``Fisher``, ``Spectra`` and ``PICSLike`` is now
-  ``params=``, the name ``Core`` has always used. It has always accepted an
-  ``InputParams``, a path or a dict, so "file" named one of the three things
-  it takes; the annotation claimed a path only. ``params_file=`` still works
-  for one release and warns (ADR-0018). Callers passing it positionally, which
-  is nearly all of them, are unaffected.
-* ``PixelBasis.available_bases()`` is now ``available_compression_targets()``
-  and ``cosmocore.basis.COMPRESSION_BASES`` is now ``COMPRESSION_TARGETS``.
-  Both old spellings work for one release and warn.
 
 Version 1.2.0 (2026-09-08)
 --------------------------

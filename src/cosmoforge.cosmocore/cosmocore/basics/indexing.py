@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from functools import lru_cache
 
 
@@ -35,10 +36,13 @@ def spec2idx(i, j, nfields):
         return spec2idx(j, i, nfields)
 
 
-@lru_cache
 def idx2spec(idx, nfields):
     """
     Convert spectrum index back to field indices.
+
+    .. deprecated:: 1.3.0
+        Removed in 1.4.0. Nothing in the package calls it; ``SpectrumKey`` is
+        the public identity of a spectrum (ADR-0013).
 
     Parameters
     ----------
@@ -59,8 +63,13 @@ def idx2spec(idx, nfields):
 
     Notes
     -----
-    Inverse operation of spec2idx. Uses LRU cache for performance.
+    Inverse operation of spec2idx.
     """
+    warnings.warn(
+        "idx2spec is deprecated and will be removed in 1.4.0; use SpectrumKey.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if idx < nfields:
         return idx, idx
     idx_cross = idx - nfields

@@ -7,12 +7,10 @@ from matplotlib import pyplot as plt
 from cosmocore import (
     FieldCollection,
     InputParams,
-    active_pixel_index,
     compute_pointings,
-    compute_signal_matrix,
     create_field,
-    read_covmat,
     read_mask,
+    signal_matrix,
 )
 
 
@@ -50,54 +48,14 @@ def get_signal_covmat(fields, local_path):
     collection = FieldCollection(Par, fields)
 
     field_actives = [field.active_pixels for field in fields]
-    npixs = [len(active) for active in field_actives]
-
-    point_vectors = tuple(np.empty((n, 3), dtype=np.float64) for n in npixs)
-    theta_vectors = tuple(np.empty(n, dtype=np.float64) for n in npixs)
-    phi_vectors = tuple(np.empty(n, dtype=np.float64) for n in npixs)
-
-    point_vectors, _, _ = compute_pointings(
-        Par.nside,
-        npixs,
-        point_vectors,
-        theta_vectors,
-        phi_vectors,
-        field_actives,
-        Par.ordering,
-    )
+    point_vectors, _, _ = compute_pointings(Par.nside, field_actives, Par.ordering)
 
     collection.set_pointing_vectors(point_vectors)
-
-    concatenate_pixact = active_pixel_index(mask)
-    noise_cov1 = np.empty(
-        (concatenate_pixact.shape[0], concatenate_pixact.shape[0]), dtype=np.float64
-    )
-    if Par.do_cross:
-        noise_cov2 = np.empty(
-            (concatenate_pixact.shape[0], concatenate_pixact.shape[0]), dtype=np.float64
-        )
-
-    noise_cov1 = read_covmat(
-        Par.covmatfile1, npix, Par.nfields, concatenate_pixact, noise_cov1
-    )
-    if Par.do_cross:
-        noise_cov2 = read_covmat(
-            Par.covmatfile2, npix, Par.nfields, concatenate_pixact, noise_cov2
-        )
 
     collection.set_cls()
     collection.set_beams()
 
-    signal_matrix = np.zeros_like(noise_cov1, dtype=np.float64)
-    signal_matrix = np.asfortranarray(signal_matrix, dtype=np.float64)
-
-    compute_signal_matrix(
-        S=signal_matrix,
-        lmax=Par.lmax,
-        fields=collection,
-    )
-
-    return signal_matrix
+    return signal_matrix(collection, Par.lmax)
 
 
 def plot_signal_covmat_TQU(local_path, show_fig=False, save_fig=False):

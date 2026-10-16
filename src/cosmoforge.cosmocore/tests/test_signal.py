@@ -76,18 +76,9 @@ def test_signal_covmat(data_resolver):
     # Create collection using new design
     collection = FieldCollection(Par, fields)
 
-    npixs = []
-    for field in fields:
-        npixs += field.n_active if field.spin == 0 else field.n_active * 2
-
-    point_vectors = tuple(
-        np.empty((npixs[i], 3), dtype=np.float64) for i in range(len(npixs))
-    )
-    theta_vectors = tuple(np.empty(npixs[i], dtype=np.float64) for i in range(len(npixs)))
-    phi_vectors = tuple(np.empty(npixs[i], dtype=np.float64) for i in range(len(npixs)))
-    pixact = collection.get_active_pixels()
+    field_actives = [field.active_pixels for field in fields]
     point_vectors, theta_vectors, phi_vectors = compute_pointings(
-        Par.nside, npixs, point_vectors, theta_vectors, phi_vectors, pixact, Par.ordering
+        Par.nside, field_actives, Par.ordering
     )
 
     collection.set_pointing_vectors(point_vectors)
@@ -177,18 +168,9 @@ def test_signal_covmat_multiple_scalar_fields(data_resolver):
     # Create collection using new design
     collection = FieldCollection(Par, fields)
 
-    npixs = []
-    for field in fields:
-        npixs += field.n_active if field.spin == 0 else field.n_active * 2
-
-    point_vectors = tuple(
-        np.empty((npixs[i], 3), dtype=np.float64) for i in range(len(npixs))
-    )
-    theta_vectors = tuple(np.empty(npixs[i], dtype=np.float64) for i in range(len(npixs)))
-    phi_vectors = tuple(np.empty(npixs[i], dtype=np.float64) for i in range(len(npixs)))
-    pixact = collection.get_active_pixels()
+    field_actives = [field.active_pixels for field in fields]
     point_vectors, theta_vectors, phi_vectors = compute_pointings(
-        Par.nside, npixs, point_vectors, theta_vectors, phi_vectors, pixact, Par.ordering
+        Par.nside, field_actives, Par.ordering
     )
 
     collection.set_pointing_vectors(point_vectors)
@@ -513,3 +495,34 @@ def test_build_fixed_spectra_high_band_unchanged():
     for ell in range(lmax_b + 1, basis_lmax + 1):
         assert fixed["TT"][ell] == fiducial["TT"][ell]
         assert fixed["EE"][ell] == fiducial["EE"][ell]
+
+
+def test_build_fixed_spectra_clamps_to_a_short_fiducial():
+    """A fiducial shorter than ``basis_lmax + 1`` is copied only where it exists.
+
+    The three tests above all pass exactly ``basis_lmax + 1`` entries, so the
+    length clamp is otherwise unexercised. Both bands are truncated here: the
+    array stops inside the high band, and the second case stops inside the low
+    band.
+    """
+    from cosmocore.core import _build_fixed_spectra
+
+    spectra_map = {(0, 0, 0): "TT"}
+    lmin_signal = [2]
+
+    # High band truncated: fiducial reaches ell=5, basis_lmax=8.
+    fiducial = {"TT": np.arange(6, dtype=np.float64)}
+    fixed = _build_fixed_spectra(fiducial, spectra_map, lmin_signal, 3, 4, 8)
+    assert len(fixed["TT"]) == 6
+    assert fixed["TT"][2] == fiducial["TT"][2]
+    assert fixed["TT"][3] == 0.0
+    assert fixed["TT"][4] == 0.0
+    assert fixed["TT"][5] == fiducial["TT"][5]
+
+    # Low band truncated: fiducial stops at ell=3, lmin_b=6.
+    fiducial = {"TT": np.arange(4, dtype=np.float64)}
+    fixed = _build_fixed_spectra(fiducial, spectra_map, lmin_signal, 6, 8, 10)
+    assert len(fixed["TT"]) == 4
+    assert fixed["TT"][2] == fiducial["TT"][2]
+    assert fixed["TT"][3] == fiducial["TT"][3]
+    assert fixed["TT"][:2].tolist() == [0.0, 0.0]

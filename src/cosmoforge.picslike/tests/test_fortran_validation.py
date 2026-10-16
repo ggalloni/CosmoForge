@@ -96,17 +96,8 @@ def python_signal(config_path, fortran_ref_path):
     active_pixels = field.active_pixels
     n_active = len(active_pixels)
 
-    point_vectors = (np.empty((n_active, 3), dtype=np.float64),)
-    theta_vectors = (np.empty(n_active, dtype=np.float64),)
-    phi_vectors = (np.empty(n_active, dtype=np.float64),)
     point_vectors, theta_vectors, phi_vectors = compute_pointings(
-        nside,
-        [n_active],
-        point_vectors,
-        theta_vectors,
-        phi_vectors,
-        np.array([active_pixels]),
-        0,  # RING ordering
+        nside, [active_pixels], "RING"
     )
     collection.set_pointing_vectors(point_vectors)
 
@@ -278,17 +269,8 @@ def test_full_fortran_validation(local_path, fortran_ref_path):
     active_pixels = field.active_pixels
     n_active = len(active_pixels)
 
-    point_vectors = (np.empty((n_active, 3), dtype=np.float64),)
-    theta_vectors = (np.empty(n_active, dtype=np.float64),)
-    phi_vectors = (np.empty(n_active, dtype=np.float64),)
     point_vectors, theta_vectors, phi_vectors = compute_pointings(
-        nside,
-        [n_active],
-        point_vectors,
-        theta_vectors,
-        phi_vectors,
-        np.array([active_pixels]),
-        0,  # RING ordering
+        nside, [active_pixels], "RING"
     )
     collection.set_pointing_vectors(point_vectors)
 
