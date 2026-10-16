@@ -63,6 +63,7 @@ Contents
    installation
    quickstart
    tutorials/index
+   citing
 
 .. toctree::
    :maxdepth: 2

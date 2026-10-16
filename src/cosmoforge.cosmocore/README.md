@@ -306,18 +306,13 @@ uv run pytest src/cosmoforge.cosmocore/tests/
 
 If you use CosmoCore (as part of CosmoForge) in your research, please cite:
 
-> Galloni, G. & Pagano, L., *CosmoForge I: A unified framework for QML power spectrum estimation and pixel-based likelihood analysis*, [arXiv:2605.21149](https://arxiv.org/abs/2605.21149) (2026).
+> Galloni, G. & Pagano, L., *CosmoForge. I. A unified framework for quadratic maximum likelihood power spectrum estimation and pixel-based likelihood analysis*, A&A (2026), [doi:10.1051/0004-6361/202661478](https://doi.org/10.1051/0004-6361/202661478), [arXiv:2605.21149](https://arxiv.org/abs/2605.21149).
 
-```bibtex
-@article{GalloniPagano_CosmoForgeI,
-    author        = {Galloni, G. and Pagano, L.},
-    title         = {{CosmoForge I}: A unified framework for {QML} power spectrum estimation and pixel-based likelihood analysis},
-    year          = {2026},
-    eprint        = {2605.21149},
-    archivePrefix = {arXiv},
-    primaryClass  = {astro-ph.CO},
-}
-```
+If you apply a pixel-space filter (`pixel_filter=` or `cosmocore.filters`), please also cite:
+
+> Galloni, G., *CosmoForge. II. An exact treatment of arbitrary linear filters in quadratic maximum-likelihood power spectrum estimation*, [arXiv:2610.18012](https://arxiv.org/abs/2610.18012) (2026).
+
+BibTeX entries for both are on the [citation page](https://cosmoforge.readthedocs.io/en/latest/citing.html) of the documentation.
 
 ## References
 

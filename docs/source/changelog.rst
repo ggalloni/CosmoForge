@@ -187,6 +187,14 @@ Unreleased
   with more than one element is ambiguous`` on any real config, including two
   instances read from the same file.
 
+**Documentation:**
+
+* Citation policy: cite Paper I (Galloni & Pagano 2026, A&A,
+  ``doi:10.1051/0004-6361/202661478``) for any use of CosmoForge, and Paper II
+  (Galloni 2026, ``arXiv:2610.18012``) as well for any use of pixel-space
+  filters. New ``citing`` page in the docs; ``CITATION.cff`` and every README
+  carry both references.
+
 Version 1.2.0 (2026-09-08)
 --------------------------
 
