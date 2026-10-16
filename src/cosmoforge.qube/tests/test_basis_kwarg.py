@@ -1,4 +1,4 @@
-"""Tests for the ``basis=`` constructor kwarg and its ``compression=`` shim (ADR-0018).
+"""Tests for the ``basis=`` constructor kwarg (ADR-0018).
 
 These exercise the public resolution of ``basis=`` into the internal
 ``_basis_config`` sentinel (``None`` = traditional path, dict = basis path).
@@ -39,19 +39,11 @@ def test_basis_unknown_string_raises(config_resolver):
         Fisher(_cfg(config_resolver), basis="bogus")
 
 
-def test_compression_kwarg_deprecated_but_forwarded(config_resolver):
-    with pytest.warns(DeprecationWarning, match="compression="):
-        f = Fisher(_cfg(config_resolver), compression={"method": "harmonic"})
-    assert f._basis_config == {"method": "harmonic"}
-
-
-def test_basis_and_compression_together_is_error(config_resolver):
-    with pytest.raises(TypeError, match="only basis="):
-        Fisher(
-            _cfg(config_resolver),
-            basis="harmonic",
-            compression={"method": "harmonic"},
-        )
+@pytest.mark.parametrize("cls", [Fisher, Spectra])
+def test_compression_kwarg_removed(config_resolver, cls):
+    # The 1.1.0 deprecated alias for basis= was removed in 1.3.0 (ADR-0018).
+    with pytest.raises(TypeError, match="compression"):
+        cls(_cfg(config_resolver), compression={"method": "harmonic"})
 
 
 def test_default_resolves_to_auto(config_resolver):

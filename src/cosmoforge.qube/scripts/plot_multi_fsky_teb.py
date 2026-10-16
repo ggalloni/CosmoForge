@@ -280,7 +280,7 @@ def run_qml(
         bins = Bins.fromdeltal(2, lmax_buffer, delta_ell)
 
         t0 = time.perf_counter()
-        fisher = Fisher(config_file, compression={"method": "auto", "lmax": lmax_buffer})
+        fisher = Fisher(config_file, basis={"method": "auto", "lmax": lmax_buffer})
         fisher.lmax_signal = lmax_buffer  # notebook recipe: signal == buffer
         fisher.set_binning(bins)
         fisher.run()
@@ -290,7 +290,7 @@ def run_qml(
         spectra = Spectra(
             config_file,
             fisher=fisher,
-            compression={"method": "auto", "lmax": lmax_buffer},
+            basis={"method": "auto", "lmax": lmax_buffer},
         )
         spectra.set_binning(bins)
         spectra.run()

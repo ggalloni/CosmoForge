@@ -160,7 +160,7 @@ def main():
 
     # Time Fisher
     compression_config = {"method": "harmonic"}
-    fisher = Fisher(config_file, compression=compression_config)
+    fisher = Fisher(config_file, basis=compression_config)
 
     comm.Barrier()
     t0 = time.perf_counter()
@@ -169,7 +169,7 @@ def main():
     t_fisher = time.perf_counter() - t0
 
     # Time Spectra (QML)
-    spectra = Spectra(config_file, fisher=fisher, compression=compression_config)
+    spectra = Spectra(config_file, fisher=fisher, basis=compression_config)
 
     comm.Barrier()
     t0 = time.perf_counter()

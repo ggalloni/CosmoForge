@@ -144,7 +144,6 @@ class Fisher(Core, MPISharedMemoryMixin):
         basis: dict | str | bool | None = Core._UNSET,
         cache_derivatives: bool = False,
         symmetry_mode: SymmetryMode | str | None = None,
-        compression: dict | str | bool | None = Core._UNSET,
         mask: np.ndarray | None = None,
         noise_cov1: np.ndarray | None = None,
         noise_cov2: np.ndarray | None = None,
@@ -176,10 +175,6 @@ class Fisher(Core, MPISharedMemoryMixin):
             - compression_target : str (for pixel: "noise_weighted", etc.)
             - mode_fraction : float (alternative to epsilon)
 
-        compression : dict, optional
-            Deprecated alias for ``basis`` (ADR-0018): emits a
-            ``DeprecationWarning`` and is forwarded; passing both is a
-            ``TypeError``.
         cache_derivatives : bool, optional
             Whether to cache binned derivative matrices for Spectra to
             reuse. Default is False — Spectra recomputes via the
@@ -223,10 +218,8 @@ class Fisher(Core, MPISharedMemoryMixin):
         self.size = self.comm.Get_size()
 
         # Computation basis config (ADR-0018): resolve the public basis= kwarg
-        # (with the deprecated compression= alias) into the internal sentinel.
-        self._basis_config = self._resolve_basis_config(
-            basis, compression, self.params.do_cross
-        )
+        # into the internal sentinel.
+        self._basis_config = self._resolve_basis_config(basis, self.params.do_cross)
 
         # Derivative caching
         self._cache_derivatives = cache_derivatives

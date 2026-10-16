@@ -207,7 +207,6 @@ class Spectra(Core, MPISharedMemoryMixin):
         params: InputParams | str | dict | None = None,
         fisher: Fisher | None = None,
         basis: dict | str | bool | None = Core._UNSET,
-        compression: dict | str | bool | None = Core._UNSET,
         mask: np.ndarray | None = None,
         noise_cov1: np.ndarray | None = None,
         noise_cov2: np.ndarray | None = None,
@@ -238,8 +237,6 @@ class Spectra(Core, MPISharedMemoryMixin):
             ``method="auto"``; ``False`` → traditional pixel-space path;
             ``"auto"``/``"harmonic"``/``"pixel"`` → ``{"method": …}``; a dict is
             the only form that requests compression.
-        compression : dict, optional
-            Deprecated alias for ``basis`` (ADR-0018): warns and is forwarded.
         mask : numpy.ndarray, optional
             In-memory mask injected in place of ``params.maskfile``; see
             :meth:`Core.__init__` for the contract (ADR-0017).
@@ -295,9 +292,7 @@ class Spectra(Core, MPISharedMemoryMixin):
         self.size = self.comm.Get_size()
 
         # Store computation basis config for Fisher creation (ADR-0018).
-        self._basis_config = self._resolve_basis_config(
-            basis, compression, self.params.do_cross
-        )
+        self._basis_config = self._resolve_basis_config(basis, self.params.do_cross)
 
         # lmax for signal matrix computation (matches the Fortran convention of
         # 4*nside). Resolved here, ahead of _get_fisher(), because the internal

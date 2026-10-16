@@ -9,6 +9,8 @@ at the orchestration layer and completes the vocabulary migration begun in
 deprecation policy that supersedes the "no-shim" stance of ADR-0002 and
 [ADR-0013](0013-spectrum-key-public-identity.md).
 
+The `compression=` alias was removed in 1.3.0; passing it now raises `TypeError`.
+
 ## Context
 
 Three long-standing inconsistencies met here.

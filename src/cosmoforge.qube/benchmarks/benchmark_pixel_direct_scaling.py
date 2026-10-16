@@ -162,7 +162,7 @@ def _compression_dict(method):
 
 
 def benchmark_fisher(config_file, method, bins=None):
-    fisher = Fisher(config_file, compression=_compression_dict(method))
+    fisher = Fisher(config_file, basis=_compression_dict(method))
     if bins is not None:
         fisher.set_binning(bins)
     t0 = time.perf_counter()
@@ -181,7 +181,7 @@ def benchmark_fisher(config_file, method, bins=None):
 
 
 def benchmark_spectra(config_file, fisher, method, bins=None):
-    spectra = Spectra(config_file, fisher=fisher, compression=_compression_dict(method))
+    spectra = Spectra(config_file, fisher=fisher, basis=_compression_dict(method))
     if bins is not None:
         spectra.set_binning(bins)
     t0 = time.perf_counter()

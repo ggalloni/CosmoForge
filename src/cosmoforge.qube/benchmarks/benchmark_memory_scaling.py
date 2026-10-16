@@ -113,7 +113,7 @@ def _profile_cell(config_file, bins, poll_interval, method, cache_derivatives):
 
         fisher = Fisher(
             config_file,
-            compression={"method": method},
+            basis={"method": method},
             cache_derivatives=cache_derivatives,
         )
         # Sub-stage profiler: emits one MemSample per `with self._stage(...)`
@@ -138,7 +138,7 @@ def _profile_cell(config_file, bins, poll_interval, method, cache_derivatives):
         timings["n_modes"] = dim
         timings["n_pix"] = sum(fisher.collection.n_active)
 
-        spectra = Spectra(config_file, fisher=fisher, compression={"method": method})
+        spectra = Spectra(config_file, fisher=fisher, basis={"method": method})
         spectra._profiler = StageProfiler(
             mon, samples, snapshot_targets=[spectra], inventory_min_mb=1.0
         )

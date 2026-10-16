@@ -170,7 +170,7 @@ def benchmark_fisher(config_file, method):
     """Run Fisher and return timing breakdown."""
     compression = {"method": method}
 
-    fisher = Fisher(config_file, compression=compression)
+    fisher = Fisher(config_file, basis=compression)
 
     # Time the full run() — it handles all setup + computation internally
     t0 = time.perf_counter()
@@ -190,7 +190,7 @@ def benchmark_spectra(config_file, fisher, method):
     """Run Spectra with pre-computed Fisher, return QML timing."""
     compression = {"method": method}
 
-    spectra = Spectra(config_file, fisher=fisher, compression=compression)
+    spectra = Spectra(config_file, fisher=fisher, basis=compression)
 
     t0 = time.perf_counter()
     spectra.run()

@@ -571,7 +571,7 @@ class TestCompressedLikelihood:
         """Smoke test for the polymorphic pixel-basis use_basis path.
 
         Verifies that ``_compute_likelihood_point`` runs end-to-end with
-        ``compression={"method": "pixel"}`` — exercising the ABC
+        ``basis={"method": "pixel"}`` — exercising the ABC
         polymorphic branch (``bm.get_inverse`` / ``bm.to_basis`` /
         ``bm.get_logdet``) added to picslike alongside the harmonic SMW
         path. Pre-fix this branch would have ``AttributeError``'d on
@@ -731,3 +731,9 @@ class TestParamsAlias:
     def test_positional_still_works(self, fast_config_path):
         picslike = PICSLike(fast_config_path)
         assert picslike.params is not None
+
+
+def test_compression_kwarg_removed(fast_config_path):
+    # The 1.1.0 deprecated alias for basis= was removed in 1.3.0 (ADR-0018).
+    with pytest.raises(TypeError, match="compression"):
+        PICSLike(params=fast_config_path, compression={"method": "harmonic"})
