@@ -41,6 +41,10 @@ def test_gather_wraps_single_rank_payload():
     assert MPI.COMM_WORLD.gather("payload", root=0) == ["payload"]
 
 
+def test_allgather_wraps_single_rank_payload():
+    assert MPI.COMM_WORLD.allgather("payload") == ["payload"]
+
+
 def test_Barrier_returns_none():
     assert MPI.COMM_WORLD.Barrier() is None
 
