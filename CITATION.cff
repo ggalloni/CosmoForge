@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use CosmoForge in your research, please cite the preferred citation (Paper I). If you apply a pixel-space filter, please also cite Paper II, listed under references."
-title: "CosmoForge I: A unified framework for QML power spectrum estimation and pixel-based likelihood analysis"
+title: "CosmoForge"
 authors:
   - family-names: Galloni
     given-names: Giacomo
