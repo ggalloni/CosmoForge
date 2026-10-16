@@ -509,3 +509,18 @@ class TestGuards:
         # the filter's doing and not a pre-existing one.
         HarmonicBasis(np.eye(n), theta, phi, 6, compress=True)
         assert projector.rank > 0
+
+    @pytest.mark.parametrize("target", ["snr", "total_covariance"])
+    def test_signal_weighted_compression_refuses_a_filter_on_spin_2(
+        self, geometry, target
+    ):
+        """A filter forces the single-matrix path, whose Λ is one spin-0 field."""
+        config, mask, projector = geometry
+        basis = {
+            "method": "pixel",
+            "mode_fraction": 0.9,
+            "compression_target": target,
+            "C_ell": np.ones(16),
+        }
+        with pytest.raises(NotImplementedError, match="spin-2 or multi-field"):
+            _run(config, mask, pixel_filter=projector, basis=basis)

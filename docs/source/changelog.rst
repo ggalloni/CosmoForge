@@ -130,7 +130,9 @@ Unreleased
 * Under a filter the basis layer refuses the operations whose premises the
   filter breaks, all with ``NotImplementedError``: m-block compression
   (``compress=True``, which needs an azimuthally symmetric range), per-field
-  ``epsilon``/``mode_fraction`` lists, and per-component eigen-spectra. Field
+  ``epsilon``/``mode_fraction`` lists, per-component eigen-spectra, and the
+  ``snr`` and ``total_covariance`` compression targets on spin-2 or
+  multi-field runs. Field
   blocks are treated as one coupled group, so the block-diagonal ``K``
   shortcut cannot return a wrong Fisher. ``mode_fraction`` is the recommended
   compression knob under a filter.

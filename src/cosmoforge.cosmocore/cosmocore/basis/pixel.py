@@ -988,6 +988,18 @@ class PixelBasis(ComputationBasis):
                 f"Unknown compression target '{compression_target}'. "
                 f"Available: {list(COMPRESSION_TARGETS.keys())}"
             )
+        if (
+            self._pixel_filter is not None
+            and compression_target in ("total_covariance", "snr")
+            and (self.n_components > 1 or any(s == 2 for s in self._spins))
+        ):
+            # A filter forces the single-matrix path, whose signal build is
+            # one spin-0 field's Λ; per-field targets have no restricted form.
+            raise NotImplementedError(
+                f"compression_target={compression_target!r} is not available "
+                "under a pixel filter for spin-2 or multi-field runs. Use "
+                "'noise_weighted' or 'harmonic'"
+            )
 
         if compression_target == "harmonic":
             # Pure harmonic projector P_h = V^T V
