@@ -37,6 +37,19 @@ import yaml
 from .basics import spec2idx
 
 
+def _values_equal(a, b) -> bool:
+    """Compare two setting values, including array-valued ones.
+
+    ``a == b`` on a numpy array yields an array, whose truth value ``all()``
+    then refuses to take. Only the array case needs the detour; scalars,
+    strings, lists and dicts of scalars answer for themselves. A shape or type
+    mismatch, an array against ``None`` included, is inequality.
+    """
+    if isinstance(a, np.ndarray) or isinstance(b, np.ndarray):
+        return np.array_equal(a, b)
+    return a == b
+
+
 class InputParams:
     r"""
     Parameter management class for cosmological analysis configuration.
@@ -554,10 +567,14 @@ class InputParams:
         Notes
         -----
         Compares all attributes for equality. Useful for testing and
-        validation of parameter configurations.
+        validation of parameter configurations. Array-valued settings
+        (``cross_idxs`` and ``auto_idxs`` are arrays on every instance) are
+        compared with :func:`numpy.array_equal`, so this answers rather than
+        raising on the ambiguous truth value of an array.
         """
         if not isinstance(other, InputParams):
             return False
         return all(
-            getattr(self, key) == getattr(other, key) for key in self.__dict__.keys()
+            _values_equal(getattr(self, key), getattr(other, key))
+            for key in self.__dict__
         )

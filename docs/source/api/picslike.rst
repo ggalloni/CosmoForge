@@ -105,7 +105,7 @@ Basic Pixel-Based Likelihood Analysis
    from picslike import PICSLike
 
    # Initialize with configuration file
-   picslike = PICSLike(params_file="config/pixel_analysis.yaml")
+   picslike = PICSLike(params="config/pixel_analysis.yaml")
 
    # Run complete analysis pipeline
    picslike.run()
@@ -124,7 +124,7 @@ Step-by-Step Pipeline
    from picslike import PICSLike
 
    # Initialize
-   picslike = PICSLike(params_file="config/analysis.yaml")
+   picslike = PICSLike(params="config/analysis.yaml")
 
    # Setup pipeline components
    picslike.setup_parameter_grid()

@@ -40,12 +40,12 @@ Quick Start
 
    # Fisher Matrix Analysis
    from qube import Fisher
-   fisher = Fisher(params_file="config/fisher_config.yaml")
+   fisher = Fisher(params="config/fisher_config.yaml")
    fisher.run()
 
    # Pixel-Based Likelihood
    from picslike import PICSLike
-   picslike = PICSLike(params_file="config/pixel_config.yaml")
+   picslike = PICSLike(params="config/pixel_config.yaml")
    picslike.run()
 
    # Core mathematical utilities
