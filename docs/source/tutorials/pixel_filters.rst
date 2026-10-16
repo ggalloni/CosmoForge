@@ -13,6 +13,11 @@ compares against has been through the same thing your data has.
 The design is recorded in ADR-0020 (*filters are restriction to the operator's range*),
 under ``docs/adr/``.
 
+.. note::
+
+   An analysis that uses a pixel filter should cite Galloni 2026, *CosmoForge. II*,
+   `arXiv:2610.18012 <https://arxiv.org/abs/2610.18012>`_, in addition to Paper I.
+
 Restriction, not conjugation
 ----------------------------
 

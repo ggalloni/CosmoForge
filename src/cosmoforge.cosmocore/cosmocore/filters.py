@@ -117,6 +117,12 @@ class Filter:
     -----
     The discarded singular values are not stored and are not recoverable: ``F``
     itself is never retained.
+
+    References
+    ----------
+    Galloni 2026, *CosmoForge. II*, arXiv:2610.18012, treats a linear filter
+    exactly in the QML estimator and the pixel-based likelihood. Analyses that
+    use a filter should cite it alongside Paper I.
     """
 
     W: np.ndarray

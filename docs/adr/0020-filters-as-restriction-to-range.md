@@ -207,5 +207,9 @@ fraction and an integer means a count. Rejected because it collides with
   ADR-0014 (broadcast and shared memory), ADR-0016 (Fisher to Spectra
   handoff), ADR-0017 (loading seams, amended by this ADR), ADR-0018
   (deprecation policy).
+- Galloni 2026, CosmoForge II (arXiv:2610.18012): the filtered QML estimator
+  and pixel-based likelihood, with the filter entering by conjugation of the
+  estimator's ingredients, which this ADR realises as restriction to
+  `range(F)`. Cited for any analysis that uses a filter.
 - Oh, Spergel & Hinshaw 1999 for the azimuthal-symmetry condition that m-block
   compression rests on, and which a filter breaks.
