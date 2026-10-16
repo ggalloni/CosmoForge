@@ -41,6 +41,12 @@ flag_management:
           threshold: 1%
     - name: quelo
       carryforward: false
+    # The MPI legs span every package, so a single-package PR (other legs
+    # skipped by Detect Changes) would fail their project status.
+    - name: nompi
+      statuses: []
+    - name: mpi
+      statuses: []
 
 ignore:
   - "*/tests/*"
