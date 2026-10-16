@@ -80,7 +80,8 @@ def active_pixels(mask: np.ndarray) -> list[np.ndarray]:
     [[0, 2], [1, 2]]
     """
     mask = _as_columns(mask)
-    negative = (mask < 0) & (mask != hp.UNSEEN)
+    # mask_bad is tolerant: a float32 UNSEEN promoted to float64 is not exact.
+    negative = (mask < 0) & ~hp.mask_bad(mask)
     if negative.any():
         raise ValueError(
             f"mask has {int(negative.sum())} negative entr(y/ies) other than "

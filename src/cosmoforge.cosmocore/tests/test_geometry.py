@@ -170,6 +170,13 @@ def test_unseen_counts_as_inactive():
     assert active_pixels(mask)[0].tolist() == [0, 1, 2, 4, 5, 6, 8, 9, 10, 11]
 
 
+def test_unseen_in_a_float32_mask_counts_as_inactive():
+    """``hp.read_map`` can return float32, whose UNSEEN is not float64's exactly."""
+    mask = np.ones(12, dtype=np.float32)
+    mask[[3, 7]] = hp.UNSEEN
+    assert active_pixels(mask)[0].tolist() == [0, 1, 2, 4, 5, 6, 8, 9, 10, 11]
+
+
 def test_negative_mask_entries_are_refused():
     mask = np.ones(12)
     mask[3] = -1.0
