@@ -512,7 +512,14 @@ def _field_columns(spins, ncomponents):
     return columns
 
 
-def _scan_frame(pole, npix):
+def _is_nested(ordering):
+    """``True`` for NESTED, ``False`` for RING; anything else is refused."""
+    if ordering not in ("RING", "NESTED"):
+        raise ValueError(f"ordering must be 'RING' or 'NESTED', got {ordering!r}")
+    return ordering == "NESTED"
+
+
+def _scan_frame(pole, npix, nest=False):
     """Polar angles of every HEALPix pixel in the frame whose z axis is ``pole``.
 
     Returns ``(theta_scan, phi_scan)``, each of length ``npix``. The azimuth
@@ -524,7 +531,7 @@ def _scan_frame(pole, npix):
     x = seed - z * (seed @ z)
     x /= np.linalg.norm(x)
     y = np.cross(z, x)
-    v = np.asarray(hp.pix2vec(hp.npix2nside(npix), np.arange(npix)))
+    v = np.asarray(hp.pix2vec(hp.npix2nside(npix), np.arange(npix), nest=nest))
     return np.arccos(np.clip(z @ v, -1.0, 1.0)), np.arctan2(y @ v, x @ v)
 
 
@@ -619,7 +626,9 @@ def hits_weighting(hits, *, mask, range_epsilon=None, range_rank=None):
     )
 
 
-def scan_polynomial(*, mask, pole, n_stripes, degree, template_epsilon=1e-3):
+def scan_polynomial(
+    *, mask, pole, n_stripes, degree, template_epsilon=1e-3, ordering="RING"
+):
     """
     Deproject low-order polynomials along the scan, one family per stripe.
 
@@ -650,6 +659,9 @@ def scan_polynomial(*, mask, pole, n_stripes, degree, template_epsilon=1e-3):
         orthogonalisation number ``n_stripes * ncomponents * (degree + 1)``.
     template_epsilon : float
         Relative cut deciding how many template directions are independent.
+    ordering : {"RING", "NESTED"}
+        HEALPix ordering of ``mask``, the analysis's ``params.ordering``. The
+        fingerprint checks pixel indices only, so a mismatch here is silent.
 
     Returns
     -------
@@ -680,6 +692,7 @@ def scan_polynomial(*, mask, pole, n_stripes, degree, template_epsilon=1e-3):
     warned about rather than passed over, since it means the requested degree
     was not achievable there.
     """
+    nest = _is_nested(ordering)
     mask = _as_columns(mask)
     npix, ncomponents = mask.shape
     n_stripes = int(n_stripes)
@@ -691,7 +704,7 @@ def scan_polynomial(*, mask, pole, n_stripes, degree, template_epsilon=1e-3):
 
     per_component = active_pixels(mask)
     offsets = np.cumsum([0, *(len(a) for a in per_component)])
-    theta, phi = _scan_frame(pole, npix)
+    theta, phi = _scan_frame(pole, npix, nest=nest)
 
     observed = np.unique(np.concatenate(per_component))
     edges = np.linspace(theta[observed].min(), theta[observed].max(), n_stripes + 1)
@@ -727,7 +740,9 @@ def scan_polynomial(*, mask, pole, n_stripes, degree, template_epsilon=1e-3):
     )
 
 
-def harmonic_deprojection(*, mask, spins, ells, slot, template_epsilon=1e-3):
+def harmonic_deprojection(
+    *, mask, spins, ells, slot, template_epsilon=1e-3, ordering="RING"
+):
     """
     Deproject the subspace spanned by whole multipoles of one slot.
 
@@ -756,6 +771,9 @@ def harmonic_deprojection(*, mask, spins, ells, slot, template_epsilon=1e-3):
         ``Slot.C``/``"C"``/``"B"``.
     template_epsilon : float
         Relative cut deciding how many of the templates are independent.
+    ordering : {"RING", "NESTED"}
+        HEALPix ordering of ``mask``, the analysis's ``params.ordering``. The
+        fingerprint checks pixel indices only, so a mismatch here is silent.
 
     Returns
     -------
@@ -807,6 +825,7 @@ def harmonic_deprojection(*, mask, spins, ells, slot, template_epsilon=1e-3):
     from .basis import ell_mode_index, harmonic_operator
     from .conventions.cmb import slot_from_label
 
+    nest = _is_nested(ordering)
     mask = _as_columns(mask)
     npix, ncomponents = mask.shape
     nside = hp.npix2nside(npix)
@@ -841,7 +860,7 @@ def harmonic_deprojection(*, mask, spins, ells, slot, template_epsilon=1e-3):
         # A spin-2 field's two components share one active-pixel set
         # (CONTEXT.md:98), so one pointing set drives the whole block.
         pixels = per_component[columns[0]]
-        theta, phi = hp.pix2ang(nside, pixels)
+        theta, phi = hp.pix2ang(nside, pixels, nest=nest)
         V = harmonic_operator(theta, phi, spin=slot.spin, lmin=lmin, lmax=lmax)
         n_modes = V.shape[0] // 2 if slot.spin else V.shape[0]
         # Spin-2 rows are [E | B]; Slot.G is the E block, Slot.C the B block.

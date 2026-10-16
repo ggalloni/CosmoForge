@@ -289,6 +289,50 @@ def test_constructors_agree_on_the_fingerprint(cap):
     assert both.rank <= min(scan.rank, band.rank)
 
 
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda mask, **kw: scan_polynomial(
+            mask=mask, pole=POLE, n_stripes=4, degree=1, **kw
+        ),
+        lambda mask, **kw: harmonic_deprojection(
+            mask=mask, spins=[0, 2], ells=range(4), slot="T", **kw
+        ),
+    ],
+    ids=["scan_polynomial", "harmonic_deprojection"],
+)
+def test_constructors_honour_nested_ordering(cap, build):
+    """A NESTED mask removes the same sky templates as its RING twin.
+
+    The fingerprint checks pixel indices only, so a constructor that read a
+    NESTED mask as RING would pass every check and deproject at the wrong
+    positions.
+    """
+    nest = np.column_stack([hp.reorder(cap[:, i], r2n=True) for i in range(3)])
+    ring_f = build(cap)
+    nest_f = build(nest, ordering="NESTED")
+
+    # Map each NESTED active row to its RING row, component by component.
+    ring_rows = {}
+    for c, pixels in enumerate(active_pixels(cap)):
+        for p in pixels:
+            ring_rows[(c, p)] = len(ring_rows)
+    perm = [
+        ring_rows[(c, hp.nest2ring(NSIDE, p))]
+        for c, pixels in enumerate(active_pixels(nest))
+        for p in pixels
+    ]
+    P_ring = ring_f.W @ ring_f.W.T
+    P_nest = nest_f.W @ nest_f.W.T
+    assert nest_f.rank == ring_f.rank
+    np.testing.assert_allclose(P_nest, P_ring[np.ix_(perm, perm)], atol=1e-10)
+
+
+def test_constructors_refuse_an_unknown_ordering(cap):
+    with pytest.raises(ValueError, match="ordering"):
+        scan_polynomial(mask=cap, pole=POLE, n_stripes=4, degree=1, ordering="ring2")
+
+
 class TestRangeRank:
     """The second of the two threshold knobs, which no constructor reaches.
 
