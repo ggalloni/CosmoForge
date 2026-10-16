@@ -141,7 +141,7 @@ class Fisher(Core, MPISharedMemoryMixin):
     def __init__(
         self,
         params: InputParams | str | dict | None = None,
-        basis: dict | str | bool | None = Core._UNSET,
+        basis: dict | str | bool | None = None,
         cache_derivatives: bool = False,
         symmetry_mode: SymmetryMode | str | None = None,
         mask: np.ndarray | None = None,

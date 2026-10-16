@@ -206,7 +206,7 @@ class Spectra(Core, MPISharedMemoryMixin):
         self,
         params: InputParams | str | dict | None = None,
         fisher: Fisher | None = None,
-        basis: dict | str | bool | None = Core._UNSET,
+        basis: dict | str | bool | None = None,
         mask: np.ndarray | None = None,
         noise_cov1: np.ndarray | None = None,
         noise_cov2: np.ndarray | None = None,

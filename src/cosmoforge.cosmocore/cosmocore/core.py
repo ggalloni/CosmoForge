@@ -120,10 +120,6 @@ class Core(ABC):
     specific analysis tasks.
     """
 
-    #: Sentinel distinguishing "kwarg omitted" from an explicit ``None``/``False``
-    #: value on the ``basis=`` constructor kwarg.
-    _UNSET = object()
-
     @staticmethod
     def _resolve_params_alias(params, params_file):
         """Warn-and-forward the ``params_file=`` spelling for one release (ADR-0018).
@@ -142,13 +138,13 @@ class Core(ABC):
         Returns ``None`` for the traditional no-basis path or a config dict for
         a computation basis.
 
-        - ``None`` / omitted → ``method="auto"`` (unless ``do_cross``: the basis
+        - ``None`` (the default) → ``method="auto"`` (unless ``do_cross``: the basis
           layer has no second noise covariance, so cross stays traditional).
         - ``False`` → traditional path (explicit opt-out).
         - ``"auto"`` / ``"harmonic"`` / ``"pixel"`` → ``{"method": …}`` (uncompressed).
         - ``dict`` → copied (the only way to request compression).
         """
-        if basis is Core._UNSET or basis is None:
+        if basis is None:
             # Default → auto (ADR-0003 selector), except with do_cross: the basis
             # layer has no second noise covariance, so cross stays traditional.
             return None if do_cross else {"method": "auto"}

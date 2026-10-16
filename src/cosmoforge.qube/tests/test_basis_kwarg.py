@@ -75,9 +75,9 @@ def test_default_run_builds_auto_basis(config_resolver):
     assert f.basis_manager.method == "harmonic"
 
 
-def _fisher_matrix(config_resolver, fields, basis=Fisher._UNSET):
+def _fisher_matrix(config_resolver, fields, basis=None):
     cfg = config_resolver(f"tests/data/nside4/{fields}/config.yaml")
-    f = Fisher(cfg) if basis is Fisher._UNSET else Fisher(cfg, basis=basis)
+    f = Fisher(cfg, basis=basis)
     f.run()
     return f.get_fisher_matrix()
 
