@@ -120,10 +120,6 @@ class Core(ABC):
     specific analysis tasks.
     """
 
-    #: Sentinel distinguishing "kwarg omitted" from an explicit ``None``/``False``
-    #: value on the ``basis=`` / deprecated ``compression=`` constructor kwargs.
-    _UNSET = object()
-
     @staticmethod
     def _resolve_params_alias(params, params_file):
         """Warn-and-forward the ``params_file=`` spelling for one release (ADR-0018).
@@ -136,31 +132,19 @@ class Core(ABC):
         return resolve_alias(params, params_file, "params", "params_file", stacklevel=4)
 
     @staticmethod
-    def _resolve_basis_config(basis, compression, do_cross):
+    def _resolve_basis_config(basis, do_cross):
         """Map the public ``basis=`` kwarg to the internal ``_basis_config`` (ADR-0018).
 
         Returns ``None`` for the traditional no-basis path or a config dict for
-        a computation basis. ``compression=`` is the deprecated alias.
+        a computation basis.
 
-        - ``None`` / omitted → ``method="auto"`` (unless ``do_cross``: the basis
+        - ``None`` (the default) → ``method="auto"`` (unless ``do_cross``: the basis
           layer has no second noise covariance, so cross stays traditional).
         - ``False`` → traditional path (explicit opt-out).
         - ``"auto"`` / ``"harmonic"`` / ``"pixel"`` → ``{"method": …}`` (uncompressed).
         - ``dict`` → copied (the only way to request compression).
         """
-        unset = Core._UNSET
-        if compression is not unset:
-            if basis is not unset:
-                raise TypeError(
-                    "pass only basis=; compression= is the deprecated alias for it"
-                )
-            warnings.warn(
-                "compression= is deprecated; use basis= (ADR-0018)",
-                DeprecationWarning,
-                stacklevel=3,
-            )
-            basis = compression
-        if basis is unset or basis is None:
+        if basis is None:
             # Default → auto (ADR-0003 selector), except with do_cross: the basis
             # layer has no second noise covariance, so cross stays traditional.
             return None if do_cross else {"method": "auto"}

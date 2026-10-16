@@ -11,6 +11,12 @@ Unreleased
 
 **Breaking changes:**
 
+* The ``compression=`` alias of ``basis=`` on ``Fisher``, ``Spectra`` and
+  ``PICSLike`` is removed, two releases after its deprecation in 1.1.0
+  (ADR-0018). Passing it raises ``TypeError``; pass the same value as
+  ``basis=``. Its positional slot is gone too, so arguments after it
+  (``mask=`` onwards) move up one place for positional callers.
+  ``compression_target`` inside the ``basis=`` dict is unchanged.
 * ``cosmocore.compute_pointings(nside, active, ordering)`` returns the three
   tuples ``(point_vectors, theta, phi)`` instead of filling caller-supplied
   buffers; the ``npixs``, ``point_vectors``, ``theta_vectors`` and

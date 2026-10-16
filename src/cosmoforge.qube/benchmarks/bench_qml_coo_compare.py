@@ -144,7 +144,7 @@ def main():
         config_file = _build_fixture(tmpdir, args.nside, args.lmax, args.nsims)
 
         # --- Run 1: default (sparse-COO) ---
-        qml_sparse = Spectra(config_file, compression={"method": "harmonic"})
+        qml_sparse = Spectra(config_file, basis={"method": "harmonic"})
         t0 = time.perf_counter()
         qml_sparse.run()
         t_total_sparse = time.perf_counter() - t0
