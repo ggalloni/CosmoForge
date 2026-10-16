@@ -1,9 +1,17 @@
-"""Matrix operations: multiplication, trace, inversion, determinants."""
+"""Matrix operations: multiplication, trace, inversion, determinants.
+
+The thin wrappers around numpy (``inv``, ``solve_linear``, ``eigh``,
+``eigvalsh``, ``svd``) are deliberate: every numerical routine the package
+uses is named once here, so swapping one for an architecture-specific
+implementation is a single edit rather than a hunt through call sites.
+"""
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
-from numba import njit
+from numba import njit, prange
 from scipy.linalg import cho_solve, lapack
 
 
@@ -55,10 +63,15 @@ def add_diagonal(M, d, out=None):
     return out
 
 
-@njit(cache=True)
+@njit(parallel=True, cache=True)
 def matrix_trace(A, B):
     """
     Compute trace of matrix product A @ B.
+
+    Threaded over blocks of 64 rows of ``A``. Each block walks ``B`` along its rows
+    (contiguous for C-ordered input) and keeps one accumulator per row, so the inner
+    loop vectorises. Block partials are summed in a fixed order, so the result does not
+    depend on the thread count.
 
     Parameters
     ----------
@@ -71,11 +84,18 @@ def matrix_trace(A, B):
         Trace of the matrix product: tr(A @ B) = sum_i sum_j A_ij B_ji.
     """
     n = A.shape[0]
-    s = 0.0
-    for i in range(n):
+    bs = 64
+    nb = (n + bs - 1) // bs
+    partial = np.zeros(nb)
+    for ib in prange(nb):
+        i0 = ib * bs
+        i1 = min(i0 + bs, n)
+        acc = np.zeros(i1 - i0)
         for j in range(n):
-            s += A[i, j] * B[j, i]
-    return s
+            for i in range(i0, i1):
+                acc[i - i0] += A[i, j] * B[j, i]
+        partial[ib] = acc.sum()
+    return partial.sum()
 
 
 @njit
@@ -250,6 +270,11 @@ def matrix_slogdet(M):
     """
     Compute sign and logarithm of the determinant of a matrix.
 
+    .. deprecated:: 1.3.0
+        Removed in 1.4.0. Use ``numpy.linalg.slogdet``. The two differ only on
+        a matrix with a pivot below 1e-15 in absolute value, which this
+        function reports as singular and numpy does not.
+
     Parameters
     ----------
     M : numpy.ndarray
@@ -270,6 +295,12 @@ def matrix_slogdet(M):
     -----
     Uses LAPACK's dgetrf (LU decomposition with partial pivoting).
     """
+    warnings.warn(
+        "matrix_slogdet is deprecated and will be removed in 1.4.0; use "
+        "numpy.linalg.slogdet.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if M.shape[0] != M.shape[1]:
         raise ValueError("Matrix must be square")
 
@@ -441,3 +472,57 @@ def matrix_slogdet_symm(M):
 
     # Sign is always +1 for positive definite matrices
     return 1.0, logdet
+
+
+def restrict(X, W, sigma=None):
+    """
+    Restrict a symmetric matrix to a filter's range: ``Σ Wᵀ X W Σ``.
+
+    Parameters
+    ----------
+    X : numpy.ndarray
+        Symmetric ``(n, n)`` matrix in pixel space.
+    W : numpy.ndarray
+        Orthonormal ``(n, r)`` basis of the kept subspace.
+    sigma : numpy.ndarray or None
+        Kept singular values, shape ``(r,)``. ``None`` (a projector) skips
+        the scaling entirely.
+
+    Returns
+    -------
+    numpy.ndarray
+        Fortran-ordered symmetric ``(r, r)`` matrix.
+    """
+    M = W.T @ X @ W
+    if sigma is not None:
+        M *= sigma[:, None]
+        M *= sigma[None, :]
+    symmetrize_inplace(M)
+    # M is C-ordered and now exactly symmetric, so its transpose is a
+    # Fortran-ordered view of the same values: a free layout change.
+    return M.T
+
+
+def restrict_data(d, W, sigma=None):
+    """
+    Restrict pixel-space data to a filter's range: ``Σ Wᵀ d``.
+
+    Parameters
+    ----------
+    d : numpy.ndarray
+        Pixel-space data, shape ``(n,)`` or ``(n, nsims)``.
+    W : numpy.ndarray
+        Orthonormal ``(n, r)`` basis of the kept subspace.
+    sigma : numpy.ndarray or None
+        Kept singular values, shape ``(r,)``. ``None`` (a projector) skips
+        the scaling entirely.
+
+    Returns
+    -------
+    numpy.ndarray
+        C-ordered array, shape ``(r,)`` or ``(r, nsims)``.
+    """
+    out = W.T @ d
+    if sigma is not None:
+        out *= sigma if out.ndim == 1 else sigma[:, None]
+    return np.ascontiguousarray(out)

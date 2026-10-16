@@ -53,6 +53,12 @@ Both methods support:
 
 - **`Bins`**: Multipole binning specification for bandpower estimation. Supports uniform bins (`Bins.fromdeltal`) and custom non-uniform bins. Both bounds are inclusive. Used by QUBE for binned QML estimation.
 
+### Filters
+
+- **`Filter`**: Frozen record of a pixel-space filter, holding the thin SVD `F = U Σ Wᵀ` truncated at a user-supplied rank threshold. Built with `Filter.from_operator`, `from_deprojection` or `from_subspace`; two projectors intersect with `f1 & f2`.
+- **Operator constructors**: `harmonic_deprojection` (whole multipoles of one slot, templates taken from the estimator's own `V`), `scan_polynomial` (per-stripe Legendre polynomials in azimuth), `hits_weighting` (inverse-noise weighting, invertible and therefore a no-op control).
+- Handed to `Fisher`, `Spectra` and `PICSLike` as `pixel_filter=`; the analysis then runs inside `range(F)` on every path. See ADR-0020 and the *Pixel-Space Filters* tutorial.
+
 ### Mathematical Operations
 
 - **Legendre Polynomials**: `legendre_00`, `legendre_02`, `legendre_22`, `legendre_plm`

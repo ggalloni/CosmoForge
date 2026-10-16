@@ -45,6 +45,9 @@ class _NoOpComm:
     def gather(self, obj, root=0):
         return [obj]
 
+    def allgather(self, obj):
+        return [obj]
+
     def Reduce(self, send, recv, op=None, root=0) -> None:
         if recv is not None:
             recv[...] = np.asarray(send)

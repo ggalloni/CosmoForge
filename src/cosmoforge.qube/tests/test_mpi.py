@@ -114,3 +114,115 @@ def test_effective_ells_collective(comm, config_resolver):
         assert np.all(np.isfinite(ell_eff))
     else:
         assert ell_eff is None
+
+
+def _qu_mask(local_path):
+    import healpy as hp
+
+    path = os.path.join(local_path, "tests", "data", "nside4", "QU", "mask.fits")
+    return np.repeat(np.asarray(hp.read_map(path), float)[:, None], 2, axis=1)
+
+
+def test_pixel_filter_survives_the_shared_memory_broadcast(
+    comm, local_path, config_resolver
+):
+    """``W`` travels through ``_shared_array``, never as a pickle (ADR-0020).
+
+    Every rank must end holding the same factors, and a projector's ``U`` must
+    still *be* its ``W``: raw and pre-filtered inputs land in identical
+    coordinates only while that identity holds.
+    """
+    from cosmocore.filters import harmonic_deprojection
+
+    mask = _qu_mask(local_path)
+    projector = harmonic_deprojection(mask=mask, spins=[2], ells=[2, 3], slot="E")
+
+    config_file = config_resolver("tests/data/nside4/QU/config.yaml")
+    fisher = Fisher(config_file, basis=False, mask=mask, pixel_filter=projector)
+    fisher.run()
+    os.unlink(config_file)
+
+    f = fisher.pixel_filter
+    assert f is not None
+    assert f.W.shape == (projector.n_pixels, projector.rank)
+    assert f.U is f.W
+    assert f.rank == projector.rank
+    assert f.fingerprint == projector.fingerprint
+
+    checksums = comm.allgather((float(f.W.sum()), float(np.abs(f.W).sum())))
+    assert len(set(checksums)) == 1
+
+
+def test_filtered_spectra_under_mpi(comm, local_path, config_resolver):
+    """The worker ranks estimate from restricted maps and derivatives."""
+    from cosmocore.filters import harmonic_deprojection
+
+    mask = _qu_mask(local_path)
+    projector = harmonic_deprojection(mask=mask, spins=[2], ells=[2, 3], slot="E")
+
+    config_file_f = config_resolver("tests/data/nside4/QU/config.yaml")
+    fisher = Fisher(config_file_f, basis=False, mask=mask, pixel_filter=projector)
+    fisher.run()
+    os.unlink(config_file_f)
+
+    config_file_s = config_resolver("tests/data/nside4/QU/config.yaml")
+    qml = Spectra(config_file_s, fisher=fisher)
+    qml.run()
+    os.unlink(config_file_s)
+
+    assert qml.pixel_filter is not None
+    assert qml.pixel_filter.U is qml.pixel_filter.W
+
+    if comm.Get_rank() == 0:
+        spectra = qml.get_power_spectra()
+        assert spectra is not None
+        assert np.all(np.isfinite(spectra))
+
+
+def test_filtered_paths_agree_under_mpi(comm, local_path, config_resolver):
+    """Traditional and pixel paths give one filtered answer on every rank count.
+
+    The two paths agree serially to machine precision, so a worker rank that
+    lost or mis-attached its filter on either path shows up as a disagreement.
+    The filter is built on rank 0 only, and the same object is handed to both
+    ``Fisher`` and ``Spectra``, which must accept it although ``Fisher.run()``
+    has replaced its own copy with a node-shared one.
+    """
+    from cosmocore.filters import harmonic_deprojection
+
+    mask = _qu_mask(local_path)
+    projector = (
+        harmonic_deprojection(mask=mask, spins=[2], ells=[2, 3], slot="E")
+        if comm.Get_rank() == 0
+        else None
+    )
+
+    results = []
+    for basis in (False, {"method": "pixel"}):
+        config_file_f = config_resolver("tests/data/nside4/QU/config.yaml")
+        fisher = Fisher(config_file_f, basis=basis, mask=mask, pixel_filter=projector)
+        fisher.run()
+        os.unlink(config_file_f)
+        if basis:
+            assert fisher.basis_manager._pixel_filter is fisher.pixel_filter
+
+        config_file_s = config_resolver("tests/data/nside4/QU/config.yaml")
+        qml = Spectra(config_file_s, fisher=fisher, pixel_filter=projector)
+        qml.run()
+        os.unlink(config_file_s)
+
+        if comm.Get_rank() == 0:
+            results.append((fisher.fisher.copy(), qml.get_power_spectra()))
+
+    if comm.Get_rank() == 0:
+        (fisher_trad, ps_trad), (fisher_pix, ps_pix) = results
+        # Relative to the largest element: deprojecting E at l = 2, 3 leaves
+        # Fisher entries near 1e-8 and a condition number near 1e18, so the
+        # nulled bins' spectra agree only to ~5e-8 of the scale serially. A
+        # worker that lost its filter would be off at order one.
+        np.testing.assert_allclose(
+            fisher_pix, fisher_trad, rtol=0, atol=1e-12 * np.abs(fisher_trad).max()
+        )
+        np.testing.assert_allclose(
+            ps_pix, ps_trad, rtol=0, atol=1e-6 * np.abs(ps_trad).max()
+        )

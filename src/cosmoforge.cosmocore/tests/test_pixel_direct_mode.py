@@ -271,3 +271,59 @@ def test_binned_derivative_direct_with_beam_smoothing():
         np.testing.assert_allclose(dC_b, ref, rtol=1e-10, atol=1e-12)
     finally:
         Path(mask_file).unlink()
+
+
+def test_binned_derivative_direct_block_offset_with_three_fields():
+    """The third field's block sits at ``_pix_offsets[2]``, not at a per-component sum.
+
+    ``[QU, T, W]`` with a half-sky polarisation mask and full-sky scalar masks:
+    the old offset ``sum(2n if s == 2 else n for n, s in zip(n_active[:2],
+    spin[:2]))`` zipped the per-component ``n_active`` (Q, U, T, W) against the
+    per-field ``spin`` (2, 0, 0) and placed ``W`` at ``2 n_Q + n_U`` instead of
+    ``2 n_Q + n_T``. Unequal masks make the two differ.
+    """
+    nside, lmax = 8, 12
+    npix = 12 * nside**2
+    params = InputParams()
+    params.nside = nside
+    params.lmax = lmax
+    params.nfields = 4
+    params.spins = [2, 0, 0]
+    params.labels = ["E", "B", "T", "W"]
+    params.ordering = "RING"
+
+    mask = np.ones((4, npix), dtype=np.float64)
+    mask[:2, : npix // 2] = 0.0  # Q, U on half the sky; T, W full sky
+    f = tempfile.NamedTemporaryFile(suffix=".fits", delete=False)
+    f.close()
+    hp.write_map(f.name, mask, overwrite=True)
+    params.maskfile = f.name
+    try:
+        core = _ConcreteCore(params)
+        core.setup_fields()
+        core.setup_geometry()
+        n_total = core.collection.total_active_pixels
+        core.noise_cov1 = np.diag(np.random.default_rng(0).uniform(0.5, 1.5, n_total))
+        bm = _build_direct_basis(core, lmax_signal=lmax)
+
+        n_active = core.collection.n_active  # per component: Q, U, T, W
+        wrong = 2 * n_active[0] + n_active[1]
+        right = bm._pix_offsets[2]
+        assert right == 2 * n_active[0] + n_active[2]
+        assert wrong != right  # the fixture actually separates the two
+
+        bins = Bins.fromdeltal(2, lmax, 3)
+        dC = bm.get_binned_derivative_direct(
+            bin_idx=1,
+            bins=bins,
+            beam_smoothing=None,
+            key=SpectrumKey(2, 2, SpectrumKind.SS, spins=(2, 0, 0)),
+        )
+        n_w = n_active[3]
+        block = dC[right : right + n_w, right : right + n_w]
+        assert np.abs(block).max() > 0
+        outside = dC.copy()
+        outside[right : right + n_w, right : right + n_w] = 0.0
+        assert np.abs(outside).max() == 0.0
+    finally:
+        Path(f.name).unlink()

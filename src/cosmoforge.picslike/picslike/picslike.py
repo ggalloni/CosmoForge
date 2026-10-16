@@ -66,9 +66,9 @@ from cosmocore import (
     MPISharedMemoryMixin,
     SpectrumKey,
     cholesky_solve,
-    compute_signal_matrix,
     matrix_inverse_symm,
     matrix_slogdet_symm,
+    signal_matrix,
 )
 from cosmocore._mpi import MPI
 
@@ -271,9 +271,6 @@ class PICSLike(Core, MPISharedMemoryMixin):
         if self.noise_cov1 is None:
             raise ValueError("Covariance matrices must be set up first")
 
-        self.signal_matrix = np.zeros_like(self.noise_cov1, dtype=np.float64)
-        self.signal_matrix = np.asfortranarray(self.signal_matrix, dtype=np.float64)
-
         start_time = time.time() if self.rank == 0 else None
 
         spectra_dict = self.parameter_grid.get_spectrum(param_point)
@@ -281,10 +278,8 @@ class PICSLike(Core, MPISharedMemoryMixin):
         self.collection.set_cls(spectra_dict, lmax=self.lmax_signal)
         self.collection.set_beams(lmax=self.lmax_signal)
 
-        compute_signal_matrix(
-            S=self.signal_matrix,
-            lmax=self.lmax_signal,
-            fields=self.collection,
+        self.signal_matrix = signal_matrix(
+            self.collection, self.lmax_signal, pixel_filter=self.pixel_filter
         )
 
         if self.rank == 0 and start_time is not None:
@@ -365,6 +360,11 @@ class PICSLike(Core, MPISharedMemoryMixin):
                 self.maps2 = self._resolve_maps(
                     self._injected_maps2, self.params.inputmapfile2, ntot
                 )
+
+            # Filter seam for d (ADR-0020).
+            self.maps1 = self._restrict_maps(self.maps1)
+            if self.params.do_cross:
+                self.maps2 = self._restrict_maps(self.maps2)
 
     def set_simulation_index(self, sim_idx: int) -> None:
         """
@@ -455,10 +455,13 @@ class PICSLike(Core, MPISharedMemoryMixin):
         # path broadcasts the pixel-space noise covariance (mirrors Fisher's
         # MPI branch — the basis owns/nulls noise_cov1 on rank 0, so workers
         # must receive the basis manager instead).
+        self._broadcast_pixel_filter()
+
         if self._basis_config is not None:
             self.basis_manager = self.comm.bcast(
                 self.basis_manager if self.rank == 0 else None, root=0
             )
+            self.basis_manager._pixel_filter = self.pixel_filter
         else:
             self.noise_cov1 = self._shared_array(getattr(self, "noise_cov1", None))
         self.maps1 = self._shared_array(getattr(self, "maps1", None))
@@ -512,8 +515,8 @@ class PICSLike(Core, MPISharedMemoryMixin):
 
         if self.rank == 0:
             # Combine results from all processes for this simulation
-            combined_chi2 = np.concatenate(all_chi2)
-            combined_log_like = np.concatenate(all_log_like)
+            combined_chi2 = self.parameter_grid._collect_from_processes(all_chi2)
+            combined_log_like = self.parameter_grid._collect_from_processes(all_log_like)
 
             # Create LikelihoodResult for this simulation
             for i in range(n_sims):
@@ -541,21 +544,10 @@ class PICSLike(Core, MPISharedMemoryMixin):
         if not simulation_results:
             raise ValueError("No simulation results provided")
 
-        n_points = len(simulation_results[0].chi_squared_values)
-
-        # Initialize arrays for mean computation
-        mean_chi2 = np.zeros(n_points)
-        mean_log_like = np.zeros(n_points)
-
-        # Compute means across simulations
-        for i in range(n_points):
-            chi2_values = [result.chi_squared_values[i] for result in simulation_results]
-            log_like_values = [
-                result.log_likelihood_values[i] for result in simulation_results
-            ]
-
-            mean_chi2[i] = np.mean(chi2_values)
-            mean_log_like[i] = np.mean(log_like_values)
+        mean_chi2 = np.mean([r.chi_squared_values for r in simulation_results], axis=0)
+        mean_log_like = np.mean(
+            [r.log_likelihood_values for r in simulation_results], axis=0
+        )
 
         mean_result = LikelihoodResult(
             parameter_grid=simulation_results[0].parameter_grid,
