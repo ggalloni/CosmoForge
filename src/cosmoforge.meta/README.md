@@ -194,18 +194,35 @@ CosmoForge is designed for high-performance cosmological analysis:
 
 If you use CosmoForge in your research, please cite:
 
-> Galloni, G. & Pagano, L., *CosmoForge I: A unified framework for QML power spectrum estimation and pixel-based likelihood analysis*, [arXiv:2605.21149](https://arxiv.org/abs/2605.21149) (2026).
+> Galloni, G. & Pagano, L., *CosmoForge. I. A unified framework for quadratic maximum likelihood power spectrum estimation and pixel-based likelihood analysis*, A&A (2026), [doi:10.1051/0004-6361/202661478](https://doi.org/10.1051/0004-6361/202661478), [arXiv:2605.21149](https://arxiv.org/abs/2605.21149).
+
+If you apply a pixel-space filter (`pixel_filter=` or `cosmocore.filters`), please also cite:
+
+> Galloni, G., *CosmoForge. II. An exact treatment of arbitrary linear filters in quadratic maximum-likelihood power spectrum estimation*, [arXiv:2610.18012](https://arxiv.org/abs/2610.18012) (2026).
 
 ```bibtex
 @article{GalloniPagano_CosmoForgeI,
     author        = {Galloni, G. and Pagano, L.},
-    title         = {{CosmoForge I}: A unified framework for {QML} power spectrum estimation and pixel-based likelihood analysis},
+    title         = {{CosmoForge}. {I}. A unified framework for quadratic maximum likelihood power spectrum estimation and pixel-based likelihood analysis},
+    journal       = {Astronomy \& Astrophysics},
     year          = {2026},
+    doi           = {10.1051/0004-6361/202661478},
     eprint        = {2605.21149},
     archivePrefix = {arXiv},
     primaryClass  = {astro-ph.CO},
 }
+
+@article{Galloni_CosmoForgeII,
+    author        = {Galloni, G.},
+    title         = {{CosmoForge}. {II}. An exact treatment of arbitrary linear filters in quadratic maximum-likelihood power spectrum estimation},
+    year          = {2026},
+    eprint        = {2610.18012},
+    archivePrefix = {arXiv},
+    primaryClass  = {astro-ph.CO},
+}
 ```
+
+The [citation page](https://cosmoforge.readthedocs.io/en/latest/citing.html) of the documentation carries the same policy.
 
 ## Support
 

@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "If you use CosmoForge in your research, please cite the following work."
+message: "If you use CosmoForge in your research, please cite the preferred citation (Paper I). If you apply a pixel-space filter, please also cite Paper II, listed under references."
 title: "CosmoForge I: A unified framework for QML power spectrum estimation and pixel-based likelihood analysis"
 authors:
   - family-names: Galloni
@@ -17,7 +17,7 @@ url: "https://cosmoforge.readthedocs.io/en/latest/"
 license: MIT
 preferred-citation:
   type: article
-  title: "CosmoForge I: A unified framework for QML power spectrum estimation and pixel-based likelihood analysis"
+  title: "CosmoForge. I. A unified framework for quadratic maximum likelihood power spectrum estimation and pixel-based likelihood analysis"
   authors:
     - family-names: Galloni
       given-names: Giacomo
@@ -26,8 +26,24 @@ preferred-citation:
       given-names: Luca
       orcid: "https://orcid.org/0000-0003-1820-5998"
   year: 2026
-  url: "https://arxiv.org/abs/2605.21149"
+  journal: "Astronomy & Astrophysics"
+  doi: "10.1051/0004-6361/202661478"
+  url: "https://doi.org/10.1051/0004-6361/202661478"
   identifiers:
     - type: other
       value: "arXiv:2605.21149"
       description: "arXiv preprint"
+references:
+  - type: article
+    title: "CosmoForge. II. An exact treatment of arbitrary linear filters in quadratic maximum-likelihood power spectrum estimation"
+    authors:
+      - family-names: Galloni
+        given-names: Giacomo
+        orcid: "https://orcid.org/0000-0002-2412-8311"
+    year: 2026
+    url: "https://arxiv.org/abs/2610.18012"
+    identifiers:
+      - type: other
+        value: "arXiv:2610.18012"
+        description: "arXiv preprint"
+    notes: "Cite in addition to Paper I when applying a pixel-space filter (pixel_filter= or cosmocore.filters)."

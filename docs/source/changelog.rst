@@ -23,6 +23,14 @@ Unreleased
 * ``PixelBasis``'s class docstring documented a ``basis`` constructor
   parameter. The constructor takes ``compression_target``.
 * ``InputParams.__eq__`` compares two configurations instead of raising.
+
+**Documentation:**
+
+* Citation policy: cite Paper I (Galloni & Pagano 2026, A&A,
+  ``doi:10.1051/0004-6361/202661478``) for any use of CosmoForge, and Paper II
+  (Galloni 2026, ``arXiv:2610.18012``) as well for any use of pixel-space
+  filters. New ``citing`` page in the docs; ``CITATION.cff`` and every README
+  carry both references.
   Every instance carries ``cross_idxs`` and ``auto_idxs`` as arrays, so
   ``params_a == params_b`` raised ``ValueError: The truth value of an array
   with more than one element is ambiguous`` on any real config, including two
