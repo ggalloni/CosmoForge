@@ -461,6 +461,7 @@ class PICSLike(Core, MPISharedMemoryMixin):
             self.basis_manager = self.comm.bcast(
                 self.basis_manager if self.rank == 0 else None, root=0
             )
+            self.basis_manager._pixel_filter = self.pixel_filter
         else:
             self.noise_cov1 = self._shared_array(getattr(self, "noise_cov1", None))
         self.maps1 = self._shared_array(getattr(self, "maps1", None))

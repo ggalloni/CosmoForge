@@ -58,8 +58,14 @@ def test_broadcast_drops_stale_smw_cache(fast_config_path):
     assert pl._smw_data_cache is None
 
 
-def test_filtered_likelihood_under_mpi(comm, fast_config_path):
-    """The worker ranks evaluate the grid in the filter's range (ADR-0020)."""
+@pytest.mark.parametrize("basis", [False, {"method": "pixel"}])
+def test_filtered_likelihood_under_mpi(comm, fast_config_path, basis):
+    """The worker ranks evaluate the grid in the filter's range (ADR-0020).
+
+    The filter is built on rank 0 only and workers pass ``None``, the pattern
+    that keeps one copy of ``W`` per node. The pixel basis is broadcast by
+    pickle without its filter, so workers must re-attach the shared one.
+    """
     import healpy as hp
     import yaml
 
@@ -69,16 +75,26 @@ def test_filtered_likelihood_under_mpi(comm, fast_config_path):
         config = yaml.safe_load(f)
     m = np.asarray(hp.read_map(config["maskfile"]), float)
     mask = np.repeat(m[:, None], len(config["physical_labels"]), axis=1)
-    projector = harmonic_deprojection(mask=mask, spins=[0, 2], ells=[2, 3], slot="E")
+    projector = (
+        harmonic_deprojection(mask=mask, spins=[0, 2], ells=[2, 3], slot="E")
+        if comm.Get_rank() == 0
+        else None
+    )
 
-    pl = PICSLike(fast_config_path, basis=False, mask=mask, pixel_filter=projector)
+    pl = PICSLike(fast_config_path, basis=basis, mask=mask, pixel_filter=projector)
     pl.run()
 
     assert pl.pixel_filter is not None
     assert pl.pixel_filter.U is pl.pixel_filter.W
-    assert pl.pixel_filter.rank == projector.rank
+    if basis:
+        assert pl.basis_manager._pixel_filter is pl.pixel_filter
 
     if comm.Get_rank() == 0:
-        result = pl.likelihood_result
-        assert np.all(np.isfinite(result.log_likelihood_values))
-        assert np.all(np.isfinite(result.chi_squared_values))
+        assert pl.pixel_filter.rank == projector.rank
+        expected = np.array(
+            [pl._compute_likelihood_point(p) for p in pl.parameter_grid.grid_points]
+        )
+        chi2 = np.array([r.chi_squared_values for r in pl.simulation_results]).T
+        log_like = np.array([r.log_likelihood_values for r in pl.simulation_results]).T
+        np.testing.assert_allclose(chi2, expected[:, 0], rtol=1e-12)
+        np.testing.assert_allclose(log_like, expected[:, 1], rtol=1e-12)

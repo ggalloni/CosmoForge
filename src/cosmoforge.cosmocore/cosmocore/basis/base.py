@@ -292,6 +292,17 @@ class ComputationBasis(ABC):
                 "must arrive already restricted to the filter's range"
             )
 
+    def __getstate__(self):
+        """Pickle without the filter, which Core shares node-locally.
+
+        The basis is broadcast by pickle; carrying ``_pixel_filter`` along would
+        ship ``W`` to every rank (ADR-0020). The broadcasting class re-attaches
+        its shared filter after the ``bcast``.
+        """
+        state = self.__dict__.copy()
+        state["_pixel_filter"] = None
+        return state
+
     def _init_harmonic_internals(self) -> None:
         """Initialize harmonic mode counts, offsets, and the HarmonicBasisBuilder.
 

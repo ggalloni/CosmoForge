@@ -77,6 +77,28 @@ from qube import Fisher
 from qube.fisher import _basis_path_label
 
 
+def _same_filter(a, b):
+    """Whether two filter records describe the same restriction.
+
+    Identity is not enough under MPI: ``Fisher.run()`` replaces its filter with
+    a node-shared copy on every rank, so the object a caller hands to both
+    classes is no longer the one the Fisher holds.
+    """
+    if a is b:
+        return True
+    if a is None or b is None:
+        return False
+    return (
+        a.n_pixels == b.n_pixels
+        and a.rank == b.rank
+        and a.is_projector == b.is_projector
+        and a.fingerprint == b.fingerprint
+        and np.array_equal(a.sigma, b.sigma)
+        and np.array_equal(a.W, b.W)
+        and np.array_equal(a.U, b.U)
+    )
+
+
 class Spectra(Core, MPISharedMemoryMixin):
     """
     Quadratic Maximum Likelihood (QML) power spectrum estimator.
@@ -332,9 +354,8 @@ class Spectra(Core, MPISharedMemoryMixin):
             # Same rule for the filter (ADR-0020): the Fisher's restricted
             # derivatives and basis are already built against its filter, so
             # Spectra adopts it and refuses a conflicting one.
-            if (
-                self.pixel_filter is not None
-                and self.pixel_filter is not fisher.pixel_filter
+            if self.pixel_filter is not None and not _same_filter(
+                self.pixel_filter, fisher.pixel_filter
             ):
                 raise ValueError(
                     "pixel_filter= conflicts with the supplied fisher=, which "
@@ -1296,8 +1317,6 @@ class Spectra(Core, MPISharedMemoryMixin):
             if self.params.do_cross:
                 self.noise_cov2 = self._shared_array(getattr(self, "noise_cov2", None))
                 self.inv_cov2 = self._shared_array(getattr(self, "inv_cov2", None))
-
-        self._broadcast_pixel_filter()
 
         # Maps (can be large: n_pix × n_sims)
         self.maps1 = self._shared_array(getattr(self, "maps1", None))

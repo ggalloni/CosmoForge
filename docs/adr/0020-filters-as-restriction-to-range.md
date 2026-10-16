@@ -199,7 +199,10 @@ fraction and an integer means a count. Rejected because it collides with
 - Acceptance suite: `qube/tests/test_pixel_filter.py`,
   `picslike/tests/test_pixel_filter.py`, and the operator constructors'
   self-checks in `cosmocore/tests/test_filters.py`.
-- MPI transport is written but unverified above one rank.
+- MPI transport, under `mpirun -n 2`: filtered `Fisher` and `Spectra` agree
+  between the traditional and pixel paths, and filtered `PICSLike` matches a
+  rank-0 recompute of every grid point on both paths
+  (`qube/tests/test_mpi.py`, `picslike/tests/test_mpi.py`).
 
 ## References
 

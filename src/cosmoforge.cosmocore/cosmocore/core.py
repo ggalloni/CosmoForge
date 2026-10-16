@@ -637,9 +637,10 @@ class Core(ABC):
             )
             write_covmat_reduced(self.params.outnoisecovmat2, self.noise_cov2)
 
-        # Filter seam for N (ADR-0020). The reduced covariances are written out
-        # unrestricted, so the on-disk products stay in pixel space; everything
-        # downstream of here works in the filter's range.
+        # Filter seam for N (ADR-0020). The reduced covariances written above
+        # are unrestricted; everything downstream of here works in the filter's
+        # range, and Fisher later rewrites outnoisecovmat1/2 restricted, which
+        # is why the out* handoff is unsupported under a filter.
         if self.pixel_filter is not None:
             self._check_filter_geometry(concatenate_pixact.shape[0])
             self.noise_cov1 = self._restrict_noise(self.noise_cov1)
@@ -939,7 +940,9 @@ class Core(ABC):
         # the factory then picks harmonic — silently corrupting the SMW path.
         from .basis import _auto_pick_method, _problem_dimensions
 
-        n_pix, n_modes = _problem_dimensions(theta_arr, spins, basis_lmax, lmax_b)
+        n_pix, n_modes = _problem_dimensions(
+            theta_arr, spins, basis_lmax, lmax_b, self.pixel_filter
+        )
         n_bins = (
             self.bins.nbins
             if getattr(self, "bins", None) is not None

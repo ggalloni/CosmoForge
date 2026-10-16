@@ -200,3 +200,23 @@ The kernels still fill the full pixel-space matrix before conjugating, so there 
 memory win on those paths, only a smaller solve. Traditional-path ``PICSLike`` pays the
 conjugation at every grid point, so filtered parameter grids belong on the basis paths
 where the filter is paid once.
+
+Under MPI
+---------
+
+Build the filter on rank 0 only and pass ``None`` on the other ranks:
+
+.. code-block:: python
+
+   from cosmocore._mpi import MPI
+
+   comm = MPI.COMM_WORLD
+   projector = (
+       Filter.from_deprojection(T, mask=mask) if comm.Get_rank() == 0 else None
+   )
+   fisher = Fisher(config, pixel_filter=projector)
+
+``Fisher``, ``Spectra`` and ``PICSLike`` hand the filter to the other ranks in
+node-shared memory, one copy of ``W`` per node. A filter built on every rank also
+works, but every rank then pays the SVD at once and keeps its own copy of ``W``,
+which at ``n ~ 10⁴`` is enough to exhaust a node's memory.

@@ -177,3 +177,52 @@ def test_filtered_spectra_under_mpi(comm, local_path, config_resolver):
         spectra = qml.get_power_spectra()
         assert spectra is not None
         assert np.all(np.isfinite(spectra))
+
+
+def test_filtered_paths_agree_under_mpi(comm, local_path, config_resolver):
+    """Traditional and pixel paths give one filtered answer on every rank count.
+
+    The two paths agree serially to machine precision, so a worker rank that
+    lost or mis-attached its filter on either path shows up as a disagreement.
+    The filter is built on rank 0 only, and the same object is handed to both
+    ``Fisher`` and ``Spectra``, which must accept it although ``Fisher.run()``
+    has replaced its own copy with a node-shared one.
+    """
+    from cosmocore.filters import harmonic_deprojection
+
+    mask = _qu_mask(local_path)
+    projector = (
+        harmonic_deprojection(mask=mask, spins=[2], ells=[2, 3], slot="E")
+        if comm.Get_rank() == 0
+        else None
+    )
+
+    results = []
+    for basis in (False, {"method": "pixel"}):
+        config_file_f = config_resolver("tests/data/nside4/QU/config.yaml")
+        fisher = Fisher(config_file_f, basis=basis, mask=mask, pixel_filter=projector)
+        fisher.run()
+        os.unlink(config_file_f)
+        if basis:
+            assert fisher.basis_manager._pixel_filter is fisher.pixel_filter
+
+        config_file_s = config_resolver("tests/data/nside4/QU/config.yaml")
+        qml = Spectra(config_file_s, fisher=fisher, pixel_filter=projector)
+        qml.run()
+        os.unlink(config_file_s)
+
+        if comm.Get_rank() == 0:
+            results.append((fisher.fisher.copy(), qml.get_power_spectra()))
+
+    if comm.Get_rank() == 0:
+        (fisher_trad, ps_trad), (fisher_pix, ps_pix) = results
+        # Relative to the largest element: deprojecting E at l = 2, 3 leaves
+        # Fisher entries near 1e-8 and a condition number near 1e18, so the
+        # nulled bins' spectra agree only to ~5e-8 of the scale serially. A
+        # worker that lost its filter would be off at order one.
+        np.testing.assert_allclose(
+            fisher_pix, fisher_trad, rtol=0, atol=1e-12 * np.abs(fisher_trad).max()
+        )
+        np.testing.assert_allclose(
+            ps_pix, ps_trad, rtol=0, atol=1e-6 * np.abs(ps_trad).max()
+        )
