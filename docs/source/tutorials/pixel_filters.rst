@@ -194,7 +194,10 @@ Cost
 On the V-based paths the filter is folded into ``V`` once, ``V' = V W Σ``, and nothing
 else in the basis has to know about it. On the kernel paths the derivative is restricted
 at the **binned** ``E_b``, so conjugation is paid once per bin instead of once per
-multipole; the saving approaches the multipole-per-bin count as the problem grows.
+multipole; the saving approaches the multipole-per-bin count as the problem grows. It
+applies to the conjugation only: each per-multipole derivative is still built at the full
+pixel dimension, so the overall gain is the conjugation's share of the run, which shrinks
+as more BLAS threads make the conjugation cheap.
 
 The kernels still fill the full pixel-space matrix before conjugating, so there is no
 memory win on those paths, only a smaller solve. Traditional-path ``PICSLike`` pays the
