@@ -26,7 +26,7 @@ try:
 
     release = _pkg_version("cosmoforge")
 except Exception:
-    release = "1.2.0"
+    release = "1.3.0"
 version = release
 
 # -- General configuration ---------------------------------------------------

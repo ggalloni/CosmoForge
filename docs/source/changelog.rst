@@ -6,8 +6,13 @@ All notable changes to CosmoForge will be documented here.
 Every pull request that touches package source updates this file; see
 ``CLAUDE.md`` and the pull-request template.
 
-Unreleased
-----------
+Version 1.3.0 (2026-10-18)
+--------------------------
+
+Native pixel filters: ``Fisher``, ``Spectra`` and ``PICSLike`` take a
+``pixel_filter=`` and restrict every pixel-space object to the filter's
+range, on every computation path. The ``compression=`` alias of ``basis=``
+is gone, two releases after its deprecation.
 
 **Breaking changes:**
 
