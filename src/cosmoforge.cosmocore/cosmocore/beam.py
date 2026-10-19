@@ -133,6 +133,7 @@ class BeamManager:
         fwhmarcmin: float,
         beam_file: str,
         injected_beam: np.ndarray | None = None,
+        apply_pixwin: bool = False,
     ) -> dict[str, np.ndarray]:
         """
         Compute beam functions based on smoothing type.
@@ -158,6 +159,11 @@ class BeamManager:
             folded in. When given it wins over ``smoothtype`` (explicit
             injection wins) and takes the same post-processing as the file
             adapter; otherwise the ``smoothtype`` switch runs unchanged.
+        apply_pixwin : bool, optional
+            Multiply the analytic beam by the HEALPix pixel window at ``nside``:
+            T by the temperature window, E and B by the polarisation window.
+            Ignored, with a warning, for ``smoothtype == "file"`` and for an
+            injected beam, which carry the pixel window already. Default False.
 
         Returns:
         --------
@@ -209,6 +215,20 @@ class BeamManager:
         else:
             raise ValueError(f"Unknown smoothtype='{smoothtype}'")
 
+        if apply_pixwin:
+            if injected_beam is not None or smoothtype == "file":
+                import warnings
+
+                warnings.warn(
+                    "apply_pixwin is ignored for a beam read from file or "
+                    "injected: that beam is used as given, so fold the pixel "
+                    "window into it.",
+                    stacklevel=2,
+                )
+            else:
+                pw_t, pw_p = hp.pixwin(nside, pol=True, lmax=lmax)
+                beam = beam * np.vstack([pw_t, pw_p, pw_p])
+
         if beam.shape[0] != 3 or beam.shape[1] != lmax + 1:
             raise ValueError(
                 f"Beam shape mismatch: expected (3, {lmax + 1}), got {beam.shape}"
@@ -244,6 +264,7 @@ class BeamManager:
               "cosine_legacy", "cosine_npipe", "file")
             - fwhmarcmin: FWHM in arcminutes (for Gaussian beams)
             - beam_file: Path to beam file (for custom beams)
+            - apply_pixwin: Fold the HEALPix pixel window into analytic beams
         lmax : int, optional
             Maximum multipole to use. If None, uses params.lmax.
             This allows computing beams up to a different lmax than params.lmax.
@@ -267,6 +288,7 @@ class BeamManager:
             fwhmarcmin=params.fwhmarcmin,
             beam_file=params.beam_file,
             injected_beam=injected_beam,
+            apply_pixwin=params.apply_pixwin,
         )
 
         # Build internal beam dictionary with field labels

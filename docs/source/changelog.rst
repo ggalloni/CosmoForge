@@ -6,6 +6,24 @@ All notable changes to CosmoForge will be documented here.
 Every pull request that touches package source updates this file; see
 ``CLAUDE.md`` and the pull-request template.
 
+Unreleased
+----------
+
+**Breaking changes:**
+
+* ``apply_pixwin`` now does what it says. It was never read before, so the
+  HEALPix pixel window was never applied, whatever the config said. Setting
+  ``apply_pixwin: true`` now multiplies the analytic beam (``smoothing_type``
+  ``none``, ``gaussian``, ``cosine_legacy``, ``cosine_npipe``) by
+  ``hp.pixwin(nside)``: T by the temperature window, E and B by the
+  polarisation window. Runs that set it to ``true`` change their results.
+* The ``InputParams`` default of ``apply_pixwin`` changes from ``True`` to
+  ``False``, so every run that never set the key keeps its results
+  bit-identical. The ``*_defaults.yaml`` files already set ``false``.
+* With ``smoothing_type: file`` or an injected ``beam=``, ``apply_pixwin: true``
+  warns and is ignored: that beam is used as given and must carry the pixel
+  window itself.
+
 Version 1.3.0 (2026-10-18)
 --------------------------
 

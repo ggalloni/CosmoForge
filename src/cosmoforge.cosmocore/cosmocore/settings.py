@@ -96,7 +96,11 @@ class InputParams:
     fwhmarcmin : float
         Beam FWHM in arcminutes for Gaussian beam approximation.
     apply_pixwin : bool
-        Whether to apply HEALPix pixel window functions.
+        Multiply the beam by the HEALPix pixel window at ``nside`` (T by the
+        temperature window, E and B by the polarisation window). Applies to
+        ``smoothing_type`` ``"none"``, ``"gaussian"``, ``"cosine_legacy"`` and
+        ``"cosine_npipe"``; a beam from file or injected is used as given and
+        must carry the pixel window itself. Default False.
     load_reduced : bool
         If True, read noise covariance matrices that have already been reduced
         to active pixels (via ``read_covmat_reduced``) instead of extracting
@@ -217,7 +221,7 @@ class InputParams:
         self.load_reduced = False
         self.output_geometry_file = None
         self.smoothing_type = "cosine_legacy"
-        self.apply_pixwin = True
+        self.apply_pixwin = False
         self.fwhmarcmin = 440.0
         self.beam_file = "inputs/beam.fits"
         self.lmax = 64
