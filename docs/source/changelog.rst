@@ -6,6 +6,37 @@ All notable changes to CosmoForge will be documented here.
 Every pull request that touches package source updates this file; see
 ``CLAUDE.md`` and the pull-request template.
 
+Unreleased
+----------
+
+**Added:**
+
+* ``SpectraManager.label_for_key(key)`` returns the spectrum label a
+  ``SpectrumKey`` stands for. Under ``SymmetryMode.SYMMETRIC`` the cross-pair
+  ``GC`` key names the ``E_i B_j`` label.
+
+**Fixed:**
+
+* ``Fisher.run()`` and ``Spectra.run()`` on two or more spin-2 components
+  (e.g. ``spins: [2, 2]``) under the default ``SymmetryMode.SYMMETRIC`` no
+  longer raise ``IndexError``. SYMMETRIC folds each spin-2 cross-pair ``CG``
+  into ``GC`` (ADR-0011), so the flat Fisher axis holds
+  ``len(fisher.spectra_list)`` spectra (9 for two QU components), not
+  ``params.nspectra = nfields (nfields + 1) / 2`` (10). The Fisher matrix,
+  error bars, bandpower window, effective multipoles and QML estimates are
+  all sized by ``spectra_list``.
+* Beam factors are paired with spectra by ``SpectrumKey`` rather than by
+  label position. Under SYMMETRIC the label list keeps the folded
+  ``B_i E_j`` slot, so the cross-pair ``B_i B_j`` row took the ``b_B b_E``
+  factor wherever the E and B beams differ.
+* Spectrum labels are split into field-map labels of any length. With
+  multi-character labels (``E1``, ``T100``) the first two characters were
+  taken, no beam matched, and the beam was silently left out of both the
+  signal covariance and the Fisher derivatives. Runs with multi-character
+  labels and a non-trivial beam now give different, correct numbers. A
+  spectrum label that does not split uniquely into two field-map labels
+  raises ``ValueError``.
+
 Version 1.3.0 (2026-10-18)
 --------------------------
 

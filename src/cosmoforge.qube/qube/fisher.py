@@ -41,7 +41,6 @@ from cosmocore import (
     Core,
     InputParams,
     MPISharedMemoryMixin,
-    SpectrumKey,
     SpectrumKind,
     SymmetryMode,
     cholesky_factor,
@@ -121,7 +120,8 @@ class Fisher(Core, MPISharedMemoryMixin):
         Number of multipole moments in the inference window
         (``params.lmax - params.lmin + 1``).
     n_params : int
-        Total number of Fisher matrix parameters (nspectra * n_ell).
+        Total number of Fisher matrix parameters
+        (``len(spectra_list) * bins.nbins``).
 
     Examples
     --------
@@ -370,8 +370,12 @@ class Fisher(Core, MPISharedMemoryMixin):
         use_basis = hasattr(self, "basis_manager") and self.basis_manager is not None
         use_harmonic_fast = use_basis and self.basis_manager.method == "harmonic"
 
+        # The Fisher axis follows the emitted SpectrumKeys: SYMMETRIC folds
+        # each spin-2 cross-pair CG into GC, so it can hold fewer spectra
+        # than params.nspectra = nfields (nfields + 1) / 2.
+        C_ell_dict, spectra_list = self._build_multi_spectrum_inputs()
         nbins = self.bins.nbins
-        nspectra = self.params.nspectra
+        nspectra = len(spectra_list)
         n_params = nspectra * nbins
 
         if self.rank == 0:
@@ -391,34 +395,13 @@ class Fisher(Core, MPISharedMemoryMixin):
         fisher_local = np.zeros((n_params, n_params))
 
         with self._stage("fisher.compute.derivative_cache"):
-            # --- Setup: get C_inv or V_Cinv_VT, spectra_list ---
-            spectra_list = None  # list[SpectrumKey]
-            C_ell_dict = None
-            if use_basis:
-                C_ell_dict, spectra_list = self._build_multi_spectrum_inputs()
-            elif self.params.do_cross:
-                C_inv1 = self.noise_cov1
-                C_inv2 = self.noise_cov2
-            else:
-                C_inv = self.noise_cov1
-
-            # Populate spectra_list for the non-basis path as well: user-facing
-            # label accessors (get_bandpower_slices, get_fisher_block,
-            # get_error_bars(as_dict=True)) need it to label the flat Fisher
-            # axis. The pixel-space derivative path itself doesn't consume it.
+            # --- Setup: get C_inv or V_Cinv_VT ---
             if not use_basis:
-                _, spectra_list = self._build_multi_spectrum_inputs()
-
-            if spectra_list is None:
-                # Pixel-space generic path: build per-slot sentinel keys so
-                # Core._resolve_spectrum_idx's reverse lookup routes each
-                # spectrum_idx to its own slab. Identical keys would collide
-                # in the dict cache and silently collapse every slot to 0.
-                # spins=None bypasses SS-kind spin validation so spin-2
-                # single-field collections (e.g. QU) don't raise.
-                spectra_list = [
-                    SpectrumKey(i, i, SpectrumKind.SS) for i in range(nspectra)
-                ]
+                if self.params.do_cross:
+                    C_inv1 = self.noise_cov1
+                    C_inv2 = self.noise_cov2
+                else:
+                    C_inv = self.noise_cov1
 
             # --- Precompute derivatives ---
             # Harmonic fast path: sparse COO triplets (rows, cols, vals)
@@ -807,28 +790,28 @@ class Fisher(Core, MPISharedMemoryMixin):
             # Beam smoothing factors b²_ell for each Fisher row. Flat vector
             # with each per-spectrum block holding the inference-range beams
             # (ell = lmin..lmax): [spec0_ell_lmin, ..., spec0_ellmax,
-            # spec1_ell_lmin, ..., spec1_ellmax, ...]. For delta_ell=1 (unbinned)
-            # this matches Fisher's n_params layout 1:1.
+            # spec1_ell_lmin, ..., spec1_ellmax, ...], one block per
+            # SpectrumKey in spectra_list order. SYMMETRIC drops the cross-pair
+            # CG labels, so the label list cannot index these blocks.
             lmin = self.params.lmin
             lmax = self.params.lmax
             self.n_ell = lmax - lmin + 1
-            smoothing_dict = self.collection.spectra_manager.compute_smoothing_factors(
+            spectra_manager = self.collection.spectra_manager
+            smoothing_dict = spectra_manager.compute_smoothing_factors(
                 self.collection.beam_manager
             )
-            self.beam_smoothing = np.zeros(
-                self.params.nspectra * self.n_ell, dtype=np.float64
-            )
-            idx = 0
-            for label in self.collection.spectra_manager.labels:
-                # smoothing_dict[label] is ℓ-indexed length lmax_signal+1;
-                # extract inference range ell=lmin..lmax (ADR 0009).
-                self.beam_smoothing[idx : idx + self.n_ell] = smoothing_dict[label][
-                    lmin : lmax + 1
+            _, spectra_list = self._build_multi_spectrum_inputs()
+            # smoothing_dict[label] is ℓ-indexed length lmax_signal+1;
+            # extract inference range ell=lmin..lmax (ADR 0009).
+            self.beam_smoothing = np.concatenate(
+                [
+                    smoothing_dict[spectra_manager.label_for_key(key)][lmin : lmax + 1]
+                    for key in spectra_list
                 ]
-                idx += self.n_ell
+            ).astype(np.float64)
 
             # Setup Fisher matrices dimensions
-            self.n_params = self.params.nspectra * self.bins.nbins
+            self.n_params = len(spectra_list) * self.bins.nbins
             self.fisher = np.zeros((self.n_params, self.n_params))
 
         # Compute Fisher matrix
@@ -1193,7 +1176,7 @@ class Fisher(Core, MPISharedMemoryMixin):
         Q_block = np.zeros((self.bins.nbins, n_ell), dtype=np.float64)
         for b, (lo, hi) in enumerate(zip(self.bins.lmins, self.bins.lmaxs)):
             Q_block[b, lo - lmin : hi - lmin + 1] = 1.0
-        Q = np.kron(np.eye(self.params.nspectra), Q_block)
+        Q = np.kron(np.eye(len(self.spectra_list)), Q_block)
 
         # W = F_b^{-1} @ Q @ F_perell
         W = cholesky_solve(cholesky_factor(self.fisher), Q @ per_ell_fisher)
@@ -1241,8 +1224,9 @@ class Fisher(Core, MPISharedMemoryMixin):
         n_ell = self.params.lmax - lmin + 1
         nbins = self.bins.nbins
         ells = np.arange(lmin, lmin + n_ell, dtype=np.float64)
-        eff = np.empty(self.params.nspectra * nbins, dtype=np.float64)
-        for s in range(self.params.nspectra):
+        nspectra = len(self.spectra_list)
+        eff = np.empty(nspectra * nbins, dtype=np.float64)
+        for s in range(nspectra):
             Wb = W[s * nbins : (s + 1) * nbins, s * n_ell : (s + 1) * n_ell]
             eff[s * nbins : (s + 1) * nbins] = (Wb @ ells) / Wb.sum(axis=1)
         return eff
@@ -1268,7 +1252,7 @@ class Fisher(Core, MPISharedMemoryMixin):
         saved_coo = getattr(self, "_cached_sparse_coo_data", None)
         try:
             self.bins = Bins.fromdeltal(self.params.lmin, self.params.lmax, 1)
-            self.n_params = self.params.nspectra * self.bins.nbins
+            self.n_params = len(self.spectra_list) * self.bins.nbins
             self.fisher = np.zeros((self.n_params, self.n_params))
             # Drop binned-derivative cache so per-ℓ run rebuilds its own
             self._cached_binned_derivatives = None

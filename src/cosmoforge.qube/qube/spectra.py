@@ -783,7 +783,7 @@ class Spectra(Core, MPISharedMemoryMixin):
         >>> print(f"QML results shape: {spectra.qml_results.shape}")
         >>> print(f"Total parameters: {spectra.qml_results.shape[1]}")
         """
-        n_params = self.params.nspectra * self.bins.nbins
+        n_params = len(self._resolve_spectra_list()) * self.bins.nbins
 
         # Initialize y vectors for QML estimation
         self.qml_results = np.zeros((self.params.nsims, n_params), dtype=np.float64)
@@ -802,16 +802,8 @@ class Spectra(Core, MPISharedMemoryMixin):
         """
         # Resolve spectra_list once so the per-bin SpectrumKey lookup inside
         # _get_binned_derivative works for both compressed and traditional
-        # paths. Mirrors Fisher.compute() which populates
-        # ``self.fisher_instance.spectra_list`` for both paths too. Fall
-        # back to building locally if Fisher hasn't populated it yet
-        # (test fixtures that bypass Fisher.compute()).
-        if self.spectra_list is None:
-            fisher_list = getattr(self.fisher_instance, "spectra_list", None)
-            if fisher_list is not None:
-                self.spectra_list = list(fisher_list)
-            else:
-                _, self.spectra_list = self._build_multi_spectrum_inputs()
+        # paths.
+        self._resolve_spectra_list()
 
         # Check if we should use compressed computation
         use_basis = hasattr(self, "basis_manager") and self.basis_manager is not None
@@ -820,6 +812,25 @@ class Spectra(Core, MPISharedMemoryMixin):
             self._compute_qml_spectra_compressed()
         else:
             self._compute_qml_spectra_traditional()
+
+    def _resolve_spectra_list(self) -> list:
+        """Return ``spectra_list``, adopting the Fisher's on first use.
+
+        Its length, not ``params.nspectra``, sizes the flat estimate axis:
+        SYMMETRIC folds each spin-2 cross-pair CG into GC. Mirrors
+        Fisher.compute(), which populates ``fisher_instance.spectra_list``;
+        builds locally if the Fisher has not (test fixtures that bypass
+        Fisher.compute()).
+        """
+        if getattr(self, "spectra_list", None) is None:
+            fisher_list = getattr(
+                getattr(self, "fisher_instance", None), "spectra_list", None
+            )
+            if fisher_list is not None:
+                self.spectra_list = list(fisher_list)
+            else:
+                _, self.spectra_list = self._build_multi_spectrum_inputs()
+        return self.spectra_list
 
     def _build_multi_spectrum_inputs(self):
         """Build C_ell_dict and spectra_list keyed by SpectrumKey."""
@@ -978,7 +989,7 @@ class Spectra(Core, MPISharedMemoryMixin):
                 # Non-diagonal derivatives (cross-field spin-0, EB, TE, TB)
                 # need the full noise covariance for correct Tr[E_b @ Cov].
                 # Only single-spectrum (pure TT/EE/BB) can use diagonal alone.
-                need_full = self.params.nspectra > 1
+                need_full = len(self._resolve_spectra_list()) > 1
                 if need_full:
                     noise_cov_w = self._compute_noise_cov_compressed(
                         bm, stable_inner_inv, full_matrix=True
@@ -1014,7 +1025,7 @@ class Spectra(Core, MPISharedMemoryMixin):
 
         # Main computation loop - distribute bins across processes
         nbins = self.bins.nbins
-        n_params = self.params.nspectra * nbins
+        n_params = len(self._resolve_spectra_list()) * nbins
         for il in range(n_params):
             if self.rank == il % self.size:
                 spectrum_idx = il // nbins
@@ -1126,7 +1137,7 @@ class Spectra(Core, MPISharedMemoryMixin):
         start_time = time.time()
 
         nbins = self.bins.nbins
-        nspectra = self.params.nspectra
+        nspectra = len(self._resolve_spectra_list())
         n_params = nspectra * nbins
 
         # Precompute weighted data: y = C⁻¹ d for all simulations
@@ -1808,7 +1819,7 @@ class Spectra(Core, MPISharedMemoryMixin):
         lmin = self.params.lmin
         lmax = self.params.lmax
         n_ell = lmax - lmin + 1
-        nspectra = self.params.nspectra
+        nspectra = len(self._resolve_spectra_list())
 
         def _to_perell(arr: np.ndarray, what: str) -> np.ndarray:
             """Trim one per-ℓ array to ℓ=lmin..lmax (accepts n_ell or lmax+1)."""

@@ -130,6 +130,9 @@ def test_signal_covmat_multiple_scalar_fields(data_resolver):
         "physical_labels": ["T1", "T2"],
         "ordering": "NESTED",
         "maskfile": "tmp/mask.fits",
+        # The reference was generated without a beam: multi-character labels
+        # used to skip it silently, and this test pins the cross kernel.
+        "smoothing_type": "none",
     }
 
     # Create temporary mask file with 2 scalar fields

@@ -146,6 +146,7 @@ class SpectraManager:
         self.fields = fields
         self._spectra_labels = []
         self._spectra_map = {}
+        self._spectra_field_labels = {}
         self._cls_dict = {}
         self._cls_matrix = None
 
@@ -171,6 +172,7 @@ class SpectraManager:
             for mode, label in enumerate(labels):
                 self._spectra_labels.append(label)
                 self._spectra_map[(i, i, mode)] = label
+                self._spectra_field_labels[label] = self._split_label(label, i, i)
 
         # Cross-spectra
         for i in range(len(self.fields)):
@@ -179,6 +181,25 @@ class SpectraManager:
                 for mode, label in enumerate(labels):
                     self._spectra_labels.append(label)
                     self._spectra_map[(i, j, mode)] = label
+                    self._spectra_field_labels[label] = self._split_label(label, i, j)
+
+    def _split_label(self, label: str, i: int, j: int) -> tuple[str, str]:
+        """Split a spectrum label into the two field-map labels it pairs.
+
+        Field-map labels may have any length (``E1``, ``T100``), so the split
+        is matched against the labels of fields ``i`` and ``j`` rather than
+        taken by character position.
+        """
+        candidates = list(self.fields[i].labels) + list(self.fields[j].labels)
+        splits = {
+            (a, b) for a in candidates for b in candidates if (a + b).upper() == label
+        }
+        if len(splits) != 1:
+            raise ValueError(
+                f"spectrum label {label!r} does not split uniquely into the "
+                f"field-map labels {candidates}; got {sorted(splits)}"
+            )
+        return splits.pop()
 
     @property
     def labels(self) -> list[str]:
@@ -403,6 +424,25 @@ class SpectraManager:
 
         return C_ell_dict, spectra_list
 
+    def label_for_key(self, key) -> str:
+        """Return the spectrum label that a :class:`SpectrumKey` stands for.
+
+        Under ``SymmetryMode.SYMMETRIC`` the cross-pair ``GC`` key names the
+        ``E_i B_j`` label; the folded ``B_i E_j`` label has no key.
+        """
+        from cosmocore.spectrum_key import _spin_pair_mode_to_kind
+
+        spins = tuple(f.spin for f in self.fields)
+        for (fi, fj, mode), label in self._spectra_map.items():
+            if (fi, fj) != (key.comp_i, key.comp_j):
+                continue
+            kind = _spin_pair_mode_to_kind(
+                spins[fi], spins[fj], mode, is_cross=(fi != fj)
+            )
+            if kind is key.kind:
+                return label
+        raise KeyError(f"no spectrum label for {key}")
+
     def compute_smoothing_factors(
         self, beam_manager: BeamManager, lmax: int | None = None
     ) -> dict[str, np.ndarray]:
@@ -431,9 +471,9 @@ class SpectraManager:
         for label in self._spectra_labels:
             smooth_factor = np.ones(n_ell, dtype=np.float64)
 
-            # Extract field labels from spectrum label
-            # (e.g., "TE" -> "T", "E")
-            label1, label2 = label[0], label[1]
+            # Field-map labels of the pair (e.g., "TE" -> "T", "E";
+            # "E1B2" -> "E1", "B2").
+            label1, label2 = self._spectra_field_labels[label]
             if label1 in beam_dict and label2 in beam_dict:
                 # Truncate beams to match output lmax if they were computed
                 # with a larger lmax_signal (e.g., 4*nside for signal matrix).
