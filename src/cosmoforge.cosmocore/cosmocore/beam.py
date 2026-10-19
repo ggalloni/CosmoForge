@@ -227,6 +227,12 @@ class BeamManager:
                 )
             else:
                 pw_t, pw_p = hp.pixwin(nside, pol=True, lmax=lmax)
+                if pw_t.shape[0] < lmax + 1:
+                    raise ValueError(
+                        f"apply_pixwin needs the pixel window up to lmax={lmax}, "
+                        f"but healpy tabulates it only up to 4*nside="
+                        f"{4 * nside}. Lower lmax or set apply_pixwin: false."
+                    )
                 beam = beam * np.vstack([pw_t, pw_p, pw_p])
 
         if beam.shape[0] != 3 or beam.shape[1] != lmax + 1:

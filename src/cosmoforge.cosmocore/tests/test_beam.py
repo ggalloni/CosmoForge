@@ -228,3 +228,9 @@ def test_apply_pixwin_ignored_for_file_and_injected_beam():
                 )
             np.testing.assert_array_equal(out["T"], bls[0][:9])
             np.testing.assert_array_equal(out["E"], bls[1][:9])
+
+
+def test_apply_pixwin_beyond_pixwin_table_raises():
+    """healpy tabulates the pixel window only to 4*nside; past it, fail clearly."""
+    with pytest.raises(ValueError, match="4\\*nside=16"):
+        _analytic_beams("gaussian", apply_pixwin=True, nside=4, lmax=20)

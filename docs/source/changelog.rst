@@ -17,6 +17,8 @@ Unreleased
   ``none``, ``gaussian``, ``cosine_legacy``, ``cosine_npipe``) by
   ``hp.pixwin(nside)``: T by the temperature window, E and B by the
   polarisation window. Runs that set it to ``true`` change their results.
+  Beyond ``lmax = 4*nside``, where healpy's pixel window table ends, it
+  raises ``ValueError``.
 * The ``InputParams`` default of ``apply_pixwin`` changes from ``True`` to
   ``False``, so every run that never set the key keeps its results
   bit-identical. The ``*_defaults.yaml`` files already set ``false``.
