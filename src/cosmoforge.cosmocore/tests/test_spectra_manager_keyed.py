@@ -123,3 +123,46 @@ def test_directional_has_one_more_cross_spectrum_per_qu_qu_pair(collection_QU_QU
     assert len(extra_keys) == 1
     (extra,) = extra_keys
     assert extra.kind is SpectrumKind.CG and extra.comp_i != extra.comp_j
+
+
+class _ConstantBeams:
+    """Beam-manager stand-in: a constant beam per field-map label."""
+
+    def __init__(self, values, lmax):
+        self._beams = {k: np.full(lmax + 1, v) for k, v in values.items()}
+
+    def get_beam_dict(self):
+        return dict(self._beams)
+
+
+@pytest.fixture
+def collection_two_qu():
+    """Two spin-2 components with multi-character field-map labels."""
+    nside, lmax = 4, 8
+    mask = np.ones(hp.nside2npix(nside), dtype=np.float64)
+    return [
+        create_field(spin=2, nside=nside, lmax=lmax, mask=mask, labels=["E1", "B1"]),
+        create_field(spin=2, nside=nside, lmax=lmax, mask=mask, labels=["E2", "B2"]),
+    ]
+
+
+def test_smoothing_factors_multi_character_labels(collection_two_qu):
+    """Each factor pairs the beams of its two field-map labels, whatever their length."""
+    sm = SpectraManager(collection_two_qu)
+    b = {"E1": 2.0, "B1": 3.0, "E2": 5.0, "B2": 7.0}
+    factors = sm.compute_smoothing_factors(_ConstantBeams(b, 8))
+    for label in sm.labels:
+        pair = next((x, y) for x in b for y in b if x + y == label)
+        np.testing.assert_array_equal(factors[label], b[pair[0]] * b[pair[1]])
+
+
+@pytest.mark.parametrize("mode", ["SYMMETRIC", "DIRECTIONAL"])
+def test_label_for_key_names_each_emitted_key(collection_two_qu, mode):
+    """label_for_key maps every build_inputs key to its own spectrum label."""
+    sm = SpectraManager(collection_two_qu)
+    _populate_fiducial_cls(sm)
+    _, keys = sm.build_inputs(symmetry_mode=mode)
+    labels = [sm.label_for_key(k) for k in keys]
+    expected = ["E1E1", "B1B1", "E1B1", "E2E2", "B2B2", "E2B2", "E1E2", "E1B2"]
+    expected += ["B1E2", "B1B2"] if mode == "DIRECTIONAL" else ["B1B2"]
+    assert labels == expected
