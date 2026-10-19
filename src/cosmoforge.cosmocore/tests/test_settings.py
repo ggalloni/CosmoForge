@@ -75,7 +75,7 @@ def test_input_params_default_values():
     # Test numerical defaults
     assert params.feedback == 1
     assert params.fwhmarcmin == 440.0
-    assert params.apply_pixwin is True
+    assert params.apply_pixwin is False
     assert params.ordering == "RING"
 
 

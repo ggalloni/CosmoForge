@@ -245,7 +245,7 @@ root_filename: "dls"
 smoothing_type: file  # none, gaussian, cosine_legacy, cosine_npipe, file
 fwhmarcmin: 5.0  # gaussian only
 beam_file: "data/beam.fits"  # read only by smoothing_type: file
-apply_pixwin: true
+apply_pixwin: false  # analytic beams only; a beam_file carries its own pixel window
 ```
 
 ## MPI Usage

@@ -13,6 +13,7 @@ import tempfile
 
 import healpy as hp
 import numpy as np
+import pytest
 
 from cosmocore.beam import coswinbeam
 
@@ -148,3 +149,88 @@ def test_coswinbeam_conventions_differ():
     # NPIPE tapers earlier, so at the legacy plateau edge it is already lower.
     assert npipe[nside] <= legacy[nside] + 1e-12
     assert not np.array_equal(legacy, npipe)
+
+
+def _analytic_beams(smoothtype, apply_pixwin, *, nside=4, lmax=12):
+    from cosmocore.beam import BeamManager
+
+    return BeamManager([]).compute_beams(
+        lmax=lmax,
+        nside=nside,
+        smoothtype=smoothtype,
+        fwhmarcmin=60.0,
+        beam_file="",
+        apply_pixwin=apply_pixwin,
+    )
+
+
+@pytest.mark.parametrize(
+    "smoothtype", ["none", "gaussian", "cosine_legacy", "cosine_npipe"]
+)
+def test_apply_pixwin_multiplies_analytic_beam_by_hp_pixwin(smoothtype):
+    """apply_pixwin turns b_ℓ into b_ℓ·p_ℓ: T by the T window, E and B by the pol one."""
+    off = _analytic_beams(smoothtype, apply_pixwin=False)
+    on = _analytic_beams(smoothtype, apply_pixwin=True)
+    pw_t, pw_p = hp.pixwin(4, pol=True, lmax=12)
+
+    np.testing.assert_array_equal(on["T"], off["T"] * pw_t)
+    np.testing.assert_array_equal(on["E"], off["E"] * pw_p)
+    np.testing.assert_array_equal(on["B"], off["B"] * pw_p)
+    assert not np.array_equal(on["T"], off["T"])
+
+
+def test_apply_pixwin_is_read_from_params():
+    """The InputParams flag reaches the field beams (it was inert before 1.4.0)."""
+    from cosmocore.settings import InputParams
+
+    beams = {}
+    for flag in (False, True):
+        params = InputParams()
+        params.nside = 4
+        params.lmax = 8
+        params.smoothing_type = "gaussian"
+        params.fwhmarcmin = 60.0
+        params.apply_pixwin = flag
+        mask_f = tempfile.NamedTemporaryFile(suffix=".fits", delete=False)
+        mask = np.ones(12 * 4**2)
+        hp.write_map(mask_f.name, [mask] * params.nfields, overwrite=True)
+        params.maskfile = mask_f.name
+
+        core = ConcreteCore(params)
+        core.setup_fields()
+        bm = core.collection.beam_manager
+        bm.set_beams_from_params(params)
+        beams[flag] = bm.get_beam_dict()
+
+    pw_t, pw_p = hp.pixwin(4, pol=True, lmax=8)
+    np.testing.assert_array_equal(beams[True]["T"], beams[False]["T"] * pw_t)
+    np.testing.assert_array_equal(beams[True]["E"], beams[False]["E"] * pw_p)
+    np.testing.assert_array_equal(beams[True]["B"], beams[False]["B"] * pw_p)
+
+
+def test_apply_pixwin_ignored_for_file_and_injected_beam():
+    """A beam from file or injected is used as given; apply_pixwin only warns."""
+    from cosmocore.beam import BeamManager
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        beam_file = f"{tmpdir}/beam.fits"
+        _write_beam(beam_file, nell=32)
+        bls = hp.read_cl(beam_file).astype(np.float64)
+        bm = BeamManager([])
+
+        for kwargs in (
+            {"smoothtype": "file", "beam_file": beam_file},
+            {"smoothtype": "gaussian", "beam_file": "", "injected_beam": bls},
+        ):
+            with pytest.warns(UserWarning, match="apply_pixwin is ignored"):
+                out = bm.compute_beams(
+                    lmax=8, nside=4, fwhmarcmin=60.0, apply_pixwin=True, **kwargs
+                )
+            np.testing.assert_array_equal(out["T"], bls[0][:9])
+            np.testing.assert_array_equal(out["E"], bls[1][:9])
+
+
+def test_apply_pixwin_beyond_pixwin_table_raises():
+    """healpy tabulates the pixel window only to 4*nside; past it, fail clearly."""
+    with pytest.raises(ValueError, match="4\\*nside=16"):
+        _analytic_beams("gaussian", apply_pixwin=True, nside=4, lmax=20)

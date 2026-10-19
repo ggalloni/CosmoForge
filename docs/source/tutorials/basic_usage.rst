@@ -257,7 +257,7 @@ Create a configuration file for your analysis:
    
    # Instrument parameters
    fwhmarcmin: 5.0
-   apply_pixwin: true
+   apply_pixwin: false  # analytic beams only; beam_file below carries its own
    
    # Input/output files
    inputclfile: "inputs/cls_theory.dat"
