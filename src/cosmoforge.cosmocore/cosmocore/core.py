@@ -777,6 +777,7 @@ class Core(ABC):
         use_smw_optimization: bool = True,
         compress: bool = False,
         delta_m: int = 0,
+        anchor: str = "noise",
     ):
         """
         Create and configure a computation basis for SMW-based operations.
@@ -824,6 +825,13 @@ class Core(ABC):
             For harmonic basis, whether to absorb signal outside the
             inference window into effective noise. Reduces computation
             while preserving accuracy.
+        anchor : {"noise", "fiducial"}, default "noise"
+            Experimental, harmonic basis only. ``"fiducial"`` anchors the SMW
+            algebra at the fiducial covariance rather than at the effective
+            noise, so the Fisher and Spectra at the fiducial skip the
+            ``n_modes³`` solve. The likelihood methods (PICSLike) are not
+            available on such a basis. Ignored when the basis resolves to
+            pixel.
 
         Returns
         -------
@@ -852,6 +860,8 @@ class Core(ABC):
         ...     epsilon=1e-4,
         ... )
         """
+        if anchor not in ("noise", "fiducial"):
+            raise ValueError(f"anchor must be 'noise' or 'fiducial', got {anchor!r}")
         if not hasattr(self, "theta") or self.theta is None:
             raise ValueError(
                 "Geometry must be set up before computation basis. "
@@ -1016,6 +1026,15 @@ class Core(ABC):
                     # the beam — the saved copy was already smoothed.
                     self.collection.spectra_manager._cls_dict = original_spectra_smoothed
 
+        anchor_C_ell = None
+        if anchor == "fiducial":
+            # The same spectra Fisher and Spectra will pass, built after the
+            # S_fixed block has restored the in-window Cls, so that at the
+            # fiducial Λ − Λ0 is exactly zero.
+            anchor_C_ell, _ = self.collection.spectra_manager.build_inputs(
+                symmetry_mode=getattr(self, "symmetry_mode", None)
+            )
+
         # lmin_signal is normalised to a per-component list by
         # Core._normalize_lmin_signal during params loading.
         lmin_signal = list(self.params.lmin_signal)
@@ -1045,6 +1064,7 @@ class Core(ABC):
             fields=getattr(self, "collection", None),
             n_bins=n_bins,
             pixel_filter=self.pixel_filter,
+            anchor_C_ell=anchor_C_ell,
         )
 
         # Build harmonic operator and precompute SMW components

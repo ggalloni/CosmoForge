@@ -11,6 +11,7 @@ from .indexing import idx2spec, spec2idx
 from .legendre import legendre_00, legendre_02, legendre_22, legendre_plm
 from .linalg import (
     add_diagonal,
+    add_transposed_product,
     cholesky_decomposition,
     cholesky_factor,
     cholesky_solve,
@@ -48,6 +49,7 @@ __all__ = [
     "get_rotation_angle",
     # linalg
     "matrix_mult",
+    "add_transposed_product",
     "add_diagonal",
     "matrix_trace",
     "matrix_inverse_symm",

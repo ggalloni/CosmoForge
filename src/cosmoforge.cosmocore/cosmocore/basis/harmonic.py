@@ -10,9 +10,11 @@ from __future__ import annotations
 from functools import cached_property
 
 import numpy as np
+from scipy import sparse
 
 from ..basics import (
     add_diagonal,
+    add_transposed_product,
     cholesky_decomposition,
     cholesky_solve,
     inv,
@@ -70,6 +72,16 @@ class HarmonicBasis(ComputationBasis):
         Bandwidth for m-block coupling. delta_m=0 means block-diagonal
         (no coupling between different |m|). delta_m=lmax recovers exact
         result. Default is 0.
+    anchor_C_ell : numpy.ndarray or dict, optional
+        Experimental. Fiducial spectra (in the form ``get_projected_inverse``
+        takes) to anchor the SMW algebra at the fiducial covariance
+        ``C0 = N_eff + V^T Lambda0 V`` instead of at ``N_eff``. Every
+        Lambda-consuming method then works with ``Lambda - Lambda0``, so at
+        the fiducial the projected inverse is ``V C0^{-1} V^T`` itself and
+        costs no ``n_modes³`` solve. Covers the QUBE Fisher and Spectra
+        surface; the likelihood methods (``quadratic_form``,
+        ``get_full_logdet``, ...) need the noise-only factor and raise.
+        Default None (anchor at ``N_eff``).
 
     Examples
     --------
@@ -101,6 +113,7 @@ class HarmonicBasis(ComputationBasis):
         compress: bool = False,
         delta_m: int = 0,
         pixel_filter=None,
+        anchor_C_ell=None,
     ):
         super().__init__(
             N=N,
@@ -121,6 +134,21 @@ class HarmonicBasis(ComputationBasis):
         self._compress = compress
         self._delta_m = delta_m
         self._V_released = False
+        # Copied: _at_anchor compares against these values, and an alias of
+        # the spectra manager's arrays could change underneath Λ0.
+        if isinstance(anchor_C_ell, dict):
+            anchor_C_ell = {k: np.array(v, copy=True) for k, v in anchor_C_ell.items()}
+        elif anchor_C_ell is not None:
+            anchor_C_ell = np.array(anchor_C_ell, copy=True)
+        self._anchor_C_ell = anchor_C_ell
+        # Lambda0 as a sparse matrix once setup has anchored; None = N_eff anchor.
+        self._anchor_lambda = None
+
+        if self._compress and anchor_C_ell is not None:
+            raise NotImplementedError(
+                "anchor_C_ell is not available with m-block compression: the "
+                "compressed kernels are built from V N_eff^{-1} V^T"
+            )
 
         if self._compress:
             # Multi-field + compress not yet supported
@@ -223,6 +251,9 @@ class HarmonicBasis(ComputationBasis):
             self._compute_effective_noise()
             _t_eff = _time.time() - _t0
 
+        if self._anchor_C_ell is not None:
+            self._anchor_at_fiducial()
+
         # Factor the (effective) noise in place; releases the symmetric N
         # buffer and any caller-provided dense N_inv. After this call,
         # cholesky_solve via self._N_chol is the only path to N^{-1}.
@@ -277,6 +308,64 @@ class HarmonicBasis(ComputationBasis):
         # an _N_original copy.
         np.add(self._N, S_fixed, out=self._N)
         self._S_fixed = S_fixed
+
+    def _anchor_at_fiducial(self) -> None:
+        """Add the in-window fiducial signal to the base matrix: N_eff += V^T Λ0 V.
+
+        From here on the "noise" the SMW algebra factorises is the full
+        fiducial covariance C0, so M = V C0^{-1} V^T and every Λ consumer
+        works with Λ − Λ0 (:meth:`_lambda_for`). Λ0 is kept sparse: it has a
+        handful of nonzeros per row, and a dense copy would cost n_modes².
+        """
+        c_arr, c_dict, is_single = self._normalize_c_ell(self._anchor_C_ell)
+        if is_single:
+            lambda0 = sparse.diags_array(self._build_lambda_diagonal(c_arr)).tocsr()
+        else:
+            lambda0 = sparse.csr_array(self._build_lambda_matrix(c_dict))
+        self._N = add_transposed_product(self._N, self._V, lambda0 @ self._V)
+        self._anchor_lambda = lambda0
+
+    def _lambda_for(self, C_ell, lambda_matrix: np.ndarray | None = None) -> np.ndarray:
+        """Dense Λ the SMW forms consume for ``C_ell``: Λ, or Λ − Λ0 when anchored.
+
+        Λ is a linear placement of the spectra, so at the anchor spectra the
+        difference is exactly zero.
+        """
+        if lambda_matrix is None:
+            c_arr, c_dict, is_single = self._normalize_c_ell(C_ell)
+            if is_single:
+                lambda_matrix = np.diag(self._build_lambda_diagonal(c_arr))
+            else:
+                lambda_matrix = self._build_lambda_matrix(c_dict)
+        elif self._anchor_lambda is not None:
+            lambda_matrix = lambda_matrix.copy()
+        if self._anchor_lambda is not None:
+            lambda0 = self._anchor_lambda.tocoo()
+            lambda_matrix[lambda0.row, lambda0.col] -= lambda0.data
+        return lambda_matrix
+
+    def _at_anchor(self, C_ell) -> bool:
+        """True when ``C_ell`` holds exactly the anchor spectra (Λ − Λ0 = 0).
+
+        Compares the spectra rather than building Λ: Λ is dense n_modes², and
+        the fiducial call is the one the anchor exists to make free.
+        """
+        if self._anchor_lambda is None:
+            return False
+        c_arr, c_dict, _ = self._normalize_c_ell(C_ell)
+        a_arr, a_dict, _ = self._normalize_c_ell(self._anchor_C_ell)
+        if c_dict is None or a_dict is None:
+            return c_dict is None and a_dict is None and np.array_equal(c_arr, a_arr)
+        return c_dict.keys() == a_dict.keys() and all(
+            np.array_equal(c_dict[k], a_dict[k]) for k in a_dict
+        )
+
+    def _require_noise_anchor(self, name: str) -> None:
+        if self._anchor_lambda is not None:
+            raise NotImplementedError(
+                f"{name} needs the noise-only factor and is not available on a "
+                "basis anchored at the fiducial (anchor_C_ell)"
+            )
 
     def _compute_s_fixed_from_fiducial(self) -> np.ndarray:
         """
@@ -351,6 +440,17 @@ class HarmonicBasis(ComputationBasis):
         else:
             self._noise_cov_T = self._V_Ninv_VT
 
+        # Anchored, the factorised base also carries V^T Λ0 V, which T must
+        # not see: T = V C0^{-1} N C0^{-1} V^T drops M Λ0 M as well.
+        if self._anchor_lambda is not None:
+            M = self._V_Ninv_VT
+            corr0 = matrix_mult(M, self._anchor_lambda @ M)
+            if self._noise_cov_T is M:
+                self._noise_cov_T = M - corr0
+            else:
+                self._noise_cov_T -= corr0
+            symmetrize_inplace(self._noise_cov_T)
+
     @cached_property
     def _V_N_VT(self) -> np.ndarray:
         """Lazily compute V @ N @ V^T via the Cholesky factor.
@@ -396,13 +496,9 @@ class HarmonicBasis(ComputationBasis):
         np.ndarray
             (I + Lambda M)^{-1}, n_modes_total x n_modes_total.
         """
-        if lambda_matrix is None:
-            c_ell_arr, c_ell_dict, is_single = self._normalize_c_ell(C_ell)
-            if is_single:
-                lambda_diag = self._build_lambda_diagonal(c_ell_arr)
-                lambda_matrix = np.diag(lambda_diag)
-            else:
-                lambda_matrix = self._build_lambda_matrix(c_ell_dict)
+        if lambda_matrix is None and self._at_anchor(C_ell):
+            return np.eye(self.dim)
+        lambda_matrix = self._lambda_for(C_ell, lambda_matrix)
         inner = lambda_matrix @ self._V_Ninv_VT
         inner[np.diag_indices_from(inner)] += 1.0
         return inv(inner)
@@ -835,6 +931,19 @@ class HarmonicBasis(ComputationBasis):
             blocks = self._get_projected_inverse_mblock(c_ell_arr)
             return self._assemble_full_from_blocks(blocks)
 
+        if self._anchor_lambda is not None:
+            # M is already V C0^{-1} V^T. Field groups are ignored: the anchor
+            # carries the fiducial cross-field signal, so M is not
+            # block-diagonal across fields even when the noise is.
+            if self._at_anchor(C_ell):
+                # Read-only view: callers get the persistent M, not a copy.
+                M = self._V_Ninv_VT.view()
+                M.flags.writeable = False
+                return M
+            return self._smw_projected_inverse(
+                self._V_Ninv_VT, lambda_matrix=self._lambda_for(C_ell)
+            )
+
         if is_single:
             lambda_inv_diag = self._lambda_inv_diag_from_array(c_ell_arr)
             return self._smw_projected_inverse(
@@ -909,6 +1018,7 @@ class HarmonicBasis(ComputationBasis):
         numpy.ndarray
             Compressed covariance matrix.
         """
+        self._require_noise_anchor("get_covariance")
         c_ell_arr, c_ell_dict, is_single = self._normalize_c_ell(C_ell)
         if is_single:
             Lambda_diag = self._build_lambda_diagonal(c_ell_arr)
@@ -932,6 +1042,7 @@ class HarmonicBasis(ComputationBasis):
         numpy.ndarray
             Full inverse covariance matrix of shape (n_pix, n_pix).
         """
+        self._require_noise_anchor("get_full_inverse")
         c_ell_arr, c_ell_dict, is_single = self._normalize_c_ell(C_ell)
         if is_single:
             Lambda_diag = self._build_lambda_diagonal(c_ell_arr)
@@ -956,6 +1067,7 @@ class HarmonicBasis(ComputationBasis):
         float
             Log determinant of the full covariance matrix.
         """
+        self._require_noise_anchor("get_full_logdet")
         c_ell_arr, c_ell_dict, is_single = self._normalize_c_ell(C_ell)
         if not is_single:
             _, logdet = self.prepare_for_basis(c_ell_dict)
@@ -1024,6 +1136,7 @@ class HarmonicBasis(ComputationBasis):
         float
             Quadratic form value d^T C^{-1} d.
         """
+        self._require_noise_anchor("quadratic_form")
         c_ell_arr, c_ell_dict, is_single = self._normalize_c_ell(C_ell)
         if not is_single:
             K_chol, _ = self.prepare_for_basis(c_ell_dict)
@@ -1045,6 +1158,7 @@ class HarmonicBasis(ComputationBasis):
 
     def prepare_for_basis(self, C_ell_dict: dict) -> BasisPrepared:
         """Precompute K Cholesky factor and log determinant for reuse across sims."""
+        self._require_noise_anchor("prepare_for_basis")
         K, lambda_matrix = self._build_smw_kernel(C_ell_dict)
 
         _, log_det_Lambda = matrix_slogdet_symm(lambda_matrix)
@@ -1058,6 +1172,7 @@ class HarmonicBasis(ComputationBasis):
 
     def quadratic_form_from_prepared(self, data: np.ndarray, K_chol: np.ndarray) -> float:
         """Compute d^T C^{-1} d using precomputed K Cholesky factor."""
+        self._require_noise_anchor("quadratic_form_from_prepared")
         term1 = float(data.T @ cholesky_solve(self._N_chol, data))
         y = self._V_N_inv @ data
         kernel_inv_y = cholesky_solve((K_chol, True), y)

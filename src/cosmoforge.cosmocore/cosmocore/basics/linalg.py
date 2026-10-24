@@ -12,7 +12,7 @@ import warnings
 
 import numpy as np
 from numba import njit, prange
-from scipy.linalg import cho_solve, lapack
+from scipy.linalg import blas, cho_solve, lapack
 
 
 def matrix_mult(A, B):
@@ -30,6 +30,41 @@ def matrix_mult(A, B):
         Result of matrix multiplication A @ B.
     """
     return np.matmul(A, B)
+
+
+def add_transposed_product(C, A, B):
+    """
+    Accumulate ``C += A^T @ B`` in place, without an ``A^T B`` temporary.
+
+    At production scale ``C`` is an ``n_pix²`` buffer, so the broadcast form
+    ``C += A.T @ B`` would briefly hold a second one. BLAS ``dgemm`` with
+    ``beta=1`` writes straight into ``C``.
+
+    Parameters
+    ----------
+    C : numpy.ndarray
+        2D float64 F-contiguous matrix of shape ``(n, k)``, updated in place.
+    A : numpy.ndarray
+        2D float64 matrix of shape ``(m, n)``.
+    B : numpy.ndarray
+        2D float64 matrix of shape ``(m, k)``.
+
+    Returns
+    -------
+    numpy.ndarray
+        ``C``, the same buffer.
+    """
+    if not (C.flags.f_contiguous and C.dtype == np.float64):
+        raise ValueError("C must be a float64 F-contiguous array to update in place")
+    # A C-ordered A is an F-ordered A^T: pass it untransposed so BLAS reads it
+    # without a copy.
+    a, trans_a = (A.T, 0) if A.flags.c_contiguous else (A, 1)
+    out = blas.dgemm(
+        1.0, a, np.asfortranarray(B), beta=1.0, c=C, trans_a=trans_a, overwrite_c=1
+    )
+    if out is not C:
+        raise RuntimeError("dgemm did not update C in place")
+    return C
 
 
 @njit(cache=True)

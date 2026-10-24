@@ -14,6 +14,19 @@ Unreleased
 * ``SpectraManager.label_for_key(key)`` returns the spectrum label a
   ``SpectrumKey`` stands for. Under ``SymmetryMode.SYMMETRIC`` the cross-pair
   ``GC`` key names the ``E_i B_j`` label.
+* Experimental ``basis={"method": "harmonic", "anchor": "fiducial"}`` for
+  ``Fisher`` and ``Spectra`` (also ``anchor=`` on
+  ``setup_computation_basis()`` and ``anchor_C_ell=`` on ``HarmonicBasis``).
+  The harmonic basis factorises the fiducial covariance instead of the
+  effective noise, so the Fisher and Spectra at the fiducial skip the
+  ``n_modes³`` solve, and the Fisher sits closer to the direct pixel-space
+  result (T test config: eigenvalues to ~1e-13 against ~1e-8). Results are
+  otherwise unchanged; the default stays ``anchor="noise"``. Not available
+  with m-block compression; on an anchored basis the likelihood methods
+  (``quadratic_form``, ``get_full_logdet``, ``prepare_for_basis``, ...) raise
+  ``NotImplementedError``, so ``PICSLike`` keeps the noise anchor.
+* ``cosmocore.basics.add_transposed_product(C, A, B)`` accumulates
+  ``C += Aᵀ B`` in place through BLAS, without an ``Aᵀ B`` temporary.
 
 **Fixed:**
 
