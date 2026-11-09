@@ -145,10 +145,12 @@ def compute_pointings(nside, active, ordering):
 def _unit_vectors(theta, phi):
     # ponytail: this is hp.ang2vec, kept as a scalar loop on purpose. numpy's
     # array trig takes a SIMD path that differs from the scalar libm call by one
-    # ulp in about a quarter of the entries, and the nside-4 QU Fisher
-    # references amplify that to 1e-5 relative. The scalar path reproduces the
-    # pre-1.3.0 pointings bit for bit at nside <= 8; switch to hp.ang2vec when
-    # the reference data are regenerated.
+    # ulp in about a quarter of the entries. The scalar path reproduces the
+    # pre-1.3.0 pointings bit for bit at nside <= 8, so the reference data do
+    # not move. While get_rotation_angle took an arccos, that one ulp moved the
+    # nside-4 QU Fisher references by 1e-5 relative; with atan2 it moves a QU
+    # Fisher by about 2e-13 of sqrt(F_ii F_jj). Switch to hp.ang2vec when the
+    # reference data are regenerated.
     out = np.empty((theta.shape[0], 3))
     for i in range(theta.shape[0]):
         x = np.sin(theta[i]) * np.cos(phi[i])

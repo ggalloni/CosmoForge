@@ -66,6 +66,13 @@ def get_rotation_angle(r1, r2):
     This function computes the rotation angles needed for transforming
     spin-2 quantities (like polarization) between different coordinate
     systems on the sphere.
+
+    Each angle is ``-2 A``, with ``A`` the angle from the local ``e_phi`` to the
+    normal ``r12 = r1 x r2 / |r1 x r2|`` in the tangent plane, taken by
+    ``atan2`` of its ``e_theta`` and ``e_phi`` components. An ``arccos`` of the
+    ``e_phi`` component alone loses half the digits where ``A`` is 0 or pi, which
+    is every pair of pixels on a common meridian: the sine of the angle came out
+    at up to 5e-8 instead of 0.
     """
     # cross-product r1 x r2 -> r12
     r12x = r1[1] * r2[2] - r1[2] * r2[1]
@@ -80,31 +87,20 @@ def get_rotation_angle(r1, r2):
     r12y /= mod
     r12z /= mod
 
-    r1sx, r1sy, _ = _project_and_norm(r1[0], r1[1], r1[2])
-    r2sx, r2sy, _ = _project_and_norm(r2[0], r2[1], r2[2])
-
-    # dot r12*r1star and decide sign from r12*zz
-    dot1 = r12x * r1sx + r12y * r1sy
-    # clamp
-    if dot1 > 1.0:
-        dot1 = 1.0
-    elif dot1 < -1.0:
-        dot1 = -1.0
-    sign1 = 1.0 if r12z > 0.0 else -1.0
-    a12 = 2.0 * np.arccos(dot1) * sign1
-
-    # now flip r12 for the second angle
-    r12x = -r12x
-    r12y = -r12y
-    r12z = -r12z
-
-    # dot r12*r2star
-    dot2 = r12x * r2sx + r12y * r2sy
-    if dot2 > 1.0:
-        dot2 = 1.0
-    elif dot2 < -1.0:
-        dot2 = -1.0
-    sign2 = 1.0 if r12z > 0.0 else -1.0
-    a21 = 2.0 * np.arccos(dot2) * sign2
+    a12 = -2.0 * _tangent_angle(r1, r12x, r12y, r12z)
+    # the normal seen from r2 is r21 = -r12
+    a21 = -2.0 * _tangent_angle(r2, -r12x, -r12y, -r12z)
 
     return a12, a21
+
+
+@njit(cache=True)
+def _tangent_angle(r, nx, ny, nz):
+    """Signed angle from ``e_phi`` at ``r`` to the unit tangent vector ``n``."""
+    # e_phi, bumped at a pole by _project_and_norm
+    ex, ey, _ = _project_and_norm(r[0], r[1], r[2])
+    # e_theta = e_phi x r
+    tx = ey * r[2]
+    ty = -ex * r[2]
+    tz = ex * r[1] - ey * r[0]
+    return np.arctan2(nx * tx + ny * ty + nz * tz, nx * ex + ny * ey)
