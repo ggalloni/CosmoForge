@@ -253,6 +253,9 @@ class PICSLike(Core, MPISharedMemoryMixin):
         """
         Compute signal covariance matrix for a given parameter point.
 
+        Uses the beam set by :meth:`setup_beams`, which must have been called
+        with ``lmax=self.lmax_signal``.
+
         Returns
         -------
         np.ndarray
@@ -261,7 +264,8 @@ class PICSLike(Core, MPISharedMemoryMixin):
         Raises
         ------
         ValueError
-            If noise covariance matrices not set up.
+            If noise covariance matrices not set up, or if the beams are not
+            set up or are shorter than ``lmax_signal``.
         """
         if self.noise_cov1 is None:
             raise ValueError("Covariance matrices must be set up first")
@@ -271,7 +275,10 @@ class PICSLike(Core, MPISharedMemoryMixin):
         spectra_dict = self.parameter_grid.get_spectrum(param_point)
 
         self.collection.set_cls(spectra_dict, lmax=self.lmax_signal)
-        self.collection.set_beams(lmax=self.lmax_signal)
+        # Reuse the setup beam: rebuilding it here would drop an injected beam.
+        self.collection.beam_manager.apply_smoothing(
+            self.collection.spectra_manager, lmax=self.lmax_signal
+        )
 
         self.signal_matrix = signal_matrix(
             self.collection, self.lmax_signal, pixel_filter=self.pixel_filter
