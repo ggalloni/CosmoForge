@@ -36,6 +36,16 @@ Unreleased
   labels and a non-trivial beam now give different, correct numbers. A
   spectrum label that does not split uniquely into two field-map labels
   raises ``ValueError``.
+* The spin-2 rotation angle (``cosmocore.get_rotation_angle``) is taken by
+  ``atan2`` instead of ``arccos``. On pixel pairs that share a meridian the
+  ``arccos`` lost half the digits, so the spin-2 pixel-space signal
+  covariance and its derivatives were off by up to about 1e-8 of an entry,
+  mostly in the parity-odd Q-U terms. Every path that builds them moves:
+  ``basis=False``, ``basis="pixel"``, the traditional ``PICSLike``
+  likelihood, the T-P blocks of TQU, and ``S_fixed`` on the harmonic basis.
+  On the QU and TQU N_side 4 test configurations the traditional and
+  harmonic Fisher matrices now agree to 1.6e-12 of
+  ``sqrt(F_ii F_jj)``, against 1.9e-8 before. Spin-0 fields are unaffected.
 
 Version 1.3.0 (2026-10-18)
 --------------------------

@@ -212,17 +212,19 @@ def test_filtered_paths_agree_under_mpi(comm, local_path, config_resolver):
         os.unlink(config_file_s)
 
         if comm.Get_rank() == 0:
-            results.append((fisher.fisher.copy(), qml.get_power_spectra()))
+            y = qml.get_power_spectra(mode="convolved")[0]
+            results.append((fisher.fisher.copy(), np.array(y)))
 
     if comm.Get_rank() == 0:
-        (fisher_trad, ps_trad), (fisher_pix, ps_pix) = results
-        # Relative to the largest element: deprojecting E at l = 2, 3 leaves
-        # Fisher entries near 1e-8 and a condition number near 1e18, so the
-        # nulled bins' spectra agree only to ~5e-8 of the scale serially. A
-        # worker that lost its filter would be off at order one.
+        (fisher_trad, y_trad), (fisher_pix, y_pix) = results
+        # Deprojecting E at l = 2, 3 empties the EE and EB bins there, so the
+        # Fisher is singular and F^-1 y is undefined. The paths are compared on
+        # F and on the raw y, which carry a lost or mis-attached filter without
+        # an inversion: serially they agree to ~1e-16 of the largest element,
+        # and a worker that lost its filter would be off at order one.
         np.testing.assert_allclose(
             fisher_pix, fisher_trad, rtol=0, atol=1e-12 * np.abs(fisher_trad).max()
         )
         np.testing.assert_allclose(
-            ps_pix, ps_trad, rtol=0, atol=1e-6 * np.abs(ps_trad).max()
+            y_pix, y_trad, rtol=0, atol=1e-10 * np.abs(y_trad).max()
         )

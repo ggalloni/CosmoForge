@@ -78,6 +78,32 @@ def _cached_compressed(
 # Traditional (pixel-space) Fisher tests
 # =============================================================================
 
+#: The Fortran references share the arccos rotation angle that ``get_rotation_angle``
+#: used before it moved to atan2, which put up to ~1e-8 of an entry into the spin-2
+#: pixel kernels. On the QU and TQU configurations they sit 2.0e-8 and 1.7e-8 of
+#: sqrt(F_ii F_jj) from the corrected Fisher, which agrees with the harmonic path to
+#: 1.6e-12. Spin-2 entries are therefore compared on their own scale; the kernels
+#: themselves are checked against healpy in ``cosmocore/tests/test_rotation_angle.py``.
+SPIN2_FORTRAN_BOUND = 1e-7
+
+
+def _assert_matches_fortran(fisher_raw, ref, fields, what):
+    if "QU" in fields:
+        d = np.sqrt(np.abs(np.diag(ref)))
+        gap = (np.abs(fisher_raw - ref) / np.outer(d, d)).max()
+        assert gap < SPIN2_FORTRAN_BOUND, (
+            f"{what} for {fields} is {gap:.2e} of sqrt(F_ii F_jj) "
+            "from the Fortran reference"
+        )
+    else:
+        np.testing.assert_allclose(
+            fisher_raw,
+            ref,
+            atol=1e-3,
+            rtol=1e-5,
+            err_msg=f"{what} for {fields} does not match reference.",
+        )
+
 
 @pytest.mark.parametrize("fields", ["T", "QU", "TQU", "TEB"])
 def test_fisher_computation(fields, local_path, config_resolver):
@@ -95,13 +121,7 @@ def test_fisher_computation(fields, local_path, config_resolver):
     ref = np.loadtxt(file, dtype=np.float64)
 
     assert fisher_raw.shape == ref.shape
-    np.testing.assert_allclose(
-        fisher_raw,
-        ref,
-        atol=1e-3,
-        rtol=1e-5,
-        err_msg=f"Fisher matrix for {fields} does not match reference.",
-    )
+    _assert_matches_fortran(fisher_raw, ref, fields, "Fisher matrix")
 
 
 @pytest.mark.parametrize("fields", ["QU"])
@@ -121,13 +141,7 @@ def test_cross_fisher_computation(fields, local_path, config_resolver):
     ref = np.loadtxt(file, dtype=np.float64)
 
     assert fisher_raw.shape == ref.shape
-    np.testing.assert_allclose(
-        fisher_raw,
-        ref,
-        atol=1e-3,
-        rtol=1e-5,
-        err_msg=f"Cross Fisher for {fields} does not match reference.",
-    )
+    _assert_matches_fortran(fisher_raw, ref, fields, "Cross Fisher")
 
 
 @patch("qube.fisher.MPI")
