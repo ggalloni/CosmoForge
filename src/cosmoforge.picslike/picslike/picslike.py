@@ -249,6 +249,18 @@ class PICSLike(Core, MPISharedMemoryMixin):
         if self.rank == 0:
             self.log("PICSLike initialized!")
 
+    def _set_point_spectra(self, param_point: tuple) -> None:
+        """Load the theory spectra of ``param_point`` and smooth them.
+
+        Only the spectra change between grid points. The beam set up once by
+        :meth:`setup_beams` is reused; rebuilding it would drop an injected beam.
+        """
+        spectra_dict = self.parameter_grid.get_spectrum(param_point)
+        self.collection.set_cls(spectra_dict, lmax=self.lmax_signal)
+        self.collection.beam_manager.apply_smoothing(
+            self.collection.spectra_manager, lmax=self.lmax_signal
+        )
+
     def compute_signal_matrix(self, param_point: tuple) -> np.ndarray:
         """
         Compute signal covariance matrix for a given parameter point.
@@ -272,13 +284,7 @@ class PICSLike(Core, MPISharedMemoryMixin):
 
         start_time = time.time() if self.rank == 0 else None
 
-        spectra_dict = self.parameter_grid.get_spectrum(param_point)
-
-        self.collection.set_cls(spectra_dict, lmax=self.lmax_signal)
-        # Reuse the setup beam: rebuilding it here would drop an injected beam.
-        self.collection.beam_manager.apply_smoothing(
-            self.collection.spectra_manager, lmax=self.lmax_signal
-        )
+        self._set_point_spectra(param_point)
 
         self.signal_matrix = signal_matrix(
             self.collection, self.lmax_signal, pixel_filter=self.pixel_filter
@@ -573,15 +579,7 @@ class PICSLike(Core, MPISharedMemoryMixin):
 
         if use_basis:
             bm = self.basis_manager
-
-            # Only the signal spectrum changes between parameter points.
-            # Beams are loaded once during setup (setup_beams), but smoothing
-            # must be re-applied after each set_cls call.
-            spectra_dict = self.parameter_grid.get_spectrum(param_point)
-            self.collection.set_cls(spectra_dict, lmax=self.lmax_signal)
-            self.collection.beam_manager.apply_smoothing(
-                self.collection.spectra_manager, lmax=self.lmax_signal
-            )
+            self._set_point_spectra(param_point)
 
             has_spin2 = any(f.spin == 2 for f in self.collection.fields)
             is_multi_field = len(self.collection.fields) > 1 or has_spin2
