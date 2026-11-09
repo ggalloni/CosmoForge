@@ -36,6 +36,14 @@ Unreleased
   labels and a non-trivial beam now give different, correct numbers. A
   spectrum label that does not split uniquely into two field-map labels
   raises ``ValueError``.
+* ``PICSLike(..., beam=b)`` with ``basis=False`` uses ``b`` at every grid
+  point (ADR-0017). The traditional path rebuilt the beam from
+  ``smoothing_type`` at each point, so the injected beam was ignored and the
+  likelihood was computed with the ``smoothing_type`` beam instead. The basis
+  paths and ``beam_file`` were not affected. ``PICSLike.compute_signal_matrix``
+  now reuses the beam set by ``setup_beams``, so call
+  ``setup_beams(lmax=lmax_signal)`` before it; it raises ``ValueError`` if the
+  beams are missing or shorter than ``lmax_signal``.
 
 Version 1.3.0 (2026-10-18)
 --------------------------

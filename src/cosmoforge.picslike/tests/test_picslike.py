@@ -168,7 +168,7 @@ class TestComputeSignalMatrix:
         picslike.setup_geometry()
         picslike.setup_covariance_matrices()
         picslike.setup_cls()
-        picslike.setup_beams()
+        picslike.setup_beams(lmax=picslike.lmax_signal)
         picslike.setup_parameter_grid()
 
         param_point = list(picslike.parameter_grid.grid_points)[0]
