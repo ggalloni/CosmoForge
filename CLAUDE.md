@@ -30,10 +30,7 @@ changelog line, and both silently alter what existing scripts compute.
 
 ## Documentation drift
 
-At the end of every feature implementation that touches public surface — renamed/added/removed modules, changed signatures or kwargs, new or removed behaviour — do a quick doc-drift sweep before declaring the work done:
+Run the global `finish-feature` skill before declaring a public-surface change done. CosmoForge specifics:
 
-1. `grep -rn '<old-name>' docs/ CONTEXT.md README.md src/cosmoforge.*/README.md` for every symbol or path that was renamed or removed.
-2. `uv run --group docs sphinx-build -b html docs/source docs/build/html` and confirm no *new* warnings beyond the pre-existing docstring noise.
-3. Skim CONTEXT.md and the per-package READMEs for sections that describe the touched area; update or note as stale.
-
-Skip for purely internal refactors that change no public surface.
+- Grep for old names in `docs/ CONTEXT.md README.md src/cosmoforge.*/README.md`.
+- Docs build: `uv run --group docs sphinx-build -b html docs/source docs/build/html`; only warnings beyond the pre-existing docstring noise count.
